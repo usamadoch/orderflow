@@ -40,19 +40,24 @@ export function drawFootprintCell(
   ctx.fillRect(centerX + gap, y, halfWidth, height);
 
   // Draw text
-  if (height >= 12 && width >= 40) {
+  if (height >= 10 && width >= 30) {
     ctx.fillStyle = '#E8E8E8';
     const fontSize = height < 15 ? 9 : 11;
     ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
     ctx.textBaseline = 'middle';
     
+    const formatVol = (v: number) => {
+      if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+      return Number(v.toFixed(3)).toString();
+    };
+
     // Bid text
     ctx.textAlign = 'right';
-    ctx.fillText(cell.bidVol.toString(), centerX - gap - 2, y + height / 2);
+    ctx.fillText(formatVol(cell.bidVol), centerX - gap - 2, y + height / 2);
 
     // Ask text
     ctx.textAlign = 'left';
-    ctx.fillText(cell.askVol.toString(), centerX + gap + 2, y + height / 2);
+    ctx.fillText(formatVol(cell.askVol), centerX + gap + 2, y + height / 2);
   }
 }
 
@@ -73,10 +78,14 @@ export function drawDelta(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  let text = delta > 0 ? `+${delta}` : `${delta}`;
-  if (width < 40 && Math.abs(delta) >= 1000) {
+  let text = '';
+  if (Math.abs(delta) >= 1000) {
     const abbreviated = (delta / 1000).toFixed(1);
     text = delta > 0 ? `+${abbreviated}k` : `${abbreviated}k`;
+  } else {
+    // Avoid floating point mess (e.g. 5.4427400000000)
+    const rounded = Number(delta.toFixed(3));
+    text = delta > 0 ? `+${rounded}` : `${rounded}`;
   }
 
   if (width >= 20) {

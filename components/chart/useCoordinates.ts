@@ -6,15 +6,20 @@ export function getVisibleRange(
   barWidth: number,
   chartWidth: number
 ) {
-  if (candles.length === 0) return { firstIndex: 0, lastIndex: 0 };
+  if (candles.length === 0) return { firstIndex: 0, lastIndex: 0, rawFirstIndex: 0, rawLastIndex: 0 };
   
-  let lastIndex = candles.length - 1 - Math.floor(scrollOffset / barWidth);
-  let firstIndex = lastIndex - Math.ceil(chartWidth / barWidth) - 1;
+  const lastIndexRaw = candles.length - 1 - Math.floor(scrollOffset / barWidth);
+  const firstIndexRaw = lastIndexRaw - Math.ceil(chartWidth / barWidth) - 1;
   
-  lastIndex = Math.max(0, Math.min(candles.length - 1, lastIndex));
-  firstIndex = Math.max(0, Math.min(candles.length - 1, firstIndex));
+  const lastIndex = Math.max(0, Math.min(candles.length - 1, lastIndexRaw));
+  const firstIndex = Math.max(0, Math.min(candles.length - 1, firstIndexRaw));
   
-  return { firstIndex, lastIndex };
+  return { 
+    firstIndex, 
+    lastIndex,
+    rawFirstIndex: firstIndexRaw,
+    rawLastIndex: lastIndexRaw
+  };
 }
 
 export function getVisiblePriceRange(

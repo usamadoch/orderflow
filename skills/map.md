@@ -17,11 +17,12 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── ChartEngineContext.tsx# React context for AggregationEngine
 │   ├── chart/                # Chart-specific components
 │   │   ├── ChartCanvas.tsx   # Single canvas, owns setup + redraw loop
-│   │   ├── useCoordinates.ts # Coordinate math (indexToX, priceToY)
-│   │   ├── usePanZoom.ts     # Mouse event handlers, scrollOffset, barWidth
+│   │   ├── useCoordinates.ts # Coordinate math (price-to-pixel, index-to-pixel)
+│   │   ├── usePanZoom.ts     # Fixed-scale pan/zoom & persistent axis refs
 │   │   ├── drawCandles.ts    # Candlestick draw function
 │   │   ├── drawFootprint.ts  # Footprint cell draw function
-│   │   ├── drawAxes.ts       # Price axis, time axis, grid lines
+│   │   ├── drawAxes.ts       # Dynamic price axis (1-2-5 series), time axis, grid lines
+│   │   ├── drawPriceLine.ts  # Horizontal line at current market price
 │   │   └── VolumeProfile.tsx # Horizontal volume bars (Planned)
 │   ├── layout/               # General layout components
 │   │   ├── Sidebar.tsx       # Sidebar for settings (Planned)
@@ -29,7 +30,9 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── ui/                   # Reusable UI components
 │       ├── ConnectionStatus.tsx # Live connection indicator
 │       ├── PairSelector.tsx     # Active pair switcher
-│       └── TimeframeSelector.tsx# Active timeframe switcher
+│       ├── TimeframeSelector.tsx# Active timeframe switcher
+│       ├── ChartModeToggle.tsx  # Candle / Footprint mode toggle
+│       └── BucketSizeInput.tsx  # Footprint bucket size config
 │
 ├── lib/                      # Business logic, state, and utilities
 │   ├── aggregation/          # Trade aggregation logic

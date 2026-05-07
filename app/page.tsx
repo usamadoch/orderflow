@@ -2,7 +2,8 @@ import { FeedProvider } from '../components/FeedProvider';
 import { PairSelector } from '../components/ui/PairSelector';
 import { TimeframeSelector } from '../components/ui/TimeframeSelector';
 import { ConnectionStatus } from '../components/ui/ConnectionStatus';
-import { ModeSelector } from '../components/ui/ModeSelector';
+import { ChartModeToggle } from '../components/ui/ChartModeToggle';
+import { BucketSizeInput } from '../components/ui/BucketSizeInput';
 import { ChartCanvas } from '../components/chart/ChartCanvas';
 
 export default function Home() {
@@ -15,7 +16,8 @@ export default function Home() {
             <h1 className="font-bold text-base text-accent tracking-tight">OrderFlow</h1>
             <PairSelector />
             <TimeframeSelector />
-            <ModeSelector />
+            <ChartModeToggle />
+            <BucketSizeInput />
           </div>
           <div>
             <ConnectionStatus />

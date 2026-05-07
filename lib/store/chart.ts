@@ -18,6 +18,8 @@ interface ChartState {
   pushTrade: (trade: Trade) => void;
   bucketSize: number;
   setBucketSize: (size: number) => void;
+  footprintTrigger: number;
+  triggerFootprintRedraw: () => void;
 }
 
 export const useChartStore = create<ChartState>((set) => ({
@@ -27,7 +29,8 @@ export const useChartStore = create<ChartState>((set) => ({
   trades: [],
   connected: false,
   chartMode: 'candle',
-  bucketSize: 100,
+  bucketSize: 10,
+  footprintTrigger: 0,
 
   setPair: (pair) => set({ pair, candles: [], trades: [] }),
   
@@ -38,6 +41,8 @@ export const useChartStore = create<ChartState>((set) => ({
   toggleMode: () => set((state) => ({ chartMode: state.chartMode === 'candle' ? 'footprint' : 'candle' })),
 
   setBucketSize: (bucketSize) => set({ bucketSize }),
+  
+  triggerFootprintRedraw: () => set({ footprintTrigger: Date.now() }),
   
   pushCandle: (candle) => set((state) => {
     const newCandles = [...state.candles];

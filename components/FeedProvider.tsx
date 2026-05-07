@@ -10,18 +10,30 @@ import { Candle } from '../types/candle';
 import { Trade } from '../types/trade';
 
 export function FeedProvider({ children }: { children: React.ReactNode }) {
-  const { 
-    pair, 
-    timeframe, 
-    pushCandle, 
-    pushTrade, 
-    setConnected,
-    bucketSize
-  } = useChartStore();
+  const pair = useChartStore(s => s.pair);
+  const timeframe = useChartStore(s => s.timeframe);
+  const pushCandle = useChartStore(s => s.pushCandle);
+  const pushTrade = useChartStore(s => s.pushTrade);
+  const setConnected = useChartStore(s => s.setConnected);
+  const bucketSize = useChartStore(s => s.bucketSize);
+  const triggerFootprintRedraw = useChartStore(s => s.triggerFootprintRedraw);
+  const chartMode = useChartStore(s => s.chartMode);
   
   const connectedRef = useRef(false);
   // Persist engine across re-renders
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
+  const pendingFootprintRedrawRef = useRef(false);
+
+  // Throttled redraw loop for footprint updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (pendingFootprintRedrawRef.current && chartMode === 'footprint') {
+        pendingFootprintRedrawRef.current = false;
+        triggerFootprintRedraw();
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [triggerFootprintRedraw, chartMode]);
 
   // Handle engine bucket size updates without reconnecting socket
   useEffect(() => {
@@ -56,6 +68,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
 
       engineRef.current.ingestTrade(trade, getCandleTimeForTrade(trade.time, timeframeSeconds));
       pushTrade(trade);
+      pendingFootprintRedrawRef.current = true;
     };
 
     feedAdapter.subscribeCandles(pair, timeframe, handleCandle);

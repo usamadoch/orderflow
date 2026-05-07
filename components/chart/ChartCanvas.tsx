@@ -8,6 +8,7 @@ import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexT
 import { drawCandles } from './drawCandles';
 import { drawFootprint } from './drawFootprint';
 import { drawGrid, drawPriceAxis, drawTimeAxis } from './drawAxes';
+import { drawPriceLine } from './drawPriceLine';
 import { initCanvas } from '@/lib/utils/canvas';
 
 export function ChartCanvas() {
@@ -19,6 +20,7 @@ export function ChartCanvas() {
   const candles = useChartStore(state => state.candles);
   const chartMode = useChartStore(state => state.chartMode);
   const bucketSize = useChartStore(state => state.bucketSize);
+  const footprintTrigger = useChartStore(state => state.footprintTrigger);
   const engine = useChartEngine();
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
@@ -51,13 +53,24 @@ export function ChartCanvas() {
       const currentScrollOffset = scrollOffset.current;
       const currentBarWidth = barWidth.current;
 
-      const { firstIndex, lastIndex } = getVisibleRange(candles, currentScrollOffset, currentBarWidth, chartWidth);
-      const { priceMin, priceMax } = getVisiblePriceRange(candles, firstIndex, lastIndex);
+      const { firstIndex, lastIndex, rawFirstIndex, rawLastIndex } = getVisibleRange(candles, currentScrollOffset, currentBarWidth, chartWidth);
+      
+      // Initialize price scaling if not set
+      if (priceCenter.current === null || priceRange.current === null) {
+        const { priceMin: autoMin, priceMax: autoMax } = getVisiblePriceRange(candles, firstIndex, lastIndex);
+        priceCenter.current = (autoMin + autoMax) / 2;
+        priceRange.current = (autoMax - autoMin) || 100;
+      }
+
+      const pCenter = priceCenter.current;
+      const pRange = priceRange.current;
+      const priceMin = pCenter - pRange / 2;
+      const priceMax = pCenter + pRange / 2;
 
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
       const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth);
 
-      drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, firstIndex, lastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
+      drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
       if (chartMode === 'candle') {
         drawCandles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
@@ -66,12 +79,22 @@ export function ChartCanvas() {
       }
 
       drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth);
-      drawTimeAxis(ctx, candles, firstIndex, lastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
+      drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
+
+      const lastCandle = candles[candles.length - 1];
+      if (lastCandle) {
+        drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth);
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, bucketSize, engine]);
+  }, [candles, chartMode, bucketSize, footprintTrigger, engine]);
 
-  const { scrollOffset, barWidth } = usePanZoom(canvasRef, redraw, getCandlesLength);
+  const { scrollOffset, barWidth, priceCenter, priceRange } = usePanZoom(canvasRef, redraw, getCandlesLength, priceAxisWidth, timeAxisHeight);
+
+  const redrawRef = useRef(redraw);
+  useEffect(() => {
+    redrawRef.current = redraw;
+  }, [redraw]);
 
   // Initial setup and resize handler
   useEffect(() => {
@@ -81,7 +104,7 @@ export function ChartCanvas() {
 
     const setupCanvas = () => {
       ctxRef.current = initCanvas(canvas, container);
-      redraw();
+      redrawRef.current();
     };
 
     setupCanvas();
@@ -92,12 +115,12 @@ export function ChartCanvas() {
     
     observer.observe(container);
     return () => observer.disconnect();
-  }, [redraw]);
+  }, []);
 
   // Redraw when data changes
   useEffect(() => {
     redraw();
-  }, [candles, chartMode, bucketSize, redraw]);
+  }, [candles, chartMode, bucketSize, footprintTrigger, redraw]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative bg-[#0D0D0D] overflow-hidden">
