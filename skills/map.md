@@ -13,6 +13,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── globals.css           # Tailwind base + Custom CSS variables (color palette)
 │
 ├── components/               # UI and Charting Components
+│   ├── FeedProvider.tsx      # WebSocket lifecycle wrapper
 │   ├── chart/                # Chart-specific components
 │   │   ├── CandleChart.tsx   # lightweight-charts wrapper (Planned)
 │   │   ├── FootprintCanvas.tsx # Custom canvas footprint renderer (Planned)
@@ -21,17 +22,17 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── Sidebar.tsx       # Sidebar for settings (Planned)
 │   │   └── Toolbar.tsx       # Top toolbar (Planned)
 │   └── ui/                   # Reusable UI components
-│       ├── ConnectionStatus.tsx
-│       ├── PairSelector.tsx
-│       └── TimeframeSelector.tsx
+│       ├── ConnectionStatus.tsx # Live connection indicator
+│       ├── PairSelector.tsx     # Active pair switcher
+│       └── TimeframeSelector.tsx# Active timeframe switcher
 │
 ├── lib/                      # Business logic, state, and utilities
 │   ├── feeds/                # Data adapters for WebSockets
 │   │   ├── adapter.ts        # FeedAdapter interface (Data contract)
-│   │   ├── binance.ts        # Binance WebSocket implementation (Planned)
-│   │   └── index.ts          # Active adapter export (Planned)
+│   │   ├── binance.ts        # Binance WebSocket implementation
+│   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # State for active pair, timeframe, candles, trades (Planned)
+│   │   └── chart.ts          # State for active pair, timeframe, candles, trades
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math (Planned)
 │       ├── delta.ts          # Delta calculation helpers (Planned)
