@@ -68,3 +68,26 @@ Real-time candles streamed from Binance now render in an interactive chart. The 
 
 ### Impact Summary
 The application now includes a pure data aggregation engine that processes real-time trades into structured footprint data (price buckets split into bid and ask volume) in-memory, computing delta per candle. This forms the foundational data layer for subsequent footprint and volume profile rendering phases without affecting the UI's performance.
+
+## [2026-05-07] - Phase 5: Footprint Canvas
+
+### Added
+- **Components**: Created `FootprintCanvas` and `useFootprintRenderer` to render footprint blocks perfectly aligned with `lightweight-charts`.
+- **Context**: Added `ChartEngineContext` to expose `AggregationEngine` without prop-drilling.
+- **Canvas Utils**: Created `lib/utils/canvas.ts` for efficient DPi-scaled 2D rendering and footprint cell/delta drawing logic.
+
+### Changed
+- **Chart Infrastructure**: Lifted `useChartInit` up to `ChartContainer` to share `chartRef` and `seriesRef` between `CandleChart` and `FootprintCanvas`.
+- **FeedProvider**: Wrapped children with `ChartEngineContext.Provider` to supply the engine.
+
+### Impact Summary
+The application now visually overlays footprint data (bid/ask volume per price level) directly on top of the candlestick chart. The secondary canvas uses hardware-accelerated 2D rendering strictly aligned to the lightweight-charts coordinate system, responding seamlessly to zooming and scrolling while scaling opacity based on live market volume.
+
+## [2026-05-07] - Architecture Correction
+
+### Changed
+- **Architecture**: Replaced lightweight-charts and multi-canvas approach with a custom single-canvas architecture.
+- **Documents Updated**: Updated `skills/tasks/phase3.md`, `skills/tasks/phase5.md`, and `skills/map.md` to reflect the new `ChartCanvas.tsx` and custom draw functions (`drawCandles.ts`, `drawFootprint.ts`, `drawAxes.ts`, `useCoordinates.ts`, `usePanZoom.ts`).
+
+### Impact Summary
+A single canvas now acts as the central renderer, drastically simplifying coordinate math and eliminating scroll-sync issues between multiple canvases.

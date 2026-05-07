@@ -5,6 +5,9 @@ import { useChartStore } from '../lib/store/chart';
 import { feedAdapter } from '../lib/feeds';
 import { AggregationEngine } from '../lib/aggregation/engine';
 import { getCandleTimeForTrade } from '../lib/utils/aggregation';
+import { ChartEngineContext } from './ChartEngineContext';
+import { Candle } from '../types/candle';
+import { Trade } from '../types/trade';
 
 export function FeedProvider({ children }: { children: React.ReactNode }) {
   const { 
@@ -36,7 +39,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
     // Kill existing connection
     feedAdapter.disconnect();
 
-    const handleCandle = (candle: any) => {
+    const handleCandle = (candle: Candle) => {
       if (!connectedRef.current) {
         connectedRef.current = true;
         setConnected(true);
@@ -45,7 +48,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       pushCandle(candle);
     };
 
-    const handleTrade = (trade: any) => {
+    const handleTrade = (trade: Trade) => {
       let timeframeSeconds = 60; // default 1m
       if (timeframe.endsWith('m')) timeframeSeconds = parseInt(timeframe) * 60;
       else if (timeframe.endsWith('h')) timeframeSeconds = parseInt(timeframe) * 3600;
@@ -65,5 +68,5 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
     };
   }, [pair, timeframe, pushCandle, pushTrade, setConnected]);
 
-  return <>{children}</>;
+  return <ChartEngineContext.Provider value={engineRef.current}>{children}</ChartEngineContext.Provider>;
 }

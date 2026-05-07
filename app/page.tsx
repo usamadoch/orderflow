@@ -2,7 +2,8 @@ import { FeedProvider } from '../components/FeedProvider';
 import { PairSelector } from '../components/ui/PairSelector';
 import { TimeframeSelector } from '../components/ui/TimeframeSelector';
 import { ConnectionStatus } from '../components/ui/ConnectionStatus';
-import { ChartContainer } from '../components/chart/ChartContainer';
+import { ModeSelector } from '../components/ui/ModeSelector';
+import { ChartCanvas } from '../components/chart/ChartCanvas';
 
 export default function Home() {
   return (
@@ -14,6 +15,7 @@ export default function Home() {
             <h1 className="font-bold text-base text-accent tracking-tight">OrderFlow</h1>
             <PairSelector />
             <TimeframeSelector />
+            <ModeSelector />
           </div>
           <div>
             <ConnectionStatus />
@@ -37,7 +39,7 @@ export default function Home() {
 
           {/* Chart Area */}
           <main className="flex-1 relative flex flex-col bg-[#0D0D0D]">
-            <ChartContainer />
+            <ChartCanvas />
           </main>
         </div>
       </div>

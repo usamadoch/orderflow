@@ -14,11 +14,14 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │
 ├── components/               # UI and Charting Components
 │   ├── FeedProvider.tsx      # WebSocket lifecycle wrapper
+│   ├── ChartEngineContext.tsx# React context for AggregationEngine
 │   ├── chart/                # Chart-specific components
-│   │   ├── ChartContainer.tsx# Outer layout and container for charts
-│   │   ├── CandleChart.tsx   # lightweight-charts wrapper with store wiring
-│   │   ├── useChartInit.ts   # Custom hook for chart initialization
-│   │   ├── FootprintCanvas.tsx # Custom canvas footprint renderer (Planned)
+│   │   ├── ChartCanvas.tsx   # Single canvas, owns setup + redraw loop
+│   │   ├── useCoordinates.ts # Coordinate math (indexToX, priceToY)
+│   │   ├── usePanZoom.ts     # Mouse event handlers, scrollOffset, barWidth
+│   │   ├── drawCandles.ts    # Candlestick draw function
+│   │   ├── drawFootprint.ts  # Footprint cell draw function
+│   │   ├── drawAxes.ts       # Price axis, time axis, grid lines
 │   │   └── VolumeProfile.tsx # Horizontal volume bars (Planned)
 │   ├── layout/               # General layout components
 │   │   ├── Sidebar.tsx       # Sidebar for settings (Planned)
@@ -36,9 +39,10 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── binance.ts        # Binance WebSocket implementation
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # State for active pair, timeframe, candles, trades
+│   │   └── chart.ts          # State for active pair, timeframe, candles, trades, chartMode
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
+│       ├── canvas.ts         # HTML5 canvas rendering functions
 │       ├── delta.ts          # Delta calculation helpers (Planned)
 │       └── format.ts         # Number formatting (Planned)
 │
@@ -48,7 +52,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── trade.ts              # Individual trade tick definitions
 │
 ├── tailwind.config.ts        # Design system constraints and tokens
-└── package.json              # Project dependencies (lightweight-charts, zustand, etc.)
+└── package.json              # Project dependencies (zustand, etc.)
 ```
 
 ## Architecture & Tech Stack
@@ -56,4 +60,4 @@ A personal, minimal order flow charting tool for learning market microstructure.
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)
 - **State Management:** Zustand (in-memory)
 - **Data Layer:** Client-side WebSockets via `FeedAdapter` pattern
-- **Charting:** `lightweight-charts` (Candles) + HTML5 Canvas (Footprint)
+- **Charting:** Custom HTML5 Canvas (Single Canvas Architecture)

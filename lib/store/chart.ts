@@ -8,10 +8,12 @@ interface ChartState {
   candles: Candle[];
   trades: Trade[];
   connected: boolean;
+  chartMode: 'candle' | 'footprint';
 
   setPair: (pair: string) => void;
   setTimeframe: (timeframe: string) => void;
   setConnected: (connected: boolean) => void;
+  toggleMode: () => void;
   pushCandle: (candle: Candle) => void;
   pushTrade: (trade: Trade) => void;
   bucketSize: number;
@@ -24,6 +26,7 @@ export const useChartStore = create<ChartState>((set) => ({
   candles: [],
   trades: [],
   connected: false,
+  chartMode: 'candle',
   bucketSize: 100,
 
   setPair: (pair) => set({ pair, candles: [], trades: [] }),
@@ -31,6 +34,8 @@ export const useChartStore = create<ChartState>((set) => ({
   setTimeframe: (timeframe) => set({ timeframe, candles: [], trades: [] }),
   
   setConnected: (connected) => set({ connected }),
+  
+  toggleMode: () => set((state) => ({ chartMode: state.chartMode === 'candle' ? 'footprint' : 'candle' })),
 
   setBucketSize: (bucketSize) => set({ bucketSize }),
   

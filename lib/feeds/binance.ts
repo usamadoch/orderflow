@@ -40,7 +40,7 @@ export class BinanceAdapter implements FeedAdapter {
     if (!this.currentPair) return;
 
     // Build the combined stream URL
-    let streams = [];
+    const streams: string[] = [];
     if (this.currentTimeframe && this.candleCb) {
       streams.push(`${this.currentPair}@kline_${this.currentTimeframe}`);
     }
