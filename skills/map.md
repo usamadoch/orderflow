@@ -20,7 +20,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── useCoordinates.ts # Coordinate math (price-to-pixel, index-to-pixel)
 │   │   ├── usePanZoom.ts     # Fixed-scale pan/zoom & persistent axis refs
 │   │   ├── drawCandles.ts    # Candlestick draw function
-│   │   ├── drawFootprint.ts  # Footprint cell draw function
+│   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
 │   │   ├── drawAxes.ts       # Dynamic price axis (1-2-5 series), time axis, grid lines
 │   │   ├── drawPriceLine.ts  # Horizontal line at current market price
 │   │   └── VolumeProfile.tsx # Horizontal volume bars (Planned)
@@ -45,7 +45,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   └── chart.ts          # State for active pair, timeframe, candles, trades, chartMode
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
-│       ├── canvas.ts         # HTML5 canvas rendering functions
+│       ├── canvas.ts         # HTML5 canvas rendering functions (w/ formatted footprint cells)
 │       ├── delta.ts          # Delta calculation helpers (Planned)
 │       └── format.ts         # Number formatting (Planned)
 │

@@ -48,16 +48,18 @@ export function drawFootprintCell(
     
     const formatVol = (v: number) => {
       if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
-      return Number(v.toFixed(3)).toString();
+      return v.toFixed(1);
     };
 
-    // Bid text
-    ctx.textAlign = 'right';
-    ctx.fillText(formatVol(cell.bidVol), centerX - gap - 2, y + height / 2);
+    ctx.textAlign = 'center';
+    
+    // Bid text - center of left half
+    const bidX = centerX - width / 4 - gap / 2;
+    ctx.fillText(formatVol(cell.bidVol), bidX, y + height / 2);
 
-    // Ask text
-    ctx.textAlign = 'left';
-    ctx.fillText(formatVol(cell.askVol), centerX + gap + 2, y + height / 2);
+    // Ask text - center of right half
+    const askX = centerX + width / 4 + gap / 2;
+    ctx.fillText(formatVol(cell.askVol), askX, y + height / 2);
   }
 }
 

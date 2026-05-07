@@ -163,3 +163,16 @@ The chart interaction now mirrors professional platforms like TradingView. Scali
 
 ### Impact Summary
 The price axis now behaves exactly like professional charting platforms (TradingView), providing a smooth, progressive scaling experience. Grid lines and labels transition naturally between values as the user zooms or pans vertically, maintaining visual clarity at all scales.
+## [2026-05-07] - Feature: Footprint UI Enhancements
+
+### Added
+- **Visuals**: Added a thin candlestick (body + wick) aligned to the left of the footprint boxes in `drawFootprint.ts`. This provides visual context for the bar while keeping it distinct from the bid/ask volume data.
+- **Formatting**: Updated `drawFootprintCell` to format bid and ask volumes with exactly one decimal place (e.g., `12.5`).
+- **Layout**: Centered the bid and ask volume text within their respective halves of the footprint box and shifted the boxes to the right to accommodate the left-aligned candle.
+
+### Changed
+- **Canvas Utils**: Improved `formatVol` logic and text alignment in `lib/utils/canvas.ts`.
+- **Rendering Logic**: Unified candle rendering and shifted footprint box coordinates in `drawFootprint.ts`.
+
+### Impact Summary
+The footprint chart now features a professional left-aligned candlestick structure. This layout prevents the candle from obscuring volume numbers while still providing essential OHLC context, significantly improving the scannability of the order flow data.

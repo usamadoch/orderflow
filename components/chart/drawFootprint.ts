@@ -28,20 +28,36 @@ export function drawFootprint(
     });
   }
 
-  // Step 2 — Draw wicks for all visible candles
-  ctx.strokeStyle = '#4A4A4A';
-  ctx.lineWidth = 1;
+  // Step 2 — Draw thin candle (wick + body) for all visible candles
   for (let i = firstIndex; i <= lastIndex; i++) {
     const c = candles[i];
     if (!c) continue;
     const x = indexToX(i);
     const highY = priceToY(c.high);
     const lowY = priceToY(c.low);
+    const openY = priceToY(c.open);
+    const closeY = priceToY(c.close);
 
+    const candleWidth = 4;
+    const candleGap = 4;
+    const candleArea = candleWidth + candleGap;
+    const candleX = Math.round(x - barWidth / 2 + candleWidth / 2);
+
+    // Wick
+    ctx.strokeStyle = '#888888';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(Math.round(x), Math.round(highY));
-    ctx.lineTo(Math.round(x), Math.round(lowY));
+    ctx.moveTo(candleX, Math.round(highY));
+    ctx.lineTo(candleX, Math.round(lowY));
     ctx.stroke();
+
+    // Thin Body
+    const bodyTop = Math.min(openY, closeY);
+    const bodyBottom = Math.max(openY, closeY);
+    const bodyHeight = Math.max(1, bodyBottom - bodyTop);
+    
+    ctx.fillStyle = c.close >= c.open ? '#26A69A' : '#EF5350';
+    ctx.fillRect(candleX - candleWidth / 2, Math.round(bodyTop), candleWidth, Math.round(bodyHeight));
   }
 
   // Step 3 — Draw footprint cells
@@ -59,11 +75,17 @@ export function drawFootprint(
       
       if (rowHeight < 2) return;
 
+      const candleWidth = 4;
+      const candleGap = 4;
+      const candleArea = candleWidth + candleGap;
+      const boxesCenterX = Math.round(x + candleArea / 2);
+      const boxesWidth = Math.max(0, barWidth - candleArea);
+
       drawFootprintCell(
         ctx, 
-        Math.round(x), 
+        boxesCenterX, 
         Math.round(topY), 
-        Math.round(barWidth), 
+        Math.round(boxesWidth), 
         Math.round(rowHeight), 
         cell, 
         maxVol
