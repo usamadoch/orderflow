@@ -4,11 +4,12 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { useChartStore } from '@/lib/store/chart';
 import { useChartEngine } from '../ChartEngineContext';
 import { usePanZoom } from './usePanZoom';
-import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX } from './useCoordinates';
+import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex } from './useCoordinates';
 import { drawCandles } from './drawCandles';
 import { drawFootprint } from './drawFootprint';
-import { drawGrid, drawPriceAxis, drawTimeAxis } from './drawAxes';
+import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
 import { drawPriceLine } from './drawPriceLine';
+import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
 import { initCanvas } from '@/lib/utils/canvas';
 
 export function ChartCanvas() {
@@ -85,11 +86,42 @@ export function ChartCanvas() {
       if (lastCandle) {
         drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth);
       }
+
+      // Draw Crosshair
+      if (isMouseOver.current && mouseX.current !== null && mouseY.current !== null) {
+        const mx = mouseX.current;
+        const my = mouseY.current;
+
+        // Only draw if within chart area
+        if (mx >= 0 && mx <= chartWidth && my >= 0 && my <= chartHeight) {
+          drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
+
+          // Price Label
+          const price = yToPrice(my, priceMin, priceMax, chartHeight);
+          const step = calculatePriceStep(priceMax - priceMin, chartHeight);
+          const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
+          
+          drawCrosshairPriceLabel(ctx, my, price, chartWidth, priceAxisWidth, chartHeight, precision);
+
+          // Time Label
+          const index = Math.round(xToIndex(mx, candles.length, currentScrollOffset, currentBarWidth, chartWidth));
+          let time = 0;
+          if (candles[index]) {
+            time = candles[index].time;
+          } else if (candles.length > 0) {
+            const lastCandle = candles[candles.length - 1];
+            const firstCandle = candles[0];
+            const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
+            time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
+          }
+          drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
+        }
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candles, chartMode, bucketSize, footprintTrigger, engine]);
 
-  const { scrollOffset, barWidth, priceCenter, priceRange } = usePanZoom(canvasRef, redraw, getCandlesLength, priceAxisWidth, timeAxisHeight);
+  const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(canvasRef, redraw, getCandlesLength, priceAxisWidth, timeAxisHeight);
 
   const redrawRef = useRef(redraw);
   useEffect(() => {

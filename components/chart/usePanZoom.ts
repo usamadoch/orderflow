@@ -16,6 +16,10 @@ export function usePanZoom(
   const lastX = useRef(0);
   const lastY = useRef(0);
 
+  const mouseX = useRef<number | null>(null);
+  const mouseY = useRef<number | null>(null);
+  const isMouseOver = useRef(false);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -42,7 +46,26 @@ export function usePanZoom(
     };
 
     const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Update crosshair position
+      mouseX.current = x;
+      mouseY.current = y;
+
+      if (!isDragging.current) {
+        // Update cursor icon based on region
+        if (x > rect.width - priceAxisWidth) {
+          canvas.style.cursor = 'ns-resize';
+        } else if (y > rect.height - timeAxisHeight) {
+          canvas.style.cursor = 'ew-resize';
+        } else {
+          canvas.style.cursor = 'crosshair';
+        }
+        onRedraw();
+        return;
+      }
       
       const deltaX = e.clientX - lastX.current;
       const deltaY = e.clientY - lastY.current;
@@ -55,9 +78,7 @@ export function usePanZoom(
         
         // Panning in price
         if (priceCenter.current !== null && priceRange.current !== null) {
-          const rect = canvas.getBoundingClientRect();
-          const chartHeight = rect.height - timeAxisHeight;
-          const pricePerPixel = priceRange.current / chartHeight;
+          const pricePerPixel = priceRange.current / (rect.height - timeAxisHeight);
           // Dragging down (deltaY > 0) -> view moves up -> looking at higher prices -> center increases
           priceCenter.current += deltaY * pricePerPixel;
         }
@@ -83,6 +104,17 @@ export function usePanZoom(
       canvas.style.cursor = 'crosshair';
     };
 
+    const onMouseEnter = () => {
+      isMouseOver.current = true;
+    };
+
+    const onMouseLeave = () => {
+      isMouseOver.current = false;
+      mouseX.current = null;
+      mouseY.current = null;
+      onRedraw();
+    };
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       
@@ -96,6 +128,8 @@ export function usePanZoom(
     canvas.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mouseenter', onMouseEnter);
+    canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     
     canvas.style.cursor = 'crosshair';
@@ -104,10 +138,12 @@ export function usePanZoom(
       canvas.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('mouseenter', onMouseEnter);
+      canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
   }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight]);
 
-  return { scrollOffset, barWidth, priceCenter, priceRange };
+  return { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver };
 }
 

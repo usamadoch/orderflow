@@ -23,6 +23,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
 │   │   ├── drawAxes.ts       # Dynamic price axis (1-2-5 series), time axis, grid lines
 │   │   ├── drawPriceLine.ts  # Horizontal line at current market price
+│   │   ├── drawCrosshair.ts  # TradingView-style crosshair and axis labels
 │   │   └── VolumeProfile.tsx # Horizontal volume bars (Planned)
 │   ├── layout/               # General layout components
 │   │   ├── Sidebar.tsx       # Sidebar for settings (Planned)

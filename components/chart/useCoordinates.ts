@@ -67,3 +67,19 @@ export function indexToX(
 ) {
   return chartWidth - barWidth / 2 - (candlesLength - 1 - candleIndex) * barWidth + scrollOffset;
 }
+
+export function yToPrice(y: number, priceMin: number, priceMax: number, drawableHeight: number) {
+  const range = priceMax - priceMin;
+  if (range <= 0) return priceMin;
+  return priceMax - (y / drawableHeight) * range;
+}
+
+export function xToIndex(
+  x: number,
+  candlesLength: number,
+  scrollOffset: number,
+  barWidth: number,
+  chartWidth: number
+) {
+  return (candlesLength - 1) + (x - chartWidth + barWidth / 2 - scrollOffset) / barWidth;
+}

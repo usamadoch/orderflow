@@ -1,6 +1,6 @@
 import { Candle } from "@/types/candle";
 
-function calculatePriceStep(priceRange: number, chartHeight: number, minSpacing: number = 50) {
+export function calculatePriceStep(priceRange: number, chartHeight: number, minSpacing: number = 50) {
   const pricePerPixel = priceRange / chartHeight;
   const targetPriceDelta = pricePerPixel * minSpacing;
   
