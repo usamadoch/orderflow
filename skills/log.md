@@ -40,3 +40,17 @@
 
 ### Impact Summary
 The application now supports real-time market data streaming from Binance. The frontend has an automated WebSocket lifecycle tied to a global Zustand store, updating data structures (candles and trades) correctly as messages arrive. The UI dynamically reflects the active pair, timeframe, and socket connection status.
+
+## [2026-05-07] - Phase 3: Candlestick Chart
+
+### Added
+- **Dependencies**: Installed `lightweight-charts` v4.
+- **Components**: Created `ChartContainer` layout component to house the candlestick chart.
+- **Components**: Created `CandleChart` component connecting Zustand store data to chart rendering.
+- **Hooks**: Created `useChartInit` custom hook extracting `lightweight-charts` creation, styling, and `ResizeObserver` lifecycle management.
+
+### Changed
+- **UI Layout**: Replaced the placeholder chart area in `app/page.tsx` with `<ChartContainer />`.
+
+### Impact Summary
+Real-time candles streamed from Binance now render in an interactive chart. The chart cleanly replaces data on pair/timeframe swaps and optimally updates in place during live market ticks without forcing React re-renders.

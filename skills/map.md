@@ -15,7 +15,9 @@ A personal, minimal order flow charting tool for learning market microstructure.
 ├── components/               # UI and Charting Components
 │   ├── FeedProvider.tsx      # WebSocket lifecycle wrapper
 │   ├── chart/                # Chart-specific components
-│   │   ├── CandleChart.tsx   # lightweight-charts wrapper (Planned)
+│   │   ├── ChartContainer.tsx# Outer layout and container for charts
+│   │   ├── CandleChart.tsx   # lightweight-charts wrapper with store wiring
+│   │   ├── useChartInit.ts   # Custom hook for chart initialization
 │   │   ├── FootprintCanvas.tsx # Custom canvas footprint renderer (Planned)
 │   │   └── VolumeProfile.tsx # Horizontal volume bars (Planned)
 │   ├── layout/               # General layout components

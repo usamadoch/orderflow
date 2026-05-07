@@ -2,6 +2,7 @@ import { FeedProvider } from '../components/FeedProvider';
 import { PairSelector } from '../components/ui/PairSelector';
 import { TimeframeSelector } from '../components/ui/TimeframeSelector';
 import { ConnectionStatus } from '../components/ui/ConnectionStatus';
+import { ChartContainer } from '../components/chart/ChartContainer';
 
 export default function Home() {
   return (
@@ -35,10 +36,8 @@ export default function Home() {
           </aside>
 
           {/* Chart Area */}
-          <main className="flex-1 relative flex flex-col bg-background">
-            <div className="absolute inset-0 flex items-center justify-center text-text-dim font-mono border-4 border-dashed border-border m-4 rounded-lg">
-              [ Chart Components (Candle, Footprint, Volume) go here ]
-            </div>
+          <main className="flex-1 relative flex flex-col bg-[#0D0D0D]">
+            <ChartContainer />
           </main>
         </div>
       </div>
