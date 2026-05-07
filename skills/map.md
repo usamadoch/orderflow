@@ -29,6 +29,8 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │       └── TimeframeSelector.tsx# Active timeframe switcher
 │
 ├── lib/                      # Business logic, state, and utilities
+│   ├── aggregation/          # Trade aggregation logic
+│   │   └── engine.ts         # AggregationEngine class
 │   ├── feeds/                # Data adapters for WebSockets
 │   │   ├── adapter.ts        # FeedAdapter interface (Data contract)
 │   │   ├── binance.ts        # Binance WebSocket implementation
@@ -36,13 +38,13 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── store/                # Zustand global state
 │   │   └── chart.ts          # State for active pair, timeframe, candles, trades
 │   └── utils/                # Helper functions
-│       ├── aggregation.ts    # Trade -> footprint cell math (Planned)
+│       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── delta.ts          # Delta calculation helpers (Planned)
 │       └── format.ts         # Number formatting (Planned)
 │
 ├── types/                    # TypeScript interfaces
 │   ├── candle.ts             # OHLCV definitions
-│   ├── footprint.ts          # Footprint data structures (Planned)
+│   ├── footprint.ts          # Footprint data structures
 │   └── trade.ts              # Individual trade tick definitions
 │
 ├── tailwind.config.ts        # Design system constraints and tokens

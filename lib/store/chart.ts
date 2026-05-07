@@ -14,6 +14,8 @@ interface ChartState {
   setConnected: (connected: boolean) => void;
   pushCandle: (candle: Candle) => void;
   pushTrade: (trade: Trade) => void;
+  bucketSize: number;
+  setBucketSize: (size: number) => void;
 }
 
 export const useChartStore = create<ChartState>((set) => ({
@@ -22,12 +24,15 @@ export const useChartStore = create<ChartState>((set) => ({
   candles: [],
   trades: [],
   connected: false,
+  bucketSize: 100,
 
   setPair: (pair) => set({ pair, candles: [], trades: [] }),
   
   setTimeframe: (timeframe) => set({ timeframe, candles: [], trades: [] }),
   
   setConnected: (connected) => set({ connected }),
+
+  setBucketSize: (bucketSize) => set({ bucketSize }),
   
   pushCandle: (candle) => set((state) => {
     const newCandles = [...state.candles];
