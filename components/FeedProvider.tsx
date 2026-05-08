@@ -16,6 +16,8 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
   const pushTrade = useChartStore(s => s.pushTrade);
   const setConnected = useChartStore(s => s.setConnected);
   const bucketSize = useChartStore(s => s.bucketSize);
+  const pushAllCandles = useChartStore(s => s.pushAllCandles);
+  const setLoadingHistory = useChartStore(s => s.setLoadingHistory);
   const triggerFootprintRedraw = useChartStore(s => s.triggerFootprintRedraw);
   const chartMode = useChartStore(s => s.chartMode);
   
@@ -41,6 +43,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
   }, [bucketSize]);
 
   useEffect(() => {
+    let active = true;
     // Reset connection state on new subscription
     connectedRef.current = false;
     setConnected(false);
@@ -71,15 +74,39 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       pendingFootprintRedrawRef.current = true;
     };
 
-    feedAdapter.subscribeCandles(pair, timeframe, handleCandle);
-    feedAdapter.subscribeTrades(pair, handleTrade);
+    const init = async () => {
+      try {
+        setLoadingHistory(true);
+        console.log(`[FeedProvider] Fetching history for ${pair} ${timeframe}...`);
+        const history = await feedAdapter.fetchHistory(pair, timeframe);
+        
+        if (!active) return;
+
+        // Populate store and engine with history
+        pushAllCandles(history);
+        history.forEach(c => engineRef.current.ingestCandle(c));
+        
+        console.log(`[FeedProvider] History loaded (${history.length} candles). Connecting WS...`);
+        setLoadingHistory(false);
+        
+        // Start live feeds
+        feedAdapter.subscribeCandles(pair, timeframe, handleCandle);
+        feedAdapter.subscribeTrades(pair, handleTrade);
+      } catch (err) {
+        console.error(`[FeedProvider] Initialization failed:`, err);
+        if (active) setLoadingHistory(false);
+      }
+    };
+
+    init();
 
     return () => {
+      active = false;
       feedAdapter.disconnect();
       setConnected(false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, pushCandle, pushTrade, setConnected]);
+  }, [pair, timeframe, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory]);
 
   return <ChartEngineContext.Provider value={engineRef.current}>{children}</ChartEngineContext.Provider>;
 }

@@ -11,6 +11,31 @@ export class BinanceAdapter implements FeedAdapter {
   private reconnectAttempts: number = 0;
   private shouldReconnect: boolean = true;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private restBase = 'https://api.binance.com/api/v3';
+
+  async fetchHistory(pair: string, timeframe: string, limit: number = 500): Promise<Candle[]> {
+    const symbol = pair.toUpperCase();
+    const url = `${this.restBase}/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`;
+    
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      
+      return data.map((k: any) => ({
+        time: Math.floor(k[0] / 1000), // openTime is index 0
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+        isClosed: true
+      }));
+    } catch (e) {
+      console.error(`[BinanceAdapter] History fetch failed:`, e);
+      return [];
+    }
+  }
 
   subscribeCandles(pair: string, timeframe: string, cb: (candle: Candle) => void): void {
     this.currentPair = pair.toLowerCase();

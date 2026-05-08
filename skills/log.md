@@ -289,3 +289,17 @@ The application now feels significantly more polished and "professional." Settin
 
 ### Impact Summary
 The live price and time indicators on the right axis are now significantly easier to read at a glance. The increased font sizes and improved padding provide better visual separation and clarity, especially on high-resolution displays, matching the "high-readability" standards of professional trading platforms.
+
+## [2026-05-08] - Phase 8: Historical Data Loading
+
+### Added
+- **Feed Logic**: Implemented `fetchHistory` in `FeedAdapter` and `BinanceAdapter` to load historical klines via Binance REST API.
+- **State Management**: Added `setCandles` action in `lib/store/chart.ts` to allow bulk loading of historical data into the store.
+- **Backfill Orchestration**: Updated `FeedProvider.tsx` to perform an asynchronous backfill of historical candles before establishing the live WebSocket stream.
+
+### Changed
+- **FeedProvider**: Integrated historical data into the `AggregationEngine` on load, ensuring Volume Profile and other indicators have context immediately upon connection.
+- **Stability**: Added a cleanup flag in `FeedProvider` to prevent state updates if the user switches pairs or timeframes while a history fetch is in progress.
+
+### Impact Summary
+The chart no longer starts empty. On connect or pair/timeframe change, the application instantly backfills the last 500 candles via REST, providing immediate market context and a fully populated Volume Profile. The live stream then takes over seamlessly, creating a professional and "instant-on" user experience.

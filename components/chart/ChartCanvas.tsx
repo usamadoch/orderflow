@@ -25,6 +25,7 @@ export function ChartCanvas() {
   const chartMode = useChartStore(state => state.chartMode);
   const bucketSize = useChartStore(state => state.bucketSize);
   const footprintTrigger = useChartStore(state => state.footprintTrigger);
+  const isLoadingHistory = useChartStore(state => state.isLoadingHistory);
   const engine = useChartEngine();
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
@@ -52,6 +53,15 @@ export function ChartCanvas() {
       const chartHeight = logicalHeight - timeAxisHeight;
 
       ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+      if (isLoadingHistory) {
+        ctx.font = '500 14px "JetBrains Mono"';
+        ctx.fillStyle = '#4A4A4A';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Loading history...', chartWidth / 2, chartHeight / 2);
+        return;
+      }
 
       if (candles.length === 0) return;
 
@@ -130,7 +140,7 @@ export function ChartCanvas() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, bucketSize, footprintTrigger, engine]);
+  }, [candles, chartMode, bucketSize, footprintTrigger, engine, isLoadingHistory]);
 
   const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(canvasRef, redraw, getCandlesLength, priceAxisWidth, timeAxisHeight);
 
@@ -163,7 +173,7 @@ export function ChartCanvas() {
   // Redraw when data changes
   useEffect(() => {
     redraw();
-  }, [candles, chartMode, bucketSize, footprintTrigger, redraw]);
+  }, [candles, chartMode, bucketSize, footprintTrigger, redraw, isLoadingHistory]);
 
   // Real-time countdown timer
   useEffect(() => {

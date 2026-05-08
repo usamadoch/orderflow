@@ -14,6 +14,7 @@ interface ChartState {
   tickSize: number;
   sidebarCollapsed: boolean;
   footprintTrigger: number;
+  isLoadingHistory: boolean;
 
   setPair: (pair: string) => void;
   setTimeframe: (timeframe: string) => void;
@@ -25,6 +26,8 @@ interface ChartState {
   setTickSize: (size: number) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   triggerFootprintRedraw: () => void;
+  setLoadingHistory: (v: boolean) => void;
+  pushAllCandles: (candles: Candle[]) => void;
 }
 
 export const useChartStore = create<ChartState>()(
@@ -40,6 +43,7 @@ export const useChartStore = create<ChartState>()(
       tickSize: 0.5,
       sidebarCollapsed: false,
       footprintTrigger: 0,
+      isLoadingHistory: false,
 
       setPair: (pair) => set({ pair, candles: [], trades: [] }),
       
@@ -57,6 +61,10 @@ export const useChartStore = create<ChartState>()(
       
       triggerFootprintRedraw: () => set({ footprintTrigger: Date.now() }),
       
+      setLoadingHistory: (isLoadingHistory) => set({ isLoadingHistory }),
+
+      pushAllCandles: (candles) => set({ candles: candles.slice(-500) }),
+
       pushCandle: (candle) => set((state) => {
         const newCandles = [...state.candles];
         if (newCandles.length > 0 && newCandles[newCandles.length - 1].time === candle.time) {

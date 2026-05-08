@@ -68,8 +68,16 @@ Each phase discussed and built one at a time.
 
 ---
 
+## Phase 8 — Historical Data Loading
+- Binance REST klines integration
+- Async backfill orchestration in `FeedProvider`
+- Loading state UI overlay on chart
+- `pushAllCandles` bulk state action
+- Redraw synchronization between history and live feeds
+
+---
+
 ## Not Building
 - Alerts
-- Historical data loading
 - Multiple chart panes
 - Any trade execution UI

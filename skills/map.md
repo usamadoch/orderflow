@@ -13,7 +13,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── globals.css           # Tailwind base + Custom CSS variables (color palette)
 │
 ├── components/               # UI and Charting Components
-│   ├── FeedProvider.tsx      # WebSocket lifecycle wrapper
+│   ├── FeedProvider.tsx      # WebSocket & REST lifecycle (Backfills history on connect)
 │   ├── ChartEngineContext.tsx# React context for AggregationEngine
 │   ├── chart/                # Chart-specific components
 │   │   ├── ChartCanvas.tsx   # Single canvas, owns setup + redraw loop
@@ -38,12 +38,12 @@ A personal, minimal order flow charting tool for learning market microstructure.
 ├── lib/                      # Business logic, state, and utilities
 │   ├── aggregation/          # Trade aggregation logic
 │   │   └── engine.ts         # AggregationEngine class
-│   ├── feeds/                # Data adapters for WebSockets
-│   │   ├── adapter.ts        # FeedAdapter interface (Data contract)
-│   │   ├── binance.ts        # Binance WebSocket implementation
+│   ├── feeds/                # Data adapters for WebSockets & REST
+│   │   ├── adapter.ts        # FeedAdapter interface (History + Live contracts)
+│   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # State for active pair, timeframe, candles, trades, chartMode
+│   │   └── chart.ts          # State for data (candles, trades) and UI settings (Persisted)
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions (w/ formatted footprint cells)
