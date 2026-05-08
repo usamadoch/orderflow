@@ -1,12 +1,12 @@
 'use client';
 
-import { PairSelector } from '../ui/PairSelector';
-import { TimeframeSelector } from '../ui/TimeframeSelector';
+import { useChartStore } from '../../lib/store/chart';
 import { ConnectionStatus } from '../ui/ConnectionStatus';
-import { ChartModeToggle } from '../ui/ChartModeToggle';
-import { BucketSizeInput } from '../ui/BucketSizeInput';
 
 export function Header() {
+  const layoutMode = useChartStore(s => s.layoutMode);
+  const setLayoutMode = useChartStore(s => s.setLayoutMode);
+
   return (
     <header className="h-10 border-b border-border bg-surface flex items-center px-4 justify-between shrink-0 shadow-sm z-20">
       <div className="flex items-center gap-6">
@@ -15,11 +15,38 @@ export function Header() {
           OrderFlow
         </h1>
         <div className="h-4 w-[1px] bg-border mx-1" />
-        <div className="flex items-center gap-4">
-          <PairSelector />
-          <TimeframeSelector />
-          <ChartModeToggle />
-          <BucketSizeInput />
+
+        {/* Layout Toggle */}
+        <div className="flex gap-1 bg-background/50 p-0.5 rounded-lg border border-border">
+          <button
+            onClick={() => setLayoutMode('single')}
+            className={`px-2 py-1 rounded-md transition-all duration-200 ${
+              layoutMode === 'single'
+                ? 'bg-surface text-accent border border-border shadow-sm'
+                : 'text-text-dim hover:text-main hover:bg-surface'
+            }`}
+            title="Single panel"
+          >
+            {/* Single rectangle icon */}
+            <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+              <rect x="0.5" y="0.5" width="13" height="9" rx="1" stroke="currentColor" strokeWidth="1"/>
+            </svg>
+          </button>
+          <button
+            onClick={() => setLayoutMode('dual')}
+            className={`px-2 py-1 rounded-md transition-all duration-200 ${
+              layoutMode === 'dual'
+                ? 'bg-surface text-accent border border-border shadow-sm'
+                : 'text-text-dim hover:text-main hover:bg-surface'
+            }`}
+            title="Dual panel"
+          >
+            {/* Two rectangles side by side icon */}
+            <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+              <rect x="0.5" y="0.5" width="6" height="9" rx="1" stroke="currentColor" strokeWidth="1"/>
+              <rect x="7.5" y="0.5" width="6" height="9" rx="1" stroke="currentColor" strokeWidth="1"/>
+            </svg>
+          </button>
         </div>
       </div>
       <div className="flex items-center gap-4">

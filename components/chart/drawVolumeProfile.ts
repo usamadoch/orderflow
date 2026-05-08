@@ -13,7 +13,6 @@ export function drawVolumeProfile(
   bucketSize: number
 ) {
   const chartRight = canvasWidth - priceAxisWidth;
-  const profileLeft = chartRight - profileWidth;
 
   // ── Step 1: Profile Bars ──
   for (const row of profile.rows) {

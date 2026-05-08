@@ -39,8 +39,6 @@ export function drawFootprint(
     const closeY = priceToY(c.close);
 
     const candleWidth = 4;
-    const candleGap = 4;
-    const candleArea = candleWidth + candleGap;
     const candleX = Math.round(x - barWidth / 2 + candleWidth / 2);
 
     // Wick

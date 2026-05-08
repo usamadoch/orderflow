@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { useChartStore } from '@/lib/store/chart';
-import { useChartEngine } from '../ChartEngineContext';
+import { PanelId, ChartMode } from '@/lib/store/chart';
+import { AggregationEngine } from '@/lib/aggregation/engine';
 import { usePanZoom } from './usePanZoom';
 import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex } from './useCoordinates';
 import { drawCandles } from './drawCandles';
@@ -13,20 +13,40 @@ import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from '
 import { buildProfile } from '@/lib/utils/volumeProfile';
 import { drawVolumeProfile } from './drawVolumeProfile';
 import { initCanvas } from '@/lib/utils/canvas';
+import { Candle } from '@/types/candle';
 
-export function ChartCanvas() {
+interface ChartCanvasProps {
+  panelId: PanelId;
+  candles: Candle[];
+  chartMode: ChartMode;
+  bucketSize: number;
+  barWidth: number;
+  scrollOffset: number;
+  timeframe: string;
+  footprintTrigger: number;
+  isLoadingHistory: boolean;
+  engine: AggregationEngine;
+  onBarWidthChange: (v: number) => void;
+  onScrollOffsetChange: (v: number) => void;
+}
+
+export function ChartCanvas({
+  candles,
+  chartMode,
+  bucketSize,
+  barWidth: barWidthProp,
+  scrollOffset: scrollOffsetProp,
+  timeframe,
+  footprintTrigger,
+  isLoadingHistory,
+  engine,
+  onBarWidthChange,
+  onScrollOffsetChange,
+}: ChartCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const isRedrawScheduled = useRef(false);
-
-  const candles = useChartStore(state => state.candles);
-  const timeframe = useChartStore(state => state.timeframe);
-  const chartMode = useChartStore(state => state.chartMode);
-  const bucketSize = useChartStore(state => state.bucketSize);
-  const footprintTrigger = useChartStore(state => state.footprintTrigger);
-  const isLoadingHistory = useChartStore(state => state.isLoadingHistory);
-  const engine = useChartEngine();
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
@@ -140,9 +160,20 @@ export function ChartCanvas() {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, bucketSize, footprintTrigger, engine, isLoadingHistory]);
+  }, [candles, chartMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe]);
 
-  const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(canvasRef, redraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth);
+  const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(
+    canvasRef,
+    redraw,
+    getCandlesLength,
+    priceAxisWidth,
+    timeAxisHeight,
+    profileWidth,
+    barWidthProp,
+    scrollOffsetProp,
+    onBarWidthChange,
+    onScrollOffsetChange
+  );
 
   const redrawRef = useRef(redraw);
   useEffect(() => {

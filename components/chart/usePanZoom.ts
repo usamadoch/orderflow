@@ -6,10 +6,14 @@ export function usePanZoom(
   getCandlesLength: () => number,
   priceAxisWidth: number,
   timeAxisHeight: number,
-  profileWidth: number
+  profileWidth: number,
+  initialBarWidth: number = 12,
+  initialScrollOffset: number = 0,
+  onBarWidthChange?: (v: number) => void,
+  onScrollOffsetChange?: (v: number) => void
 ) {
-  const scrollOffset = useRef(0);
-  const barWidth = useRef(12);
+  const scrollOffset = useRef(initialScrollOffset);
+  const barWidth = useRef(initialBarWidth);
   const priceCenter = useRef<number | null>(null);
   const priceRange = useRef<number | null>(null);
   const isDragging = useRef(false);
@@ -20,6 +24,16 @@ export function usePanZoom(
   const mouseX = useRef<number | null>(null);
   const mouseY = useRef<number | null>(null);
   const isMouseOver = useRef(false);
+
+  // Sync from props on initial mount (don't overwrite during interaction)
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (!initializedRef.current) {
+      scrollOffset.current = initialScrollOffset;
+      barWidth.current = initialBarWidth;
+      initializedRef.current = true;
+    }
+  }, [initialBarWidth, initialScrollOffset]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -76,6 +90,7 @@ export function usePanZoom(
       if (dragMode.current === 'chart') {
         // Free panning in time
         scrollOffset.current += deltaX;
+        onScrollOffsetChange?.(scrollOffset.current);
         
         // Panning in price
         if (priceCenter.current !== null && priceRange.current !== null) {
@@ -104,6 +119,8 @@ export function usePanZoom(
           // Anchor zoom to current mouse position
           scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
           barWidth.current = newBarWidth;
+          onBarWidthChange?.(newBarWidth);
+          onScrollOffsetChange?.(scrollOffset.current);
         }
       }
       
@@ -148,6 +165,8 @@ export function usePanZoom(
         // scrollOffset' = scrollOffset + (scrollOffset + drawableWidth - x) * (newBarWidth / oldBarWidth - 1)
         scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
         barWidth.current = newBarWidth;
+        onBarWidthChange?.(newBarWidth);
+        onScrollOffsetChange?.(scrollOffset.current);
         onRedraw();
       }
     };
@@ -169,8 +188,7 @@ export function usePanZoom(
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth]);
+  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange]);
 
   return { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver };
 }
-

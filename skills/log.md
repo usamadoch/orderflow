@@ -326,3 +326,49 @@ The chart no longer starts empty. On connect or pair/timeframe change, the appli
 
 ### Impact Summary
 The horizontal zoom behavior now perfectly matches TradingView. Candles expand and contract smoothly in place relative to the cursor position, regardless of whether the user is at the latest candle or deep in historical data. This significantly improves the navigation experience and precision of the chart.
+
+## [2026-05-08] - Phase 9: Multiple Chart Panels
+
+### Added
+- **Components**: Created `ChartPanel.tsx` wrapper component that reads panel-scoped state and passes it as props to `ChartCanvas`.
+- **Components**: Created `PanelToolbar.tsx` — a compact 32px toolbar strip per panel with pair, timeframe, mode, and bucket size selectors.
+- **State Management**: Introduced `PanelState` interface and panel-scoped store architecture in `lib/store/chart.ts`. Two independent panels (`left`, `right`) each hold their own pair, timeframe, chartMode, bucketSize, barWidth, scrollOffset, candles, and connection state.
+- **State Management**: Added `layoutMode: 'single' | 'dual'` and `activePanel: 'left' | 'right'` to the global store.
+- **Feed Layer**: Refactored `FeedProvider` into `PanelFeedProvider` — each panel manages its own independent `BinanceAdapter` instance (via `clone()`) and `AggregationEngine`.
+- **Feed Interface**: Added `clone()` method to `FeedAdapter` interface and `BinanceAdapter` to enable independent WebSocket connections per panel.
+- **Hooks**: Created `hooks/useKeyboardShortcuts.ts` — all hotkeys (1-5 timeframes, C/F modes, R reset, [/] bucket) target `activePanel`.
+- **Layout**: Added layout toggle button (single/dual) with SVG icons in the main `Header`.
+
+### Changed
+- **Store Architecture**: Migrated from single top-level state to nested `panels.left` / `panels.right` structure. All per-panel actions now take `panelId` as first argument. Persist version bumped to `2` to auto-clear stale localStorage.
+- **ChartCanvas**: Refactored from direct store access to a pure props-based rendering component. Receives candles, chartMode, bucketSize, engine, barWidth, scrollOffset, and callbacks.
+- **usePanZoom**: Extended to accept initial `barWidth`/`scrollOffset` from props and sync changes back via callbacks.
+- **Header**: Stripped pair, timeframe, mode, and bucket selectors (moved to `PanelToolbar`). Now only holds logo, layout toggle, and connection status.
+- **Sidebar**: Reads from `activePanel`. Shows LEFT/RIGHT indicator in dual mode with active panel's pair and timeframe.
+- **ConnectionStatus**: Shows combined status — LIVE if either panel is connected.
+- **UI Components**: Updated `PairSelector`, `TimeframeSelector`, `ChartModeToggle`, `BucketSizeInput` to accept panel-scoped `panelId` prop.
+- **page.tsx**: Rewrote to render two `PanelFeedProvider` + `ChartPanel` blocks with a 1px divider; right panel gated on `layoutMode === 'dual'`.
+
+### Fixed
+- **Lint**: Cleaned up pre-existing unused variable warnings in `drawFootprint.ts` and `drawVolumeProfile.ts`.
+- **Lint**: Added eslint-disable for Binance REST response `any` type.
+
+### Impact Summary
+The application now supports dual independent chart panels. Each panel has its own pair, timeframe, chart mode, data feed, and zoom/scroll state. Users can monitor two markets simultaneously (e.g., BTC and ETH) with independent candle/footprint rendering. Switching between single and dual mode is instant via the header toggle. Keyboard shortcuts automatically target the panel under the cursor. All panel configurations persist across refreshes.
+
+## [2026-05-08] - Phase 9 Polish: Layout Persistence, Default Symbols, Draggable Split
+
+### Fixed
+- **Layout Persistence**: `layoutMode` and `splitRatio` are now correctly persisted to localStorage with a `migrate` function (persist v3). Previously the version bump without a migrator caused data loss on refresh.
+- **Default Symbols**: Both panels now default to `BTCUSDT` instead of mixed `BTCUSDT`/`ETHUSDT`. Users must manually change a panel's pair.
+
+### Added
+- **Draggable Split Divider**: The divider between panels is now a 5px draggable handle with a subtle accent glow on hover. Users can drag it horizontally to resize panels (clamped 15%–85%). The `splitRatio` is stored and persisted so the layout survives refresh.
+- **Store**: Added `splitRatio: number` state and `setSplitRatio` action to the Zustand store. Clamped to `[0.15, 0.85]`.
+
+### Changed
+- **page.tsx**: Panels now use `style={{ width }}` driven by `splitRatio` instead of fixed `w-1/2` classes. Divider uses window-level mouse tracking for smooth drag performance.
+- **Store Version**: Bumped persist version from `2` → `3` with a migration function that clears stale v1/v2 data.
+
+### Impact Summary
+The dual panel layout is now production-quality. Layout mode persists across refreshes, both panels start on the same symbol by default, and users can freely resize panel widths with a smooth, professional drag interaction.

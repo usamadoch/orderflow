@@ -3,7 +3,14 @@
 import { useChartStore } from '../../lib/store/chart';
 
 export function ConnectionStatus() {
-  const connected = useChartStore((state) => state.connected);
+  const leftConnected = useChartStore(s => s.panels.left.connected);
+  const rightConnected = useChartStore(s => s.panels.right.connected);
+  const layoutMode = useChartStore(s => s.layoutMode);
+
+  // Combined status: LIVE if any panel is connected
+  const connected = layoutMode === 'single' 
+    ? leftConnected 
+    : leftConnected || rightConnected;
 
   return (
     <div className="flex items-center gap-2 text-xs font-mono">

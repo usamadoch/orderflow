@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useChartStore } from '../lib/store/chart';
+import { useChartStore, PanelId } from '../lib/store/chart';
 import { feedAdapter } from '../lib/feeds';
 import { AggregationEngine } from '../lib/aggregation/engine';
 import { getCandleTimeForTrade } from '../lib/utils/aggregation';
@@ -9,96 +9,96 @@ import { ChartEngineContext } from './ChartEngineContext';
 import { Candle } from '../types/candle';
 import { Trade } from '../types/trade';
 
-export function FeedProvider({ children }: { children: React.ReactNode }) {
-  const pair = useChartStore(s => s.pair);
-  const timeframe = useChartStore(s => s.timeframe);
+interface PanelFeedProviderProps {
+  panelId: PanelId;
+  children: React.ReactNode;
+}
+
+export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps) {
+  const pair = useChartStore(s => s.panels[panelId].pair);
+  const timeframe = useChartStore(s => s.panels[panelId].timeframe);
+  const bucketSize = useChartStore(s => s.panels[panelId].bucketSize);
+  const chartMode = useChartStore(s => s.panels[panelId].chartMode);
   const pushCandle = useChartStore(s => s.pushCandle);
   const pushTrade = useChartStore(s => s.pushTrade);
   const setConnected = useChartStore(s => s.setConnected);
-  const bucketSize = useChartStore(s => s.bucketSize);
   const pushAllCandles = useChartStore(s => s.pushAllCandles);
   const setLoadingHistory = useChartStore(s => s.setLoadingHistory);
   const triggerFootprintRedraw = useChartStore(s => s.triggerFootprintRedraw);
-  const chartMode = useChartStore(s => s.chartMode);
-  
+
   const connectedRef = useRef(false);
-  // Persist engine across re-renders
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
   const pendingFootprintRedrawRef = useRef(false);
+  // Each panel needs its own adapter instance for independent connections
+  const adapterRef = useRef(feedAdapter.clone());
 
   // Throttled redraw loop for footprint updates
   useEffect(() => {
     const interval = setInterval(() => {
       if (pendingFootprintRedrawRef.current && chartMode === 'footprint') {
         pendingFootprintRedrawRef.current = false;
-        triggerFootprintRedraw();
+        triggerFootprintRedraw(panelId);
       }
     }, 100);
     return () => clearInterval(interval);
-  }, [triggerFootprintRedraw, chartMode]);
+  }, [triggerFootprintRedraw, chartMode, panelId]);
 
   // Handle engine bucket size updates without reconnecting socket
   useEffect(() => {
     engineRef.current.reset(bucketSize);
-    // Re-populate from existing candles so we don't have an empty chart after setting change
-    const currentCandles = useChartStore.getState().candles;
+    const currentCandles = useChartStore.getState().panels[panelId].candles;
     currentCandles.forEach(c => engineRef.current.ingestCandle(c));
-    triggerFootprintRedraw();
-  }, [bucketSize, triggerFootprintRedraw]);
+    triggerFootprintRedraw(panelId);
+  }, [bucketSize, triggerFootprintRedraw, panelId]);
 
   useEffect(() => {
     let active = true;
-    // Reset connection state on new subscription
     connectedRef.current = false;
-    setConnected(false);
-    
-    // Reset engine on pair/timeframe change
+    setConnected(panelId, false);
     engineRef.current.reset();
-    
-    // Kill existing connection
-    feedAdapter.disconnect();
+
+    const adapter = adapterRef.current;
+    adapter.disconnect();
 
     const handleCandle = (candle: Candle) => {
       if (!connectedRef.current) {
         connectedRef.current = true;
-        setConnected(true);
+        setConnected(panelId, true);
       }
       engineRef.current.ingestCandle(candle);
-      pushCandle(candle);
+      pushCandle(panelId, candle);
     };
 
     const handleTrade = (trade: Trade) => {
-      let timeframeSeconds = 60; // default 1m
+      let timeframeSeconds = 60;
       if (timeframe.endsWith('m')) timeframeSeconds = parseInt(timeframe) * 60;
       else if (timeframe.endsWith('h')) timeframeSeconds = parseInt(timeframe) * 3600;
       else if (timeframe.endsWith('d')) timeframeSeconds = parseInt(timeframe) * 86400;
 
       engineRef.current.ingestTrade(trade, getCandleTimeForTrade(trade.time, timeframeSeconds));
-      pushTrade(trade);
+      pushTrade(panelId, trade);
       pendingFootprintRedrawRef.current = true;
     };
 
     const init = async () => {
       try {
-        setLoadingHistory(true);
-        console.log(`[FeedProvider] Fetching history for ${pair} ${timeframe}...`);
-        const history = await feedAdapter.fetchHistory(pair, timeframe);
-        
+        setLoadingHistory(panelId, true);
+        console.log(`[PanelFeed:${panelId}] Fetching history for ${pair} ${timeframe}...`);
+        const history = await adapter.fetchHistory(pair, timeframe);
+
         if (!active) return;
 
-        // Populate store and engine with history
-        pushAllCandles(history);
+        pushAllCandles(panelId, history);
         history.forEach(c => engineRef.current.ingestCandle(c));
-        
-        console.log(`[FeedProvider] History loaded (${history.length} candles). Connecting WS...`);
-        setLoadingHistory(false);
-        
-        // Start live feeds
-        feedAdapter.subscribeCandles(pair, timeframe, handleCandle);
-        feedAdapter.subscribeTrades(pair, handleTrade);
+
+        console.log(`[PanelFeed:${panelId}] History loaded (${history.length} candles). Connecting WS...`);
+        setLoadingHistory(panelId, false);
+
+        adapter.subscribeCandles(pair, timeframe, handleCandle);
+        adapter.subscribeTrades(pair, handleTrade);
       } catch (err) {
-        console.error(`[FeedProvider] Initialization failed:`, err);
-        if (active) setLoadingHistory(false);
+        console.error(`[PanelFeed:${panelId}] Initialization failed:`, err);
+        if (active) setLoadingHistory(panelId, false);
       }
     };
 
@@ -106,11 +106,11 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       active = false;
-      feedAdapter.disconnect();
-      setConnected(false);
+      adapter.disconnect();
+      setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory]);
+  }, [pair, timeframe, panelId, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory]);
 
   return <ChartEngineContext.Provider value={engineRef.current}>{children}</ChartEngineContext.Provider>;
 }

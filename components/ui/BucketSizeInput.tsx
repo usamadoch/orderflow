@@ -1,9 +1,9 @@
 'use client';
 
-import { useChartStore } from '../../lib/store/chart';
+import { useChartStore, PanelId } from '../../lib/store/chart';
 
-export function BucketSizeInput() {
-  const bucketSize = useChartStore((state) => state.bucketSize);
+export function BucketSizeInput({ panelId = 'left' }: { panelId?: PanelId }) {
+  const bucketSize = useChartStore((state) => state.panels[panelId].bucketSize);
   const setBucketSize = useChartStore((state) => state.setBucketSize);
 
   return (
@@ -18,7 +18,7 @@ export function BucketSizeInput() {
         onChange={(e) => {
           const val = Number(e.target.value);
           if (val > 0) {
-            setBucketSize(val);
+            setBucketSize(panelId, val);
           }
         }}
         className="w-14 bg-surface border border-border rounded-md px-1.5 py-0.5 text-right text-[11px] font-bold focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all text-main"

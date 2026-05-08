@@ -22,6 +22,7 @@ export class BinanceAdapter implements FeedAdapter {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return data.map((k: any) => ({
         time: Math.floor(k[0] / 1000), // openTime is index 0
         open: parseFloat(k[1]),
@@ -159,5 +160,9 @@ export class BinanceAdapter implements FeedAdapter {
       this.ws.close();
       this.ws = null;
     }
+  }
+
+  clone(): BinanceAdapter {
+    return new BinanceAdapter();
   }
 }
