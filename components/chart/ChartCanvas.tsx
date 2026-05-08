@@ -142,7 +142,7 @@ export function ChartCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candles, chartMode, bucketSize, footprintTrigger, engine, isLoadingHistory]);
 
-  const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(canvasRef, redraw, getCandlesLength, priceAxisWidth, timeAxisHeight);
+  const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(canvasRef, redraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth);
 
   const redrawRef = useRef(redraw);
   useEffect(() => {

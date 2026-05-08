@@ -18,7 +18,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── chart/                # Chart-specific components
 │   │   ├── ChartCanvas.tsx   # Single canvas, owns setup + redraw loop
 │   │   ├── useCoordinates.ts # Coordinate math (price-to-pixel, index-to-pixel)
-│   │   ├── usePanZoom.ts     # Fixed-scale pan/zoom & persistent axis refs
+│   │   ├── usePanZoom.ts     # Anchored pan/zoom & persistent axis refs
 │   │   ├── drawCandles.ts    # Candlestick draw function
 │   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
 │   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, high-readability 12px font)

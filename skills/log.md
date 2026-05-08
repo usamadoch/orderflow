@@ -311,3 +311,18 @@ The chart no longer starts empty. On connect or pair/timeframe change, the appli
 
 ### Fixed
 - **Settings Persistence (Maintained)**: Kept the fix where changing `bucketSize` re-populates the engine from existing candles, ensuring that OHLCV context is preserved even if historical footprint cells are empty.
+
+## [2026-05-08] - Feature: Anchored Horizontal Zoom (TradingView-style)
+
+### Added
+- **Logic**: Implemented anchored horizontal zoom in `usePanZoom.ts`. The chart now maintains the logical candle index under the mouse cursor during horizontal zoom, preventing jumps and shifts.
+- **Math**: Derived and implemented the `scrollOffset` adjustment formula: `scrollOffset' = scrollOffset + (scrollOffset + drawableWidth - x) * (newBarWidth / oldBarWidth - 1)`.
+
+### Changed
+- **Interaction**: 
+  - **Wheel Zoom**: Now anchors perfectly to the cursor position within the chart area.
+  - **Time Axis Zoom**: Anchors to the horizontal position of the mouse on the axis, providing a smooth "stretch/squeeze" effect from that point.
+- **Architecture**: Updated `usePanZoom` to accept `profileWidth` to ensure coordinate math accounts for the volume profile area.
+
+### Impact Summary
+The horizontal zoom behavior now perfectly matches TradingView. Candles expand and contract smoothly in place relative to the cursor position, regardless of whether the user is at the latest candle or deep in historical data. This significantly improves the navigation experience and precision of the chart.

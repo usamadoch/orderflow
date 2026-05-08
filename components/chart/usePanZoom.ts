@@ -5,7 +5,8 @@ export function usePanZoom(
   onRedraw: () => void,
   getCandlesLength: () => number,
   priceAxisWidth: number,
-  timeAxisHeight: number
+  timeAxisHeight: number,
+  profileWidth: number
 ) {
   const scrollOffset = useRef(0);
   const barWidth = useRef(12);
@@ -92,8 +93,18 @@ export function usePanZoom(
       } else if (dragMode.current === 'time') {
         // Horizontal zoom
         const sensitivity = 0.01;
+        const oldBarWidth = barWidth.current;
         // Dragging right (deltaX > 0) -> zoom in -> barWidth increases
-        barWidth.current = Math.max(1, barWidth.current * (1 + deltaX * sensitivity));
+        const newBarWidth = Math.max(1, oldBarWidth * (1 + deltaX * sensitivity));
+        
+        if (oldBarWidth !== newBarWidth) {
+          const chartWidth = rect.width - priceAxisWidth;
+          const drawableWidth = chartWidth - profileWidth;
+          
+          // Anchor zoom to current mouse position
+          scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
+          barWidth.current = newBarWidth;
+        }
       }
       
       onRedraw();
@@ -118,11 +129,27 @@ export function usePanZoom(
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      
+      const chartWidth = rect.width - priceAxisWidth;
+      const drawableWidth = chartWidth - profileWidth;
+
+      // Only zoom if mouse is within the chart area (including profile but excluding price axis)
+      if (x < 0 || x > chartWidth) return;
+
       const zoomSensitivity = 0.002;
       const zoomFactor = 1 + e.deltaY * zoomSensitivity;
       
-      barWidth.current = Math.max(1, barWidth.current / zoomFactor);
-      onRedraw();
+      const oldBarWidth = barWidth.current;
+      const newBarWidth = Math.max(1, oldBarWidth / zoomFactor);
+      
+      if (oldBarWidth !== newBarWidth) {
+        // scrollOffset' = scrollOffset + (scrollOffset + drawableWidth - x) * (newBarWidth / oldBarWidth - 1)
+        scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
+        barWidth.current = newBarWidth;
+        onRedraw();
+      }
     };
 
     canvas.addEventListener('mousedown', onMouseDown);
@@ -142,7 +169,7 @@ export function usePanZoom(
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight]);
+  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth]);
 
   return { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver };
 }
