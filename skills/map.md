@@ -37,7 +37,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │
 ├── lib/                      # Business logic, state, and utilities
 │   ├── aggregation/          # Trade aggregation logic
-│   │   └── engine.ts         # AggregationEngine class
+│   │   └── engine.ts         # AggregationEngine (Real-time Trade Aggregation)
 │   ├── feeds/                # Data adapters for WebSockets & REST
 │   │   ├── adapter.ts        # FeedAdapter interface (History + Live contracts)
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
@@ -46,7 +46,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   └── chart.ts          # State for data (candles, trades) and UI settings (Persisted)
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
-│       ├── canvas.ts         # HTML5 canvas rendering functions (w/ formatted footprint cells)
+│       ├── canvas.ts         # HTML5 canvas rendering functions
 │       ├── volumeProfile.ts  # Volume profile aggregation, POC, and VA math
 │       ├── delta.ts          # Delta calculation helpers (Planned)
 │       └── format.ts         # Timeframe parsing, countdowns, and price formatting

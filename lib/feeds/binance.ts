@@ -42,18 +42,18 @@ export class BinanceAdapter implements FeedAdapter {
     this.currentTimeframe = timeframe;
     this.candleCb = cb;
     this.shouldReconnect = true;
+    
+    // Always connect to ensure the new candle stream/timeframe is picked up
     this.connect();
   }
 
   subscribeTrades(pair: string, cb: (trade: Trade) => void): void {
     this.tradeCb = cb;
     
-    // If subscribeTrades is called standalone (currentPair is null), we need to set it and connect
-    if (!this.currentPair || this.currentPair !== pair.toLowerCase()) {
-      this.currentPair = pair.toLowerCase();
-      this.shouldReconnect = true;
-      this.connect();
-    }
+    // Always connect to ensure the trade stream is added to the combined streams
+    this.currentPair = pair.toLowerCase();
+    this.shouldReconnect = true;
+    this.connect();
   }
 
   private connect(): void {

@@ -27,7 +27,7 @@ export function drawFootprintCell(
   
   if (halfWidth <= 0 || height <= 0) return;
 
-  const minOpacity = 0.08;
+  const minOpacity = 0.15;
   const bidOpacity = maxVol > 0 ? Math.max(minOpacity, cell.bidVol / maxVol) : minOpacity;
   const askOpacity = maxVol > 0 ? Math.max(minOpacity, cell.askVol / maxVol) : minOpacity;
 

@@ -73,7 +73,7 @@ export function drawFootprint(
       const bottomY = priceToY(priceBucket);
       const rowHeight = Math.max(0, bottomY - topY);
       
-      if (rowHeight < 2) return;
+      if (rowHeight < 0.5) return;
 
       const candleWidth = 4;
       const candleGap = 4;

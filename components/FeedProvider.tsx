@@ -40,7 +40,11 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
   // Handle engine bucket size updates without reconnecting socket
   useEffect(() => {
     engineRef.current.reset(bucketSize);
-  }, [bucketSize]);
+    // Re-populate from existing candles so we don't have an empty chart after setting change
+    const currentCandles = useChartStore.getState().candles;
+    currentCandles.forEach(c => engineRef.current.ingestCandle(c));
+    triggerFootprintRedraw();
+  }, [bucketSize, triggerFootprintRedraw]);
 
   useEffect(() => {
     let active = true;

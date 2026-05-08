@@ -303,3 +303,11 @@ The live price and time indicators on the right axis are now significantly easie
 
 ### Impact Summary
 The chart no longer starts empty. On connect or pair/timeframe change, the application instantly backfills the last 500 candles via REST, providing immediate market context and a fully populated Volume Profile. The live stream then takes over seamlessly, creating a professional and "instant-on" user experience.
+## [2026-05-08] - Revert: Synthetic Footprint Rendering
+### Changed
+- **Footprint Logic**: Reverted synthetic historical footprint generation. Footprint boxes and delta labels will now only appear for candles that have received live streamed trades.
+- **Data Model**: Removed `takerBuyVolume` from `Candle` interface and `BinanceAdapter` as it is no longer required for footprint visualization.
+- **Authenticity**: Guaranteed that all rendered footprint cells are based strictly on actual trade flow data, ensuring a professional and non-misleading chart representation.
+
+### Fixed
+- **Settings Persistence (Maintained)**: Kept the fix where changing `bucketSize` re-populates the engine from existing candles, ensuring that OHLCV context is preserved even if historical footprint cells are empty.
