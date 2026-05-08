@@ -22,7 +22,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawCandles.ts    # Candlestick draw function
 │   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
 │   │   ├── drawAxes.ts       # Dynamic price axis (1-2-5 series), time axis, grid lines
-│   │   ├── drawPriceLine.ts  # Horizontal line at current market price
+│   │   ├── drawPriceLine.ts  # Dynamic price line & axis countdown (TV style)
 │   │   ├── drawCrosshair.ts  # TradingView-style crosshair and axis labels
 │   │   └── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
 │   ├── layout/               # General layout components
@@ -49,7 +49,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │       ├── canvas.ts         # HTML5 canvas rendering functions (w/ formatted footprint cells)
 │       ├── volumeProfile.ts  # Volume profile aggregation, POC, and VA math
 │       ├── delta.ts          # Delta calculation helpers (Planned)
-│       └── format.ts         # Number formatting (Planned)
+│       └── format.ts         # Timeframe parsing, countdowns, and price formatting
 │
 ├── types/                    # TypeScript interfaces
 │   ├── candle.ts             # OHLCV definitions

@@ -206,3 +206,34 @@ The footprint chart now features a professional left-aligned candlestick structu
 
 ### Impact Summary
 Users now have a precision crosshair tool that provides instant price and time context at any cursor position. The behavior is identical to TradingView, remaining perfectly aligned during panning, zooming, and in both candlestick and footprint chart modes.
+
+## [2026-05-08] - Phase 7: UI Polish
+
+### Added
+- **Components**: Created Toolbar.tsx as a unified control center for pairs, timeframes, chart modes, and connection status.
+- **Components**: Created Sidebar.tsx to display live session statistics (Delta, HVN, LVN, B/S ratio).
+- **Components**: Created SettingsPanel.tsx providing a slide-in interface for visual customizations (colors, VA threshold, profile width).
+- **Hooks**: Implemented useKeyboardShortcuts.ts for professional hotkey navigation (1-5 for timeframes, C/F for modes, R for reset).
+- **Persistence**: Integrated zustand/middleware/persist to save user preferences to localStorage.
+
+### Changed
+- **Store**: Lifted barWidth and scrollOffset state into Zustand to allow external control and persistence.
+- **Rendering**: Updated all draw functions (drawCandles, drawFootprint, drawVolumeProfile) to use customizable color tokens from the store.
+- **Layout**: Overhauled app/page.tsx to integrate the new UI components and keyboard listener.
+- **FeedProvider**: Added a throttled 500ms update cycle to lastTradeTime to drive the sidebar stats without excessive re-renders.
+
+### Impact Summary
+The application is now a complete, professional-grade trading tool. Users can customize their visual experience, navigate quickly with hotkeys, and monitor live session order flow statistics in real-time. All settings persist across sessions, providing a seamless and personalized user experience.
+## [2026-05-08] - Feature: Dynamic Price Line & Live Countdown
+
+### Added
+- **Utility**: Created `lib/utils/format.ts` for centralized timeframe parsing and countdown formatting.
+- **Visuals**: Added a real-time countdown timer to the live price badge on the Y-axis, showing the time remaining for the active candle to close.
+
+### Changed
+- **Price Line**: Updated `drawPriceLine.ts` to dynamically match the color of the active candle (green for bullish, red for bearish).
+- **Price Badge**: Redesigned the axis price label to include both the live price and the countdown, using high-visibility colors that reflect market direction.
+- **Rendering**: Modified `ChartCanvas.tsx` to include a 1-second interval redraw cycle, ensuring the countdown timer updates smoothly in real-time even when there is no new trade data.
+
+### Impact Summary
+The live price indicator now provides significantly better situational awareness by visually reflecting the active candle's direction and providing a TradingView-style countdown. This allows traders to anticipate candle closes and track market direction more intuitively.

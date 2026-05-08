@@ -21,6 +21,7 @@ export function ChartCanvas() {
   const isRedrawScheduled = useRef(false);
   
   const candles = useChartStore(state => state.candles);
+  const timeframe = useChartStore(state => state.timeframe);
   const chartMode = useChartStore(state => state.chartMode);
   const bucketSize = useChartStore(state => state.bucketSize);
   const footprintTrigger = useChartStore(state => state.footprintTrigger);
@@ -94,7 +95,7 @@ export function ChartCanvas() {
 
       const lastCandle = candles[candles.length - 1];
       if (lastCandle) {
-        drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth);
+        drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
       }
 
       // Draw Crosshair
@@ -163,6 +164,14 @@ export function ChartCanvas() {
   useEffect(() => {
     redraw();
   }, [candles, chartMode, bucketSize, footprintTrigger, redraw]);
+
+  // Real-time countdown timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      redraw();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [redraw]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative bg-[#0D0D0D] overflow-hidden">
