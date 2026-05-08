@@ -10,6 +10,8 @@ import { drawFootprint } from './drawFootprint';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
 import { drawPriceLine } from './drawPriceLine';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
+import { buildProfile } from '@/lib/utils/volumeProfile';
+import { drawVolumeProfile } from './drawVolumeProfile';
 import { initCanvas } from '@/lib/utils/canvas';
 
 export function ChartCanvas() {
@@ -28,6 +30,7 @@ export function ChartCanvas() {
 
   const priceAxisWidth = 60;
   const timeAxisHeight = 24;
+  const profileWidth = 120;
 
   const redraw = useCallback(() => {
     if (isRedrawScheduled.current) return;
@@ -54,7 +57,7 @@ export function ChartCanvas() {
       const currentScrollOffset = scrollOffset.current;
       const currentBarWidth = barWidth.current;
 
-      const { firstIndex, lastIndex, rawFirstIndex, rawLastIndex } = getVisibleRange(candles, currentScrollOffset, currentBarWidth, chartWidth);
+      const { firstIndex, lastIndex, rawFirstIndex, rawLastIndex } = getVisibleRange(candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
       
       // Initialize price scaling if not set
       if (priceCenter.current === null || priceRange.current === null) {
@@ -69,7 +72,7 @@ export function ChartCanvas() {
       const priceMax = pCenter + pRange / 2;
 
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
-      const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth);
+      const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
 
       drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
@@ -77,6 +80,13 @@ export function ChartCanvas() {
         drawCandles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
       } else {
         drawFootprint(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, logicalHeight);
+      }
+
+      // Volume Profile
+      const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
+      const profile = buildProfile(visibleCandles, engine, bucketSize);
+      if (profile) {
+        drawVolumeProfile(ctx, profile, priceToY, logicalWidth, profileWidth, priceAxisWidth, bucketSize);
       }
 
       drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth);
@@ -104,7 +114,7 @@ export function ChartCanvas() {
           drawCrosshairPriceLabel(ctx, my, price, chartWidth, priceAxisWidth, chartHeight, precision);
 
           // Time Label
-          const index = Math.round(xToIndex(mx, candles.length, currentScrollOffset, currentBarWidth, chartWidth));
+          const index = Math.round(xToIndex(mx, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth));
           let time = 0;
           if (candles[index]) {
             time = candles[index].time;

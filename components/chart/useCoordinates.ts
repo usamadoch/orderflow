@@ -4,12 +4,14 @@ export function getVisibleRange(
   candles: Candle[],
   scrollOffset: number,
   barWidth: number,
-  chartWidth: number
+  chartWidth: number,
+  profileWidth: number = 0
 ) {
   if (candles.length === 0) return { firstIndex: 0, lastIndex: 0, rawFirstIndex: 0, rawLastIndex: 0 };
   
+  const drawableWidth = chartWidth - profileWidth;
   const lastIndexRaw = candles.length - 1 - Math.floor(scrollOffset / barWidth);
-  const firstIndexRaw = lastIndexRaw - Math.ceil(chartWidth / barWidth) - 1;
+  const firstIndexRaw = lastIndexRaw - Math.ceil(drawableWidth / barWidth) - 1;
   
   const lastIndex = Math.max(0, Math.min(candles.length - 1, lastIndexRaw));
   const firstIndex = Math.max(0, Math.min(candles.length - 1, firstIndexRaw));
@@ -63,9 +65,11 @@ export function indexToX(
   candlesLength: number,
   scrollOffset: number,
   barWidth: number,
-  chartWidth: number
+  chartWidth: number,
+  profileWidth: number = 0
 ) {
-  return chartWidth - barWidth / 2 - (candlesLength - 1 - candleIndex) * barWidth + scrollOffset;
+  const drawableWidth = chartWidth - profileWidth;
+  return drawableWidth - barWidth / 2 - (candlesLength - 1 - candleIndex) * barWidth + scrollOffset;
 }
 
 export function yToPrice(y: number, priceMin: number, priceMax: number, drawableHeight: number) {
@@ -79,7 +83,9 @@ export function xToIndex(
   candlesLength: number,
   scrollOffset: number,
   barWidth: number,
-  chartWidth: number
+  chartWidth: number,
+  profileWidth: number = 0
 ) {
-  return (candlesLength - 1) + (x - chartWidth + barWidth / 2 - scrollOffset) / barWidth;
+  const drawableWidth = chartWidth - profileWidth;
+  return (candlesLength - 1) + (x - drawableWidth + barWidth / 2 - scrollOffset) / barWidth;
 }

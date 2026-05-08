@@ -24,7 +24,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawAxes.ts       # Dynamic price axis (1-2-5 series), time axis, grid lines
 │   │   ├── drawPriceLine.ts  # Horizontal line at current market price
 │   │   ├── drawCrosshair.ts  # TradingView-style crosshair and axis labels
-│   │   └── VolumeProfile.tsx # Horizontal volume bars (Planned)
+│   │   └── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
 │   ├── layout/               # General layout components
 │   │   ├── Sidebar.tsx       # Sidebar for settings (Planned)
 │   │   └── Toolbar.tsx       # Top toolbar (Planned)
@@ -47,6 +47,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions (w/ formatted footprint cells)
+│       ├── volumeProfile.ts  # Volume profile aggregation, POC, and VA math
 │       ├── delta.ts          # Delta calculation helpers (Planned)
 │       └── format.ts         # Number formatting (Planned)
 │
