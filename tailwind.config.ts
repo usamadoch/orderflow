@@ -9,8 +9,13 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-inter)", "ui-sans-serif", "system-ui"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular"],
+      },
       colors: {
         background: "var(--bg-base)",
+
         surface: "var(--bg-surface)",
         border: "var(--border)",
         "text-muted": "var(--text-muted)",

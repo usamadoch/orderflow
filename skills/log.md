@@ -237,3 +237,18 @@ The application is now a complete, professional-grade trading tool. Users can cu
 
 ### Impact Summary
 The live price indicator now provides significantly better situational awareness by visually reflecting the active candle's direction and providing a TradingView-style countdown. This allows traders to anticipate candle closes and track market direction more intuitively.
+
+## [2026-05-08] - Feature: Axis Polish & Typography Improvements
+
+### Added
+- **Formatting**: Implemented `formatPrice` with thousands separators and `formatTime12h` with AM/PM support in `lib/utils/format.ts`.
+- **Typography**: Mapped `Inter` and `JetBrains Mono` fonts in `tailwind.config.ts` to ensure professional-grade typography across the UI and chart.
+
+### Changed
+- **Axes**: Updated `drawAxes.ts` and `drawCrosshair.ts` to use `Inter` font and new formatting for a cleaner, TradingView-style look.
+- **Price Label**: Redesigned the live price badge in `drawPriceLine.ts` with increased height, better padding, and refined vertical alignment between the price and countdown.
+- **Layout**: Increased `priceAxisWidth` to 85px to accommodate larger, formatted price labels with separators.
+
+### Impact Summary
+The chart axes now feature professional-grade formatting and typography, significantly improving readability. Prices are now easier to parse with thousand separators, and time labels are more intuitive in 12h format. The overall visual polish now matches industry-standard trading platforms.
+

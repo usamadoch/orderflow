@@ -1,5 +1,8 @@
 import { Candle } from "@/types/candle";
-import { timeframeToSeconds, formatCountdown } from "@/lib/utils/format";
+import { timeframeToSeconds, formatCountdown, formatPrice } from "@/lib/utils/format";
+
+const PRICE_LINE_FONT = 'bold 11px "Inter", -apple-system, system-ui, sans-serif';
+const COUNTDOWN_FONT = '9px "Inter", -apple-system, system-ui, sans-serif';
 
 export function drawPriceLine(
   ctx: CanvasRenderingContext2D,
@@ -19,7 +22,7 @@ export function drawPriceLine(
   // 1. Draw Horizontal Line across the chart area
   ctx.save();
   ctx.setLineDash([4, 4]);
-  ctx.strokeStyle = color; // Match candle color
+  ctx.strokeStyle = color;
   ctx.globalAlpha = 0.6;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -36,7 +39,7 @@ export function drawPriceLine(
   const countdownText = formatCountdown(remaining);
 
   // 3. Draw Price Badge on the Price Axis
-  const badgeHeight = 20; // Increased slightly for better look
+  const badgeHeight = 24; // Increased height for better padding
   const badgeWidth = priceAxisWidth - 4;
   const badgeX = chartWidth + 2;
   const badgeY = y - badgeHeight / 2;
@@ -45,31 +48,29 @@ export function drawPriceLine(
   ctx.fillStyle = color; 
   ctx.beginPath();
   if (ctx.roundRect) {
-    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 2);
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 3);
   } else {
     ctx.fillRect(badgeX, badgeY, badgeWidth, badgeHeight);
   }
   ctx.fill();
 
   // Badge text (Price)
-  ctx.font = 'bold 11px "JetBrains Mono"';
+  ctx.font = PRICE_LINE_FONT;
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   
-  let priceLabel = price.toString();
-  if (priceLabel.indexOf('.') !== -1) {
-    const parts = priceLabel.split('.');
-    if (parts[1].length > 4) priceLabel = price.toFixed(4);
-  }
+  const priceLabel = formatPrice(price);
   
-  // Price at top half
-  ctx.fillText(priceLabel, badgeX + 4, badgeY + badgeHeight * 0.35);
+  // Adjusted positioning for better vertical separation
+  // Price at 30% of height, Countdown at 70% of height
+  ctx.fillText(priceLabel, badgeX + 6, badgeY + badgeHeight * 0.32);
 
   // Countdown at bottom half
-  ctx.font = '9px "JetBrains Mono"';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-  ctx.fillText(countdownText, badgeX + 4, badgeY + badgeHeight * 0.75);
+  ctx.font = COUNTDOWN_FONT;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.fillText(countdownText, badgeX + 6, badgeY + badgeHeight * 0.72);
 }
+
 
 

@@ -21,8 +21,8 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── usePanZoom.ts     # Fixed-scale pan/zoom & persistent axis refs
 │   │   ├── drawCandles.ts    # Candlestick draw function
 │   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
-│   │   ├── drawAxes.ts       # Dynamic price axis (1-2-5 series), time axis, grid lines
-│   │   ├── drawPriceLine.ts  # Dynamic price line & axis countdown (TV style)
+│   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, Inter font)
+│   │   ├── drawPriceLine.ts  # Polished price label with countdown & dynamic color
 │   │   ├── drawCrosshair.ts  # TradingView-style crosshair and axis labels
 │   │   └── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
 │   ├── layout/               # General layout components

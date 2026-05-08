@@ -1,4 +1,9 @@
-import { Candle } from "@/types/candle";
+import { formatPrice, formatTime12h } from "@/lib/utils/format";
+
+const CROSSHAIR_FONT = '11px "Inter", -apple-system, system-ui, sans-serif';
+const CROSSHAIR_BG = '#2A2A2A';
+const CROSSHAIR_BORDER = '#8A8A8A';
+const CROSSHAIR_TEXT = '#FFFFFF';
 
 export function drawCrosshair(
   ctx: CanvasRenderingContext2D,
@@ -40,23 +45,23 @@ export function drawCrosshairPriceLabel(
 ) {
   if (mouseY < 0 || mouseY > chartHeight) return;
 
-  const label = price.toFixed(precision);
-  ctx.font = '11px "JetBrains Mono"';
+  const label = formatPrice(price, precision);
+  ctx.font = CROSSHAIR_FONT;
   const textWidth = ctx.measureText(label).width;
   const padding = 6;
   const rectHeight = 20;
-  const rectWidth = textWidth + padding * 2;
+  const rectWidth = Math.max(textWidth + padding * 2, priceAxisWidth - 2);
 
-  ctx.fillStyle = '#2A2A2A';
-  ctx.fillRect(chartWidth, mouseY - rectHeight / 2, rectWidth, rectHeight);
+  ctx.fillStyle = CROSSHAIR_BG;
+  ctx.fillRect(chartWidth + 1, mouseY - rectHeight / 2, rectWidth, rectHeight);
 
-  ctx.strokeStyle = '#8A8A8A';
-  ctx.strokeRect(chartWidth, mouseY - rectHeight / 2, rectWidth, rectHeight);
+  ctx.strokeStyle = CROSSHAIR_BORDER;
+  ctx.strokeRect(chartWidth + 1, mouseY - rectHeight / 2, rectWidth, rectHeight);
 
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = CROSSHAIR_TEXT;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, chartWidth + padding, mouseY);
+  ctx.fillText(label, chartWidth + padding + 1, mouseY);
 }
 
 export function drawCrosshairTimeLabel(
@@ -69,25 +74,23 @@ export function drawCrosshairTimeLabel(
 ) {
   if (mouseX < 0 || mouseX > chartWidth) return;
 
-  const d = new Date(time * 1000);
-  const hours = d.getHours().toString().padStart(2, '0');
-  const mins = d.getMinutes().toString().padStart(2, '0');
-  const label = `${hours}:${mins}`;
+  const label = formatTime12h(time);
 
-  ctx.font = '11px "JetBrains Mono"';
+  ctx.font = CROSSHAIR_FONT;
   const textWidth = ctx.measureText(label).width;
-  const padding = 6;
+  const padding = 8;
   const rectHeight = 20;
   const rectWidth = textWidth + padding * 2;
 
-  ctx.fillStyle = '#2A2A2A';
-  ctx.fillRect(mouseX - rectWidth / 2, chartHeight, rectWidth, rectHeight);
+  ctx.fillStyle = CROSSHAIR_BG;
+  ctx.fillRect(mouseX - rectWidth / 2, chartHeight + 1, rectWidth, rectHeight);
 
-  ctx.strokeStyle = '#8A8A8A';
-  ctx.strokeRect(mouseX - rectWidth / 2, chartHeight, rectWidth, rectHeight);
+  ctx.strokeStyle = CROSSHAIR_BORDER;
+  ctx.strokeRect(mouseX - rectWidth / 2, chartHeight + 1, rectWidth, rectHeight);
 
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = CROSSHAIR_TEXT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, mouseX, chartHeight + rectHeight / 2);
+  ctx.fillText(label, mouseX, chartHeight + 1 + rectHeight / 2);
 }
+

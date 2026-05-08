@@ -29,7 +29,7 @@ export function ChartCanvas() {
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
-  const priceAxisWidth = 60;
+  const priceAxisWidth = 85;
   const timeAxisHeight = 24;
   const profileWidth = 120;
 

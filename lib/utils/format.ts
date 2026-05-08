@@ -33,13 +33,38 @@ export function formatCountdown(seconds: number): string {
 }
 
 /**
- * Formats a price with appropriate precision.
+ * Formats a price with appropriate precision and comma separators.
  */
-export function formatPrice(price: number): string {
+export function formatPrice(price: number, precision?: number): string {
   if (price === 0) return '0.00';
   
-  if (price < 1) return price.toFixed(6);
-  if (price < 10) return price.toFixed(4);
-  if (price < 100) return price.toFixed(3);
-  return price.toFixed(2);
+  // If precision is not provided, use default logic
+  let p = precision;
+  if (p === undefined) {
+    if (price < 1) p = 6;
+    else if (price < 10) p = 4;
+    else if (price < 100) p = 3;
+    else p = 2;
+  }
+
+  const parts = price.toFixed(p).split('.');
+  // Add thousand separators
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
 }
+
+/**
+ * Formats a timestamp into a 12-hour AM/PM string.
+ */
+export function formatTime12h(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  let hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  
+  return `${hours}:${minutes} ${ampm}`;
+}
+

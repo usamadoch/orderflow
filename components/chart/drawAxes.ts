@@ -1,4 +1,5 @@
 import { Candle } from "@/types/candle";
+import { formatPrice, formatTime12h } from "@/lib/utils/format";
 
 export function calculatePriceStep(priceRange: number, chartHeight: number, minSpacing: number = 50) {
   const pricePerPixel = priceRange / chartHeight;
@@ -12,6 +13,11 @@ export function calculatePriceStep(priceRange: number, chartHeight: number, minS
   if (relativeDelta < 7.5) return magnitude * 5;
   return magnitude * 10;
 }
+
+const AXIS_FONT = '11px "Inter", -apple-system, system-ui, sans-serif';
+const AXIS_TEXT_COLOR = '#8A8A8A';
+const AXIS_BORDER_COLOR = '#1F1F1F';
+const AXIS_BG_COLOR = '#141414';
 
 export function drawGrid(
   ctx: CanvasRenderingContext2D,
@@ -30,7 +36,7 @@ export function drawGrid(
   const chartWidth = canvasWidth - priceAxisWidth;
   const chartHeight = canvasHeight - timeAxisHeight;
 
-  ctx.strokeStyle = '#1F1F1F';
+  ctx.strokeStyle = AXIS_BORDER_COLOR;
   ctx.lineWidth = 1;
 
   // Horizontal Grid Lines
@@ -49,7 +55,7 @@ export function drawGrid(
   }
 
   // Vertical Grid Lines
-  const skipCount = Math.max(1, Math.floor(100 / barWidth));
+  const skipCount = Math.max(1, Math.floor(120 / barWidth)); // Increased spacing for cleaner grid
   
   ctx.beginPath();
   for (let i = rawFirstIndex; i <= rawLastIndex; i++) {
@@ -74,11 +80,11 @@ export function drawPriceAxis(
   const chartWidth = canvasWidth - priceAxisWidth;
 
   // Background
-  ctx.fillStyle = '#141414';
+  ctx.fillStyle = AXIS_BG_COLOR;
   ctx.fillRect(chartWidth, 0, priceAxisWidth, canvasHeight);
 
   // Border
-  ctx.fillStyle = '#1F1F1F';
+  ctx.fillStyle = AXIS_BORDER_COLOR;
   ctx.fillRect(chartWidth, 0, 1, canvasHeight);
 
   const priceRange = priceMax - priceMin;
@@ -91,11 +97,11 @@ export function drawPriceAxis(
   // Calculate precision based on step
   const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
 
-  ctx.font = '11px "JetBrains Mono"';
-  ctx.fillStyle = '#8A8A8A';
+  ctx.font = AXIS_FONT;
+  ctx.fillStyle = AXIS_TEXT_COLOR;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.strokeStyle = '#1F1F1F';
+  ctx.strokeStyle = AXIS_BORDER_COLOR;
 
   for (let p = startPrice; p <= priceMax; p += step) {
     const y = priceToY(p);
@@ -106,9 +112,9 @@ export function drawPriceAxis(
     ctx.lineTo(chartWidth + 5, Math.round(y));
     ctx.stroke();
 
-    // Label
-    const label = p.toFixed(precision);
-    ctx.fillText(label, chartWidth + 8, y);
+    // Label with thousands separators
+    const label = formatPrice(p, precision);
+    ctx.fillText(label, chartWidth + 10, y);
   }
 }
 
@@ -128,20 +134,20 @@ export function drawTimeAxis(
   const chartHeight = canvasHeight - timeAxisHeight;
 
   // Background
-  ctx.fillStyle = '#141414';
+  ctx.fillStyle = AXIS_BG_COLOR;
   ctx.fillRect(0, chartHeight, chartWidth, timeAxisHeight);
 
   // Border
-  ctx.fillStyle = '#1F1F1F';
+  ctx.fillStyle = AXIS_BORDER_COLOR;
   ctx.fillRect(0, chartHeight, chartWidth, 1);
 
-  const skipCount = Math.max(1, Math.floor(100 / barWidth));
+  const skipCount = Math.max(1, Math.floor(120 / barWidth)); // Increased spacing for cleaner labels
   
-  ctx.font = '11px "JetBrains Mono"';
-  ctx.fillStyle = '#8A8A8A';
+  ctx.font = AXIS_FONT;
+  ctx.fillStyle = AXIS_TEXT_COLOR;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.strokeStyle = '#1F1F1F';
+  ctx.strokeStyle = AXIS_BORDER_COLOR;
 
   for (let i = rawFirstIndex; i <= rawLastIndex; i++) {
     if (i % skipCount === 0) {
@@ -150,27 +156,25 @@ export function drawTimeAxis(
       // Tick mark
       ctx.beginPath();
       ctx.moveTo(Math.round(x), chartHeight);
-      ctx.lineTo(Math.round(x), chartHeight + 5);
+      ctx.lineTo(Math.round(x), chartHeight + 4);
       ctx.stroke();
 
-      // Label
+      // Label (12h format)
+      let time = 0;
       if (candles[i]) {
-        const d = new Date(candles[i].time * 1000);
-        const hours = d.getHours().toString().padStart(2, '0');
-        const mins = d.getMinutes().toString().padStart(2, '0');
-        ctx.fillText(`${hours}:${mins}`, x, chartHeight + 8);
+        time = candles[i].time;
       } else if (candles.length > 0) {
-        // Extrapolate time based on last candle and interval (assuming 1m for now or using candle data)
         const lastCandle = candles[candles.length - 1];
         const firstCandle = candles[0];
         const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
-        
-        const extrapolatedTime = lastCandle.time + (i - (candles.length - 1)) * avgInterval;
-        const d = new Date(extrapolatedTime * 1000);
-        const hours = d.getHours().toString().padStart(2, '0');
-        const mins = d.getMinutes().toString().padStart(2, '0');
-        ctx.fillText(`${hours}:${mins}`, x, chartHeight + 8);
+        time = lastCandle.time + (i - (candles.length - 1)) * avgInterval;
+      }
+
+      if (time > 0) {
+        const label = formatTime12h(time);
+        ctx.fillText(label, x, chartHeight + 8);
       }
     }
   }
 }
+
