@@ -7,24 +7,22 @@ export function ChartModeToggle() {
   const toggleMode = useChartStore((state) => state.toggleMode);
 
   return (
-    <div className="flex items-center gap-1 bg-[#1A1A1A] p-0.5 rounded border border-border">
+    <div className="flex items-center gap-1 bg-background/50 p-0.5 rounded-lg border border-border">
       <button
         onClick={() => chartMode !== 'candle' && toggleMode()}
-        className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-          chartMode === 'candle'
-            ? 'bg-[#3D7EFF] text-white'
-            : 'bg-transparent text-[#4A4A4A] hover:text-text-dim'
-        } font-mono`}
+        className={`px-3 py-1 text-[10px] font-black rounded-md transition-all duration-200 tracking-wider ${chartMode === 'candle'
+            ? 'bg-accent text-white shadow-lg shadow-accent/20'
+            : 'text-text-dim hover:text-main hover:bg-surface'
+          }`}
       >
-        CANDLE
+        CANDLES
       </button>
       <button
         onClick={() => chartMode !== 'footprint' && toggleMode()}
-        className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-          chartMode === 'footprint'
-            ? 'bg-[#3D7EFF] text-white'
-            : 'bg-transparent text-[#4A4A4A] hover:text-text-dim'
-        } font-mono`}
+        className={`px-3 py-1 text-[10px] font-black rounded-md transition-all duration-200 tracking-wider ${chartMode === 'footprint'
+            ? 'bg-accent text-white shadow-lg shadow-accent/20'
+            : 'text-text-dim hover:text-main hover:bg-surface'
+          }`}
       >
         FOOTPRINT
       </button>

@@ -19,7 +19,7 @@ export function ChartCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const isRedrawScheduled = useRef(false);
-  
+
   const candles = useChartStore(state => state.candles);
   const timeframe = useChartStore(state => state.timeframe);
   const chartMode = useChartStore(state => state.chartMode);
@@ -35,11 +35,11 @@ export function ChartCanvas() {
 
   const redraw = useCallback(() => {
     if (isRedrawScheduled.current) return;
-    
+
     isRedrawScheduled.current = true;
     requestAnimationFrame(() => {
       isRedrawScheduled.current = false;
-      
+
       const canvas = canvasRef.current;
       const ctx = ctxRef.current;
       const container = containerRef.current;
@@ -59,7 +59,7 @@ export function ChartCanvas() {
       const currentBarWidth = barWidth.current;
 
       const { firstIndex, lastIndex, rawFirstIndex, rawLastIndex } = getVisibleRange(candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
-      
+
       // Initialize price scaling if not set
       if (priceCenter.current === null || priceRange.current === null) {
         const { priceMin: autoMin, priceMax: autoMax } = getVisiblePriceRange(candles, firstIndex, lastIndex);
@@ -111,7 +111,7 @@ export function ChartCanvas() {
           const price = yToPrice(my, priceMin, priceMax, chartHeight);
           const step = calculatePriceStep(priceMax - priceMin, chartHeight);
           const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
-          
+
           drawCrosshairPriceLabel(ctx, my, price, chartWidth, priceAxisWidth, chartHeight, precision);
 
           // Time Label
@@ -155,7 +155,7 @@ export function ChartCanvas() {
     const observer = new ResizeObserver(() => {
       setupCanvas();
     });
-    
+
     observer.observe(container);
     return () => observer.disconnect();
   }, []);

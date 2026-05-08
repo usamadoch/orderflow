@@ -8,12 +8,10 @@ task1.md
 CONTEXT RULES:
 - 
 
-map.md
-= source of truth for file structure
+map.md = source of truth for file structure
 - 
 
-log.md
- = history of changes
+log.md = history of changes
 
 STRICT EXECUTION FLOW:
 

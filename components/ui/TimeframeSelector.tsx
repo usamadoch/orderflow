@@ -8,16 +8,15 @@ export function TimeframeSelector() {
   const { timeframe: activeTimeframe, setTimeframe } = useChartStore();
 
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1 bg-background/50 p-0.5 rounded-lg border border-border">
       {TIMEFRAMES.map((tf) => (
         <button
           key={tf}
           onClick={() => setTimeframe(tf)}
-          className={`px-2 py-1 rounded text-xs font-mono transition-colors ${
-            activeTimeframe === tf 
-              ? 'bg-background text-white border border-[#3D7EFF]' 
-              : 'bg-background text-text-muted border border-border hover:border-text-muted'
-          }`}
+          className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all duration-200 ${activeTimeframe === tf
+              ? 'bg-surface text-accent border border-border shadow-sm'
+              : 'text-text-dim hover:text-main hover:bg-surface'
+            }`}
         >
           {tf}
         </button>

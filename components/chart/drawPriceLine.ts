@@ -1,8 +1,8 @@
 import { Candle } from "@/types/candle";
 import { timeframeToSeconds, formatCountdown, formatPrice } from "@/lib/utils/format";
 
-const PRICE_LINE_FONT = 'bold 11px "Inter", -apple-system, system-ui, sans-serif';
-const COUNTDOWN_FONT = '9px "Inter", -apple-system, system-ui, sans-serif';
+const PRICE_LINE_FONT = 'bold 13px "Inter", -apple-system, system-ui, sans-serif';
+const COUNTDOWN_FONT = '11px "Inter", -apple-system, system-ui, sans-serif';
 
 export function drawPriceLine(
   ctx: CanvasRenderingContext2D,
@@ -39,7 +39,7 @@ export function drawPriceLine(
   const countdownText = formatCountdown(remaining);
 
   // 3. Draw Price Badge on the Price Axis
-  const badgeHeight = 24; // Increased height for better padding
+  const badgeHeight = 30; // Increased height for better padding and larger font
   const badgeWidth = priceAxisWidth - 4;
   const badgeX = chartWidth + 2;
   const badgeY = y - badgeHeight / 2;
@@ -64,12 +64,12 @@ export function drawPriceLine(
   
   // Adjusted positioning for better vertical separation
   // Price at 30% of height, Countdown at 70% of height
-  ctx.fillText(priceLabel, badgeX + 6, badgeY + badgeHeight * 0.32);
+  ctx.fillText(priceLabel, badgeX + 8, badgeY + badgeHeight * 0.35);
 
   // Countdown at bottom half
   ctx.font = COUNTDOWN_FONT;
   ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.fillText(countdownText, badgeX + 6, badgeY + badgeHeight * 0.72);
+  ctx.fillText(countdownText, badgeX + 8, badgeY + badgeHeight * 0.75);
 }
 
 

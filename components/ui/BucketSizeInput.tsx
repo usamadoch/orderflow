@@ -7,8 +7,8 @@ export function BucketSizeInput() {
   const setBucketSize = useChartStore((state) => state.setBucketSize);
 
   return (
-    <div className="flex items-center gap-2 text-xs text-text-dim ml-2 border-l border-border pl-4">
-      <label htmlFor="bucketSize" className="uppercase font-medium tracking-wider">
+    <div className="flex items-center gap-2 text-[10px] text-text-dim ml-2 border-l border-border pl-4 h-6">
+      <label htmlFor="bucketSize" className="uppercase font-black tracking-[0.1em]">
         Bucket
       </label>
       <input
@@ -21,8 +21,8 @@ export function BucketSizeInput() {
             setBucketSize(val);
           }
         }}
-        className="w-16 bg-background border border-border rounded px-2 py-1 text-right text-xs focus:border-accent focus:outline-none font-mono text-[#E8E8E8]"
-        step="10"
+        className="w-14 bg-surface border border-border rounded-md px-1.5 py-0.5 text-right text-[11px] font-bold focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all text-main"
+        step="1"
         min="1"
       />
     </div>

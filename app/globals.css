@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --bg-base:     #0D0D0D;
-  --bg-surface:  #141414;
+  --bg-base:     #080808;
+  --bg-surface:  #111111;
   --border:      #1F1F1F;
-  --text-muted:  #4A4A4A;
-  --text-dim:    #8A8A8A;
-  --text-main:   #E8E8E8;
+  --text-muted:  #505050;
+  --text-dim:    #909090;
+  --text-main:   #EAEAEA;
   --bull:        #26A69A;
   --bear:        #EF5350;
   --accent:      #3D7EFF;
@@ -17,4 +17,22 @@
 body {
   color: var(--text-main);
   background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-weight: 500;
+}
+
+/* Improve header/label rendering */
+h1, h2, h3, label {
+  letter-spacing: -0.01em;
+}
+
+.tracking-widest {
+  letter-spacing: 0.15em;
+}
+
+::selection {
+  background: rgba(61, 126, 255, 0.3);
+  color: white;
 }

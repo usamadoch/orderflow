@@ -21,19 +21,19 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── usePanZoom.ts     # Fixed-scale pan/zoom & persistent axis refs
 │   │   ├── drawCandles.ts    # Candlestick draw function
 │   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
-│   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, Inter font)
-│   │   ├── drawPriceLine.ts  # Polished price label with countdown & dynamic color
-│   │   ├── drawCrosshair.ts  # TradingView-style crosshair and axis labels
+│   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, high-readability 12px font)
+│   │   ├── drawPriceLine.ts  # Live price badge with larger fonts, countdown, and direction-color
+│   │   ├── drawCrosshair.ts  # TradingView-style crosshair with high-visibility axis labels
 │   │   └── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
 │   ├── layout/               # General layout components
-│   │   ├── Sidebar.tsx       # Sidebar for settings (Planned)
-│   │   └── Toolbar.tsx       # Top toolbar (Planned)
+│   │   ├── Header.tsx        # Top toolbar with pair/timeframe selectors
+│   │   └── Sidebar.tsx       # Collapsible sidebar for data settings
 │   └── ui/                   # Reusable UI components
 │       ├── ConnectionStatus.tsx # Live connection indicator
-│       ├── PairSelector.tsx     # Active pair switcher
-│       ├── TimeframeSelector.tsx# Active timeframe switcher
-│       ├── ChartModeToggle.tsx  # Candle / Footprint mode toggle
-│       └── BucketSizeInput.tsx  # Footprint bucket size config
+│       ├── PairSelector.tsx     # Active pair switcher (Persisted)
+│       ├── TimeframeSelector.tsx# Active timeframe switcher (Persisted)
+│       ├── ChartModeToggle.tsx  # Candle / Footprint mode toggle (Persisted)
+│       └── BucketSizeInput.tsx  # Footprint bucket size config (Persisted)
 │
 ├── lib/                      # Business logic, state, and utilities
 │   ├── aggregation/          # Trade aggregation logic

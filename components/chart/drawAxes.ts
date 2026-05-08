@@ -4,18 +4,18 @@ import { formatPrice, formatTime12h } from "@/lib/utils/format";
 export function calculatePriceStep(priceRange: number, chartHeight: number, minSpacing: number = 50) {
   const pricePerPixel = priceRange / chartHeight;
   const targetPriceDelta = pricePerPixel * minSpacing;
-  
+
   const magnitude = Math.pow(10, Math.floor(Math.log10(targetPriceDelta)));
   const relativeDelta = targetPriceDelta / magnitude;
-  
+
   if (relativeDelta < 1.5) return magnitude * 1;
   if (relativeDelta < 3.5) return magnitude * 2;
   if (relativeDelta < 7.5) return magnitude * 5;
   return magnitude * 10;
 }
 
-const AXIS_FONT = '11px "Inter", -apple-system, system-ui, sans-serif';
-const AXIS_TEXT_COLOR = '#8A8A8A';
+const AXIS_FONT = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
+const AXIS_TEXT_COLOR = '#909090';
 const AXIS_BORDER_COLOR = '#1F1F1F';
 const AXIS_BG_COLOR = '#141414';
 
@@ -56,7 +56,7 @@ export function drawGrid(
 
   // Vertical Grid Lines
   const skipCount = Math.max(1, Math.floor(120 / barWidth)); // Increased spacing for cleaner grid
-  
+
   ctx.beginPath();
   for (let i = rawFirstIndex; i <= rawLastIndex; i++) {
     if (i % skipCount === 0) {
@@ -93,7 +93,7 @@ export function drawPriceAxis(
   const chartHeight = canvasHeight - 24; // Align with timeAxisHeight
   const step = calculatePriceStep(priceRange, chartHeight);
   const startPrice = Math.floor(priceMin / step) * step;
-  
+
   // Calculate precision based on step
   const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
 
@@ -114,7 +114,7 @@ export function drawPriceAxis(
 
     // Label with thousands separators
     const label = formatPrice(p, precision);
-    ctx.fillText(label, chartWidth + 10, y);
+    ctx.fillText(label, chartWidth + 12, y);
   }
 }
 
@@ -142,7 +142,7 @@ export function drawTimeAxis(
   ctx.fillRect(0, chartHeight, chartWidth, 1);
 
   const skipCount = Math.max(1, Math.floor(120 / barWidth)); // Increased spacing for cleaner labels
-  
+
   ctx.font = AXIS_FONT;
   ctx.fillStyle = AXIS_TEXT_COLOR;
   ctx.textAlign = 'center';
@@ -152,7 +152,7 @@ export function drawTimeAxis(
   for (let i = rawFirstIndex; i <= rawLastIndex; i++) {
     if (i % skipCount === 0) {
       const x = indexToX(i);
-      
+
       // Tick mark
       ctx.beginPath();
       ctx.moveTo(Math.round(x), chartHeight);

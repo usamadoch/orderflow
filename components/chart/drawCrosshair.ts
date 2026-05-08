@@ -1,6 +1,6 @@
 import { formatPrice, formatTime12h } from "@/lib/utils/format";
 
-const CROSSHAIR_FONT = '11px "Inter", -apple-system, system-ui, sans-serif';
+const CROSSHAIR_FONT = '12px "Inter", -apple-system, system-ui, sans-serif';
 const CROSSHAIR_BG = '#2A2A2A';
 const CROSSHAIR_BORDER = '#8A8A8A';
 const CROSSHAIR_TEXT = '#FFFFFF';
@@ -48,8 +48,8 @@ export function drawCrosshairPriceLabel(
   const label = formatPrice(price, precision);
   ctx.font = CROSSHAIR_FONT;
   const textWidth = ctx.measureText(label).width;
-  const padding = 6;
-  const rectHeight = 20;
+  const padding = 8;
+  const rectHeight = 24;
   const rectWidth = Math.max(textWidth + padding * 2, priceAxisWidth - 2);
 
   ctx.fillStyle = CROSSHAIR_BG;
@@ -78,8 +78,8 @@ export function drawCrosshairTimeLabel(
 
   ctx.font = CROSSHAIR_FONT;
   const textWidth = ctx.measureText(label).width;
-  const padding = 8;
-  const rectHeight = 20;
+  const padding = 10;
+  const rectHeight = 24;
   const rectWidth = textWidth + padding * 2;
 
   ctx.fillStyle = CROSSHAIR_BG;

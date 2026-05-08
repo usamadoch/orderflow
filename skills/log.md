@@ -252,3 +252,40 @@ The live price indicator now provides significantly better situational awareness
 ### Impact Summary
 The chart axes now feature professional-grade formatting and typography, significantly improving readability. Prices are now easier to parse with thousand separators, and time labels are more intuitive in 12h format. The overall visual polish now matches industry-standard trading platforms.
 
+## [2026-05-08] - Phase 8: Typography & Persistence
+
+### Added
+- **Components**: Created `components/layout/Header.tsx` and `components/layout/Sidebar.tsx` to modularize the UI and improve maintainability.
+- **Feature**: Implemented a **collapsible sidebar** with smooth transitions. In minimized state, it displays high-density icons while preserving access to critical settings.
+- **Persistence**: Integrated `zustand/middleware/persist` in `lib/store/chart.ts` to save user preferences (pair, timeframe, chart mode, bucket size, tick size, and sidebar state) to `localStorage`.
+- **Dependencies**: Installed `lucide-react` for professional-grade iconography.
+
+### Changed
+- **Typography**: 
+  - Overhauled `app/globals.css` with `-webkit-font-smoothing` and increased base font weight (`500`) for a more premium, high-end feel.
+  - Updated all header and sidebar labels with `bold` and `extrabold` weights to match professional trading platforms.
+  - Updated `drawAxes.ts` and `drawPriceLine.ts` to use `bold` weights for better readability on high-DPI displays.
+- **UI Styling**: 
+  - Refined `PairSelector`, `TimeframeSelector`, `ChartModeToggle`, and `BucketSizeInput` with subtle shadows, better spacing, and a more curated color palette.
+  - Improved the `Sidebar` with sectioned settings (Data Settings, Analysis) and professional hover states.
+- **Layout**: Updated `app/page.tsx` to use the new layout components and handle responsive sidebar states.
+
+### Impact Summary
+The application now feels significantly more polished and "professional." Settings persist across refreshes, eliminating redundant configuration. The new collapsible sidebar maximizes chart real estate while keeping tools accessible. Typography across the entire app has been tuned for maximum readability and a premium aesthetic.
+
+
+## [2026-05-08] - Feature: Axis Readability Improvements
+
+### Changed
+- **Typography**: 
+  - Increased `AXIS_FONT` from 11px to 12px in `drawAxes.ts` for clearer price/time ticks.
+  - Significantly increased `PRICE_LINE_FONT` (11px -> 13px) and `COUNTDOWN_FONT` (9px -> 11px) in `drawPriceLine.ts` for the main live indicator.
+  - Increased `CROSSHAIR_FONT` from 11px to 12px in `drawCrosshair.ts`.
+- **Layout & Spacing**:
+  - Added more "gap" by increasing horizontal padding in the live price badge (6px -> 8px).
+  - Increased live price badge height from 24px to 30px to accommodate larger fonts and provide better vertical breathing room.
+  - Increased crosshair label padding and height for better contrast and visibility.
+  - Increased horizontal gap between chart and axis price labels from 10px to 12px.
+
+### Impact Summary
+The live price and time indicators on the right axis are now significantly easier to read at a glance. The increased font sizes and improved padding provide better visual separation and clarity, especially on high-resolution displays, matching the "high-readability" standards of professional trading platforms.
