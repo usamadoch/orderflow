@@ -372,3 +372,21 @@ The application now supports dual independent chart panels. Each panel has its o
 
 ### Impact Summary
 The dual panel layout is now production-quality. Layout mode persists across refreshes, both panels start on the same symbol by default, and users can freely resize panel widths with a smooth, professional drag interaction.
+
+## [2026-05-08] - Feature: Footprint Display Modes (Delta Mode)
+
+### Added
+- **Feature**: Implemented a **Display Mode switch** in the header for footprint charts, allowing users to toggle between **Bid/Ask mode** and **Delta mode**.
+- **Visuals**: Added **Delta mode rendering** where bid/ask numbers are replaced by a single centered delta value with a color-coded horizontal background bar.
+- **Rendering**: Created `drawDeltaCell` in `lib/utils/canvas.ts` to draw proportional delta bars:
+  - Positive delta: Green bar extending right, prefixed with "+".
+  - Negative delta: Red bar extending right, prefixed with "−" (proper minus sign).
+- **Proportional Scaling**: The width of delta bars scales dynamically based on the maximum delta magnitude within the currently visible chart range.
+
+### Changed
+- **State Management**: Added `footprintMode: 'bid-ask' | 'delta'` to `PanelState` in `lib/store/chart.ts`. Added persistence and migration for the new state.
+- **UI**: Updated `PanelToolbar.tsx` to include the `B/A` and `Δ` mode toggle buttons next to the bucket size input.
+- **Rendering Loop**: Updated `drawFootprint.ts` and `ChartCanvas.tsx` to propagate and handle the active footprint display mode.
+
+### Impact Summary
+Traders can now switch between detailed bid/ask volume breakdown and a high-level delta pressure visualization. Delta mode provides a cleaner, "volume profile" style view of aggressive buying and selling pressure within each candle, making it significantly easier to identify market imbalances at a glance.

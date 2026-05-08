@@ -63,6 +63,44 @@ export function drawFootprintCell(
   }
 }
 
+export function drawDeltaCell(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  y: number,
+  width: number,
+  height: number,
+  delta: number,
+  maxDelta: number
+) {
+  if (width <= 0 || height <= 0) return;
+
+  const absDelta = Math.abs(delta);
+  const ratio = maxDelta > 0 ? absDelta / maxDelta : 0;
+  const barWidth = width * ratio;
+  
+  // Bar background - extend toward the right from the left edge of the cell
+  ctx.fillStyle = delta >= 0 ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)';
+  ctx.fillRect(centerX - width / 2, y, barWidth, height);
+
+  // Delta text
+  if (height >= 10 && width >= 20) {
+    ctx.fillStyle = '#E8E8E8';
+    const fontSize = height < 15 ? 9 : 11;
+    ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    const formatDelta = (d: number) => {
+      const sign = d > 0 ? '+' : d < 0 ? '−' : '';
+      const abs = Math.abs(d);
+      if (abs >= 1000) return sign + (abs / 1000).toFixed(1) + 'k';
+      return sign + abs.toFixed(1);
+    };
+
+    ctx.fillText(formatDelta(delta), centerX, y + height / 2);
+  }
+}
+
 export function drawDelta(
   ctx: CanvasRenderingContext2D,
   x: number,

@@ -6,6 +6,9 @@ import { ConnectionStatus } from '../ui/ConnectionStatus';
 export function Header() {
   const layoutMode = useChartStore(s => s.layoutMode);
   const setLayoutMode = useChartStore(s => s.setLayoutMode);
+  const activePanelId = useChartStore(s => s.activePanel);
+  const activePanel = useChartStore(s => s.panels[activePanelId]);
+  const setFootprintMode = useChartStore(s => s.setFootprintMode);
 
   return (
     <header className="h-10 border-b border-border bg-surface flex items-center px-4 justify-between shrink-0 shadow-sm z-20">
@@ -48,6 +51,32 @@ export function Header() {
             </svg>
           </button>
         </div>
+
+        {/* Footprint Mode Toggle — Tied to Active Panel */}
+        {activePanel.chartMode === 'footprint' && (
+          <div className="flex gap-1 bg-background/50 p-0.5 rounded-lg border border-border ml-2 animate-in fade-in slide-in-from-left-2 duration-300">
+            <button
+              onClick={() => setFootprintMode(activePanelId, 'bid-ask')}
+              className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all duration-200 ${
+                activePanel.footprintMode === 'bid-ask'
+                  ? 'bg-surface text-accent border border-border shadow-sm'
+                  : 'text-text-dim hover:text-main hover:bg-surface'
+              }`}
+            >
+              Bid/Ask
+            </button>
+            <button
+              onClick={() => setFootprintMode(activePanelId, 'delta')}
+              className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all duration-200 ${
+                activePanel.footprintMode === 'delta'
+                  ? 'bg-surface text-accent border border-border shadow-sm'
+                  : 'text-text-dim hover:text-main hover:bg-surface'
+              }`}
+            >
+              Delta
+            </button>
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-4">
         <ConnectionStatus />

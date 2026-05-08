@@ -58,7 +58,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │
 ├── types/                    # TypeScript interfaces
 │   ├── candle.ts             # OHLCV definitions
-│   ├── footprint.ts          # Footprint data structures
+│   ├── footprint.ts          # Footprint data structures & FootprintMode ('bid-ask' | 'delta')
 │   └── trade.ts              # Individual trade tick definitions
 │
 ├── tailwind.config.ts        # Design system constraints and tokens

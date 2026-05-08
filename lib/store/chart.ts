@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Candle } from '../../types/candle';
 import { Trade } from '../../types/trade';
+import { FootprintMode } from '../../types/footprint';
 
 export type ChartMode = 'candle' | 'footprint';
 export type PanelId = 'left' | 'right';
@@ -12,6 +13,7 @@ export interface PanelState {
   pair: string;
   timeframe: string;
   chartMode: ChartMode;
+  footprintMode: FootprintMode;
   bucketSize: number;
   barWidth: number;
   scrollOffset: number;
@@ -39,6 +41,7 @@ interface ChartState {
   setPair: (panelId: PanelId, pair: string) => void;
   setTimeframe: (panelId: PanelId, timeframe: string) => void;
   setChartMode: (panelId: PanelId, mode: ChartMode) => void;
+  setFootprintMode: (panelId: PanelId, mode: FootprintMode) => void;
   setBucketSize: (panelId: PanelId, size: number) => void;
   setBarWidth: (panelId: PanelId, width: number) => void;
   setScrollOffset: (panelId: PanelId, offset: number) => void;
@@ -63,6 +66,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     pair: 'BTCUSDT',
     timeframe: '1m',
     chartMode: 'candle',
+    footprintMode: 'bid-ask',
     bucketSize: 10,
     barWidth: 12,
     scrollOffset: 0,
@@ -108,6 +112,9 @@ export const useChartStore = create<ChartState>()(
 
       setChartMode: (panelId, chartMode) =>
         set((state) => updatePanel(state, panelId, { chartMode })),
+
+      setFootprintMode: (panelId, footprintMode) =>
+        set((state) => updatePanel(state, panelId, { footprintMode })),
 
       setBucketSize: (panelId, bucketSize) =>
         set((state) => updatePanel(state, panelId, { bucketSize })),
@@ -164,12 +171,23 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 3,
+      version: 4,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
           // Clear stale v1/v2 data — return fresh defaults
           return {};
+        }
+        if (version === 3) {
+          // Ensure footprintMode is initialized
+          const update = (p: any) => ({
+            ...p,
+            footprintMode: p.footprintMode || 'bid-ask'
+          });
+          if (persisted.panels) {
+            if (persisted.panels.left) persisted.panels.left = update(persisted.panels.left);
+            if (persisted.panels.right) persisted.panels.right = update(persisted.panels.right);
+          }
         }
         return persisted;
       },
@@ -181,6 +199,7 @@ export const useChartStore = create<ChartState>()(
             pair: state.panels.left.pair,
             timeframe: state.panels.left.timeframe,
             chartMode: state.panels.left.chartMode,
+            footprintMode: state.panels.left.footprintMode,
             bucketSize: state.panels.left.bucketSize,
             barWidth: state.panels.left.barWidth,
           },
@@ -188,6 +207,7 @@ export const useChartStore = create<ChartState>()(
             pair: state.panels.right.pair,
             timeframe: state.panels.right.timeframe,
             chartMode: state.panels.right.chartMode,
+            footprintMode: state.panels.right.footprintMode,
             bucketSize: state.panels.right.bucketSize,
             barWidth: state.panels.right.barWidth,
           },

@@ -15,6 +15,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setTimeframe = useChartStore(s => s.setTimeframe);
   const setChartMode = useChartStore(s => s.setChartMode);
   const setBucketSize = useChartStore(s => s.setBucketSize);
+  const setFootprintMode = useChartStore(s => s.setFootprintMode);
 
   return (
     <div className="h-8 bg-[#0D0D0D] border-b border-[#1F1F1F] flex items-center px-3 gap-3 shrink-0">
@@ -77,22 +78,47 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         </button>
       </div>
 
-      {/* Bucket Size — visible in footprint mode only */}
+      {/* Footprint Options — visible in footprint mode only */}
       {panel.chartMode === 'footprint' && (
-        <div className="flex items-center gap-1.5 text-[10px] text-text-dim border-l border-[#1A1A1A] pl-3 h-5">
-          <label className="uppercase font-black tracking-[0.08em]">Bucket</label>
-          <input
-            type="number"
-            value={panel.bucketSize}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              if (val > 0) setBucketSize(panelId, val);
-            }}
-            className="w-12 bg-[#080808] border border-[#1A1A1A] rounded px-1 py-0 text-right text-[11px] font-bold focus:border-accent focus:outline-none transition-all text-main"
-            step="1"
-            min="1"
-          />
-        </div>
+        <>
+          <div className="flex gap-0.5 bg-[#080808] p-0.5 rounded-md border border-[#1A1A1A] ml-1">
+            <button
+              onClick={() => setFootprintMode(panelId, 'bid-ask')}
+              className={`px-2 py-0.5 text-[9px] font-black rounded tracking-wider transition-all duration-150 ${
+                panel.footprintMode === 'bid-ask'
+                  ? 'bg-accent text-white shadow-sm shadow-accent/20'
+                  : 'text-text-dim hover:text-main hover:bg-[#151515]'
+              }`}
+            >
+              B/A
+            </button>
+            <button
+              onClick={() => setFootprintMode(panelId, 'delta')}
+              className={`px-2 py-0.5 text-[9px] font-black rounded tracking-wider transition-all duration-150 ${
+                panel.footprintMode === 'delta'
+                  ? 'bg-accent text-white shadow-sm shadow-accent/20'
+                  : 'text-text-dim hover:text-main hover:bg-[#151515]'
+              }`}
+            >
+              Δ
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-[10px] text-text-dim border-l border-[#1A1A1A] pl-3 h-5">
+            <label className="uppercase font-black tracking-[0.08em]">Bucket</label>
+            <input
+              type="number"
+              value={panel.bucketSize}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                if (val > 0) setBucketSize(panelId, val);
+              }}
+              className="w-12 bg-[#080808] border border-[#1A1A1A] rounded px-1 py-0 text-right text-[11px] font-bold focus:border-accent focus:outline-none transition-all text-main"
+              step="1"
+              min="1"
+            />
+          </div>
+        </>
       )}
     </div>
   );

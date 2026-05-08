@@ -1,6 +1,7 @@
 import { Candle } from "@/types/candle";
 import { AggregationEngine } from "@/lib/aggregation/engine";
-import { drawFootprintCell, drawDelta } from "@/lib/utils/canvas";
+import { drawFootprintCell, drawDelta, drawDeltaCell } from "@/lib/utils/canvas";
+import { FootprintMode } from "@/types/footprint";
 
 export function drawFootprint(
   ctx: CanvasRenderingContext2D,
@@ -12,10 +13,12 @@ export function drawFootprint(
   barWidth: number,
   engine: AggregationEngine,
   bucketSize: number,
-  canvasHeight: number
+  canvasHeight: number,
+  mode: FootprintMode
 ) {
-  // Step 1 — Find maxVol across all visible candles
+  // Step 1 — Find maxVol/maxDelta across all visible candles
   let maxVol = 0;
+  let maxDelta = 0;
   for (let i = firstIndex; i <= lastIndex; i++) {
     const c = candles[i];
     if (!c) continue;
@@ -23,8 +26,13 @@ export function drawFootprint(
     if (!fpCandle) continue;
     
     fpCandle.cells.forEach(cell => {
-      if (cell.bidVol > maxVol) maxVol = cell.bidVol;
-      if (cell.askVol > maxVol) maxVol = cell.askVol;
+      if (mode === 'bid-ask') {
+        if (cell.bidVol > maxVol) maxVol = cell.bidVol;
+        if (cell.askVol > maxVol) maxVol = cell.askVol;
+      } else {
+        const delta = Math.abs(cell.askVol - cell.bidVol);
+        if (delta > maxDelta) maxDelta = delta;
+      }
     });
   }
 
@@ -79,15 +87,27 @@ export function drawFootprint(
       const boxesCenterX = Math.round(x + candleArea / 2);
       const boxesWidth = Math.max(0, barWidth - candleArea);
 
-      drawFootprintCell(
-        ctx, 
-        boxesCenterX, 
-        Math.round(topY), 
-        Math.round(boxesWidth), 
-        Math.round(rowHeight), 
-        cell, 
-        maxVol
-      );
+      if (mode === 'bid-ask') {
+        drawFootprintCell(
+          ctx, 
+          boxesCenterX, 
+          Math.round(topY), 
+          Math.round(boxesWidth), 
+          Math.round(rowHeight), 
+          cell, 
+          maxVol
+        );
+      } else {
+        drawDeltaCell(
+          ctx,
+          boxesCenterX,
+          Math.round(topY),
+          Math.round(boxesWidth),
+          Math.round(rowHeight),
+          cell.askVol - cell.bidVol,
+          maxDelta
+        );
+      }
     });
   }
 

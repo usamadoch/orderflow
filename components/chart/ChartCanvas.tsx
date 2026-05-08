@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { PanelId, ChartMode } from '@/lib/store/chart';
+import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { usePanZoom } from './usePanZoom';
 import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex } from './useCoordinates';
@@ -19,6 +20,7 @@ interface ChartCanvasProps {
   panelId: PanelId;
   candles: Candle[];
   chartMode: ChartMode;
+  footprintMode: FootprintMode;
   bucketSize: number;
   barWidth: number;
   scrollOffset: number;
@@ -33,6 +35,7 @@ interface ChartCanvasProps {
 export function ChartCanvas({
   candles,
   chartMode,
+  footprintMode,
   bucketSize,
   barWidth: barWidthProp,
   scrollOffset: scrollOffsetProp,
@@ -110,7 +113,7 @@ export function ChartCanvas({
       if (chartMode === 'candle') {
         drawCandles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
       } else {
-        drawFootprint(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, logicalHeight);
+        drawFootprint(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, logicalHeight, footprintMode);
       }
 
       // Volume Profile
@@ -160,7 +163,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe]);
 
   const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(
     canvasRef,
@@ -204,7 +207,7 @@ export function ChartCanvas({
   // Redraw when data changes
   useEffect(() => {
     redraw();
-  }, [candles, chartMode, bucketSize, footprintTrigger, redraw, isLoadingHistory]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, redraw, isLoadingHistory]);
 
   // Real-time countdown timer
   useEffect(() => {

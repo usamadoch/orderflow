@@ -29,6 +29,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           panelId={panelId}
           candles={panel.candles}
           chartMode={panel.chartMode}
+          footprintMode={panel.footprintMode}
           bucketSize={panel.bucketSize}
           barWidth={panel.barWidth}
           scrollOffset={panel.scrollOffset}
