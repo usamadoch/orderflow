@@ -103,7 +103,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setFootprintMode = useChartStore(s => s.setFootprintMode);
 
   return (
-    <div className="h-8 bg-[#0D0D0D] border-b border-[#1F1F1F] flex items-center px-3 gap-3 shrink-0">
+    <div className="font-sans h-8 bg-[#0D0D0D] border-b border-[#1F1F1F] flex items-center px-3 gap-3 shrink-0">
       {/* Pair Selector */}
       <div className="flex gap-0.5 bg-[#080808] p-0.5 rounded-md border border-[#1A1A1A]">
         {PAIRS.map((p) => (

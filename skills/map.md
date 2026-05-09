@@ -29,11 +29,11 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawBubbles.ts    # Volume bubbles overlay (threshold-filtered, radius/opacity-scaled)
 │   │   └── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
 │   ├── layout/               # General layout components
-│   │   ├── Header.tsx        # Top toolbar — logo, layout toggle, connection status
-│   │   └── Sidebar.tsx       # Collapsible sidebar, reads from activePanel
+│   │   ├── Header.tsx        # Top toolbar — Logo, Layout, Footprint toggle
+│   │   └── Sidebar.tsx       # Collapsible sidebar — Data/Session stats
 │   └── ui/                   # Reusable UI components
 │       ├── ConnectionStatus.tsx # Combined live connection indicator (both panels)
-│       ├── PanelToolbar.tsx     # Per-panel controls (pair, timeframe, mode, bucket)
+│       ├── PanelToolbar.tsx     # Per-panel controls — Pair, TF, Mode, Bubbles
 │       ├── PairSelector.tsx     # Pair switcher (panel-scoped)
 │       ├── TimeframeSelector.tsx# Timeframe switcher (panel-scoped)
 │       ├── ChartModeToggle.tsx  # Candle / Footprint toggle (panel-scoped)

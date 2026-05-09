@@ -14,7 +14,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`border-r border-border bg-surface flex flex-col shrink-0 transition-all duration-300 ease-in-out z-10 shadow-lg ${sidebarCollapsed ? 'w-12' : 'w-52'
+      className={`font-sans border-r border-border bg-surface flex flex-col shrink-0 transition-all duration-300 ease-in-out z-10 shadow-lg ${sidebarCollapsed ? 'w-12' : 'w-52'
         }`}
     >
       <div className="flex items-center justify-between p-3 border-b border-border h-10">

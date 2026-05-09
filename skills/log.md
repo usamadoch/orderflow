@@ -461,3 +461,14 @@ Eliminated the WebSocket reconnect storm that caused rapid connect/disconnect cy
 
 ### Impact Summary
 The chart now highlights significant volume activity at specific price levels via colored circles. Teal = buy aggression (ask volume), red = sell aggression (bid volume). Bubbles work in both candle and footprint modes, providing order flow context without scanning individual footprint cells. The threshold filter keeps the chart clean — only levels that matter are shown. All settings persist across refresh.
+
+## [2026-05-09] - Bug Fix: Global Font Rendering Consistency
+
+### Fixed
+- **Root Layout Font**: Moved font variables from `body` to `html` to ensure better inheritance across all app sections, including those with absolute positioning or complex z-indexing.
+- **Direct Application**: Applied `inter.className` directly to the `body` in `layout.tsx` to guarantee `Inter` is the base font for the entire document.
+- **Explicit Fallbacks**: Added `Inter` and `JetBrains Mono` as explicit fallbacks in `tailwind.config.ts` and set a global `font-family` rule in `globals.css` using the font variables.
+- **Weight Loading**: Explicitly specified a full range of weights (400-900) for `Inter` to ensure professional-grade rendering of bold and extra-bold UI elements.
+
+### Impact Summary
+The application now consistently renders the intended `Inter` font family across the main header, sidebar, and all panel toolbars. By moving from a utility-only approach to a direct root-level application, font inheritance issues have been eliminated, providing a cohesive and professional aesthetic throughout the tool.

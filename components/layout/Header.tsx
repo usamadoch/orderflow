@@ -11,7 +11,7 @@ export function Header() {
   const setFootprintMode = useChartStore(s => s.setFootprintMode);
 
   return (
-    <header className="h-10 border-b border-border bg-surface flex items-center px-4 justify-between shrink-0 shadow-sm z-20">
+    <header className="font-sans h-10 border-b border-border bg-surface flex items-center px-4 justify-between shrink-0 shadow-sm z-20">
       <div className="flex items-center gap-6">
         <h1 className="font-extrabold text-base text-accent tracking-tighter flex items-center gap-2">
           <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
