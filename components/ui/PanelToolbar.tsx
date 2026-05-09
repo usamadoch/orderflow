@@ -208,6 +208,21 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
 
       {/* Bubble Controls */}
       <BubbleControls panelId={panelId} />
+
+      {/* Custom Profile Toggle */}
+      <div className="flex items-center gap-2 border-l border-[#1A1A1A] pl-3 h-5">
+        <button
+          onClick={() => useChartStore.getState().setDrawMode(panelId, !panel.isDrawMode)}
+          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black tracking-widest transition-all duration-150 ${
+            panel.isDrawMode
+              ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+              : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+          }`}
+          title="Toggle profile draw mode"
+        >
+          PROFILE
+        </button>
+      </div>
     </div>
   );
 }

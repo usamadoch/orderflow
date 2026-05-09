@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { PanelId, ChartMode, AbsorptionSide, BubbleSide } from '@/lib/store/chart';
+import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState } from '@/lib/store/chart';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { usePanZoom } from './usePanZoom';
@@ -15,6 +15,7 @@ import { buildProfile } from '@/lib/utils/volumeProfile';
 import { drawVolumeProfile } from './drawVolumeProfile';
 import { drawAbsorption } from './drawAbsorption';
 import { drawBubbles } from './drawBubbles';
+import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
@@ -41,11 +42,21 @@ interface ChartCanvasProps {
   bubbleMinRadius: number;
   bubbleMaxRadius: number;
   bubbleSide: BubbleSide;
+  isDrawMode: boolean;
+  customProfileRange: {
+    firstIndex: number;
+    lastIndex: number;
+    priceHigh: number;
+    priceLow: number;
+  } | null;
+  customProfileLocked: boolean;
+  isProfileSelected: boolean;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
 
 export function ChartCanvas({
+  panelId,
   candles,
   chartMode,
   footprintMode,
@@ -66,6 +77,10 @@ export function ChartCanvas({
   bubbleMinRadius,
   bubbleMaxRadius,
   bubbleSide,
+  isDrawMode,
+  customProfileRange,
+  customProfileLocked,
+  isProfileSelected,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -73,6 +88,19 @@ export function ChartCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const isRedrawScheduled = useRef(false);
+
+  // Drawing refs
+  const dragStart = useRef<{ x: number, y: number } | null>(null);
+  const dragEnd = useRef<{ x: number, y: number } | null>(null);
+  const isDragging = useRef(false);
+  const isHoveringClear = useRef(false);
+  const isHoveringLock = useRef(false);
+  const hoverZone = useRef<'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom' | null>(null);
+  const dragAnchor = useRef<{ x: number, y: number } | null>(null);
+  const profileSnapshot = useRef<PanelState['customProfileRange']>(null);
+  const isDraggingProfile = useRef(false);
+  const isDraggingResize = useRef(false);
+  const resizeEdge = useRef<'left' | 'right' | 'top' | 'bottom' | null>(null);
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
@@ -133,15 +161,22 @@ export function ChartCanvas({
 
       drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
+      // Selection Rectangle (drawn below candles)
+      drawSelectionRect(
+        ctx,
+        dragStart.current,
+        dragEnd.current,
+        customProfileRange,
+        (idx) => indexToX(idx),
+        (p) => priceToY(p),
+        currentBarWidth,
+        hoverZone.current !== null
+      );
+
       if (chartMode === 'candle') {
         drawCandles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
       } else {
         drawFootprint(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, logicalHeight, footprintMode);
-      }
-
-      // Absorption markers — drawn above candles/footprint, below volume profile
-      if (absorptionEnabled && absorptionMap.size > 0) {
-        drawAbsorption(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, absorptionMap, absorptionShowLabels, absorptionMinScore, absorptionSide);
       }
 
       // Volume bubbles — drawn above candles/footprint, below volume profile
@@ -154,11 +189,36 @@ export function ChartCanvas({
         });
       }
 
+      // 5. Absorption markers
+      if (absorptionEnabled && absorptionMap.size > 0) {
+        drawAbsorption(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, absorptionMap, absorptionShowLabels, absorptionMinScore, absorptionSide);
+      }
+
+      // 6. Custom Profile (on top of candles and other overlays)
+      if (customProfileRange) {
+        const customCandles = candles.slice(customProfileRange.firstIndex, customProfileRange.lastIndex + 1);
+        const customProfile = buildProfile(customCandles, engine, bucketSize);
+        drawCustomProfile(
+          ctx,
+          customProfileRange,
+          customProfile,
+          (idx) => indexToX(idx),
+          (p) => priceToY(p),
+          currentBarWidth,
+          bucketSize,
+          isHoveringClear.current,
+          hoverZone.current !== null,
+          customProfileLocked,
+          isProfileSelected,
+          isHoveringLock.current
+        );
+      }
+
       // Volume Profile
       const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
       const profile = buildProfile(visibleCandles, engine, bucketSize);
       if (profile) {
-        drawVolumeProfile(ctx, profile, priceToY, logicalWidth, profileWidth, priceAxisWidth, bucketSize);
+        drawVolumeProfile(ctx, profile, priceToY, logicalWidth, profileWidth, priceAxisWidth, bucketSize, !!customProfileRange);
       }
 
       drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth);
@@ -186,7 +246,7 @@ export function ChartCanvas({
           drawCrosshairPriceLabel(ctx, my, price, chartWidth, priceAxisWidth, chartHeight, precision);
 
           // Time Label
-          const index = Math.round(xToIndex(mx, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth));
+          const index = xToIndex(mx, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
           let time = 0;
           if (candles[index]) {
             time = candles[index].time;
@@ -201,7 +261,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected]);
 
   const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(
     canvasRef,
@@ -213,7 +273,8 @@ export function ChartCanvas({
     barWidthProp,
     scrollOffsetProp,
     onBarWidthChange,
-    onScrollOffsetChange
+    onScrollOffsetChange,
+    isDrawMode
   );
 
   const redrawRef = useRef(redraw);
@@ -254,6 +315,357 @@ export function ChartCanvas({
     }, 1000);
     return () => clearInterval(timer);
   }, [redraw]);
+
+  // Handle clear button interaction
+  const getClearButtonPos = useCallback(() => {
+    if (!customProfileRange || !canvasRef.current) return null;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const chartWidth = rect.width - priceAxisWidth;
+    const chartHeight = rect.height - timeAxisHeight;
+
+    const pCenter = priceCenter.current ?? 0;
+    const pRange = priceRange.current ?? 100;
+    const priceMin = pCenter - pRange / 2;
+    const priceMax = pCenter + pRange / 2;
+
+    const { lastIndex, priceHigh } = customProfileRange;
+    const x2 = calcIndexToX(lastIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+    const y1 = calcPriceToY(priceHigh, priceMin, priceMax, chartHeight);
+
+    return {
+      x: x2 + barWidth.current / 2 - 6,
+      y: y1 + 4
+    };
+  }, [customProfileRange, candles.length, priceAxisWidth, timeAxisHeight, profileWidth]);
+
+  const getLockButtonPos = useCallback(() => {
+    if (!customProfileRange || !canvasRef.current) return null;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const chartWidth = rect.width - priceAxisWidth;
+    const chartHeight = rect.height - timeAxisHeight;
+
+    const pCenter = priceCenter.current ?? 0;
+    const pRange = priceRange.current ?? 100;
+    const priceMin = pCenter - pRange / 2;
+    const priceMax = pCenter + pRange / 2;
+
+    const { lastIndex, priceHigh } = customProfileRange;
+    const x2 = calcIndexToX(lastIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+    const y1 = calcPriceToY(priceHigh, priceMin, priceMax, chartHeight);
+
+    return {
+      x: x2 + barWidth.current / 2 - 20,
+      y: y1 + 4
+    };
+  }, [customProfileRange, candles.length, priceAxisWidth, timeAxisHeight, profileWidth]);
+
+  // Drawing Interaction Logic
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onMouseDown = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Interaction Priority:
+      // 1. Draw mode
+      if (isDrawMode) {
+        // Only start if within chart area
+        if (x > canvas.width / devicePixelRatio - priceAxisWidth || y > canvas.height / devicePixelRatio - timeAxisHeight) {
+          return;
+        }
+        dragStart.current = { x, y };
+        dragEnd.current = null;
+        isDragging.current = true;
+        useChartStore.getState().setCustomProfileRange(panelId, null);
+        return;
+      }
+
+      // 2. Clear Button
+      const clearBtn = getClearButtonPos();
+      if (clearBtn) {
+        const dist = Math.sqrt((x - clearBtn.x) ** 2 + (y - clearBtn.y) ** 2);
+        if (dist < 12) {
+          useChartStore.getState().setCustomProfileRange(panelId, null);
+          redraw();
+          return;
+        }
+      }
+
+      // 3. Lock Button
+      const lockBtn = getLockButtonPos();
+      if (lockBtn) {
+        const dist = Math.sqrt((x - lockBtn.x) ** 2 + (y - lockBtn.y) ** 2);
+        if (dist < 12) {
+          const locked = useChartStore.getState().panels[panelId].customProfileLocked;
+          useChartStore.getState().setCustomProfileLocked(panelId, !locked);
+          redraw();
+          return;
+        }
+      }
+
+      // 4. Move/Resize Profile
+      if (hoverZone.current && !useChartStore.getState().panels[panelId].customProfileLocked) {
+        dragAnchor.current = { x, y };
+        profileSnapshot.current = useChartStore.getState().panels[panelId].customProfileRange;
+
+        if (hoverZone.current === 'move') {
+          isDraggingProfile.current = true;
+        } else {
+          isDraggingResize.current = true;
+          resizeEdge.current = hoverZone.current.replace('resize-', '') as any;
+        }
+        useChartStore.getState().setProfileSelected(panelId, true);
+        return;
+      }
+
+      // 5. Select Profile (if clicked inside while locked)
+      if (hoverZone.current) {
+        useChartStore.getState().setProfileSelected(panelId, true);
+        redraw();
+        return;
+      }
+
+      // 6. Click outside -> deselect profile
+      useChartStore.getState().setProfileSelected(panelId, false);
+      redraw();
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Zone Detection
+      if (!isDragging.current && !isDraggingProfile.current && !isDraggingResize.current) {
+        // Clear/Lock button hover first
+        const clearBtn = getClearButtonPos();
+        const lockBtn = getLockButtonPos();
+
+        let hoveringAction = false;
+        if (clearBtn) {
+          const dist = Math.sqrt((x - clearBtn.x) ** 2 + (y - clearBtn.y) ** 2);
+          if (dist < 12) {
+            isHoveringClear.current = true;
+            canvas.style.cursor = 'pointer';
+            hoveringAction = true;
+          } else {
+            isHoveringClear.current = false;
+          }
+        }
+        if (lockBtn) {
+          const dist = Math.sqrt((x - lockBtn.x) ** 2 + (y - lockBtn.y) ** 2);
+          if (dist < 12) {
+            isHoveringLock.current = true;
+            canvas.style.cursor = 'pointer';
+            hoveringAction = true;
+          } else {
+            isHoveringLock.current = false;
+          }
+        }
+
+        if (!hoveringAction) {
+          // Profile area detection
+          if (customProfileRange) {
+            const chartWidth = rect.width - priceAxisWidth;
+            const chartHeight = rect.height - timeAxisHeight;
+            const pCenter = priceCenter.current ?? 0;
+            const pRange = priceRange.current ?? 100;
+            const priceMin = pCenter - pRange / 2;
+            const priceMax = pCenter + pRange / 2;
+
+            const rx1 = calcIndexToX(customProfileRange.firstIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth) - barWidth.current / 2;
+            const rx2 = calcIndexToX(customProfileRange.lastIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth) + barWidth.current / 2;
+            const ry1 = calcPriceToY(customProfileRange.priceHigh, priceMin, priceMax, chartHeight);
+            const ry2 = calcPriceToY(customProfileRange.priceLow, priceMin, priceMax, chartHeight);
+
+            const minX = Math.min(rx1, rx2);
+            const maxX = Math.max(rx1, rx2);
+            const minY = Math.min(ry1, ry2);
+            const maxY = Math.max(ry1, ry2);
+
+            if (x >= minX - 6 && x <= maxX + 6 && y >= minY - 6 && y <= maxY + 6) {
+              const isLocked = useChartStore.getState().panels[panelId].customProfileLocked;
+              const isSelected = useChartStore.getState().panels[panelId].isProfileSelected;
+
+              if (isLocked) {
+                hoverZone.current = 'move'; // Still show interactive but it won't move
+                canvas.style.cursor = 'default';
+              } else {
+                // Edge detection for resize
+                if (Math.abs(x - minX) < 6) hoverZone.current = 'resize-left';
+                else if (Math.abs(x - maxX) < 6) hoverZone.current = 'resize-right';
+                else if (Math.abs(y - minY) < 6) hoverZone.current = 'resize-top';
+                else if (Math.abs(y - maxY) < 6) hoverZone.current = 'resize-bottom';
+                else hoverZone.current = 'move';
+
+                if (hoverZone.current === 'move') canvas.style.cursor = 'grab';
+                else if (hoverZone.current.includes('left') || hoverZone.current.includes('right')) canvas.style.cursor = 'ew-resize';
+                else canvas.style.cursor = 'ns-resize';
+              }
+            } else {
+              hoverZone.current = null;
+              canvas.style.cursor = isDrawMode ? 'crosshair' : 'default';
+            }
+          } else {
+            hoverZone.current = null;
+            canvas.style.cursor = isDrawMode ? 'crosshair' : 'default';
+          }
+        }
+        redraw();
+      }
+
+      // Drag Logic
+      if (isDragging.current && isDrawMode) {
+        dragEnd.current = { x, y };
+        redraw();
+      } else if (isDraggingProfile.current && dragAnchor.current && profileSnapshot.current) {
+        const deltaX = x - dragAnchor.current.x;
+        const deltaY = y - dragAnchor.current.y;
+
+        const currentBarWidth = barWidth.current;
+        const indexDelta = Math.round(deltaX / currentBarWidth);
+
+        const chartHeight = rect.height - timeAxisHeight;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+
+        const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
+        const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
+        const priceDelta = priceAtCurrent - priceAtAnchor;
+
+        const newRange = {
+          firstIndex: Math.max(0, Math.min(candles.length - 1, profileSnapshot.current.firstIndex + indexDelta)),
+          lastIndex: Math.max(0, Math.min(candles.length - 1, profileSnapshot.current.lastIndex + indexDelta)),
+          priceHigh: profileSnapshot.current.priceHigh + priceDelta,
+          priceLow: profileSnapshot.current.priceLow + priceDelta,
+        };
+
+        useChartStore.getState().setCustomProfileRange(panelId, newRange);
+        redraw();
+      } else if (isDraggingResize.current && dragAnchor.current && profileSnapshot.current) {
+        const chartWidth = rect.width - priceAxisWidth;
+        const chartHeight = rect.height - timeAxisHeight;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+
+        const updatedRange = { ...profileSnapshot.current };
+
+        if (resizeEdge.current === 'left' || resizeEdge.current === 'right') {
+          const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+          if (resizeEdge.current === 'left') updatedRange.firstIndex = index;
+          else updatedRange.lastIndex = index;
+        } else {
+          const price = yToPrice(y, priceMin, priceMax, chartHeight);
+          if (resizeEdge.current === 'top') updatedRange.priceHigh = price;
+          else updatedRange.priceLow = price;
+        }
+
+        const bucketSizeVal = useChartStore.getState().panels[panelId].bucketSize;
+        // Enforce min size
+        if (Math.abs(updatedRange.lastIndex - updatedRange.firstIndex) >= 2 &&
+          Math.abs(updatedRange.priceHigh - updatedRange.priceLow) >= bucketSizeVal) {
+          useChartStore.getState().setCustomProfileRange(panelId, updatedRange);
+          redraw();
+        }
+      }
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (isDraggingProfile.current || isDraggingResize.current) {
+        isDraggingProfile.current = false;
+        isDraggingResize.current = false;
+        dragAnchor.current = null;
+        profileSnapshot.current = null;
+        resizeEdge.current = null;
+        redraw();
+        return;
+      }
+
+      if (!isDragging.current || !isDrawMode) return;
+
+      isDragging.current = false;
+
+      if (dragStart.current && dragEnd.current) {
+        const rect = canvas.getBoundingClientRect();
+        const chartWidth = rect.width - priceAxisWidth;
+        const currentBarWidth = barWidth.current;
+        const currentScrollOffset = scrollOffset.current;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+        const chartHeight = rect.height - timeAxisHeight;
+
+        const idx1 = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+        const idx2 = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+        const p1 = yToPrice(dragStart.current.y, priceMin, priceMax, chartHeight);
+        const p2 = yToPrice(dragEnd.current.y, priceMin, priceMax, chartHeight);
+
+        const firstIndex = Math.min(idx1, idx2);
+        const lastIndex = Math.max(idx1, idx2);
+        const priceHigh = Math.max(p1, p2);
+        const priceLow = Math.min(p1, p2);
+
+        const widthPx = Math.abs(dragEnd.current.x - dragStart.current.x);
+        const heightPx = Math.abs(dragEnd.current.y - dragStart.current.y);
+
+        if (widthPx >= 5 || heightPx >= 5) {
+          useChartStore.getState().setCustomProfileRange(panelId, {
+            firstIndex,
+            lastIndex,
+            priceHigh,
+            priceLow
+          });
+          // Auto-exit draw mode after first draw
+          useChartStore.getState().setDrawMode(panelId, false);
+        }
+      }
+
+      // If user clicks without dragging while in draw mode
+      if (!dragEnd.current) {
+        dragStart.current = null;
+        dragEnd.current = null;
+        useChartStore.getState().setCustomProfileRange(panelId, null);
+        useChartStore.getState().setDrawMode(panelId, false);
+        redraw();
+      }
+
+      dragStart.current = null;
+      dragEnd.current = null;
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        dragStart.current = null;
+        dragEnd.current = null;
+        isDragging.current = false;
+        useChartStore.getState().setCustomProfileRange(panelId, null);
+        redraw();
+      }
+    };
+
+    canvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      canvas.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId]);
+
 
   return (
     <div ref={containerRef} className="w-full h-full relative bg-[#0D0D0D] overflow-hidden">

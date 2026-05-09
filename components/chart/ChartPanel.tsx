@@ -47,6 +47,10 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           bubbleMinRadius={panel.bubbleMinRadius}
           bubbleMaxRadius={panel.bubbleMaxRadius}
           bubbleSide={panel.bubbleSide}
+          isDrawMode={panel.isDrawMode}
+          customProfileRange={panel.customProfileRange}
+          customProfileLocked={panel.customProfileLocked}
+          isProfileSelected={panel.isProfileSelected}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />

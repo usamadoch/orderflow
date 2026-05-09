@@ -80,12 +80,14 @@ export function yToPrice(y: number, priceMin: number, priceMax: number, drawable
 
 export function xToIndex(
   x: number,
-  candlesLength: number,
+  candles: Candle[],
   scrollOffset: number,
   barWidth: number,
   chartWidth: number,
   profileWidth: number = 0
 ) {
+  if (candles.length === 0) return 0;
   const drawableWidth = chartWidth - profileWidth;
-  return (candlesLength - 1) + (x - drawableWidth + barWidth / 2 - scrollOffset) / barWidth;
+  const index = (candles.length - 1) + (x - drawableWidth + barWidth / 2 - scrollOffset) / barWidth;
+  return Math.max(0, Math.min(candles.length - 1, Math.round(index)));
 }

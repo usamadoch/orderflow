@@ -10,7 +10,8 @@ export function usePanZoom(
   initialBarWidth: number = 12,
   initialScrollOffset: number = 0,
   onBarWidthChange?: (v: number) => void,
-  onScrollOffsetChange?: (v: number) => void
+  onScrollOffsetChange?: (v: number) => void,
+  isDrawMode: boolean = false
 ) {
   const scrollOffset = useRef(initialScrollOffset);
   const barWidth = useRef(initialBarWidth);
@@ -44,6 +45,8 @@ export function usePanZoom(
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
+      if (isDrawMode) return;
+
       if (x > rect.width - priceAxisWidth) {
         dragMode.current = 'price';
         canvas.style.cursor = 'ns-resize';
@@ -71,7 +74,9 @@ export function usePanZoom(
 
       if (!isDragging.current) {
         // Update cursor icon based on region
-        if (x > rect.width - priceAxisWidth) {
+        if (isDrawMode) {
+          canvas.style.cursor = 'crosshair';
+        } else if (x > rect.width - priceAxisWidth) {
           canvas.style.cursor = 'ns-resize';
         } else if (y > rect.height - timeAxisHeight) {
           canvas.style.cursor = 'ew-resize';
@@ -82,6 +87,8 @@ export function usePanZoom(
         return;
       }
       
+      if (isDrawMode) return;
+
       const deltaX = e.clientX - lastX.current;
       const deltaY = e.clientY - lastY.current;
       lastX.current = e.clientX;
@@ -188,7 +195,7 @@ export function usePanZoom(
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange]);
+  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange, isDrawMode]);
 
   return { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver };
 }

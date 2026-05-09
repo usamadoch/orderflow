@@ -10,9 +10,13 @@ export function drawVolumeProfile(
   canvasWidth: number,
   profileWidth: number,
   priceAxisWidth: number,
-  bucketSize: number
+  bucketSize: number,
+  isCustomActive: boolean = false
 ) {
   const chartRight = canvasWidth - priceAxisWidth;
+  const barOpacity = isCustomActive ? 0.2 : 0.4;
+  const neutralOpacity = isCustomActive ? 0.15 : 0.3;
+  const lineOpacity = isCustomActive ? 0.3 : 1;
 
   // ── Step 1: Profile Bars ──
   for (const row of profile.rows) {
@@ -33,15 +37,15 @@ export function drawVolumeProfile(
       const bidWidth = barWidth - askWidth;
 
       // Ask portion (green)
-      ctx.fillStyle = 'rgba(38, 166, 154, 0.4)';
+      ctx.fillStyle = `rgba(38, 166, 154, ${barOpacity})`;
       ctx.fillRect(barX, yTop, askWidth, rowHeight);
 
       // Bid portion (red)
-      ctx.fillStyle = 'rgba(239, 83, 80, 0.4)';
+      ctx.fillStyle = `rgba(239, 83, 80, ${barOpacity})`;
       ctx.fillRect(barX + askWidth, yTop, bidWidth, rowHeight);
     } else {
       // Fallback — neutral gray (no footprint data)
-      ctx.fillStyle = 'rgba(138, 138, 138, 0.3)';
+      ctx.fillStyle = `rgba(138, 138, 138, ${neutralOpacity})`;
       ctx.fillRect(barX, yTop, barWidth, rowHeight);
     }
   }
@@ -50,6 +54,7 @@ export function drawVolumeProfile(
   const pocY = priceToY(profile.poc + bucketSize / 2);
 
   ctx.save();
+  ctx.globalAlpha = lineOpacity;
   ctx.strokeStyle = '#F0B90B';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
@@ -64,6 +69,7 @@ export function drawVolumeProfile(
   const vaLowY = priceToY(profile.vaLow);
 
   ctx.save();
+  ctx.globalAlpha = lineOpacity;
   ctx.strokeStyle = '#3D7EFF';
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 4]);

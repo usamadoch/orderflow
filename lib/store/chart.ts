@@ -36,6 +36,15 @@ export interface PanelState {
   bubbleMinRadius: number;
   bubbleMaxRadius: number;
   bubbleSide: BubbleSide;
+  isDrawMode: boolean;
+  customProfileRange: {
+    firstIndex: number;
+    lastIndex: number;
+    priceHigh: number;
+    priceLow: number;
+  } | null;
+  customProfileLocked: boolean;
+  isProfileSelected: boolean;
 }
 
 interface ChartState {
@@ -75,6 +84,10 @@ interface ChartState {
   setBubbleMinRadius: (panelId: PanelId, radius: number) => void;
   setBubbleMaxRadius: (panelId: PanelId, radius: number) => void;
   setBubbleSide: (panelId: PanelId, side: BubbleSide) => void;
+  setDrawMode: (panelId: PanelId, enabled: boolean) => void;
+  setCustomProfileRange: (panelId: PanelId, range: PanelState['customProfileRange']) => void;
+  setCustomProfileLocked: (panelId: PanelId, locked: boolean) => void;
+  setProfileSelected: (panelId: PanelId, selected: boolean) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -109,6 +122,10 @@ function createDefaultPanel(id: PanelId): PanelState {
     bubbleMinRadius: 4,
     bubbleMaxRadius: 20,
     bubbleSide: 'both' as BubbleSide,
+    isDrawMode: false,
+    customProfileRange: null,
+    customProfileLocked: false,
+    isProfileSelected: false,
   };
 }
 
@@ -204,6 +221,18 @@ export const useChartStore = create<ChartState>()(
       setBubbleSide: (panelId, bubbleSide) =>
         set((state) => updatePanel(state, panelId, { bubbleSide })),
 
+      setDrawMode: (panelId, isDrawMode) =>
+        set((state) => updatePanel(state, panelId, { isDrawMode })),
+
+      setCustomProfileRange: (panelId, customProfileRange) =>
+        set((state) => updatePanel(state, panelId, { customProfileRange, isProfileSelected: !!customProfileRange })),
+
+      setCustomProfileLocked: (panelId, customProfileLocked) =>
+        set((state) => updatePanel(state, panelId, { customProfileLocked })),
+
+      setProfileSelected: (panelId, isProfileSelected) =>
+        set((state) => updatePanel(state, panelId, { isProfileSelected })),
+
       pushAllCandles: (panelId, candles) =>
         set((state) => updatePanel(state, panelId, { candles: candles.slice(-500) })),
 
@@ -263,6 +292,10 @@ export const useChartStore = create<ChartState>()(
             bubbleMinRadius: p.bubbleMinRadius ?? 4,
             bubbleMaxRadius: p.bubbleMaxRadius ?? 20,
             bubbleSide: p.bubbleSide || 'both',
+            isDrawMode: p.isDrawMode ?? false,
+            customProfileRange: p.customProfileRange ?? null,
+            customProfileLocked: p.customProfileLocked ?? false,
+            isProfileSelected: false,
           };
         };
         if (persisted.panels) {
@@ -309,6 +342,9 @@ export const useChartStore = create<ChartState>()(
             bubbleMinRadius: state.panels.left.bubbleMinRadius,
             bubbleMaxRadius: state.panels.left.bubbleMaxRadius,
             bubbleSide: state.panels.left.bubbleSide,
+            isDrawMode: state.panels.left.isDrawMode,
+            customProfileRange: state.panels.left.customProfileRange,
+            customProfileLocked: state.panels.left.customProfileLocked,
           },
           right: {
             pair: state.panels.right.pair,
@@ -326,6 +362,9 @@ export const useChartStore = create<ChartState>()(
             bubbleMinRadius: state.panels.right.bubbleMinRadius,
             bubbleMaxRadius: state.panels.right.bubbleMaxRadius,
             bubbleSide: state.panels.right.bubbleSide,
+            isDrawMode: state.panels.right.isDrawMode,
+            customProfileRange: state.panels.right.customProfileRange,
+            customProfileLocked: state.panels.right.customProfileLocked,
           },
         },
         tickSize: state.tickSize,

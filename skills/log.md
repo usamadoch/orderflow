@@ -472,3 +472,83 @@ The chart now highlights significant volume activity at specific price levels vi
 
 ### Impact Summary
 The application now consistently renders the intended `Inter` font family across the main header, sidebar, and all panel toolbars. By moving from a utility-only approach to a direct root-level application, font inheritance issues have been eliminated, providing a cohesive and professional aesthetic throughout the tool.
+
+## [2026-05-09] - Phase 12: Custom Range Profile (Task 1)
+
+
+### Added
+- **Drawing Mode**: Implemented "Profile Draw Mode" for the chart. When active, users can click and drag to draw a selection rectangle on the canvas.
+- **Components**: Created `components/chart/drawSelectionRect.ts` for rendering a subtle, dashed blue rectangle overlay.
+- **UI**: Added a `PROFILE` toggle button to the `PanelToolbar` with dedicated active/inactive styling.
+- **State Management**: Added `isDrawMode` and `setDrawMode` to `PanelState` in `lib/store/chart.ts`.
+- **Interactions**: 
+  - Mouse down/move/up logic in `ChartCanvas.tsx` using refs to handle smooth drag rendering without React state overhead.
+  - `Escape` key shortcut to clear the current selection.
+  - Automatic clearing of the selection when toggling draw mode off.
+  - Clicking without dragging clears the selection.
+
+### Changed
+- **usePanZoom**: Updated to skip panning, vertical zoom, and horizontal zoom while `isDrawMode` is active. Enforces a `crosshair` cursor in draw mode.
+- **ChartCanvas**: Integrated `drawSelectionRect` into the redraw loop, positioned between the grid and candles.
+- **ChartPanel**: Propagates `isDrawMode` state to the canvas renderer.
+
+### Impact Summary
+Phase 1 of the Custom Range Profile feature is complete. Users can now enter a dedicated drawing mode and select a range on the chart with a visual rectangle. This provides the foundational interaction layer for upcoming calculation and coordinate-anchoring tasks.
+
+## [2026-05-09] - Phase 12: Custom Range Profile (Task 2)
+
+### Added
+- **Coordinate Anchoring**: Converted the custom profile selection rectangle from pixel-based coordinates to chart-based coordinates (index and price).
+- **Inverse Coordinates**: Refined `xToIndex` and `yToPrice` in `useCoordinates.ts` to support accurate pixel-to-data conversion with rounding and clamping.
+- **State Management**: Added `customProfileRange` to `PanelState` in `lib/store/chart.ts` to persist the anchored selection.
+
+### Changed
+- **Interaction Logic**: Updated `ChartCanvas.tsx` to convert the selection rectangle into chart coordinates on mouse release. 
+- **Drawing Logic**: Updated `drawSelectionRect.ts` to support re-projecting the anchored `customProfileRange` back into pixel coordinates on every frame, ensuring the rectangle stays locked to the candles and price levels during panning and zooming.
+- **Persistence**: Finalized ranges now persist across sessions and are correctly re-rendered upon reload.
+
+### Impact Summary
+The selection rectangle is now fully "anchored" to the chart data. It no longer drifts when the user pans or zooms, providing a stable visual reference for the custom volume profile calculation in Phase 3.
+
+## [2026-05-09] - Phase 12: Custom Range Profile (Task 3)
+
+### Added
+- **Custom Volume Profile**: Implemented volume profile calculation and rendering specifically for the user-selected chart range.
+- **Interactive UI**:
+  - Added a `✕ CLEAR` button inside the selection rectangle for easy removal.
+  - Added a `CUSTOM` label to identify the range-based profile.
+  - Hover detection for the clear button (button brightens and cursor changes to pointer).
+- **Profile Rendering**:
+  - Bars render along the right inner edge of the selection, growing leftward.
+  - POC and VA High/Low lines are scoped specifically to the selection width.
+  - Higher opacity (`0.5`) for custom profile bars to make them stand out.
+
+### Changed
+- **Visual Hierarchy**: Updated the draw stack to render the selection background behind candles and the profile/UI on top of candles.
+- **Default Profile Dimming**: When a custom profile is active, the main volume profile and its POC/VA lines render at reduced opacity to minimize visual competition.
+- **Interaction Flow**: Clearing the custom profile automatically exits drawing mode and restores the default profile's prominence.
+
+The Custom Range Profile feature is now complete. Traders can define specific market segments to analyze localized volume distribution without losing the context of the overall session profile.
+
+## [2026-05-09] - Phase 12: Custom Range Profile (Task 4)
+
+### Added
+- **Repositioning & Resizing**: Implemented drag-to-move and edge-resize functionality for the custom profile rectangle.
+- **Resize Handles**: Added visual handle indicators on all four edges when the profile is selected and hovered.
+- **Lock State**: Added a `customProfileLocked` state to prevent accidental movement/resizing, with a toggleable 🔒/🔓 button and "LOCKED" indicator.
+- **Selection State**: Added `isProfileSelected` to distinguish between active and inactive profiles on the chart.
+- **Hover Feedback**: Increased background and border opacity when hovering over the profile area.
+
+### Changed
+- **Bar Direction**: Flipped volume bars to grow from left-to-right (anchored to the left edge) for better visual balance.
+- **UX Flow**:
+  - Auto-exit "Draw Mode" after completing the first profile draw.
+  - Decoupled `customProfileRange` from `isDrawMode`, allowing the profile to persist even when the draw tool is deactivated.
+  - Border style now changes from solid (selected) to dashed (unselected).
+- **Interaction Priority**: Refined `onMouseDown` logic to prioritize profile buttons (lock/clear) and dragging over global chart panning.
+
+### Impact Summary
+The Custom Range Profile is now a fully interactive tool. Users can not only draw ranges but also fine-tune them through resizing, move them to different time segments, and lock them in place once satisfied. This completes the feature with a premium, professional UX.
+
+
+
