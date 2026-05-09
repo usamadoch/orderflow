@@ -11,6 +11,7 @@ export class BinanceAdapter implements FeedAdapter {
   private reconnectAttempts: number = 0;
   private shouldReconnect: boolean = true;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private connectPending: boolean = false;
   private restBase = 'https://api.binance.com/api/v3';
 
   async fetchHistory(pair: string, timeframe: string, limit: number = 500): Promise<Candle[]> {
@@ -43,22 +44,37 @@ export class BinanceAdapter implements FeedAdapter {
     this.currentTimeframe = timeframe;
     this.candleCb = cb;
     this.shouldReconnect = true;
-    
-    // Always connect to ensure the new candle stream/timeframe is picked up
-    this.connect();
+    this.deferConnect();
   }
 
   subscribeTrades(pair: string, cb: (trade: Trade) => void): void {
     this.tradeCb = cb;
-    
-    // Always connect to ensure the trade stream is added to the combined streams
-    this.currentPair = pair.toLowerCase();
     this.shouldReconnect = true;
-    this.connect();
+    this.deferConnect();
+  }
+
+  /**
+   * Coalesce rapid subscribe calls into a single connect via microtask.
+   * This prevents the second subscribe from tearing down a socket
+   * that the first subscribe just opened.
+   */
+  private deferConnect(): void {
+    if (this.connectPending) return;
+    this.connectPending = true;
+    queueMicrotask(() => {
+      this.connectPending = false;
+      this.connect();
+    });
   }
 
   private connect(): void {
+    // Detach handlers from old socket BEFORE closing to prevent
+    // ghost onclose/onerror events from triggering reconnects
     if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
@@ -89,11 +105,15 @@ export class BinanceAdapter implements FeedAdapter {
     };
 
     this.ws.onerror = (error) => {
-      console.error(`[BinanceAdapter] WebSocket error:`, error);
+      // Only log if the socket isn't already being replaced
+      if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
+        console.error(`[BinanceAdapter] WebSocket error:`, error);
+      }
     };
 
-    this.ws.onclose = () => {
-      if (this.shouldReconnect) {
+    this.ws.onclose = (event) => {
+      // code 1000 = normal close (we called .close()), don't reconnect
+      if (this.shouldReconnect && event.code !== 1000) {
         this.scheduleReconnect();
       }
     };
@@ -152,11 +172,16 @@ export class BinanceAdapter implements FeedAdapter {
 
   disconnect(): void {
     this.shouldReconnect = false;
+    this.connectPending = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }

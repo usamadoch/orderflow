@@ -25,6 +25,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, 12px font)
 │   │   ├── drawPriceLine.ts  # Live price badge with countdown and direction-color
 │   │   ├── drawCrosshair.ts  # TradingView-style crosshair with axis labels
+│   │   ├── drawAbsorption.ts # Absorption markers (minor/strong/extreme), glow, labels
 │   │   └── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
 │   ├── layout/               # General layout components
 │   │   ├── Header.tsx        # Top toolbar — logo, layout toggle, connection status
@@ -43,12 +44,14 @@ A personal, minimal order flow charting tool for learning market microstructure.
 ├── lib/                      # Business logic, state, and utilities
 │   ├── aggregation/          # Trade aggregation logic
 │   │   └── engine.ts         # AggregationEngine (Real-time Trade Aggregation)
+│   ├── absorption/           # Absorption detection system
+│   │   └── engine.ts         # scoreCandle, buildAbsorptionMap, scoreLatestCandle (Signals 1-3)
 │   ├── feeds/                # Data adapters for WebSockets & REST
 │   │   ├── adapter.ts        # FeedAdapter interface (History + Live + clone())
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # Panel-scoped state (PanelState × 2), layoutMode, splitRatio, persist v3
+│   │   └── chart.ts          # Panel-scoped state (PanelState × 2), absorption settings, persist v5
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions
@@ -59,6 +62,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 ├── types/                    # TypeScript interfaces
 │   ├── candle.ts             # OHLCV definitions
 │   ├── footprint.ts          # Footprint data structures & FootprintMode ('bid-ask' | 'delta')
+│   ├── absorption.ts         # AbsorptionResult, AbsorptionDirection, AbsorptionRank
 │   └── trade.ts              # Individual trade tick definitions
 │
 ├── tailwind.config.ts        # Design system constraints and tokens

@@ -391,11 +391,51 @@ The dual panel layout is now production-quality. Layout mode persists across ref
 ### Impact Summary
 Traders can now switch between detailed bid/ask volume breakdown and a high-level delta pressure visualization. Delta mode provides a cleaner, "volume profile" style view of aggressive buying and selling pressure within each candle, making it significantly easier to identify market imbalances at a glance.
 
+## [2026-05-08] - Feature: Absorption Detection System (Signals 1–3)
+
+### Added
+- **Types**: Created `types/absorption.ts` with `AbsorptionResult`, `AbsorptionDirection`, `AbsorptionRank` interfaces for structured detection output.
+- **Detection Engine**: Implemented `lib/absorption/engine.ts` with three scoring functions:
+  - **Signal 1 — Delta Extremity** (max 25 pts): Compares candle delta against a 20-candle rolling average. Flags extreme, high, or elevated delta ratios.
+  - **Signal 2 — Volume Extremity** (max 15 pts): Compares candle volume against the rolling average. Confirms meaningful participant involvement.
+  - **Signal 3 — Poor Price Progression** (max 30 pts): Checks body-to-range ratio (tight body = indecision), wick rejection (directional), and price-against-aggressor movement.
+- **Map Builder**: Added `buildAbsorptionMap` for initial full-scan and `scoreLatestCandle` for incremental single-candle scoring.
+- **Canvas Renderer**: Created `components/chart/drawAbsorption.ts` rendering markers with three visual tiers:
+  - Minor (40–60): small circle, half opacity, no label.
+  - Strong (60–80): larger circle, `ABS` label.
+  - Extreme (80+): largest circle, glow effect, `ABS <score>` label.
+  - Provisional (live candle): dashed stroke, reduced opacity.
+- **State Management**: Added `absorptionEnabled`, `absorptionMinScore`, `absorptionSide`, `absorptionShowLabels`, and `absorptionMap` to `PanelState` in `lib/store/chart.ts`. Settings are persisted (v5); map is session-only.
+
+### Changed
+- **FeedProvider**: Wired absorption lifecycle — builds map after history load, scores incrementally on candle close, re-scores provisional results every 100ms during live trading.
+- **ChartCanvas**: Integrated `drawAbsorption` into the render loop between candles/footprint and volume profile, matching the spec draw order.
+- **ChartPanel**: Passes absorption props through to ChartCanvas.
+- **Store Migration**: Bumped persist version 4 → 5 with migration that initializes absorption defaults for existing users.
+
+### Impact Summary
+The application now automatically detects candles where aggressive order flow failed to move price — a key absorption signal. Markers appear on the chart scaled by severity (minor/strong/extreme) with direction-aware positioning (above or below candles). The detection runs on Signals 1–3 (delta extremity, volume extremity, poor price progression); Signals 4 (imbalance clusters) and 5 (repeated defense) are stubbed for future implementation.
+
 ## [2026-05-09] - Bug Fix: FeedProvider TypeError
 
 ### Fixed
-- **State Rehydration**: Fixed a bug in `lib/store/chart.ts` where the `zustand/persist` middleware's shallow merge was wiping out non-persisted fields (`candles`, `trades`) of the `PanelState` upon page refresh. Added a custom deep-merge function to the `persist` configuration to preserve defaults.
+- **State Rehydration**: Fixed a critical bug in `lib/store/chart.ts` where the `zustand/persist` middleware's shallow merge was wiping out non-persisted fields (`candles`, `trades`, `absorptionMap`) of the `PanelState` upon page refresh. Added a custom deep-merge function to the `persist` configuration to preserve defaults.
 - **Runtime Error**: Resolved `TypeError: Cannot read properties of undefined (reading 'forEach')` in `components/FeedProvider.tsx` by adding defensive null checks (defaulting to empty arrays) for the `candles` array.
 
 ### Impact Summary
-Resolved a runtime crash that occurred when users refreshed the page or changed bucket sizes.
+Resolved a common runtime crash that occurred when users refreshed the page or changed bucket sizes. The application is now significantly more stable during state rehydration and initialization phases.
+
+## [2026-05-09] - Bug Fix: WebSocket Reconnect Storm
+
+### Fixed
+- **Reconnect Loop**: Fixed an infinite reconnect cycle in `lib/feeds/binance.ts` caused by `subscribeCandles()` and `subscribeTrades()` both calling `connect()` independently. The second call would tear down the socket just opened by the first (still in `CONNECTING` state), firing `onclose` → `scheduleReconnect` → loop.
+- **"Ping received after close"**: Fixed by detaching all event handlers (`onopen`, `onmessage`, `onerror`, `onclose`) from old WebSocket instances before closing them, preventing ghost events from firing on replaced sockets.
+
+### Changed
+- **Connection Coalescing**: Added `deferConnect()` using `queueMicrotask()` to batch rapid subscribe calls into a single WebSocket connection. Multiple `subscribe*()` calls within the same microtask tick now result in exactly one `connect()`.
+- **Close Code Guard**: `onclose` handler now checks `event.code !== 1000` (normal closure) to avoid reconnecting when the adapter intentionally closes a socket.
+- **Error Filtering**: `onerror` only logs when the socket isn't already in `CLOSED` state, eliminating noise from replaced connections.
+- **Clean Disconnect**: `disconnect()` now also detaches all handlers and clears `connectPending` flag.
+
+### Impact Summary
+Eliminated the WebSocket reconnect storm that caused rapid connect/disconnect cycles on startup and pair/timeframe changes. The adapter now establishes a single stable connection per subscription change.
