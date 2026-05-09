@@ -37,6 +37,11 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           footprintTrigger={panel.footprintTrigger}
           isLoadingHistory={panel.isLoadingHistory}
           engine={engine}
+          absorptionEnabled={panel.absorptionEnabled}
+          absorptionMinScore={panel.absorptionMinScore}
+          absorptionSide={panel.absorptionSide}
+          absorptionShowLabels={panel.absorptionShowLabels}
+          absorptionMap={panel.absorptionMap}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />

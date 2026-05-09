@@ -3,10 +3,12 @@ import { persist } from 'zustand/middleware';
 import { Candle } from '../../types/candle';
 import { Trade } from '../../types/trade';
 import { FootprintMode } from '../../types/footprint';
+import { AbsorptionResult } from '../../types/absorption';
 
 export type ChartMode = 'candle' | 'footprint';
 export type PanelId = 'left' | 'right';
 export type LayoutMode = 'single' | 'dual';
+export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 
 export interface PanelState {
   id: PanelId;
@@ -22,6 +24,11 @@ export interface PanelState {
   connected: boolean;
   isLoadingHistory: boolean;
   footprintTrigger: number;
+  absorptionEnabled: boolean;
+  absorptionMinScore: number;
+  absorptionSide: AbsorptionSide;
+  absorptionShowLabels: boolean;
+  absorptionMap: Map<number, AbsorptionResult>;
 }
 
 interface ChartState {
@@ -51,6 +58,11 @@ interface ChartState {
   pushTrade: (panelId: PanelId, trade: Trade) => void;
   pushAllCandles: (panelId: PanelId, candles: Candle[]) => void;
   triggerFootprintRedraw: (panelId: PanelId) => void;
+  setAbsorptionEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setAbsorptionMinScore: (panelId: PanelId, score: number) => void;
+  setAbsorptionSide: (panelId: PanelId, side: AbsorptionSide) => void;
+  setAbsorptionShowLabels: (panelId: PanelId, show: boolean) => void;
+  setAbsorptionMap: (panelId: PanelId, map: Map<number, AbsorptionResult>) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -75,6 +87,11 @@ function createDefaultPanel(id: PanelId): PanelState {
     connected: false,
     isLoadingHistory: false,
     footprintTrigger: 0,
+    absorptionEnabled: true,
+    absorptionMinScore: 50,
+    absorptionSide: 'both' as AbsorptionSide,
+    absorptionShowLabels: true,
+    absorptionMap: new Map(),
   };
 }
 
@@ -134,6 +151,21 @@ export const useChartStore = create<ChartState>()(
       triggerFootprintRedraw: (panelId) =>
         set((state) => updatePanel(state, panelId, { footprintTrigger: Date.now() })),
 
+      setAbsorptionEnabled: (panelId, absorptionEnabled) =>
+        set((state) => updatePanel(state, panelId, { absorptionEnabled })),
+
+      setAbsorptionMinScore: (panelId, absorptionMinScore) =>
+        set((state) => updatePanel(state, panelId, { absorptionMinScore: Math.max(0, Math.min(100, absorptionMinScore)) })),
+
+      setAbsorptionSide: (panelId, absorptionSide) =>
+        set((state) => updatePanel(state, panelId, { absorptionSide })),
+
+      setAbsorptionShowLabels: (panelId, absorptionShowLabels) =>
+        set((state) => updatePanel(state, panelId, { absorptionShowLabels })),
+
+      setAbsorptionMap: (panelId, absorptionMap) =>
+        set((state) => updatePanel(state, panelId, { absorptionMap })),
+
       pushAllCandles: (panelId, candles) =>
         set((state) => updatePanel(state, panelId, { candles: candles.slice(-500) })),
 
@@ -171,26 +203,32 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 4,
+      version: 5,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
           // Clear stale v1/v2 data — return fresh defaults
           return {};
         }
-        if (version === 3) {
-          // Ensure footprintMode is initialized
-          const update = (p: any) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ensurePanel = (p: any) => {
+          if (!p) return p;
+          return {
             ...p,
-            footprintMode: p.footprintMode || 'bid-ask'
-          });
-          if (persisted.panels) {
-            if (persisted.panels.left) persisted.panels.left = update(persisted.panels.left);
-            if (persisted.panels.right) persisted.panels.right = update(persisted.panels.right);
-          }
+            footprintMode: p.footprintMode || 'bid-ask',
+            absorptionEnabled: p.absorptionEnabled ?? true,
+            absorptionMinScore: p.absorptionMinScore ?? 50,
+            absorptionSide: p.absorptionSide || 'both',
+            absorptionShowLabels: p.absorptionShowLabels ?? true,
+          };
+        };
+        if (persisted.panels) {
+          if (persisted.panels.left) persisted.panels.left = ensurePanel(persisted.panels.left);
+          if (persisted.panels.right) persisted.panels.right = ensurePanel(persisted.panels.right);
         }
         return persisted;
       },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       merge: (persistedState: any, currentState: ChartState) => {
         if (!persistedState) return currentState;
         return {
@@ -219,6 +257,10 @@ export const useChartStore = create<ChartState>()(
             footprintMode: state.panels.left.footprintMode,
             bucketSize: state.panels.left.bucketSize,
             barWidth: state.panels.left.barWidth,
+            absorptionEnabled: state.panels.left.absorptionEnabled,
+            absorptionMinScore: state.panels.left.absorptionMinScore,
+            absorptionSide: state.panels.left.absorptionSide,
+            absorptionShowLabels: state.panels.left.absorptionShowLabels,
           },
           right: {
             pair: state.panels.right.pair,
@@ -227,6 +269,10 @@ export const useChartStore = create<ChartState>()(
             footprintMode: state.panels.right.footprintMode,
             bucketSize: state.panels.right.bucketSize,
             barWidth: state.panels.right.barWidth,
+            absorptionEnabled: state.panels.right.absorptionEnabled,
+            absorptionMinScore: state.panels.right.absorptionMinScore,
+            absorptionSide: state.panels.right.absorptionSide,
+            absorptionShowLabels: state.panels.right.absorptionShowLabels,
           },
         },
         tickSize: state.tickSize,

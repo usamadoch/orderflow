@@ -72,7 +72,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)
-- **State Management:** Zustand (panel-scoped, persisted to localStorage v2)
+- **State Management:** Zustand (panel-scoped, persisted to localStorage v5)
 - **Data Layer:** Client-side WebSockets via `FeedAdapter` pattern (one per panel)
 - **Charting:** Custom HTML5 Canvas (Single Canvas Architecture per panel)
 - **Layout:** Single or Dual panel mode with independent pair/timeframe/mode per panel
