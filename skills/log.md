@@ -390,3 +390,12 @@ The dual panel layout is now production-quality. Layout mode persists across ref
 
 ### Impact Summary
 Traders can now switch between detailed bid/ask volume breakdown and a high-level delta pressure visualization. Delta mode provides a cleaner, "volume profile" style view of aggressive buying and selling pressure within each candle, making it significantly easier to identify market imbalances at a glance.
+
+## [2026-05-09] - Bug Fix: FeedProvider TypeError
+
+### Fixed
+- **State Rehydration**: Fixed a bug in `lib/store/chart.ts` where the `zustand/persist` middleware's shallow merge was wiping out non-persisted fields (`candles`, `trades`) of the `PanelState` upon page refresh. Added a custom deep-merge function to the `persist` configuration to preserve defaults.
+- **Runtime Error**: Resolved `TypeError: Cannot read properties of undefined (reading 'forEach')` in `components/FeedProvider.tsx` by adding defensive null checks (defaulting to empty arrays) for the `candles` array.
+
+### Impact Summary
+Resolved a runtime crash that occurred when users refreshed the page or changed bucket sizes.

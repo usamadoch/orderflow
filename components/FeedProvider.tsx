@@ -46,7 +46,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   // Handle engine bucket size updates without reconnecting socket
   useEffect(() => {
     engineRef.current.reset(bucketSize);
-    const currentCandles = useChartStore.getState().panels[panelId].candles;
+    const currentCandles = useChartStore.getState().panels[panelId].candles || [];
     currentCandles.forEach(c => engineRef.current.ingestCandle(c));
     triggerFootprintRedraw(panelId);
   }, [bucketSize, triggerFootprintRedraw, panelId]);

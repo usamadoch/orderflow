@@ -191,6 +191,23 @@ export const useChartStore = create<ChartState>()(
         }
         return persisted;
       },
+      merge: (persistedState: any, currentState: ChartState) => {
+        if (!persistedState) return currentState;
+        return {
+          ...currentState,
+          ...persistedState,
+          panels: {
+            left: {
+              ...currentState.panels.left,
+              ...(persistedState.panels?.left || {}),
+            },
+            right: {
+              ...currentState.panels.right,
+              ...(persistedState.panels?.right || {}),
+            },
+          },
+        };
+      },
       partialize: (state) => ({
         layoutMode: state.layoutMode,
         splitRatio: state.splitRatio,
