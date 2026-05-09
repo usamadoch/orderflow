@@ -42,6 +42,11 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           absorptionSide={panel.absorptionSide}
           absorptionShowLabels={panel.absorptionShowLabels}
           absorptionMap={panel.absorptionMap}
+          bubblesEnabled={panel.bubblesEnabled}
+          bubbleThreshold={panel.bubbleThreshold}
+          bubbleMinRadius={panel.bubbleMinRadius}
+          bubbleMaxRadius={panel.bubbleMaxRadius}
+          bubbleSide={panel.bubbleSide}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />

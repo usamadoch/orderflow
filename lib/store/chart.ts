@@ -4,11 +4,13 @@ import { Candle } from '../../types/candle';
 import { Trade } from '../../types/trade';
 import { FootprintMode } from '../../types/footprint';
 import { AbsorptionResult } from '../../types/absorption';
+import { BubbleSide } from '../../components/chart/drawBubbles';
 
 export type ChartMode = 'candle' | 'footprint';
 export type PanelId = 'left' | 'right';
 export type LayoutMode = 'single' | 'dual';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
+export type { BubbleSide };
 
 export interface PanelState {
   id: PanelId;
@@ -29,6 +31,11 @@ export interface PanelState {
   absorptionSide: AbsorptionSide;
   absorptionShowLabels: boolean;
   absorptionMap: Map<number, AbsorptionResult>;
+  bubblesEnabled: boolean;
+  bubbleThreshold: number;
+  bubbleMinRadius: number;
+  bubbleMaxRadius: number;
+  bubbleSide: BubbleSide;
 }
 
 interface ChartState {
@@ -63,6 +70,11 @@ interface ChartState {
   setAbsorptionSide: (panelId: PanelId, side: AbsorptionSide) => void;
   setAbsorptionShowLabels: (panelId: PanelId, show: boolean) => void;
   setAbsorptionMap: (panelId: PanelId, map: Map<number, AbsorptionResult>) => void;
+  setBubblesEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setBubbleThreshold: (panelId: PanelId, threshold: number) => void;
+  setBubbleMinRadius: (panelId: PanelId, radius: number) => void;
+  setBubbleMaxRadius: (panelId: PanelId, radius: number) => void;
+  setBubbleSide: (panelId: PanelId, side: BubbleSide) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -92,6 +104,11 @@ function createDefaultPanel(id: PanelId): PanelState {
     absorptionSide: 'both' as AbsorptionSide,
     absorptionShowLabels: true,
     absorptionMap: new Map(),
+    bubblesEnabled: true,
+    bubbleThreshold: 50,
+    bubbleMinRadius: 4,
+    bubbleMaxRadius: 20,
+    bubbleSide: 'both' as BubbleSide,
   };
 }
 
@@ -166,6 +183,27 @@ export const useChartStore = create<ChartState>()(
       setAbsorptionMap: (panelId, absorptionMap) =>
         set((state) => updatePanel(state, panelId, { absorptionMap })),
 
+      setBubblesEnabled: (panelId, bubblesEnabled) =>
+        set((state) => updatePanel(state, panelId, { bubblesEnabled })),
+
+      setBubbleThreshold: (panelId, bubbleThreshold) =>
+        set((state) => updatePanel(state, panelId, { bubbleThreshold: Math.max(1, bubbleThreshold) })),
+
+      setBubbleMinRadius: (panelId, bubbleMinRadius) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, { bubbleMinRadius: Math.min(bubbleMinRadius, panel.bubbleMaxRadius - 1) });
+        }),
+
+      setBubbleMaxRadius: (panelId, bubbleMaxRadius) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, { bubbleMaxRadius: Math.max(bubbleMaxRadius, panel.bubbleMinRadius + 1) });
+        }),
+
+      setBubbleSide: (panelId, bubbleSide) =>
+        set((state) => updatePanel(state, panelId, { bubbleSide })),
+
       pushAllCandles: (panelId, candles) =>
         set((state) => updatePanel(state, panelId, { candles: candles.slice(-500) })),
 
@@ -203,7 +241,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 5,
+      version: 6,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -220,6 +258,11 @@ export const useChartStore = create<ChartState>()(
             absorptionMinScore: p.absorptionMinScore ?? 50,
             absorptionSide: p.absorptionSide || 'both',
             absorptionShowLabels: p.absorptionShowLabels ?? true,
+            bubblesEnabled: p.bubblesEnabled ?? true,
+            bubbleThreshold: p.bubbleThreshold ?? 50,
+            bubbleMinRadius: p.bubbleMinRadius ?? 4,
+            bubbleMaxRadius: p.bubbleMaxRadius ?? 20,
+            bubbleSide: p.bubbleSide || 'both',
           };
         };
         if (persisted.panels) {
@@ -261,6 +304,11 @@ export const useChartStore = create<ChartState>()(
             absorptionMinScore: state.panels.left.absorptionMinScore,
             absorptionSide: state.panels.left.absorptionSide,
             absorptionShowLabels: state.panels.left.absorptionShowLabels,
+            bubblesEnabled: state.panels.left.bubblesEnabled,
+            bubbleThreshold: state.panels.left.bubbleThreshold,
+            bubbleMinRadius: state.panels.left.bubbleMinRadius,
+            bubbleMaxRadius: state.panels.left.bubbleMaxRadius,
+            bubbleSide: state.panels.left.bubbleSide,
           },
           right: {
             pair: state.panels.right.pair,
@@ -273,6 +321,11 @@ export const useChartStore = create<ChartState>()(
             absorptionMinScore: state.panels.right.absorptionMinScore,
             absorptionSide: state.panels.right.absorptionSide,
             absorptionShowLabels: state.panels.right.absorptionShowLabels,
+            bubblesEnabled: state.panels.right.bubblesEnabled,
+            bubbleThreshold: state.panels.right.bubbleThreshold,
+            bubbleMinRadius: state.panels.right.bubbleMinRadius,
+            bubbleMaxRadius: state.panels.right.bubbleMaxRadius,
+            bubbleSide: state.panels.right.bubbleSide,
           },
         },
         tickSize: state.tickSize,

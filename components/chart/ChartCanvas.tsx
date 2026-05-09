@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { PanelId, ChartMode, AbsorptionSide } from '@/lib/store/chart';
+import { PanelId, ChartMode, AbsorptionSide, BubbleSide } from '@/lib/store/chart';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { usePanZoom } from './usePanZoom';
@@ -14,6 +14,7 @@ import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from '
 import { buildProfile } from '@/lib/utils/volumeProfile';
 import { drawVolumeProfile } from './drawVolumeProfile';
 import { drawAbsorption } from './drawAbsorption';
+import { drawBubbles } from './drawBubbles';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
@@ -35,6 +36,11 @@ interface ChartCanvasProps {
   absorptionSide: AbsorptionSide;
   absorptionShowLabels: boolean;
   absorptionMap: Map<number, AbsorptionResult>;
+  bubblesEnabled: boolean;
+  bubbleThreshold: number;
+  bubbleMinRadius: number;
+  bubbleMaxRadius: number;
+  bubbleSide: BubbleSide;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -55,6 +61,11 @@ export function ChartCanvas({
   absorptionSide,
   absorptionShowLabels,
   absorptionMap,
+  bubblesEnabled,
+  bubbleThreshold,
+  bubbleMinRadius,
+  bubbleMaxRadius,
+  bubbleSide,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -133,6 +144,16 @@ export function ChartCanvas({
         drawAbsorption(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, absorptionMap, absorptionShowLabels, absorptionMinScore, absorptionSide);
       }
 
+      // Volume bubbles — drawn above candles/footprint, below volume profile
+      if (bubblesEnabled) {
+        drawBubbles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, bucketSize, engine, currentBarWidth, {
+          bubbleThreshold,
+          bubbleMinRadius,
+          bubbleMaxRadius,
+          bubbleSide,
+        });
+      }
+
       // Volume Profile
       const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
       const profile = buildProfile(visibleCandles, engine, bucketSize);
@@ -180,7 +201,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide]);
 
   const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(
     canvasRef,

@@ -26,6 +26,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawPriceLine.ts  # Live price badge with countdown and direction-color
 │   │   ├── drawCrosshair.ts  # TradingView-style crosshair with axis labels
 │   │   ├── drawAbsorption.ts # Absorption markers (minor/strong/extreme), glow, labels
+│   │   ├── drawBubbles.ts    # Volume bubbles overlay (threshold-filtered, radius/opacity-scaled)
 │   │   └── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
 │   ├── layout/               # General layout components
 │   │   ├── Header.tsx        # Top toolbar — logo, layout toggle, connection status
@@ -51,7 +52,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # Panel-scoped state (PanelState × 2), absorption settings, persist v5
+│   │   └── chart.ts          # Panel-scoped state (PanelState × 2), absorption + bubble settings, persist v6
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions

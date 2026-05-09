@@ -439,3 +439,25 @@ Resolved a common runtime crash that occurred when users refreshed the page or c
 
 ### Impact Summary
 Eliminated the WebSocket reconnect storm that caused rapid connect/disconnect cycles on startup and pair/timeframe changes. The adapter now establishes a single stable connection per subscription change.
+
+## [2026-05-09] - Phase 11: Volume Bubbles
+
+### Added
+- **Draw Function**: Created `components/chart/drawBubbles.ts` — renders circles at price levels where single-side volume crosses a user-defined threshold. Radius and opacity scale with volume relative to the visible session max. Large bubbles (radius ≥ 12) show abbreviated volume labels inside.
+- **State Management**: Added `bubblesEnabled`, `bubbleThreshold`, `bubbleMinRadius`, `bubbleMaxRadius`, and `bubbleSide` fields to `PanelState` in `lib/store/chart.ts`. All settings are persisted (v6).
+- **Toolbar Controls**: Added inline bubble controls to `PanelToolbar.tsx`:
+  - Circle toggle icon (teal when active, muted when off).
+  - `VOL ≥` threshold input (JetBrains Mono, debounced 300ms).
+  - Side selector: `B` (buy), `S` (sell), `B+S` (both) with `#3D7EFF` active state.
+
+### Changed
+- **ChartCanvas**: Integrated `drawBubbles` into the render loop between absorption markers and volume profile, matching the spec draw order.
+- **ChartPanel**: Passes all bubble props through to `ChartCanvas`.
+- **Store Migration**: Bumped persist version 5 → 6 with migration that initializes bubble defaults for existing users.
+
+### Performance
+- Bubbles skip rendering entirely when `barWidth < 4` (bars too small for readable bubbles).
+- Capped at 20 bubbles per candle — if more cells cross threshold, only the 20 highest volume cells render.
+
+### Impact Summary
+The chart now highlights significant volume activity at specific price levels via colored circles. Teal = buy aggression (ask volume), red = sell aggression (bid volume). Bubbles work in both candle and footprint modes, providing order flow context without scanning individual footprint cells. The threshold filter keeps the chart clean — only levels that matter are shown. All settings persist across refresh.

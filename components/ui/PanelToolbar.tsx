@@ -1,12 +1,97 @@
 'use client';
 
-import { useChartStore, PanelId } from '../../lib/store/chart';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useChartStore, PanelId, BubbleSide } from '../../lib/store/chart';
 
 const PAIRS = ['BTCUSDT', 'ETHUSDT'];
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h'];
 
 interface PanelToolbarProps {
   panelId: PanelId;
+}
+
+function BubbleControls({ panelId }: { panelId: PanelId }) {
+  const panel = useChartStore(s => s.panels[panelId]);
+  const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
+  const setBubbleThreshold = useChartStore(s => s.setBubbleThreshold);
+  const setBubbleSide = useChartStore(s => s.setBubbleSide);
+
+  const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync local when store changes externally
+  useEffect(() => {
+    setLocalThreshold(String(panel.bubbleThreshold));
+  }, [panel.bubbleThreshold]);
+
+  const handleThresholdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setLocalThreshold(raw);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const val = Number(raw);
+      if (!isNaN(val) && val >= 1) setBubbleThreshold(panelId, val);
+    }, 300);
+  }, [panelId, setBubbleThreshold]);
+
+  const sides: { label: string; value: BubbleSide }[] = [
+    { label: 'B', value: 'buy' },
+    { label: 'S', value: 'sell' },
+    { label: 'B+S', value: 'both' },
+  ];
+
+  return (
+    <div className="flex items-center gap-2 border-l border-[#1A1A1A] pl-3 h-5">
+      {/* Toggle */}
+      <button
+        onClick={() => setBubblesEnabled(panelId, !panel.bubblesEnabled)}
+        title="Toggle volume bubbles"
+        className={`w-5 h-5 flex items-center justify-center rounded transition-all duration-150 ${
+          panel.bubblesEnabled
+            ? 'bg-[#1F1F1F] text-[#26A69A]'
+            : 'text-[#4A4A4A] hover:text-[#777]'
+        }`}
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12">
+          <circle cx="6" cy="6" r="4.5" fill={panel.bubblesEnabled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </button>
+
+      {panel.bubblesEnabled && (
+        <>
+          {/* Threshold */}
+          <div className="flex items-center gap-1 text-[10px] text-text-dim">
+            <label className="font-black tracking-[0.06em]" style={{ fontFamily: '"JetBrains Mono", monospace' }}>VOL ≥</label>
+            <input
+              type="number"
+              value={localThreshold}
+              onChange={handleThresholdChange}
+              className="w-[65px] bg-[#080808] border border-[#1A1A1A] rounded px-1 py-0 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main"
+              style={{ fontFamily: '"JetBrains Mono", monospace' }}
+              min="1"
+            />
+          </div>
+
+          {/* Side Selector */}
+          <div className="flex gap-0.5 bg-[#080808] p-0.5 rounded-md border border-[#1A1A1A]">
+            {sides.map(({ label, value }) => (
+              <button
+                key={value}
+                onClick={() => setBubbleSide(panelId, value)}
+                className={`px-1.5 py-0.5 text-[9px] font-black rounded tracking-wider transition-all duration-150 ${
+                  panel.bubbleSide === value
+                    ? 'bg-[#3D7EFF] text-white shadow-sm'
+                    : 'text-text-dim hover:text-main hover:bg-[#151515]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export function PanelToolbar({ panelId }: PanelToolbarProps) {
@@ -120,6 +205,9 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
           </div>
         </>
       )}
+
+      {/* Bubble Controls */}
+      <BubbleControls panelId={panelId} />
     </div>
   );
 }
