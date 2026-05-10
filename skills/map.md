@@ -28,7 +28,8 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawAbsorption.ts # Absorption markers (minor/strong/extreme), glow, labels
 │   │   ├── drawBubbles.ts    # Volume bubbles overlay (threshold-filtered, radius/opacity-scaled)
 │   │   ├── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
-│   │   └── drawSelectionRect.ts # Selection rect, Custom Profile, Resizing handles, Locking
+│   │   ├── drawSelectionRect.ts # Selection rect, Custom Profile, Resizing handles, Locking
+│   │   └── drawLines.ts         # Horizontal and Vertical line drawing tool
 │   ├── layout/               # General layout components
 │   │   ├── Header.tsx        # Top toolbar — Logo, Layout, Footprint toggle
 │   │   └── Sidebar.tsx       # Collapsible sidebar — Data/Session stats

@@ -51,6 +51,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           customProfileRange={panel.customProfileRange}
           customProfileLocked={panel.customProfileLocked}
           isProfileSelected={panel.isProfileSelected}
+          drawnLines={panel.drawnLines}
+          lineDrawMode={panel.lineDrawMode}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />

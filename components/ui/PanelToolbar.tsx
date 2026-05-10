@@ -101,6 +101,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setChartMode = useChartStore(s => s.setChartMode);
   const setBucketSize = useChartStore(s => s.setBucketSize);
   const setFootprintMode = useChartStore(s => s.setFootprintMode);
+  const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
 
   return (
     <div className="font-sans h-8 bg-[#0D0D0D] border-b border-[#1F1F1F] flex items-center px-3 gap-3 shrink-0">
@@ -221,6 +222,32 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
           title="Toggle profile draw mode"
         >
           PROFILE
+        </button>
+      </div>
+
+      {/* Line Drawing Controls */}
+      <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
+        <button
+          onClick={() => setLineDrawMode(panelId, panel.lineDrawMode === 'horizontal' ? 'none' : 'horizontal')}
+          className={`h-5 w-6 flex items-center justify-center rounded text-[12px] font-bold transition-all duration-150 ${
+            panel.lineDrawMode === 'horizontal'
+              ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+              : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+          }`}
+          title="Horizontal Line"
+        >
+          —
+        </button>
+        <button
+          onClick={() => setLineDrawMode(panelId, panel.lineDrawMode === 'vertical' ? 'none' : 'vertical')}
+          className={`h-5 w-6 flex items-center justify-center rounded text-[12px] font-bold transition-all duration-150 ${
+            panel.lineDrawMode === 'vertical'
+              ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+              : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+          }`}
+          title="Vertical Line"
+        >
+          |
         </button>
       </div>
     </div>

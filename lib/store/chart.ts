@@ -11,6 +11,13 @@ export type PanelId = 'left' | 'right';
 export type LayoutMode = 'single' | 'dual';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type { BubbleSide };
+export type LineDrawMode = 'none' | 'horizontal' | 'vertical';
+
+export interface DrawnLine {
+  id: string;
+  type: 'horizontal' | 'vertical';
+  value: number; // price for horizontal, candle index for vertical
+}
 
 export interface PanelState {
   id: PanelId;
@@ -45,6 +52,8 @@ export interface PanelState {
   } | null;
   customProfileLocked: boolean;
   isProfileSelected: boolean;
+  drawnLines: DrawnLine[];
+  lineDrawMode: LineDrawMode;
 }
 
 interface ChartState {
@@ -88,6 +97,9 @@ interface ChartState {
   setCustomProfileRange: (panelId: PanelId, range: PanelState['customProfileRange']) => void;
   setCustomProfileLocked: (panelId: PanelId, locked: boolean) => void;
   setProfileSelected: (panelId: PanelId, selected: boolean) => void;
+  addLine: (panelId: PanelId, line: DrawnLine) => void;
+  removeLine: (panelId: PanelId, id: string) => void;
+  setLineDrawMode: (panelId: PanelId, mode: LineDrawMode) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -126,6 +138,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     customProfileRange: null,
     customProfileLocked: false,
     isProfileSelected: false,
+    drawnLines: [],
+    lineDrawMode: 'none',
   };
 }
 
@@ -233,6 +247,21 @@ export const useChartStore = create<ChartState>()(
       setProfileSelected: (panelId, isProfileSelected) =>
         set((state) => updatePanel(state, panelId, { isProfileSelected })),
 
+      addLine: (panelId, line) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, { drawnLines: [...panel.drawnLines, line] });
+        }),
+
+      removeLine: (panelId, id) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, { drawnLines: panel.drawnLines.filter((l) => l.id !== id) });
+        }),
+
+      setLineDrawMode: (panelId, lineDrawMode) =>
+        set((state) => updatePanel(state, panelId, { lineDrawMode })),
+
       pushAllCandles: (panelId, candles) =>
         set((state) => updatePanel(state, panelId, { candles: candles.slice(-500) })),
 
@@ -270,7 +299,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 6,
+      version: 7,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -296,6 +325,8 @@ export const useChartStore = create<ChartState>()(
             customProfileRange: p.customProfileRange ?? null,
             customProfileLocked: p.customProfileLocked ?? false,
             isProfileSelected: false,
+            drawnLines: p.drawnLines ?? [],
+            lineDrawMode: 'none',
           };
         };
         if (persisted.panels) {
@@ -345,6 +376,7 @@ export const useChartStore = create<ChartState>()(
             isDrawMode: state.panels.left.isDrawMode,
             customProfileRange: state.panels.left.customProfileRange,
             customProfileLocked: state.panels.left.customProfileLocked,
+            drawnLines: state.panels.left.drawnLines,
           },
           right: {
             pair: state.panels.right.pair,
@@ -365,6 +397,7 @@ export const useChartStore = create<ChartState>()(
             isDrawMode: state.panels.right.isDrawMode,
             customProfileRange: state.panels.right.customProfileRange,
             customProfileLocked: state.panels.right.customProfileLocked,
+            drawnLines: state.panels.right.drawnLines,
           },
         },
         tickSize: state.tickSize,

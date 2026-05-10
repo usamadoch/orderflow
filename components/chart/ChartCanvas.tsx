@@ -16,6 +16,7 @@ import { drawVolumeProfile } from './drawVolumeProfile';
 import { drawAbsorption } from './drawAbsorption';
 import { drawBubbles } from './drawBubbles';
 import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
+import { drawLines } from './drawLines';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
@@ -51,6 +52,8 @@ interface ChartCanvasProps {
   } | null;
   customProfileLocked: boolean;
   isProfileSelected: boolean;
+  drawnLines: PanelState['drawnLines'];
+  lineDrawMode: PanelState['lineDrawMode'];
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -81,6 +84,8 @@ export function ChartCanvas({
   customProfileRange,
   customProfileLocked,
   isProfileSelected,
+  drawnLines,
+  lineDrawMode,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -101,6 +106,9 @@ export function ChartCanvas({
   const isDraggingProfile = useRef(false);
   const isDraggingResize = useRef(false);
   const resizeEdge = useRef<'left' | 'right' | 'top' | 'bottom' | null>(null);
+
+  const hoveredLineId = useRef<string | null>(null);
+  const isHoveringDeleteDot = useRef(false);
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
@@ -158,6 +166,8 @@ export function ChartCanvas({
 
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
       const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+
+      drawLines(ctx, drawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, hoveredLineId.current, isHoveringDeleteDot.current);
 
       drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
@@ -261,7 +271,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode]);
 
   const { 
     scrollOffset, 
@@ -286,8 +296,8 @@ export function ChartCanvas({
     onScrollOffsetChange,
     isDrawMode,
     () => {
-      // Prevent chart panning if we are over a custom profile or its buttons
-      if (isHoveringClear.current || isHoveringLock.current || hoverZone.current) {
+      // Prevent chart panning if we are over a custom profile or its buttons, or a line
+      if (isHoveringClear.current || isHoveringLock.current || hoverZone.current || hoveredLineId.current) {
         return false;
       }
       return true;
@@ -323,7 +333,7 @@ export function ChartCanvas({
   // Redraw when data changes
   useEffect(() => {
     redraw();
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, redraw, isLoadingHistory]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, redraw, isLoadingHistory, drawnLines, lineDrawMode]);
 
   // Real-time countdown timer
   useEffect(() => {
@@ -387,6 +397,36 @@ export function ChartCanvas({
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+
+      // 0. Line Drawing and Deletion
+      if (hoveredLineId.current && isHoveringDeleteDot.current) {
+        useChartStore.getState().removeLine(panelId, hoveredLineId.current);
+        hoveredLineId.current = null;
+        isHoveringDeleteDot.current = false;
+        redraw();
+        return;
+      }
+
+      if (lineDrawMode !== 'none') {
+        const chartWidth = rect.width - priceAxisWidth;
+        const chartHeight = rect.height - timeAxisHeight;
+        if (x > chartWidth || y > chartHeight) return;
+
+        if (lineDrawMode === 'horizontal') {
+          const pCenter = priceCenter.current ?? 0;
+          const pRange = priceRange.current ?? 100;
+          const priceMin = pCenter - pRange / 2;
+          const priceMax = pCenter + pRange / 2;
+          const price = yToPrice(y, priceMin, priceMax, chartHeight);
+          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal', value: price });
+        } else if (lineDrawMode === 'vertical') {
+          const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'vertical', value: index });
+        }
+        useChartStore.getState().setLineDrawMode(panelId, 'none');
+        redraw();
+        return;
+      }
 
       // Interaction Priority:
       // 1. Draw mode
@@ -460,7 +500,9 @@ export function ChartCanvas({
       // Centralized Cursor Logic
       let cursor = 'crosshair';
 
-      if (isDragging.current || isDrawMode) {
+      if (lineDrawMode !== 'none') {
+        cursor = 'crosshair';
+      } else if (isDragging.current || isDrawMode) {
         cursor = 'crosshair';
       } else if (isDraggingProfile.current) {
         cursor = 'grabbing';
@@ -470,7 +512,7 @@ export function ChartCanvas({
         if (panZoomDragMode.current === 'price') cursor = 'ns-resize';
         else if (panZoomDragMode.current === 'time') cursor = 'ew-resize';
         else cursor = 'grabbing';
-      } else {
+      } else if (lineDrawMode === 'none') {
         // Hover Detection
         const clearBtn = getClearButtonPos();
         const lockBtn = getLockButtonPos();
@@ -538,7 +580,53 @@ export function ChartCanvas({
               else if (y > rect.height - timeAxisHeight) cursor = 'ew-resize';
               else cursor = 'crosshair';
             }
-          } else {
+          }
+
+          // Line Hover Detection
+          hoveredLineId.current = null;
+          isHoveringDeleteDot.current = false;
+
+          if (!hoveringAction) {
+            const chartWidth = rect.width - priceAxisWidth;
+            const chartHeight = rect.height - timeAxisHeight;
+            const pCenter = priceCenter.current ?? 0;
+            const pRange = priceRange.current ?? 100;
+            const priceMin = pCenter - pRange / 2;
+            const priceMax = pCenter + pRange / 2;
+
+            const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
+            const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+
+            for (const line of drawnLines) {
+              if (line.type === 'horizontal') {
+                const ly = priceToY(line.value);
+                if (Math.abs(y - ly) < 6 && x <= chartWidth) {
+                  hoveredLineId.current = line.id;
+                  cursor = 'pointer';
+                  // Check delete dot
+                  const dotX = chartWidth - 6;
+                  if (Math.abs(x - dotX) < 8 && Math.abs(y - ly) < 8) {
+                    isHoveringDeleteDot.current = true;
+                  }
+                  break;
+                }
+              } else {
+                const lx = indexToX(line.value);
+                if (lx !== null && Math.abs(x - lx) < 6 && y <= chartHeight) {
+                  hoveredLineId.current = line.id;
+                  cursor = 'pointer';
+                  // Check delete dot
+                  const dotY = 10;
+                  if (Math.abs(x - lx) < 8 && Math.abs(y - dotY) < 8) {
+                    isHoveringDeleteDot.current = true;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!hoveredLineId.current && !hoveringAction) {
             // Check Axes
             if (x > rect.width - priceAxisWidth) cursor = 'ns-resize';
             else if (y > rect.height - timeAxisHeight) cursor = 'ew-resize';
@@ -695,7 +783,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles]);
 
 
   return (
