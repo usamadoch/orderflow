@@ -11,7 +11,8 @@ export function usePanZoom(
   initialScrollOffset: number = 0,
   onBarWidthChange?: (v: number) => void,
   onScrollOffsetChange?: (v: number) => void,
-  isDrawMode: boolean = false
+  isDrawMode: boolean = false,
+  canStartDrag?: (x: number, y: number) => boolean
 ) {
   const scrollOffset = useRef(initialScrollOffset);
   const barWidth = useRef(initialBarWidth);
@@ -46,16 +47,14 @@ export function usePanZoom(
       const y = e.clientY - rect.top;
 
       if (isDrawMode) return;
+      if (canStartDrag && !canStartDrag(x, y)) return;
 
       if (x > rect.width - priceAxisWidth) {
         dragMode.current = 'price';
-        canvas.style.cursor = 'ns-resize';
       } else if (y > rect.height - timeAxisHeight) {
         dragMode.current = 'time';
-        canvas.style.cursor = 'ew-resize';
       } else {
         dragMode.current = 'chart';
-        canvas.style.cursor = 'grabbing';
       }
 
       isDragging.current = true;
@@ -73,16 +72,6 @@ export function usePanZoom(
       mouseY.current = y;
 
       if (!isDragging.current) {
-        // Update cursor icon based on region
-        if (isDrawMode) {
-          canvas.style.cursor = 'crosshair';
-        } else if (x > rect.width - priceAxisWidth) {
-          canvas.style.cursor = 'ns-resize';
-        } else if (y > rect.height - timeAxisHeight) {
-          canvas.style.cursor = 'ew-resize';
-        } else {
-          canvas.style.cursor = 'crosshair';
-        }
         onRedraw();
         return;
       }
@@ -136,7 +125,6 @@ export function usePanZoom(
 
     const onMouseUp = () => {
       isDragging.current = false;
-      canvas.style.cursor = 'crosshair';
     };
 
     const onMouseEnter = () => {
@@ -185,7 +173,6 @@ export function usePanZoom(
     canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     
-    canvas.style.cursor = 'crosshair';
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
@@ -197,5 +184,15 @@ export function usePanZoom(
     };
   }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange, isDrawMode]);
 
-  return { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver };
+  return { 
+    scrollOffset, 
+    barWidth, 
+    priceCenter, 
+    priceRange, 
+    mouseX, 
+    mouseY, 
+    isMouseOver,
+    isDragging: isDragging,
+    dragMode: dragMode
+  };
 }

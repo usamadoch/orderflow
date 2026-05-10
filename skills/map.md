@@ -17,9 +17,9 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── ChartEngineContext.tsx# React context for AggregationEngine (one per panel)
 │   ├── chart/                # Chart-specific components
 │   │   ├── ChartPanel.tsx    # Panel wrapper — reads panel state, passes props to ChartCanvas
-│   │   ├── ChartCanvas.tsx   # Pure rendering canvas, accepts all data via props
+│   │   ├── ChartCanvas.tsx   # Pure rendering canvas, accepts all data via props, handles cursor & hover logic
 │   │   ├── useCoordinates.ts # Coordinate math (price-to-pixel, index-to-pixel)
-│   │   ├── usePanZoom.ts     # Anchored pan/zoom with external barWidth/scrollOffset sync
+│   │   ├── usePanZoom.ts     # Anchored pan/zoom with interaction callback support
 │   │   ├── drawCandles.ts    # Candlestick draw function
 │   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
 │   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, 12px font)
@@ -74,7 +74,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)
-- **State Management:** Zustand (panel-scoped, persisted to localStorage v5)
+- **State Management:** Zustand (panel-scoped, persisted to localStorage v6)
 - **Data Layer:** Client-side WebSockets via `FeedAdapter` pattern (one per panel)
 - **Charting:** Custom HTML5 Canvas (Single Canvas Architecture per panel)
 - **Layout:** Single or Dual panel mode with independent pair/timeframe/mode per panel

@@ -475,7 +475,6 @@ The application now consistently renders the intended `Inter` font family across
 
 ## [2026-05-09] - Phase 12: Custom Range Profile (Task 1)
 
-
 ### Added
 - **Drawing Mode**: Implemented "Profile Draw Mode" for the chart. When active, users can click and drag to draw a selection rectangle on the canvas.
 - **Components**: Created `components/chart/drawSelectionRect.ts` for rendering a subtle, dashed blue rectangle overlay.
@@ -549,6 +548,33 @@ The Custom Range Profile feature is now complete. Traders can define specific ma
 
 ### Impact Summary
 The Custom Range Profile is now a fully interactive tool. Users can not only draw ranges but also fine-tune them through resizing, move them to different time segments, and lock them in place once satisfied. This completes the feature with a premium, professional UX.
+
+## [2026-05-10] - Bug Fix: Cursor Flickering & Interaction Conflicts
+
+### Fixed
+- **Cursor Flickering**: Resolved rapid cursor switching between crosshair and default pointer by unifying all cursor management within `ChartCanvas.tsx`.
+- **Interaction Conflict**: Fixed issue where chart panning would trigger simultaneously with custom profile dragging by adding a `canStartDrag` callback to `usePanZoom`.
+
+### Changed
+- **usePanZoom.ts**: Removed manual cursor assignments and exposed dragging state to the caller. Added support for interaction prevention via callback.
+- **ChartCanvas.tsx**: 
+  - Implemented centralized cursor logic in `onMouseMove` handling all layers (candles, axes, profiles).
+  - Set stable `crosshair` as the default cursor for the chart area.
+  - Integrated `usePanZoom`'s drag state into the cursor logic to ensure visual consistency during panning.
+
+### Impact Summary
+The chart now provides a stable, professional-grade navigation experience. Cursor flickering has been eliminated, and interaction priority is correctly handled between the base chart and the custom profile layer. Navigation remains smooth and predictable across all chart areas and axes.
+
+## [2026-05-10] - Bug Fix: Stuck Interaction After Profile Deletion
+
+### Fixed
+- **Stuck Interaction**: Resolved an issue where chart panels became non-interactive (no panning/resizing) after deleting a custom profile. The root cause was persistent hover states (`isHoveringClear`, `isHoveringLock`) that incorrectly blocked base chart interactions via the `canStartDrag` guard.
+
+### Changed
+- **ChartCanvas.tsx**: Implemented robust hover state cleanup in `onMouseMove`. Hover refs are now explicitly reset to `false` at the start of each detection cycle, ensuring that interaction blocks are released immediately when a profile is removed or the mouse moves away.
+
+### Impact Summary
+Deleting a custom profile now correctly restores the chart to its default fully interactive state. Users can seamlessly transition between drawing/interacting with profiles and standard chart navigation without panel lockups or state leakage.
 
 
 

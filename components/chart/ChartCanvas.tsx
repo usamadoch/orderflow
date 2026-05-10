@@ -263,7 +263,17 @@ export function ChartCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected]);
 
-  const { scrollOffset, barWidth, priceCenter, priceRange, mouseX, mouseY, isMouseOver } = usePanZoom(
+  const { 
+    scrollOffset, 
+    barWidth, 
+    priceCenter, 
+    priceRange, 
+    mouseX, 
+    mouseY, 
+    isMouseOver,
+    isDragging: isPanZoomDragging,
+    dragMode: panZoomDragMode
+  } = usePanZoom(
     canvasRef,
     redraw,
     getCandlesLength,
@@ -274,7 +284,14 @@ export function ChartCanvas({
     scrollOffsetProp,
     onBarWidthChange,
     onScrollOffsetChange,
-    isDrawMode
+    isDrawMode,
+    () => {
+      // Prevent chart panning if we are over a custom profile or its buttons
+      if (isHoveringClear.current || isHoveringLock.current || hoverZone.current) {
+        return false;
+      }
+      return true;
+    }
   );
 
   const redrawRef = useRef(redraw);
@@ -440,36 +457,47 @@ export function ChartCanvas({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // Zone Detection
-      if (!isDragging.current && !isDraggingProfile.current && !isDraggingResize.current) {
-        // Clear/Lock button hover first
+      // Centralized Cursor Logic
+      let cursor = 'crosshair';
+
+      if (isDragging.current || isDrawMode) {
+        cursor = 'crosshair';
+      } else if (isDraggingProfile.current) {
+        cursor = 'grabbing';
+      } else if (isDraggingResize.current) {
+        cursor = (resizeEdge.current === 'left' || resizeEdge.current === 'right') ? 'ew-resize' : 'ns-resize';
+      } else if (isPanZoomDragging.current) {
+        if (panZoomDragMode.current === 'price') cursor = 'ns-resize';
+        else if (panZoomDragMode.current === 'time') cursor = 'ew-resize';
+        else cursor = 'grabbing';
+      } else {
+        // Hover Detection
         const clearBtn = getClearButtonPos();
         const lockBtn = getLockButtonPos();
+
+        isHoveringClear.current = false;
+        isHoveringLock.current = false;
+        hoverZone.current = null;
 
         let hoveringAction = false;
         if (clearBtn) {
           const dist = Math.sqrt((x - clearBtn.x) ** 2 + (y - clearBtn.y) ** 2);
           if (dist < 12) {
             isHoveringClear.current = true;
-            canvas.style.cursor = 'pointer';
+            cursor = 'pointer';
             hoveringAction = true;
-          } else {
-            isHoveringClear.current = false;
           }
         }
-        if (lockBtn) {
+        if (lockBtn && !hoveringAction) {
           const dist = Math.sqrt((x - lockBtn.x) ** 2 + (y - lockBtn.y) ** 2);
           if (dist < 12) {
             isHoveringLock.current = true;
-            canvas.style.cursor = 'pointer';
+            cursor = 'pointer';
             hoveringAction = true;
-          } else {
-            isHoveringLock.current = false;
           }
         }
 
         if (!hoveringAction) {
-          // Profile area detection
           if (customProfileRange) {
             const chartWidth = rect.width - priceAxisWidth;
             const chartHeight = rect.height - timeAxisHeight;
@@ -490,34 +518,37 @@ export function ChartCanvas({
 
             if (x >= minX - 6 && x <= maxX + 6 && y >= minY - 6 && y <= maxY + 6) {
               const isLocked = useChartStore.getState().panels[panelId].customProfileLocked;
-              const isSelected = useChartStore.getState().panels[panelId].isProfileSelected;
-
               if (isLocked) {
-                hoverZone.current = 'move'; // Still show interactive but it won't move
-                canvas.style.cursor = 'default';
+                hoverZone.current = 'move';
+                cursor = 'crosshair';
               } else {
-                // Edge detection for resize
                 if (Math.abs(x - minX) < 6) hoverZone.current = 'resize-left';
                 else if (Math.abs(x - maxX) < 6) hoverZone.current = 'resize-right';
                 else if (Math.abs(y - minY) < 6) hoverZone.current = 'resize-top';
                 else if (Math.abs(y - maxY) < 6) hoverZone.current = 'resize-bottom';
                 else hoverZone.current = 'move';
 
-                if (hoverZone.current === 'move') canvas.style.cursor = 'grab';
-                else if (hoverZone.current.includes('left') || hoverZone.current.includes('right')) canvas.style.cursor = 'ew-resize';
-                else canvas.style.cursor = 'ns-resize';
+                if (hoverZone.current === 'move') cursor = 'grab';
+                else if (hoverZone.current.includes('left') || hoverZone.current.includes('right')) cursor = 'ew-resize';
+                else cursor = 'ns-resize';
               }
             } else {
-              hoverZone.current = null;
-              canvas.style.cursor = isDrawMode ? 'crosshair' : 'default';
+              // Check Axes
+              if (x > rect.width - priceAxisWidth) cursor = 'ns-resize';
+              else if (y > rect.height - timeAxisHeight) cursor = 'ew-resize';
+              else cursor = 'crosshair';
             }
           } else {
-            hoverZone.current = null;
-            canvas.style.cursor = isDrawMode ? 'crosshair' : 'default';
+            // Check Axes
+            if (x > rect.width - priceAxisWidth) cursor = 'ns-resize';
+            else if (y > rect.height - timeAxisHeight) cursor = 'ew-resize';
+            else cursor = 'crosshair';
           }
         }
-        redraw();
       }
+
+      canvas.style.cursor = cursor;
+      redraw();
 
       // Drag Logic
       if (isDragging.current && isDrawMode) {
