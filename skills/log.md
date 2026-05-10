@@ -600,3 +600,20 @@ Deleting a custom profile now correctly restores the chart to its default fully 
 Traders can now mark key price levels and time events using clean, persistent horizontal and vertical lines. The tool features a professional, TradingView-style interaction model where lines are placed with a single click and can be easily managed via hover-to-delete handles. All drawn lines persist across page refreshes, providing a reliable way to maintain technical analysis context.
 
 [2026-05-10] - Updated line drawing style to 2px and TradingView-style blue-gray palette.
+
+## [2026-05-10] - Chart Settings Reorganization
+
+### Added
+- **ChartSettingsDropdown**: Created a new centralized settings component (components/ui/ChartSettingsDropdown.tsx) featuring:
+  - Footprint mode selection (Bid/Ask or Delta).
+  - Bucket size configuration.
+  - Volume bubble settings (toggle, min volume threshold, and side filter).
+- **Settings Toggle**: Added a premium gear icon button in the main Header.tsx to toggle the settings dropdown.
+
+### Changed
+- **Header.tsx**: Integrated ChartSettingsDropdown and removed the legacy inline footprint toggle to declutter the interface. The settings now dynamically apply to the activePanel.
+- **PanelToolbar.tsx**: Removed redundant bucket size, volume bubble, and footprint mode controls to provide more space for pair/timeframe selection and drawing tools.
+- **UI/UX**: Improved the visual design of settings with a glassmorphism dropdown, better spacing, and clear labeling.
+
+### Impact Summary
+The chart panel header is now significantly cleaner, focusing on core navigation (pair/timeframe). All configuration settings are consolidated into a single, organized dropdown in the top header, improving the overall professional aesthetic and usability of the application.

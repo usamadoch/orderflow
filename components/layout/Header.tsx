@@ -1,17 +1,18 @@
 'use client';
 
+import { useState } from 'react';
 import { useChartStore } from '../../lib/store/chart';
 import { ConnectionStatus } from '../ui/ConnectionStatus';
+import { ChartSettingsDropdown } from '../ui/ChartSettingsDropdown';
 
 export function Header() {
   const layoutMode = useChartStore(s => s.layoutMode);
   const setLayoutMode = useChartStore(s => s.setLayoutMode);
   const activePanelId = useChartStore(s => s.activePanel);
-  const activePanel = useChartStore(s => s.panels[activePanelId]);
-  const setFootprintMode = useChartStore(s => s.setFootprintMode);
+  const [showSettings, setShowSettings] = useState(false);
 
   return (
-    <header className="font-sans h-10 border-b border-border bg-surface flex items-center px-4 justify-between shrink-0 shadow-sm z-20">
+    <header className="font-sans h-10 border-b border-border bg-surface flex items-center px-4 justify-between shrink-0 shadow-sm z-20 relative">
       <div className="flex items-center gap-6">
         <h1 className="font-extrabold text-base text-accent tracking-tighter flex items-center gap-2">
           <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
@@ -51,35 +52,35 @@ export function Header() {
             </svg>
           </button>
         </div>
-
-        {/* Footprint Mode Toggle — Tied to Active Panel */}
-        {activePanel.chartMode === 'footprint' && (
-          <div className="flex gap-1 bg-background/50 p-0.5 rounded-lg border border-border ml-2 animate-in fade-in slide-in-from-left-2 duration-300">
-            <button
-              onClick={() => setFootprintMode(activePanelId, 'bid-ask')}
-              className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all duration-200 ${
-                activePanel.footprintMode === 'bid-ask'
-                  ? 'bg-surface text-accent border border-border shadow-sm'
-                  : 'text-text-dim hover:text-main hover:bg-surface'
-              }`}
-            >
-              Bid/Ask
-            </button>
-            <button
-              onClick={() => setFootprintMode(activePanelId, 'delta')}
-              className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all duration-200 ${
-                activePanel.footprintMode === 'delta'
-                  ? 'bg-surface text-accent border border-border shadow-sm'
-                  : 'text-text-dim hover:text-main hover:bg-surface'
-              }`}
-            >
-              Delta
-            </button>
-          </div>
-        )}
       </div>
+
       <div className="flex items-center gap-4">
         <ConnectionStatus />
+        
+        <div className="h-4 w-[1px] bg-border mx-1" />
+
+        {/* Settings Button */}
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className={`w-7 h-7 flex items-center justify-center rounded-lg border transition-all duration-200 ${
+            showSettings 
+              ? 'bg-accent/10 border-accent text-accent' 
+              : 'bg-background/50 border-border text-text-dim hover:text-main hover:border-text-dim/30'
+          }`}
+          title="Chart Settings"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+
+        {showSettings && (
+          <ChartSettingsDropdown 
+            panelId={activePanelId} 
+            onClose={() => setShowSettings(false)} 
+          />
+        )}
       </div>
     </header>
   );

@@ -31,11 +31,12 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawSelectionRect.ts # Selection rect, Custom Profile, Resizing handles, Locking
 │   │   └── drawLines.ts         # Horizontal and Vertical line drawing tool
 │   ├── layout/               # General layout components
-│   │   ├── Header.tsx        # Top toolbar — Logo, Layout, Footprint toggle
+│   │   ├── Header.tsx        # Top toolbar — Logo, Layout, Connection, Settings toggle
 │   │   └── Sidebar.tsx       # Collapsible sidebar — Data/Session stats
 │   └── ui/                   # Reusable UI components
-│       ├── ConnectionStatus.tsx # Combined live connection indicator (both panels)
-│       ├── PanelToolbar.tsx     # Per-panel controls — Pair, TF, Mode, Bubbles
+│       ├── ConnectionStatus.tsx # Combined live connection indicator
+│       ├── PanelToolbar.tsx     # Per-panel controls — Pair, TF, Mode, Drawing tools
+│       ├── ChartSettingsDropdown.tsx # Centralized chart settings (Bucket, Footprint, Bubbles)
 │       ├── PairSelector.tsx     # Pair switcher (panel-scoped)
 │       ├── TimeframeSelector.tsx# Timeframe switcher (panel-scoped)
 │       ├── ChartModeToggle.tsx  # Candle / Footprint toggle (panel-scoped)
