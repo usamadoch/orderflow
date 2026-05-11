@@ -1,4 +1,32 @@
-# Project Changelog
+# OrderFlow Chart - Change Log
+
+## [2026-05-11] - Enhanced Absorption Detection and Visualization
+- **What changed**:
+  - Implemented **Signal 4 (Imbalance Cluster Failure)** in the detection engine.
+  - Created `AbsorptionTooltip` component for detailed signal breakdown.
+  - Integrated **proximity-based hover detection** in `ChartCanvas` to trigger tooltips.
+  - Enabled **Extreme rank** visualization (radius 11, glow, stroke) by allowing scores up to 90.
+- **Why it changed**:
+  - To provide higher confidence signals (via clusters) and transparency into the detection logic.
+- **Impact**:
+  - Absorption signals are now much more informative and visually distinct.
+
+## [2026-05-11] - Implemented Exhaustion Detection Engine (Task 1)
+- **What changed**:
+  - Created `types/exhaustion.ts` for exhaustion data structures.
+  - Created `lib/utils/chartUtils.ts` with shared `getRollingAverages` logic.
+  - Implemented `lib/exhaustion/engine.ts` with 5 scoring signals: Momentum Decay, Weak Continuation, Wick Rejection, Range Shrink, and Imbalances No Extension.
+  - Updated `lib/absorption/engine.ts` to use shared rolling average logic.
+  - Updated `lib/store/chart.ts` with exhaustion settings and session-only `exhaustionMap`.
+  - Integrated exhaustion scoring into `FeedProvider.tsx` lifecycle (initial build + incremental updates).
+  - Added 'E' keyboard shortcut in `useKeyboardShortcuts.ts` to log exhaustion map to console for verification.
+- **Why it changed**:
+  - Part of the Exhaustion Detection feature set to identify market turning points where aggression is fading.
+- **Impact**:
+  - Market exhaustion can now be detected and scored (0-100) based on multi-candle patterns.
+  - Improved code quality by consolidating rolling average logic.
+  - Foundation laid for Task 2 (rendering markers on the chart).
+
 
 ## [2026-05-07] - Initial Project Bootstrap
 
@@ -331,12 +359,12 @@ The horizontal zoom behavior now perfectly matches TradingView. Candles expand a
 
 ### Added
 - **Components**: Created `ChartPanel.tsx` wrapper component that reads panel-scoped state and passes it as props to `ChartCanvas`.
-- **Components**: Created `PanelToolbar.tsx` — a compact 32px toolbar strip per panel with pair, timeframe, mode, and bucket size selectors.
+- **Components**: Created `PanelToolbar.tsx` â a compact 32px toolbar strip per panel with pair, timeframe, mode, and bucket size selectors.
 - **State Management**: Introduced `PanelState` interface and panel-scoped store architecture in `lib/store/chart.ts`. Two independent panels (`left`, `right`) each hold their own pair, timeframe, chartMode, bucketSize, barWidth, scrollOffset, candles, and connection state.
 - **State Management**: Added `layoutMode: 'single' | 'dual'` and `activePanel: 'left' | 'right'` to the global store.
-- **Feed Layer**: Refactored `FeedProvider` into `PanelFeedProvider` — each panel manages its own independent `BinanceAdapter` instance (via `clone()`) and `AggregationEngine`.
+- **Feed Layer**: Refactored `FeedProvider` into `PanelFeedProvider` â each panel manages its own independent `BinanceAdapter` instance (via `clone()`) and `AggregationEngine`.
 - **Feed Interface**: Added `clone()` method to `FeedAdapter` interface and `BinanceAdapter` to enable independent WebSocket connections per panel.
-- **Hooks**: Created `hooks/useKeyboardShortcuts.ts` — all hotkeys (1-5 timeframes, C/F modes, R reset, [/] bucket) target `activePanel`.
+- **Hooks**: Created `hooks/useKeyboardShortcuts.ts` â all hotkeys (1-5 timeframes, C/F modes, R reset, [/] bucket) target `activePanel`.
 - **Layout**: Added layout toggle button (single/dual) with SVG icons in the main `Header`.
 
 ### Changed
@@ -345,7 +373,7 @@ The horizontal zoom behavior now perfectly matches TradingView. Candles expand a
 - **usePanZoom**: Extended to accept initial `barWidth`/`scrollOffset` from props and sync changes back via callbacks.
 - **Header**: Stripped pair, timeframe, mode, and bucket selectors (moved to `PanelToolbar`). Now only holds logo, layout toggle, and connection status.
 - **Sidebar**: Reads from `activePanel`. Shows LEFT/RIGHT indicator in dual mode with active panel's pair and timeframe.
-- **ConnectionStatus**: Shows combined status — LIVE if either panel is connected.
+- **ConnectionStatus**: Shows combined status â LIVE if either panel is connected.
 - **UI Components**: Updated `PairSelector`, `TimeframeSelector`, `ChartModeToggle`, `BucketSizeInput` to accept panel-scoped `panelId` prop.
 - **page.tsx**: Rewrote to render two `PanelFeedProvider` + `ChartPanel` blocks with a 1px divider; right panel gated on `layoutMode === 'dual'`.
 
@@ -363,12 +391,12 @@ The application now supports dual independent chart panels. Each panel has its o
 - **Default Symbols**: Both panels now default to `BTCUSDT` instead of mixed `BTCUSDT`/`ETHUSDT`. Users must manually change a panel's pair.
 
 ### Added
-- **Draggable Split Divider**: The divider between panels is now a 5px draggable handle with a subtle accent glow on hover. Users can drag it horizontally to resize panels (clamped 15%–85%). The `splitRatio` is stored and persisted so the layout survives refresh.
+- **Draggable Split Divider**: The divider between panels is now a 5px draggable handle with a subtle accent glow on hover. Users can drag it horizontally to resize panels (clamped 15%â85%). The `splitRatio` is stored and persisted so the layout survives refresh.
 - **Store**: Added `splitRatio: number` state and `setSplitRatio` action to the Zustand store. Clamped to `[0.15, 0.85]`.
 
 ### Changed
 - **page.tsx**: Panels now use `style={{ width }}` driven by `splitRatio` instead of fixed `w-1/2` classes. Divider uses window-level mouse tracking for smooth drag performance.
-- **Store Version**: Bumped persist version from `2` → `3` with a migration function that clears stale v1/v2 data.
+- **Store Version**: Bumped persist version from `2` â `3` with a migration function that clears stale v1/v2 data.
 
 ### Impact Summary
 The dual panel layout is now production-quality. Layout mode persists across refreshes, both panels start on the same symbol by default, and users can freely resize panel widths with a smooth, professional drag interaction.
@@ -380,41 +408,41 @@ The dual panel layout is now production-quality. Layout mode persists across ref
 - **Visuals**: Added **Delta mode rendering** where bid/ask numbers are replaced by a single centered delta value with a color-coded horizontal background bar.
 - **Rendering**: Created `drawDeltaCell` in `lib/utils/canvas.ts` to draw proportional delta bars:
   - Positive delta: Green bar extending right, prefixed with "+".
-  - Negative delta: Red bar extending right, prefixed with "−" (proper minus sign).
+  - Negative delta: Red bar extending right, prefixed with "â" (proper minus sign).
 - **Proportional Scaling**: The width of delta bars scales dynamically based on the maximum delta magnitude within the currently visible chart range.
 
 ### Changed
 - **State Management**: Added `footprintMode: 'bid-ask' | 'delta'` to `PanelState` in `lib/store/chart.ts`. Added persistence and migration for the new state.
-- **UI**: Updated `PanelToolbar.tsx` to include the `B/A` and `Δ` mode toggle buttons next to the bucket size input.
+- **UI**: Updated `PanelToolbar.tsx` to include the `B/A` and `Î` mode toggle buttons next to the bucket size input.
 - **Rendering Loop**: Updated `drawFootprint.ts` and `ChartCanvas.tsx` to propagate and handle the active footprint display mode.
 
 ### Impact Summary
 Traders can now switch between detailed bid/ask volume breakdown and a high-level delta pressure visualization. Delta mode provides a cleaner, "volume profile" style view of aggressive buying and selling pressure within each candle, making it significantly easier to identify market imbalances at a glance.
 
-## [2026-05-08] - Feature: Absorption Detection System (Signals 1–3)
+## [2026-05-08] - Feature: Absorption Detection System (Signals 1â3)
 
 ### Added
 - **Types**: Created `types/absorption.ts` with `AbsorptionResult`, `AbsorptionDirection`, `AbsorptionRank` interfaces for structured detection output.
 - **Detection Engine**: Implemented `lib/absorption/engine.ts` with three scoring functions:
-  - **Signal 1 — Delta Extremity** (max 25 pts): Compares candle delta against a 20-candle rolling average. Flags extreme, high, or elevated delta ratios.
-  - **Signal 2 — Volume Extremity** (max 15 pts): Compares candle volume against the rolling average. Confirms meaningful participant involvement.
-  - **Signal 3 — Poor Price Progression** (max 30 pts): Checks body-to-range ratio (tight body = indecision), wick rejection (directional), and price-against-aggressor movement.
+  - **Signal 1 â Delta Extremity** (max 25 pts): Compares candle delta against a 20-candle rolling average. Flags extreme, high, or elevated delta ratios.
+  - **Signal 2 â Volume Extremity** (max 15 pts): Compares candle volume against the rolling average. Confirms meaningful participant involvement.
+  - **Signal 3 â Poor Price Progression** (max 30 pts): Checks body-to-range ratio (tight body = indecision), wick rejection (directional), and price-against-aggressor movement.
 - **Map Builder**: Added `buildAbsorptionMap` for initial full-scan and `scoreLatestCandle` for incremental single-candle scoring.
 - **Canvas Renderer**: Created `components/chart/drawAbsorption.ts` rendering markers with three visual tiers:
-  - Minor (40–60): small circle, half opacity, no label.
-  - Strong (60–80): larger circle, `ABS` label.
+  - Minor (40â60): small circle, half opacity, no label.
+  - Strong (60â80): larger circle, `ABS` label.
   - Extreme (80+): largest circle, glow effect, `ABS <score>` label.
   - Provisional (live candle): dashed stroke, reduced opacity.
 - **State Management**: Added `absorptionEnabled`, `absorptionMinScore`, `absorptionSide`, `absorptionShowLabels`, and `absorptionMap` to `PanelState` in `lib/store/chart.ts`. Settings are persisted (v5); map is session-only.
 
 ### Changed
-- **FeedProvider**: Wired absorption lifecycle — builds map after history load, scores incrementally on candle close, re-scores provisional results every 100ms during live trading.
+- **FeedProvider**: Wired absorption lifecycle â builds map after history load, scores incrementally on candle close, re-scores provisional results every 100ms during live trading.
 - **ChartCanvas**: Integrated `drawAbsorption` into the render loop between candles/footprint and volume profile, matching the spec draw order.
 - **ChartPanel**: Passes absorption props through to ChartCanvas.
-- **Store Migration**: Bumped persist version 4 → 5 with migration that initializes absorption defaults for existing users.
+- **Store Migration**: Bumped persist version 4 â 5 with migration that initializes absorption defaults for existing users.
 
 ### Impact Summary
-The application now automatically detects candles where aggressive order flow failed to move price — a key absorption signal. Markers appear on the chart scaled by severity (minor/strong/extreme) with direction-aware positioning (above or below candles). The detection runs on Signals 1–3 (delta extremity, volume extremity, poor price progression); Signals 4 (imbalance clusters) and 5 (repeated defense) are stubbed for future implementation.
+The application now automatically detects candles where aggressive order flow failed to move price â a key absorption signal. Markers appear on the chart scaled by severity (minor/strong/extreme) with direction-aware positioning (above or below candles). The detection runs on Signals 1â3 (delta extremity, volume extremity, poor price progression); Signals 4 (imbalance clusters) and 5 (repeated defense) are stubbed for future implementation.
 
 ## [2026-05-09] - Bug Fix: FeedProvider TypeError
 
@@ -428,7 +456,7 @@ Resolved a common runtime crash that occurred when users refreshed the page or c
 ## [2026-05-09] - Bug Fix: WebSocket Reconnect Storm
 
 ### Fixed
-- **Reconnect Loop**: Fixed an infinite reconnect cycle in `lib/feeds/binance.ts` caused by `subscribeCandles()` and `subscribeTrades()` both calling `connect()` independently. The second call would tear down the socket just opened by the first (still in `CONNECTING` state), firing `onclose` → `scheduleReconnect` → loop.
+- **Reconnect Loop**: Fixed an infinite reconnect cycle in `lib/feeds/binance.ts` caused by `subscribeCandles()` and `subscribeTrades()` both calling `connect()` independently. The second call would tear down the socket just opened by the first (still in `CONNECTING` state), firing `onclose` â `scheduleReconnect` â loop.
 - **"Ping received after close"**: Fixed by detaching all event handlers (`onopen`, `onmessage`, `onerror`, `onclose`) from old WebSocket instances before closing them, preventing ghost events from firing on replaced sockets.
 
 ### Changed
@@ -443,32 +471,20 @@ Eliminated the WebSocket reconnect storm that caused rapid connect/disconnect cy
 ## [2026-05-09] - Phase 11: Volume Bubbles
 
 ### Added
-- **Draw Function**: Created `components/chart/drawBubbles.ts` — renders circles at price levels where single-side volume crosses a user-defined threshold. Radius and opacity scale with volume relative to the visible session max. Large bubbles (radius ≥ 12) show abbreviated volume labels inside.
+- **Draw Function**: Created `components/chart/drawBubbles.ts` â renders circles at price levels where single-side volume crosses a user-defined threshold. Radius and opacity scale with volume relative to the visible session max. Large bubbles (radius â¥ 12) show abbreviated volume labels inside.
 - **State Management**: Added `bubblesEnabled`, `bubbleThreshold`, `bubbleMinRadius`, `bubbleMaxRadius`, and `bubbleSide` fields to `PanelState` in `lib/store/chart.ts`. All settings are persisted (v6).
 - **Toolbar Controls**: Added inline bubble controls to `PanelToolbar.tsx`:
   - Circle toggle icon (teal when active, muted when off).
-  - `VOL ≥` threshold input (JetBrains Mono, debounced 300ms).
+  - `VOL â¥` threshold input (JetBrains Mono, debounced 300ms).
   - Side selector: `B` (buy), `S` (sell), `B+S` (both) with `#3D7EFF` active state.
 
 ### Changed
 - **ChartCanvas**: Integrated `drawBubbles` into the render loop between absorption markers and volume profile, matching the spec draw order.
 - **ChartPanel**: Passes all bubble props through to `ChartCanvas`.
-- **Store Migration**: Bumped persist version 5 → 6 with migration that initializes bubble defaults for existing users.
+- **Store Migration**: Bumped persist version 5 â 6 with migration that initializes bubble defaults for existing users.
 
 ### Performance
 - Bubbles skip rendering entirely when `barWidth < 4` (bars too small for readable bubbles).
-- Capped at 20 bubbles per candle — if more cells cross threshold, only the 20 highest volume cells render.
-
-### Impact Summary
-The chart now highlights significant volume activity at specific price levels via colored circles. Teal = buy aggression (ask volume), red = sell aggression (bid volume). Bubbles work in both candle and footprint modes, providing order flow context without scanning individual footprint cells. The threshold filter keeps the chart clean — only levels that matter are shown. All settings persist across refresh.
-
-## [2026-05-09] - Bug Fix: Global Font Rendering Consistency
-
-### Fixed
-- **Root Layout Font**: Moved font variables from `body` to `html` to ensure better inheritance across all app sections, including those with absolute positioning or complex z-indexing.
-- **Direct Application**: Applied `inter.className` directly to the `body` in `layout.tsx` to guarantee `Inter` is the base font for the entire document.
-- **Explicit Fallbacks**: Added `Inter` and `JetBrains Mono` as explicit fallbacks in `tailwind.config.ts` and set a global `font-family` rule in `globals.css` using the font variables.
-- **Weight Loading**: Explicitly specified a full range of weights (400-900) for `Inter` to ensure professional-grade rendering of bold and extra-bold UI elements.
 
 ### Impact Summary
 The application now consistently renders the intended `Inter` font family across the main header, sidebar, and all panel toolbars. By moving from a utility-only approach to a direct root-level application, font inheritance issues have been eliminated, providing a cohesive and professional aesthetic throughout the tool.
@@ -514,7 +530,7 @@ The selection rectangle is now fully "anchored" to the chart data. It no longer 
 ### Added
 - **Custom Volume Profile**: Implemented volume profile calculation and rendering specifically for the user-selected chart range.
 - **Interactive UI**:
-  - Added a `✕ CLEAR` button inside the selection rectangle for easy removal.
+  - Added a `â CLEAR` button inside the selection rectangle for easy removal.
   - Added a `CUSTOM` label to identify the range-based profile.
   - Hover detection for the clear button (button brightens and cursor changes to pointer).
 - **Profile Rendering**:
@@ -534,7 +550,7 @@ The Custom Range Profile feature is now complete. Traders can define specific ma
 ### Added
 - **Repositioning & Resizing**: Implemented drag-to-move and edge-resize functionality for the custom profile rectangle.
 - **Resize Handles**: Added visual handle indicators on all four edges when the profile is selected and hovered.
-- **Lock State**: Added a `customProfileLocked` state to prevent accidental movement/resizing, with a toggleable 🔒/🔓 button and "LOCKED" indicator.
+- **Lock State**: Added a `customProfileLocked` state to prevent accidental movement/resizing, with a toggleable ð/ð button and "LOCKED" indicator.
 - **Selection State**: Added `isProfileSelected` to distinguish between active and inactive profiles on the chart.
 - **Hover Feedback**: Increased background and border opacity when hovering over the profile area.
 
@@ -588,7 +604,7 @@ Deleting a custom profile now correctly restores the chart to its default fully 
   - Added `drawnLines` and `lineDrawMode` to `PanelState` in `lib/store/chart.ts`.
   - Implemented `addLine`, `removeLine`, and `setLineDrawMode` actions.
   - Configured persistence for `drawnLines` (v7) while keeping `lineDrawMode` session-only.
-- **UI**: Added `�` (horizontal) and `|` (vertical) toggle buttons to `PanelToolbar.tsx` with active/inactive styling.
+- **UI**: Added `` (horizontal) and `|` (vertical) toggle buttons to `PanelToolbar.tsx` with active/inactive styling.
 - **Interactions**: 
   - Immediate line placement on `onMouseDown` when a draw mode is active.
   - High-precision hover detection for lines and delete dots.

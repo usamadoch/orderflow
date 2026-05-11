@@ -26,6 +26,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawPriceLine.ts  # Live price badge with countdown and direction-color
 │   │   ├── drawCrosshair.ts  # TradingView-style crosshair with axis labels
 │   │   ├── drawAbsorption.ts # Absorption markers (minor/strong/extreme), glow, labels
+│   │   ├── AbsorptionTooltip.tsx # Hover breakdown of absorption signals (delta, volume, progression)
 │   │   ├── drawBubbles.ts    # Volume bubbles overlay (threshold-filtered, radius/opacity-scaled)
 │   │   ├── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
 │   │   ├── drawSelectionRect.ts # Selection rect, Custom Profile, Resizing handles, Locking
@@ -50,6 +51,8 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   └── engine.ts         # AggregationEngine (Real-time Trade Aggregation)
 │   ├── absorption/           # Absorption detection system
 │   │   └── engine.ts         # scoreCandle, buildAbsorptionMap, scoreLatestCandle (Signals 1-3)
+│   ├── exhaustion/           # Exhaustion detection system
+│   │   └── engine.ts         # scoreExhaustion, buildExhaustionMap (Signals 1-5)
 │   ├── feeds/                # Data adapters for WebSockets & REST
 │   │   ├── adapter.ts        # FeedAdapter interface (History + Live + clone())
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
@@ -60,6 +63,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions
 │       ├── volumeProfile.ts  # Volume profile aggregation, POC, and VA math
+│       ├── chartUtils.ts     # Shared chart utilities (rolling averages, opacity, etc.)
 │       ├── delta.ts          # Delta calculation helpers (Planned)
 │       └── format.ts         # Timeframe parsing, countdowns, and price formatting
 │
@@ -67,6 +71,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── candle.ts             # OHLCV definitions
 │   ├── footprint.ts          # Footprint data structures & FootprintMode ('bid-ask' | 'delta')
 │   ├── absorption.ts         # AbsorptionResult, AbsorptionDirection, AbsorptionRank
+│   ├── exhaustion.ts         # ExhaustionResult, ExhaustionDirection, ExhaustionRank
 │   └── trade.ts              # Individual trade tick definitions
 │
 ├── tailwind.config.ts        # Design system constraints and tokens

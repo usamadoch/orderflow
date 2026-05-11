@@ -20,6 +20,7 @@ import { drawLines } from './drawLines';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
+import { AbsorptionTooltip } from './AbsorptionTooltip';
 
 interface ChartCanvasProps {
   panelId: PanelId;
@@ -109,6 +110,8 @@ export function ChartCanvas({
 
   const hoveredLineId = useRef<string | null>(null);
   const isHoveringDeleteDot = useRef(false);
+
+  const [hoveredAbs, setHoveredAbs] = React.useState<{ result: AbsorptionResult, x: number, y: number } | null>(null);
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
@@ -633,6 +636,47 @@ export function ChartCanvas({
             else cursor = 'crosshair';
           }
         }
+
+        // Absorption Hover Detection
+        let foundAbs = false;
+        if (absorptionEnabled && absorptionMap.size > 0) {
+          const chartWidth = rect.width - priceAxisWidth;
+          const chartHeight = rect.height - timeAxisHeight;
+          const pCenter = priceCenter.current ?? 0;
+          const pRange = priceRange.current ?? 100;
+          const priceMin = pCenter - pRange / 2;
+          const priceMax = pCenter + pRange / 2;
+
+          const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
+          const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+
+          const { firstIndex, lastIndex } = getVisibleRange(candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+
+          for (let i = firstIndex; i <= lastIndex && i < candles.length; i++) {
+            const candle = candles[i];
+            const result = absorptionMap.get(candle.time);
+            if (!result || result.score < absorptionMinScore) continue;
+            if (absorptionSide !== 'both' && result.direction !== absorptionSide) continue;
+
+            const ax = indexToX(i);
+            const radius = result.rank === 'extreme' ? 11 : result.rank === 'strong' ? 8 : 5;
+            let ay: number;
+            if (result.direction === 'seller') {
+              ay = priceToY(candle.low) + 8 + radius;
+            } else {
+              ay = priceToY(candle.high) - 8 - radius;
+            }
+
+            const dist = Math.sqrt((x - ax) ** 2 + (y - ay) ** 2);
+            if (dist < radius + 5) {
+              setHoveredAbs({ result, x: ax, y: ay });
+              cursor = 'help';
+              foundAbs = true;
+              break;
+            }
+          }
+        }
+        if (!foundAbs) setHoveredAbs(null);
       }
 
       canvas.style.cursor = cursor;
@@ -793,6 +837,13 @@ export function ChartCanvas({
         className="absolute top-0 left-0 outline-none"
         tabIndex={0}
       />
+      {hoveredAbs && (
+        <AbsorptionTooltip 
+          result={hoveredAbs.result} 
+          x={hoveredAbs.x} 
+          y={hoveredAbs.y} 
+        />
+      )}
     </div>
   );
 }

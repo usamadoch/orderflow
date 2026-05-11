@@ -6,6 +6,7 @@ import {
   AbsorptionRank,
 } from '../../types/absorption';
 import { AggregationEngine } from '../aggregation/engine';
+import { getRollingAverages } from '../utils/chartUtils';
 
 // ── Constants ─────────────────────────────────────────────
 const LOOKBACK = 20;           // rolling window size for averages
@@ -132,6 +133,83 @@ function scorePoorProgression(
   return clamp(pts, 0, 30);
 }
 
+// ── Signal 4 — Footprint Imbalance Cluster Failure (max 20 pts) ──
+
+function scoreImbalanceCluster(
+  footprint: FootprintCandle | null,
+  delta: number,
+  candle: Candle,
+  reasons: string[]
+): number {
+  if (!footprint) return 0;
+
+  const levels = Array.from(footprint.cells.keys())
+    .sort((a, b) => b - a); // Top down
+
+  if (levels.length === 0) return 0;
+
+  let maxStackedAsk = 0;
+  let currentStackedAsk = 0;
+  let maxStackedBid = 0;
+  let currentStackedBid = 0;
+
+  for (const price of levels) {
+    const cell = footprint.cells.get(price);
+    if (!cell) continue;
+    
+    const askVol = cell.askVol;
+    const bidVol = cell.bidVol;
+    
+    // Ratio > 3 => Ask Imbalance (Aggressive Buyers)
+    if (askVol > bidVol * 3 && askVol > 0) {
+      currentStackedAsk++;
+      maxStackedAsk = Math.max(maxStackedAsk, currentStackedAsk);
+      currentStackedBid = 0;
+    } 
+    // Ratio < 0.33 => Bid Imbalance (Aggressive Sellers)
+    else if (bidVol > askVol * 3 && bidVol > 0) {
+      currentStackedBid++;
+      maxStackedBid = Math.max(maxStackedBid, currentStackedBid);
+      currentStackedAsk = 0;
+    } else {
+      currentStackedAsk = 0;
+      currentStackedBid = 0;
+    }
+  }
+
+  let pts = 0;
+  const isSellAggression = delta < 0;
+  const totalRange = candle.high - candle.low;
+
+  if (isSellAggression) {
+    // Seller absorption: check for bid imbalance clusters (sellers aggressive)
+    // "Failed to close lower" means close is not at the very bottom of the range
+    const isOffLow = totalRange > 0 && candle.close > candle.low + (totalRange * 0.15);
+    
+    if (maxStackedBid >= 5 && isOffLow) {
+      pts = 20;
+      reasons.push(`Extreme bid imbalance cluster (${maxStackedBid} levels)`);
+    } else if (maxStackedBid >= 3 && isOffLow) {
+      pts = 15;
+      reasons.push(`Bid imbalance cluster (${maxStackedBid} levels)`);
+    }
+  } else {
+    // Buyer absorption: check for ask imbalance clusters (buyers aggressive)
+    // "Failed to close higher" means close is not at the very top of the range
+    const isOffHigh = totalRange > 0 && candle.close < candle.high - (totalRange * 0.15);
+
+    if (maxStackedAsk >= 5 && isOffHigh) {
+      pts = 20;
+      reasons.push(`Extreme ask imbalance cluster (${maxStackedAsk} levels)`);
+    } else if (maxStackedAsk >= 3 && isOffHigh) {
+      pts = 15;
+      reasons.push(`Ask imbalance cluster (${maxStackedAsk} levels)`);
+    }
+  }
+
+  return pts;
+}
+
 // ── Main Scoring Function ────────────────────────────────
 
 export function scoreCandle(
@@ -145,17 +223,7 @@ export function scoreCandle(
   const absDelta = Math.abs(delta);
 
   // Compute rolling averages from the window
-  let sumAbsDelta = 0;
-  let sumVolume = 0;
-  let count = 0;
-  for (let i = 0; i < recentCandles.length; i++) {
-    const fp = recentFootprints[i];
-    sumAbsDelta += fp ? Math.abs(fp.delta) : 0;
-    sumVolume += recentCandles[i].volume;
-    count++;
-  }
-  const avgAbsDelta = count > 0 ? sumAbsDelta / count : 0;
-  const avgVolume = count > 0 ? sumVolume / count : 0;
+  const { avgAbsDelta, avgVolume } = getRollingAverages(recentCandles, recentFootprints);
 
   // Skip if delta is near-zero relative to the average — ambiguous direction
   if (avgAbsDelta > 0 && absDelta < avgAbsDelta * NEAR_ZERO_DELTA_FACTOR) {
@@ -164,13 +232,13 @@ export function scoreCandle(
 
   const reasons: string[] = [];
 
-  // ── Signals 1–3 ──
+  // ── Signals 1–4 ──
   const s1 = scoreDeltaExtremity(absDelta, avgAbsDelta, reasons);
   const s2 = scoreVolumeExtremity(candle.volume, avgVolume, reasons);
   const s3 = scorePoorProgression(candle, delta, reasons);
+  const s4 = scoreImbalanceCluster(footprint, delta, candle, reasons);
 
-  // ── Signals 4 & 5 (not yet implemented) ──
-  const s4 = 0;
+  // ── Signal 5 (not yet implemented) ──
   const s5 = 0;
 
   const rawScore = s1 + s2 + s3 + s4 + s5;
