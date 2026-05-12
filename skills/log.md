@@ -1,5 +1,33 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-12] - UI/UX: Reorganized Settings Dropdown (Tabbed Interface)
+- **What changed**:
+  - Refactored `ChartSettingsDropdown.tsx` to use a tabbed interface.
+  - Grouped settings into three main categories: **Chart** (Aggregation, Bubbles), **Profiles** (Footprint, Volume Profile), and **Signals** (Absorption, Exhaustion).
+  - Implemented a fixed-height, scrollable content area with `max-h-[calc(100vh-100px)]`.
+  - Added a tab navigation bar with icons and active state styling.
+  - Improved the header and footer of the dropdown for better context (showing current panel ID).
+- **Why it changed**: 
+  - The single-list dropdown was becoming too long, extending beyond the screen and making settings inaccessible.
+  - Reorganizing into tabs improves discoverability and scalability for future features.
+- **Impact**:
+  - A much more compact and organized settings menu.
+  - No more layout overflow issues on smaller screens or when many settings are expanded.
+  - Better grouping of related functionalities (visuals vs. logic).
+
+## [2026-05-12] - UI Refinement: Centralized Signal Controls
+- **What changed**:
+  - Moved **Absorption** and **Exhaustion** signal controls from the individual `PanelToolbar.tsx` (chart panel header) into the global `ChartSettingsDropdown.tsx`.
+  - Added a new **"Signal Detection"** section in the settings dropdown to house these controls.
+  - Implemented the Absorption settings in the dropdown (matching the existing Exhaustion settings style).
+  - Cleaned up `PanelToolbar.tsx` by removing the signal-related buttons, state selectors, and unused imports.
+- **Why it changed**: 
+  - To reduce UI clutter in the chart panel header and prevent layout/responsiveness issues, especially in multi-panel mode or on smaller screens.
+- **Impact**:
+  - A cleaner, more focused chart header.
+  - All signal configuration (thresholds, sides, toggles) is now unified in the central settings menu.
+  - Improved layout stability when switching panels or resizing.
+
 ## [2026-05-12] - Fix: Chart Layout Shifting & Resizing
 - **What changed**:
   - **app/page.tsx**:
