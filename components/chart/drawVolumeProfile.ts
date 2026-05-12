@@ -11,30 +11,62 @@ export function drawVolumeProfile(
   profileWidth: number,
   priceAxisWidth: number,
   bucketSize: number,
-  isCustomActive: boolean = false
+  isCustomActive: boolean = false,
+  profileWidthPct: number = 70,
+  profileOpacity: number = 0.4,
+  profileMinRowWidth: number = 2,
+  profileBucketSize: number = bucketSize,
+  profileScaleMode: 'linear' | 'sqrt' = 'sqrt',
+  showPocHighlight: boolean = true,
+  showVaFill: boolean = true,
+  showPocLine: boolean = true,
+  showVaLines: boolean = true
 ) {
   const chartRight = canvasWidth - priceAxisWidth;
-  const barOpacity = isCustomActive ? 0.2 : 0.4;
-  const neutralOpacity = isCustomActive ? 0.15 : 0.3;
+  const effectiveWidth = profileWidth * (profileWidthPct / 100);
+  const profileStartX = chartRight - effectiveWidth;
+
+  const barOpacity = isCustomActive ? profileOpacity * 0.4 : profileOpacity;
+  const neutralOpacity = isCustomActive ? profileOpacity * 0.3 : profileOpacity * 0.75;
   const lineOpacity = isCustomActive ? 0.3 : 1;
+
+  // ── Step 0: VA Background Fill ──
+  if (showVaFill) {
+    const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
+    const vaLowY = priceToY(profile.vaLow);
+    ctx.fillStyle = 'rgba(61, 126, 255, 0.06)';
+    ctx.fillRect(profileStartX, vaHighY, effectiveWidth, vaLowY - vaHighY);
+  }
 
   // ── Step 1: Profile Bars ──
   for (const row of profile.rows) {
-    const yTop = priceToY(row.price + bucketSize);
+    const yTop = priceToY(row.price + profileBucketSize);
     const yBot = priceToY(row.price);
     const rowHeight = yBot - yTop;
 
-    if (rowHeight < 1) continue;
+    if (rowHeight < 0.5) continue;
 
-    const barWidth = (row.totalVol / profile.maxVol) * profileWidth;
-    if (barWidth < 0.5) continue;
+    let calculatedBarWidth: number;
+    const volRatio = row.totalVol / profile.maxVol;
 
-    const barX = chartRight - barWidth;
+    if (profileScaleMode === 'sqrt') {
+      calculatedBarWidth = Math.sqrt(volRatio) * effectiveWidth;
+    } else {
+      calculatedBarWidth = volRatio * effectiveWidth;
+    }
+    
+    // Apply minimum row width only if there is volume
+    if (row.totalVol > 0 && profileMinRowWidth > 0) {
+      calculatedBarWidth = Math.max(profileMinRowWidth, calculatedBarWidth);
+    }
+
+    if (calculatedBarWidth < 0.5) continue;
+
+    const barX = chartRight - calculatedBarWidth;
 
     if (row.hasFP && row.totalVol > 0) {
-      // Bid/ask split — ask on left (green), bid on right (red)
-      const askWidth = barWidth * (row.askVol / row.totalVol);
-      const bidWidth = barWidth - askWidth;
+      const askWidth = calculatedBarWidth * (row.askVol / row.totalVol);
+      const bidWidth = calculatedBarWidth - askWidth;
 
       // Ask portion (green)
       ctx.fillStyle = `rgba(38, 166, 154, ${barOpacity})`;
@@ -44,62 +76,114 @@ export function drawVolumeProfile(
       ctx.fillStyle = `rgba(239, 83, 80, ${barOpacity})`;
       ctx.fillRect(barX + askWidth, yTop, bidWidth, rowHeight);
     } else {
-      // Fallback — neutral gray (no footprint data)
       ctx.fillStyle = `rgba(138, 138, 138, ${neutralOpacity})`;
-      ctx.fillRect(barX, yTop, barWidth, rowHeight);
+      ctx.fillRect(barX, yTop, calculatedBarWidth, rowHeight);
+    }
+  }
+
+  // ── Step 1.5: POC Row Highlight ──
+  if (showPocHighlight) {
+    const pocRow = profile.rows.find(r => r.price === profile.poc);
+    if (pocRow) {
+      const yTop = priceToY(pocRow.price + profileBucketSize);
+      const yBot = priceToY(pocRow.price);
+      const rowHeight = yBot - yTop;
+
+      const volRatio = pocRow.totalVol / profile.maxVol;
+      let barW = (profileScaleMode === 'sqrt' ? Math.sqrt(volRatio) : volRatio) * effectiveWidth;
+      if (pocRow.totalVol > 0 && profileMinRowWidth > 0) barW = Math.max(profileMinRowWidth, barW);
+
+      if (barW >= 0.5) {
+        const barX = chartRight - barW;
+        const highlightOpacity = Math.min(1.0, barOpacity + 0.2);
+
+        // Re-draw with higher brightness
+        if (pocRow.hasFP) {
+          const askWidth = barW * (pocRow.askVol / pocRow.totalVol);
+          const bidWidth = barW - askWidth;
+          ctx.fillStyle = `rgba(38, 166, 154, ${highlightOpacity})`;
+          ctx.fillRect(barX, yTop, askWidth, rowHeight);
+          ctx.fillStyle = `rgba(239, 83, 80, ${highlightOpacity})`;
+          ctx.fillRect(barX + askWidth, yTop, bidWidth, rowHeight);
+        } else {
+          ctx.fillStyle = `rgba(138, 138, 138, ${Math.min(1.0, neutralOpacity + 0.2)})`;
+          ctx.fillRect(barX, yTop, barW, rowHeight);
+        }
+
+        // Amber outline
+        ctx.strokeStyle = '#F0B90B';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, yTop, barW, rowHeight);
+
+        // Internal POC label
+        if (rowHeight >= 10 && barW >= 20) {
+          ctx.fillStyle = '#F0B90B';
+          ctx.font = '8px "JetBrains Mono"';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('POC', barX + 3, yTop + rowHeight / 2 + 1);
+        }
+      }
     }
   }
 
   // ── Step 2: POC Line ──
-  const pocY = priceToY(profile.poc + bucketSize / 2);
+  if (showPocLine) {
+    const pocY = priceToY(profile.poc + profileBucketSize / 2);
 
-  ctx.save();
-  ctx.globalAlpha = lineOpacity;
-  ctx.strokeStyle = '#F0B90B';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(0, Math.round(pocY) + 0.5);
-  ctx.lineTo(chartRight, Math.round(pocY) + 0.5);
-  ctx.stroke();
-  ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = lineOpacity;
+    ctx.strokeStyle = '#F0B90B';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 3]);
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(pocY) + 0.5);
+    ctx.lineTo(chartRight, Math.round(pocY) + 0.5);
+    ctx.stroke();
+
+    // POC label on left
+    ctx.fillStyle = '#F0B90B';
+    ctx.font = 'bold 9px "JetBrains Mono"';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('POC', 4, pocY - 2);
+    ctx.restore();
+  }
 
   // ── Step 3: VA High / VA Low Lines ──
-  const vaHighY = priceToY(profile.vaHigh + bucketSize);
-  const vaLowY = priceToY(profile.vaLow);
+  if (showVaLines) {
+    const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
+    const vaLowY = priceToY(profile.vaLow);
 
-  ctx.save();
-  ctx.globalAlpha = lineOpacity;
-  ctx.strokeStyle = '#3D7EFF';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([2, 4]);
+    ctx.save();
+    ctx.globalAlpha = lineOpacity;
+    ctx.strokeStyle = '#3D7EFF';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
 
-  ctx.beginPath();
-  ctx.moveTo(0, Math.round(vaHighY) + 0.5);
-  ctx.lineTo(chartRight, Math.round(vaHighY) + 0.5);
-  ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(vaHighY) + 0.5);
+    ctx.lineTo(chartRight, Math.round(vaHighY) + 0.5);
+    ctx.stroke();
 
-  ctx.beginPath();
-  ctx.moveTo(0, Math.round(vaLowY) + 0.5);
-  ctx.lineTo(chartRight, Math.round(vaLowY) + 0.5);
-  ctx.stroke();
-  ctx.restore();
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(vaLowY) + 0.5);
+    ctx.lineTo(chartRight, Math.round(vaLowY) + 0.5);
+    ctx.stroke();
 
-  // ── Step 4: Labels ──
-  const labelX = chartRight + 4;
-  ctx.font = '9px "JetBrains Mono"';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-
-  // POC label
-  ctx.fillStyle = '#F0B90B';
-  ctx.fillText('POC', labelX, pocY);
-
-  // VA labels — skip if too close together
-  const vaDistance = Math.abs(vaLowY - vaHighY);
-  if (vaDistance >= 14) {
-    ctx.fillStyle = '#3D7EFF';
-    ctx.fillText('VAH', labelX, vaHighY);
-    ctx.fillText('VAL', labelX, vaLowY);
+    // VA labels on left
+    const vaDistance = Math.abs(vaLowY - vaHighY);
+    if (vaDistance >= 16) {
+      ctx.fillStyle = '#3D7EFF';
+      ctx.font = '9px "JetBrains Mono"';
+      ctx.textAlign = 'left';
+      
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('VAH', 4, vaHighY - 2);
+      
+      ctx.textBaseline = 'top';
+      ctx.fillText('VAL', 4, vaLowY + 2);
+    }
+    ctx.restore();
   }
 }

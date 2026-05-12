@@ -78,7 +78,16 @@ export function drawCustomProfile(
   isHovered: boolean = false,
   isLocked: boolean = false,
   isSelected: boolean = true,
-  isHoveringLock: boolean = false
+  isHoveringLock: boolean = false,
+  profileScaleMode: 'linear' | 'sqrt' = 'sqrt',
+  profileBucketSize: number = bucketSize,
+  profileWidthPct: number = 70,
+  profileOpacity: number = 0.5,
+  profileMinRowWidth: number = 2,
+  showPocHighlight: boolean = true,
+  showVaFill: boolean = true,
+  showPocLine: boolean = true,
+  showVaLines: boolean = true
 ) {
   if (!customProfileRange) return;
 
@@ -96,9 +105,6 @@ export function drawCustomProfile(
   ctx.save();
 
   // 1. Border
-  // Selected: solid, rgba(61, 126, 255, 0.8)
-  // Unselected: dashed [4, 4], rgba(61, 126, 255, 0.35)
-  // Hovered (not selected): rgba(61, 126, 255, 0.8)
   if (isSelected || isHovered) {
     ctx.strokeStyle = 'rgba(61, 126, 255, 0.8)';
     if (!isSelected) ctx.setLineDash([4, 4]);
@@ -109,13 +115,25 @@ export function drawCustomProfile(
   ctx.lineWidth = 1;
   ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
 
-  // 2. Profile Bars (Flip direction: anchor to x1, grow rightward)
+  // 2. Profile Bars
   if (profile) {
     const barAnchorX = Math.min(x1, x2);
-    const barMaxWidth = rectWidth;
+    const barMaxWidth = rectWidth * (profileWidthPct / 100);
+
+    // VA Area Fill
+    if (showVaFill) {
+      const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
+      const vaLowY = priceToY(profile.vaLow);
+      const fillTop = Math.max(vaHighY, rectY);
+      const fillBot = Math.min(vaLowY, rectY + rectHeight);
+      if (fillBot > fillTop) {
+        ctx.fillStyle = 'rgba(61, 126, 255, 0.08)';
+        ctx.fillRect(barAnchorX, fillTop, barMaxWidth, fillBot - fillTop);
+      }
+    }
 
     for (const row of profile.rows) {
-      const rowTopY = priceToY(row.price + bucketSize);
+      const rowTopY = priceToY(row.price + profileBucketSize);
       const rowBotY = priceToY(row.price);
       
       const drawTopY = Math.max(rowTopY, rectY);
@@ -124,56 +142,114 @@ export function drawCustomProfile(
 
       if (drawHeight <= 0) continue;
 
-      const barWidthPx = (row.totalVol / profile.maxVol) * barMaxWidth;
+      let barWidthPx: number;
+      const volRatio = row.totalVol / profile.maxVol;
+
+      if (profileScaleMode === 'sqrt') {
+        barWidthPx = Math.sqrt(volRatio) * barMaxWidth;
+      } else {
+        barWidthPx = volRatio * barMaxWidth;
+      }
+
+      if (row.totalVol > 0 && profileMinRowWidth > 0) {
+        barWidthPx = Math.max(profileMinRowWidth, barWidthPx);
+      }
+
       if (barWidthPx < 0.5) continue;
 
       if (row.hasFP && row.totalVol > 0) {
         const askWidth = barWidthPx * (row.askVol / row.totalVol);
         const bidWidth = barWidthPx - askWidth;
-
-        // Ask portion (green)
-        ctx.fillStyle = 'rgba(38, 166, 154, 0.5)';
+        ctx.fillStyle = `rgba(38, 166, 154, ${profileOpacity})`;
         ctx.fillRect(barAnchorX, drawTopY, askWidth, drawHeight);
-
-        // Bid portion (red)
-        ctx.fillStyle = 'rgba(239, 83, 80, 0.5)';
+        ctx.fillStyle = `rgba(239, 83, 80, ${profileOpacity})`;
         ctx.fillRect(barAnchorX + askWidth, drawTopY, bidWidth, drawHeight);
       } else {
-        ctx.fillStyle = 'rgba(138, 138, 138, 0.4)';
+        ctx.fillStyle = `rgba(138, 138, 138, ${profileOpacity})`;
         ctx.fillRect(barAnchorX, drawTopY, barWidthPx, drawHeight);
       }
     }
 
+    // POC Highlight
+    if (showPocHighlight) {
+      const pocRow = profile.rows.find(r => r.price === profile.poc);
+      if (pocRow) {
+        const rowTopY = priceToY(pocRow.price + profileBucketSize);
+        const rowBotY = priceToY(pocRow.price);
+        const drawTopY = Math.max(rowTopY, rectY);
+        const drawBotY = Math.min(rowBotY, rectY + rectHeight);
+        const drawHeight = drawBotY - drawTopY;
+
+        if (drawHeight > 0) {
+          const volRatio = pocRow.totalVol / profile.maxVol;
+          let barW = (profileScaleMode === 'sqrt' ? Math.sqrt(volRatio) : volRatio) * barMaxWidth;
+          if (pocRow.totalVol > 0 && profileMinRowWidth > 0) barW = Math.max(profileMinRowWidth, barW);
+
+          if (barW >= 0.5) {
+            const highlightOpacity = Math.min(1.0, profileOpacity + 0.2);
+            if (pocRow.hasFP) {
+              const askWidth = barW * (pocRow.askVol / pocRow.totalVol);
+              const bidWidth = barW - askWidth;
+              ctx.fillStyle = `rgba(38, 166, 154, ${highlightOpacity})`;
+              ctx.fillRect(barAnchorX, drawTopY, askWidth, drawHeight);
+              ctx.fillStyle = `rgba(239, 83, 80, ${highlightOpacity})`;
+              ctx.fillRect(barAnchorX + askWidth, drawTopY, bidWidth, drawHeight);
+            } else {
+              ctx.fillStyle = `rgba(138, 138, 138, ${Math.min(1.0, profileOpacity + 0.25)})`;
+              ctx.fillRect(barAnchorX, drawTopY, barW, drawHeight);
+            }
+
+            ctx.strokeStyle = '#F0B90B';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(barAnchorX, drawTopY, barW, drawHeight);
+
+            if (drawHeight >= 10 && barW >= 20) {
+              ctx.fillStyle = '#F0B90B';
+              ctx.font = '8px "JetBrains Mono"';
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'middle';
+              ctx.fillText('POC', barAnchorX + 3, drawTopY + drawHeight / 2 + 1);
+            }
+          }
+        }
+      }
+    }
+
     // 3. POC Line
-    const pocY = priceToY(profile.poc + bucketSize / 2);
-    if (pocY >= rectY && pocY <= rectY + rectHeight) {
-      ctx.strokeStyle = '#F0B90B';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(rectX, Math.round(pocY) + 0.5);
-      ctx.lineTo(rectX + rectWidth, Math.round(pocY) + 0.5);
-      ctx.stroke();
+    if (showPocLine) {
+      const pocY = priceToY(profile.poc + profileBucketSize / 2);
+      if (pocY >= rectY && pocY <= rectY + rectHeight) {
+        ctx.strokeStyle = '#F0B90B';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 3]);
+        ctx.beginPath();
+        ctx.moveTo(rectX, Math.round(pocY) + 0.5);
+        ctx.lineTo(rectX + rectWidth, Math.round(pocY) + 0.5);
+        ctx.stroke();
+      }
     }
 
     // 4. VA Lines
-    const vaHighY = priceToY(profile.vaHigh + bucketSize);
-    const vaLowY = priceToY(profile.vaLow);
+    if (showVaLines) {
+      const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
+      const vaLowY = priceToY(profile.vaLow);
 
-    ctx.strokeStyle = '#3D7EFF';
-    ctx.setLineDash([2, 4]);
+      ctx.strokeStyle = '#3D7EFF';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
 
-    if (vaHighY >= rectY && vaHighY <= rectY + rectHeight) {
-      ctx.beginPath();
-      ctx.moveTo(rectX, Math.round(vaHighY) + 0.5);
-      ctx.lineTo(rectX + rectWidth, Math.round(vaHighY) + 0.5);
-      ctx.stroke();
-    }
-    if (vaLowY >= rectY && vaLowY <= rectY + rectHeight) {
-      ctx.beginPath();
-      ctx.moveTo(rectX, Math.round(vaLowY) + 0.5);
-      ctx.lineTo(rectX + rectWidth, Math.round(vaLowY) + 0.5);
-      ctx.stroke();
+      if (vaHighY >= rectY && vaHighY <= rectY + rectHeight) {
+        ctx.beginPath();
+        ctx.moveTo(rectX, Math.round(vaHighY) + 0.5);
+        ctx.lineTo(rectX + rectWidth, Math.round(vaHighY) + 0.5);
+        ctx.stroke();
+      }
+      if (vaLowY >= rectY && vaLowY <= rectY + rectHeight) {
+        ctx.beginPath();
+        ctx.moveTo(rectX, Math.round(vaLowY) + 0.5);
+        ctx.lineTo(rectX + rectWidth, Math.round(vaLowY) + 0.5);
+        ctx.stroke();
+      }
     }
   }
 
@@ -181,9 +257,6 @@ export function drawCustomProfile(
   ctx.setLineDash([]);
   ctx.font = '9px "JetBrains Mono"';
   
-  // Header Area Background (for buttons)
-  // No explicit bg, just text labels
-
   // CUSTOM Label
   ctx.fillStyle = '#3D7EFF';
   ctx.textAlign = 'left';
@@ -197,30 +270,21 @@ export function drawCustomProfile(
   }
 
   // Interaction Buttons (Top Right)
-  // Order: LOCK, CLEAR
-  
-  // LOCK Button
   ctx.font = '10px "JetBrains Mono"';
   ctx.fillStyle = isHoveringLock ? '#E8E8E8' : (isLocked ? '#3D7EFF' : '#8A8A8A');
   ctx.textAlign = 'right';
   ctx.fillText(isLocked ? '🔒' : '🔓', rectX + rectWidth - 20, rectY + 4);
 
-  // CLEAR Button (✕)
   ctx.font = '11px "JetBrains Mono"';
   ctx.fillStyle = isHoveringClear ? '#E8E8E8' : '#8A8A8A';
   ctx.fillText('✕', rectX + rectWidth - 6, rectY + 4);
 
-  // 6. Resize Handles (Only when selected and hovered, and not locked)
+  // 6. Resize Handles
   if (isSelected && isHovered && !isLocked) {
     ctx.fillStyle = 'rgba(61, 126, 255, 0.7)';
-    
-    // Left handle
     ctx.fillRect(rectX - 2, rectY + rectHeight / 2 - 8, 4, 16);
-    // Right handle
     ctx.fillRect(rectX + rectWidth - 2, rectY + rectHeight / 2 - 8, 4, 16);
-    // Top handle
     ctx.fillRect(rectX + rectWidth / 2 - 8, rectY - 2, 16, 4);
-    // Bottom handle
     ctx.fillRect(rectX + rectWidth / 2 - 8, rectY + rectHeight - 2, 16, 4);
   }
 

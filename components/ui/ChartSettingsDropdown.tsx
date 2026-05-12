@@ -20,6 +20,16 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setExhaustionSide = useChartStore(s => s.setExhaustionSide);
   const setExhaustionLookback = useChartStore(s => s.setExhaustionLookback);
   const setExhaustionShowProvisional = useChartStore(s => s.setExhaustionShowProvisional);
+  const setProfileWidthPct = useChartStore(s => s.setProfileWidthPct);
+  const setProfileOpacity = useChartStore(s => s.setProfileOpacity);
+  const setProfileMinRowWidth = useChartStore(s => s.setProfileMinRowWidth);
+  const setProfileScaleMode = useChartStore(s => s.setProfileScaleMode);
+  const setProfileShowPocHighlight = useChartStore(s => s.setProfileShowPocHighlight);
+  const setProfileShowVaFill = useChartStore(s => s.setProfileShowVaFill);
+  const setProfileShowPocLine = useChartStore(s => s.setProfileShowPocLine);
+  const setProfileShowVaLines = useChartStore(s => s.setProfileShowVaLines);
+  const setProfileShowDelta = useChartStore(s => s.setProfileShowDelta);
+  const setDeltaProfileWidth = useChartStore(s => s.setDeltaProfileWidth);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -233,6 +243,150 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                       }`} />
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Volume Profile Settings */}
+        <div className="space-y-3">
+          <div className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Volume Profile</div>
+
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scaling</label>
+                <div className="flex gap-1 w-24">
+                  {(['linear', 'sqrt'] as const).map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setProfileScaleMode(panelId, m)}
+                      className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.profileScaleMode === m
+                        ? 'bg-[#1A1A1A] border-accent text-accent'
+                        : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                        }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Width</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{panel.profileWidthPct}%</span>
+              </div>
+              <input
+                type="range"
+                value={panel.profileWidthPct}
+                onChange={(e) => setProfileWidthPct(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="10" max="100" step="5"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.profileOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                value={panel.profileOpacity * 100}
+                onChange={(e) => setProfileOpacity(panelId, Number(e.target.value) / 100)}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="10" max="100" step="5"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Width</label>
+                <span className="text-[12px] font-mono font-bold text-accent">
+                  {panel.profileMinRowWidth === 0 ? 'OFF' : `${panel.profileMinRowWidth}px`}
+                </span>
+              </div>
+              <input
+                type="range"
+                value={panel.profileMinRowWidth}
+                onChange={(e) => setProfileMinRowWidth(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="0" max="8" step="1"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                onClick={() => setProfileShowPocHighlight(panelId, !panel.profileShowPocHighlight)}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocHighlight
+                  ? 'bg-accent/5 border-accent/20 text-accent'
+                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider">POC Highlight</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowPocHighlight ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+              </button>
+
+              <button
+                onClick={() => setProfileShowVaFill(panelId, !panel.profileShowVaFill)}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaFill
+                  ? 'bg-accent/5 border-accent/20 text-accent'
+                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider">VA Area Fill</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowVaFill ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+              </button>
+
+              <button
+                onClick={() => setProfileShowPocLine(panelId, !panel.profileShowPocLine)}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocLine
+                  ? 'bg-accent/5 border-accent/20 text-accent'
+                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider">POC Line</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowPocLine ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+              </button>
+
+              <button
+                onClick={() => setProfileShowVaLines(panelId, !panel.profileShowVaLines)}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaLines
+                  ? 'bg-accent/5 border-accent/20 text-accent'
+                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider">VA Lines</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowVaLines ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+              </button>
+
+              <button
+                onClick={() => setProfileShowDelta(panelId, !panel.profileShowDelta)}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowDelta
+                  ? 'bg-accent/5 border-accent/20 text-accent'
+                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider">Show Delta</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowDelta ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+              </button>
+            </div>
+
+            {panel.profileShowDelta && (
+              <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Delta Width</label>
+                  <span className="text-[12px] font-mono font-bold text-accent">{panel.deltaProfileWidth}px</span>
+                </div>
+                <input
+                  type="range"
+                  value={panel.deltaProfileWidth}
+                  onChange={(e) => setDeltaProfileWidth(panelId, Number(e.target.value))}
+                  className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                  min="40" max="160" step="5"
+                />
               </div>
             )}
           </div>

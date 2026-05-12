@@ -16,6 +16,7 @@ export interface VolumeProfile {
   vaHigh:   number;         // top of 70% value area
   vaLow:    number;         // bottom of 70% value area
   maxVol:   number;         // highest single row volume (for bar width scaling)
+  maxAbsDelta: number;      // highest absolute delta (for delta bar scaling)
   totalVol: number;         // sum of all row volumes
 }
 
@@ -27,7 +28,10 @@ export interface VolumeProfile {
 export function buildProfile(
   visibleCandles: Candle[],
   engine: AggregationEngine,
-  bucketSize: number
+  bucketSize: number,
+  profileBucketSize: number = bucketSize,
+  priceHigh?: number,
+  priceLow?: number
 ): VolumeProfile | null {
   if (visibleCandles.length === 0 || bucketSize <= 0) return null;
 
@@ -44,16 +48,30 @@ export function buildProfile(
     return row;
   };
 
+  const rowsPerCell = Math.max(1, Math.round(bucketSize / profileBucketSize));
+
   for (const candle of visibleCandles) {
     const fpCandle = engine.getFootprintCandle(candle.time);
 
     if (fpCandle && fpCandle.cells.size > 0) {
       // Footprint data available — use exact bid/ask volumes
       fpCandle.cells.forEach((cell, bucketPrice) => {
-        const row = getOrCreate(bucketPrice, true);
-        row.bidVol += cell.bidVol;
-        row.askVol += cell.askVol;
-        row.totalVol += cell.bidVol + cell.askVol;
+        // Distribute cell volume across multiple profile rows
+        const bidPerProfileRow = cell.bidVol / rowsPerCell;
+        const askPerProfileRow = cell.askVol / rowsPerCell;
+
+        for (let i = 0; i < rowsPerCell; i++) {
+          const profileRowPrice = normalizePriceToBucket(bucketPrice + i * profileBucketSize, profileBucketSize);
+          
+          // Apply price boundaries if provided
+          if (priceHigh !== undefined && profileRowPrice > priceHigh) continue;
+          if (priceLow !== undefined && profileRowPrice < priceLow) continue;
+
+          const row = getOrCreate(profileRowPrice, true);
+          row.bidVol += bidPerProfileRow;
+          row.askVol += askPerProfileRow;
+          row.totalVol += bidPerProfileRow + askPerProfileRow;
+        }
       });
     } else {
       // Fallback — distribute candle volume evenly across price range
@@ -62,18 +80,23 @@ export function buildProfile(
       const vol = candle.volume;
       if (vol <= 0) continue;
 
-      const bucketLow = normalizePriceToBucket(low, bucketSize);
-      const bucketHigh = normalizePriceToBucket(high, bucketSize);
-      const numBuckets = Math.max(1, Math.round((bucketHigh - bucketLow) / bucketSize) + 1);
-      const volPerBucket = vol / numBuckets;
+      const profileBucketLow = normalizePriceToBucket(low, profileBucketSize);
+      const profileBucketHigh = normalizePriceToBucket(high, profileBucketSize);
+      const numProfileBuckets = Math.max(1, Math.round((profileBucketHigh - profileBucketLow) / profileBucketSize) + 1);
+      const volPerProfileBucket = vol / numProfileBuckets;
 
-      for (let p = bucketLow; p <= bucketHigh; p += bucketSize) {
+      for (let p = profileBucketLow; p <= profileBucketHigh; p += profileBucketSize) {
         const rounded = Math.round(p * 1e8) / 1e8; // avoid float drift
+        
+        // Apply price boundaries if provided
+        if (priceHigh !== undefined && rounded > priceHigh) continue;
+        if (priceLow !== undefined && rounded < priceLow) continue;
+
         const row = getOrCreate(rounded, false);
-        row.totalVol += volPerBucket;
+        row.totalVol += volPerProfileBucket;
         // No bid/ask split in fallback — split evenly for bar rendering
-        row.bidVol += volPerBucket / 2;
-        row.askVol += volPerBucket / 2;
+        row.bidVol += volPerProfileBucket / 2;
+        row.askVol += volPerProfileBucket / 2;
       }
     }
   }
@@ -93,7 +116,20 @@ export function buildProfile(
   const poc = findPOC(rows);
   const { vaHigh, vaLow } = findValueArea(rows, totalVol);
 
-  return { rows, poc, vaHigh, vaLow, maxVol, totalVol };
+  const maxAbsDelta = rows.reduce((max, r) => {
+    const delta = Math.abs(r.askVol - r.bidVol);
+    return Math.max(max, delta);
+  }, 0);
+
+  return {
+    rows,
+    totalVol,
+    maxVol,
+    maxAbsDelta,
+    poc,
+    vaHigh,
+    vaLow,
+  };
 }
 
 /**

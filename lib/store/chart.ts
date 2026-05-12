@@ -62,6 +62,17 @@ export interface PanelState {
   exhaustionLookback: number;
   exhaustionShowProvisional: boolean;
   exhaustionMap: Map<number, ExhaustionResult>;
+  // Volume Profile Visuals
+  profileWidthPct: number;
+  profileOpacity: number;
+  profileMinRowWidth: number;
+  profileScaleMode: 'linear' | 'sqrt';
+  profileShowPocHighlight: boolean;
+  profileShowVaFill: boolean;
+  profileShowPocLine: boolean;
+  profileShowVaLines: boolean;
+  profileShowDelta: boolean;
+  deltaProfileWidth: number;
 }
 
 interface ChartState {
@@ -114,6 +125,16 @@ interface ChartState {
   setExhaustionLookback: (panelId: PanelId, lookback: number) => void;
   setExhaustionShowProvisional: (panelId: PanelId, show: boolean) => void;
   setExhaustionMap: (panelId: PanelId, map: Map<number, ExhaustionResult>) => void;
+  setProfileWidthPct: (panelId: PanelId, pct: number) => void;
+  setProfileOpacity: (panelId: PanelId, opacity: number) => void;
+  setProfileMinRowWidth: (panelId: PanelId, width: number) => void;
+  setProfileScaleMode: (panelId: PanelId, mode: 'linear' | 'sqrt') => void;
+  setProfileShowPocHighlight: (panelId: PanelId, show: boolean) => void;
+  setProfileShowVaFill: (panelId: PanelId, show: boolean) => void;
+  setProfileShowPocLine: (panelId: PanelId, show: boolean) => void;
+  setProfileShowVaLines: (panelId: PanelId, show: boolean) => void;
+  setProfileShowDelta: (panelId: PanelId, show: boolean) => void;
+  setDeltaProfileWidth: (panelId: PanelId, width: number) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -160,6 +181,16 @@ function createDefaultPanel(id: PanelId): PanelState {
     exhaustionLookback: 5,
     exhaustionShowProvisional: true,
     exhaustionMap: new Map(),
+    profileWidthPct: 70,
+    profileOpacity: 0.4,
+    profileMinRowWidth: 2,
+    profileScaleMode: 'sqrt',
+    profileShowPocHighlight: true,
+    profileShowVaFill: true,
+    profileShowPocLine: true,
+    profileShowVaLines: true,
+    profileShowDelta: true,
+    deltaProfileWidth: 80,
   };
 }
 
@@ -300,6 +331,36 @@ export const useChartStore = create<ChartState>()(
       setExhaustionMap: (panelId, exhaustionMap) =>
         set((state) => updatePanel(state, panelId, { exhaustionMap })),
 
+      setProfileWidthPct: (panelId, profileWidthPct) =>
+        set((state) => updatePanel(state, panelId, { profileWidthPct: Math.max(10, Math.min(100, profileWidthPct)) })),
+
+      setProfileOpacity: (panelId, profileOpacity) =>
+        set((state) => updatePanel(state, panelId, { profileOpacity: Math.max(0.1, Math.min(1.0, profileOpacity)) })),
+
+      setProfileMinRowWidth: (panelId, profileMinRowWidth) =>
+        set((state) => updatePanel(state, panelId, { profileMinRowWidth: Math.max(0, Math.min(8, profileMinRowWidth)) })),
+
+      setProfileScaleMode: (panelId, profileScaleMode) =>
+        set((state) => updatePanel(state, panelId, { profileScaleMode })),
+
+      setProfileShowPocHighlight: (panelId, profileShowPocHighlight) =>
+        set((state) => updatePanel(state, panelId, { profileShowPocHighlight })),
+
+      setProfileShowVaFill: (panelId, profileShowVaFill) =>
+        set((state) => updatePanel(state, panelId, { profileShowVaFill })),
+
+      setProfileShowPocLine: (panelId, profileShowPocLine) =>
+        set((state) => updatePanel(state, panelId, { profileShowPocLine })),
+
+      setProfileShowVaLines: (panelId, profileShowVaLines) =>
+        set((state) => updatePanel(state, panelId, { profileShowVaLines })),
+
+      setProfileShowDelta: (panelId, profileShowDelta) =>
+        set((state) => updatePanel(state, panelId, { profileShowDelta })),
+
+      setDeltaProfileWidth: (panelId, deltaProfileWidth) =>
+        set((state) => updatePanel(state, panelId, { deltaProfileWidth })),
+
       pushAllCandles: (panelId, candles) =>
         set((state) => updatePanel(state, panelId, { candles: candles.slice(-500) })),
 
@@ -337,7 +398,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 8,
+      version: 11,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -370,6 +431,16 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: p.exhaustionSide || 'both',
             exhaustionLookback: p.exhaustionLookback ?? 5,
             exhaustionShowProvisional: p.exhaustionShowProvisional ?? true,
+            profileWidthPct: p.profileWidthPct ?? 70,
+            profileOpacity: p.profileOpacity ?? 0.4,
+            profileMinRowWidth: p.profileMinRowWidth ?? 2,
+            profileScaleMode: p.profileScaleMode || 'sqrt',
+            profileShowPocHighlight: p.profileShowPocHighlight ?? true,
+            profileShowVaFill: p.profileShowVaFill ?? true,
+            profileShowPocLine: p.profileShowPocLine ?? true,
+            profileShowVaLines: p.profileShowVaLines ?? true,
+            profileShowDelta: p.profileShowDelta ?? true,
+            deltaProfileWidth: p.deltaProfileWidth ?? 80,
           };
         };
         if (persisted.panels) {
@@ -425,6 +496,16 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: state.panels.left.exhaustionSide,
             exhaustionLookback: state.panels.left.exhaustionLookback,
             exhaustionShowProvisional: state.panels.left.exhaustionShowProvisional,
+            profileWidthPct: state.panels.left.profileWidthPct,
+            profileOpacity: state.panels.left.profileOpacity,
+            profileMinRowWidth: state.panels.left.profileMinRowWidth,
+            profileScaleMode: state.panels.left.profileScaleMode,
+            profileShowPocHighlight: state.panels.left.profileShowPocHighlight,
+            profileShowVaFill: state.panels.left.profileShowVaFill,
+            profileShowPocLine: state.panels.left.profileShowPocLine,
+            profileShowVaLines: state.panels.left.profileShowVaLines,
+            profileShowDelta: state.panels.left.profileShowDelta,
+            deltaProfileWidth: state.panels.left.deltaProfileWidth,
           },
           right: {
             pair: state.panels.right.pair,
@@ -451,6 +532,16 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: state.panels.right.exhaustionSide,
             exhaustionLookback: state.panels.right.exhaustionLookback,
             exhaustionShowProvisional: state.panels.right.exhaustionShowProvisional,
+            profileWidthPct: state.panels.right.profileWidthPct,
+            profileOpacity: state.panels.right.profileOpacity,
+            profileMinRowWidth: state.panels.right.profileMinRowWidth,
+            profileScaleMode: state.panels.right.profileScaleMode,
+            profileShowPocHighlight: state.panels.right.profileShowPocHighlight,
+            profileShowVaFill: state.panels.right.profileShowVaFill,
+            profileShowPocLine: state.panels.right.profileShowPocLine,
+            profileShowVaLines: state.panels.right.profileShowVaLines,
+            profileShowDelta: state.panels.right.profileShowDelta,
+            deltaProfileWidth: state.panels.right.deltaProfileWidth,
           },
         },
         tickSize: state.tickSize,

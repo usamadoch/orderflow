@@ -24,6 +24,7 @@ import { ExhaustionResult } from '@/types/exhaustion';
 import { AbsorptionTooltip } from './AbsorptionTooltip';
 import { drawExhaustion } from './drawExhaustion';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
+import { drawDeltaProfile } from '@/lib/draw/drawDeltaProfile';
 
 interface ChartCanvasProps {
   panelId: PanelId;
@@ -63,6 +64,16 @@ interface ChartCanvasProps {
   exhaustionSide: ExhaustionSide;
   exhaustionShowProvisional: boolean;
   exhaustionMap: Map<number, ExhaustionResult>;
+  profileWidthPct: number;
+  profileOpacity: number;
+  profileMinRowWidth: number;
+  profileScaleMode: 'linear' | 'sqrt';
+  profileShowPocHighlight: boolean;
+  profileShowVaFill: boolean;
+  profileShowPocLine: boolean;
+  profileShowVaLines: boolean;
+  profileShowDelta: boolean;
+  deltaProfileWidth: number;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -100,6 +111,16 @@ export function ChartCanvas({
   exhaustionSide,
   exhaustionShowProvisional,
   exhaustionMap,
+  profileWidthPct,
+  profileOpacity,
+  profileMinRowWidth,
+  profileScaleMode,
+  profileShowPocHighlight,
+  profileShowVaFill,
+  profileShowPocLine,
+  profileShowVaLines,
+  profileShowDelta,
+  deltaProfileWidth,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -131,7 +152,8 @@ export function ChartCanvas({
 
   const priceAxisWidth = 85;
   const timeAxisHeight = 24;
-  const profileWidth = 120;
+  const baseProfileWidth = 120;
+  const profileWidth = baseProfileWidth;
 
   const redraw = useCallback(() => {
     if (isRedrawScheduled.current) return;
@@ -181,6 +203,8 @@ export function ChartCanvas({
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
 
+      const profileBucketSize = Math.max(5, Math.floor(bucketSize / 4));
+
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
       const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
 
@@ -229,7 +253,14 @@ export function ChartCanvas({
       // 6. Custom Profile (on top of candles and other overlays)
       if (customProfileRange) {
         const customCandles = candles.slice(customProfileRange.firstIndex, customProfileRange.lastIndex + 1);
-        const customProfile = buildProfile(customCandles, engine, bucketSize);
+        const customProfile = buildProfile(
+          customCandles, 
+          engine, 
+          bucketSize, 
+          profileBucketSize, 
+          customProfileRange.priceHigh, 
+          customProfileRange.priceLow
+        );
         drawCustomProfile(
           ctx,
           customProfileRange,
@@ -242,15 +273,60 @@ export function ChartCanvas({
           hoverZone.current !== null,
           customProfileLocked,
           isProfileSelected,
-          isHoveringLock.current
+          isHoveringLock.current,
+          profileScaleMode,
+          profileBucketSize,
+          profileWidthPct,
+          profileOpacity,
+          profileMinRowWidth,
+          profileShowPocHighlight,
+          profileShowVaFill,
+          profileShowPocLine,
+          profileShowVaLines
         );
+
+        if (profileShowDelta && customProfile) {
+          const customX1 = indexToX(customProfileRange.firstIndex) - currentBarWidth / 2;
+          const customX2 = indexToX(customProfileRange.lastIndex) + currentBarWidth / 2;
+          const customRectX = Math.min(customX1, customX2);
+
+          drawDeltaProfile(
+            ctx,
+            customProfile,
+            priceToY,
+            customRectX,
+            deltaProfileWidth,
+            profileBucketSize,
+            profileOpacity,
+            profileMinRowWidth,
+            profileScaleMode
+          );
+        }
       }
 
       // Volume Profile
       const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
-      const profile = buildProfile(visibleCandles, engine, bucketSize);
+      const profile = buildProfile(visibleCandles, engine, bucketSize, profileBucketSize);
       if (profile) {
-        drawVolumeProfile(ctx, profile, priceToY, logicalWidth, profileWidth, priceAxisWidth, bucketSize, !!customProfileRange);
+        drawVolumeProfile(
+          ctx, 
+          profile, 
+          priceToY, 
+          logicalWidth, 
+          baseProfileWidth, 
+          priceAxisWidth, 
+          bucketSize, 
+          !!customProfileRange,
+          profileWidthPct,
+          profileOpacity,
+          profileMinRowWidth,
+          profileBucketSize,
+          profileScaleMode,
+          profileShowPocHighlight,
+          profileShowVaFill,
+          profileShowPocLine,
+          profileShowVaLines
+        );
       }
 
       drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth);
@@ -293,7 +369,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth]);
 
   const { 
     scrollOffset, 

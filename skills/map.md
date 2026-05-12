@@ -30,8 +30,8 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── AbsorptionTooltip.tsx # Hover breakdown of absorption signals (delta, volume, progression)
 │   │   ├── ExhaustionTooltip.tsx # Hover breakdown of exhaustion signals (momentum, rejection, compression)
 │   │   ├── drawBubbles.ts    # Volume bubbles overlay (threshold-filtered, radius/opacity-scaled)
-│   │   ├── drawVolumeProfile.ts # Horizontal volume bars, POC, and Value Area
-│   │   ├── drawSelectionRect.ts # Selection rect, Custom Profile, Resizing handles, Locking
+│   │   ├── drawVolumeProfile.ts # Renders profile with scaling, POC highlight, and VA fill
+│   │   ├── drawSelectionRect.ts # Handles custom profile logic and rendering with visual controls
 │   │   └── drawLines.ts         # Horizontal and Vertical line drawing tool
 │   ├── layout/               # General layout components
 │   │   ├── Header.tsx        # Top toolbar — Logo, Layout, Connection, Settings toggle
@@ -39,7 +39,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── ui/                   # Reusable UI components
 │       ├── ConnectionStatus.tsx # Combined live connection indicator
 │       ├── PanelToolbar.tsx     # Per-panel controls — Pair, TF, Mode, Drawing tools
-│       ├── ChartSettingsDropdown.tsx # Centralized chart settings (Bucket, Footprint, Bubbles, Absorption, Exhaustion)
+│       ├── ChartSettingsDropdown.tsx # Centralized settings (Bucket, Footprint, Bubbles, Absorption, Exhaustion, Profile)
 │       ├── PairSelector.tsx     # Pair switcher (panel-scoped)
 │       ├── TimeframeSelector.tsx# Timeframe switcher (panel-scoped)
 │       ├── ChartModeToggle.tsx  # Candle / Footprint toggle (panel-scoped)
@@ -49,6 +49,8 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── useKeyboardShortcuts.ts # Hotkeys targeting activePanel (1-5, C, F, R, [, ])
 │
 ├── lib/                      # Business logic, state, and utilities
+│   ├── draw/                 # Pure drawing logic (context-based)
+│   │   └── drawDeltaProfile.ts # Renders delta profile strip (ask-bid imbalance)
 │   ├── aggregation/          # Trade aggregation logic
 │   │   └── engine.ts         # AggregationEngine (Real-time Trade Aggregation)
 │   ├── absorption/           # Absorption detection system
@@ -60,7 +62,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # Panel-scoped state, absorption + bubble + custom profile settings, persist v6
+│   │   └── chart.ts          # Panel state, indicators, visual settings, and persistence (v11)
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions

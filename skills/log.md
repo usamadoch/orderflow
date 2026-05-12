@@ -1,5 +1,60 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-12] - Volume Profile Enhancements (Task 3 & 4) - COMPLETED
+- **What changed**:
+  - **Custom Profile Integration**:
+    - Added Delta Profile strip (ask-bid volume imbalance) specifically for **custom range selections**.
+    - Delta bars for custom ranges grow right-to-left from the selection's left boundary.
+    - Implemented vertical price boundary filtering in `buildProfile` for custom ranges.
+  - **Default Profile (Main Chart)**:
+    - Maintained the single-strip volume view (reverted experimental split layout for default view).
+    - Bars grow leftward from the price axis as per user preference.
+    - Reserved chart space now only accounts for the base volume profile width.
+  - **Visual Improvements (Phase 3)**:
+    - POC Row Highlight (Amber outline + brightness boost) and internal `POC` label.
+    - VA Area Fill and improved VA High/Low dashed lines (1.5px, `[4, 3]`).
+    - Prominent POC line (1.5px, `[6, 3]`) with left-side labeling.
+  - **Settings & Store**:
+    - Persisted toggles for all new visual elements.
+    - `profileShowDelta` and `deltaProfileWidth` now specifically target custom profiles.
+- **Why it changed**: To keep the main chart area focused on volume structure while providing advanced delta imbalance analysis for user-selected regions.
+- **Impact**: Provides a clean default view with powerful "drill-down" capabilities via custom delta profiles.
+
+## [2026-05-12] - Volume Profile Improvements - Task 2 (Density & Scaling)
+- **What changed**:
+  - Implemented **Finer Row Density**:
+    - Introduced `profileBucketSize` (automatically derived as `bucketSize / 4`, min $5).
+    - Updated `buildProfile` (`lib/utils/volumeProfile.ts`) to distribute volume from footprint cells and OHLCV data across finer rows.
+  - Added **Square Root Scaling**:
+    - Added `profileScaleMode` (`linear` | `sqrt`) to the chart store.
+    - Updated rendering in `drawVolumeProfile.ts` and `drawSelectionRect.ts` to support `Math.sqrt` normalization.
+  - Integrated **Scaling Toggle** in `ChartSettingsDropdown.tsx`.
+  - Updated store version to `10` with migration and persistence logic.
+- **Why it changed**:
+  - To eliminate the "blocky" staircase look of the profile and ensure that low-volume rows remain visually significant compared to high-volume outliers.
+- **Impact**:
+  - Profiles are now 4x more detailed by default.
+  - The `sqrt` mode provides a much more balanced visual representation of volume distribution across the price range.
+
+## [2026-05-12] - Volume Profile Improvements - Task 1 (Visual Controls)
+- **What changed**:
+  - Added **Volume Profile Visual Controls** to the Zustand store (`lib/store/chart.ts`):
+    - `profileWidthPct`: Controls the percentage of reserved space used by bars (10-100%).
+    - `profileOpacity`: Controls bar transparency (0.1-1.0).
+    - `profileMinRowWidth`: Ensures low-volume rows remain visible (0-8px).
+  - Updated `drawVolumeProfile.ts` to implement these controls:
+    - Implemented `effectiveWidth` logic for scaling profile bars.
+    - Replaced hardcoded opacities with user-controlled `profileOpacity`.
+    - Added `Math.max` floor for `profileMinRowWidth` (only for rows with > 0 volume).
+    - Implemented proportional dimming for the default profile when a custom profile is active (`opacity * 0.4`).
+  - Integrated controls into `ChartSettingsDropdown.tsx`:
+    - Added "Volume Profile" section with sliders for Width (%), Opacity (%), and Min Row Width (px).
+  - Updated store version to `9` and added migration/persistence logic.
+- **Why it changed**:
+  - To give users more flexibility in how the volume profile is displayed, allowing for better overlap management with candles and better visibility of low-liquidity zones.
+- **Impact**:
+  - Improved chart readability and professional visual polish. Users can now tune the profile to their specific visual preference.
+
 ## [2026-05-12] - Exhaustion Detection - Task 3 (Controls & Tooltips)
 - **What changed**:
   - Implemented **Exhaustion Signal Controls** in `PanelToolbar.tsx`:

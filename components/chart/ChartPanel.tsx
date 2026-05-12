@@ -58,6 +58,16 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           exhaustionSide={panel.exhaustionSide}
           exhaustionShowProvisional={panel.exhaustionShowProvisional}
           exhaustionMap={panel.exhaustionMap}
+          profileWidthPct={panel.profileWidthPct}
+          profileOpacity={panel.profileOpacity}
+          profileMinRowWidth={panel.profileMinRowWidth}
+          profileScaleMode={panel.profileScaleMode}
+          profileShowPocHighlight={panel.profileShowPocHighlight}
+          profileShowVaFill={panel.profileShowVaFill}
+          profileShowPocLine={panel.profileShowPocLine}
+          profileShowVaLines={panel.profileShowVaLines}
+          profileShowDelta={panel.profileShowDelta}
+          deltaProfileWidth={panel.deltaProfileWidth}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />
