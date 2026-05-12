@@ -1,5 +1,52 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-12] - Exhaustion Detection - Task 3 (Controls & Tooltips)
+- **What changed**:
+  - Implemented **Exhaustion Signal Controls** in `PanelToolbar.tsx`:
+    - Unified `SIGNALS` section with grouped Absorption and Exhaustion controls.
+    - Added enable toggles, minimum score inputs, and side filters for both signal types.
+    - Integrated logic to gray out the `SIGNALS` label when both systems are disabled.
+  - Created `ExhaustionTooltip.tsx` for detailed signal breakdown on hover:
+    - Displays score, rank diamonds (◈◈◈◇), and specific scoring reasons.
+    - Uses amber (`#F0B90B`) for buyer and purple (`#B39DDB`) for seller themes.
+  - Enhanced **Chart Settings**:
+    - Added Exhaustion section to `ChartSettingsDropdown.tsx` with Min Score, Side Filter, Lookback Window, and Live Candle toggles.
+    - Updated `FeedProvider.tsx` to reactively rebuild signal maps when lookback settings change.
+  - Integrated **Exhaustion Stats** in `Sidebar.tsx`:
+    - Added Buyer/Seller signal counts and a "Last Signal" indicator (time + rank).
+  - Updated `lib/store/chart.ts` with new settings and full persistence support.
+- **Why it changed**:
+  - To provide users with granular control and transparency over the exhaustion detection system, and to visualize the underlying logic for each signal.
+- **Impact**:
+  - The exhaustion system is now fully interactive and production-ready. Users can tune detection parameters, filter by side/score, and get immediate, transparent feedback via tooltips and sidebar stats.
+
+
+## [2026-05-12] - Reviewed Exhaustion Implementation & Minor Fix
+- **What changed**:
+  - Reviewed the exhaustion detection engine and visualization markers against Task 1 and 2 specs.
+  - Enforced a global direction consistency check in `lib/exhaustion/engine.ts` to strictly follow the spec's "Direction Classification" rule.
+  - Verified marker scaling, positioning, and lifecycle integration.
+  - Confirmed 'E' keyboard shortcut correctly logs scores and reasons for verification.
+- **Why it changed**:
+  - To ensure the implementation fully aligns with the intended behavior and provides high-confidence signals by excluding mixed-direction windows.
+- **Impact**:
+  - Higher quality exhaustion signals that only fire when there is sustained, one-sided aggression that is actually fading.
+
+## [2026-05-12] - Implemented Exhaustion Visual Markers (Task 2)
+- **What changed**:
+  - Created `components/chart/drawExhaustion.ts` for rendering exhaustion signals.
+  - Implemented rank-based styling:
+    - **Weak/Moderate**: Simple horizontal dashes with scaled width and opacity.
+    - **Strong**: Added `EX` label.
+    - **Extreme**: Added double dash and `EX <score>` label.
+  - Integrated `drawExhaustion` into `ChartCanvas.tsx` render loop.
+  - Wired exhaustion state from the store through `ChartPanel.tsx` to the canvas.
+  - Ensured markers are positioned near candle extremes (above for buyers, below for sellers) with rank-dependent offsets.
+- **Why it changed**:
+  - To provide visual feedback for the exhaustion detection engine implemented in Task 1.
+- **Impact**:
+  - Users can now see real-time and historical market exhaustion signals directly on the chart, helping identify potential reversal points.
+
 ## [2026-05-11] - Enhanced Absorption Detection and Visualization
 - **What changed**:
   - Implemented **Signal 4 (Imbalance Cluster Failure)** in the detection engine.

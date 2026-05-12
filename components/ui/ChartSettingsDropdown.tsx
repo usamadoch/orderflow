@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useChartStore, PanelId, BubbleSide } from '../../lib/store/chart';
+import { useState, useEffect, useRef } from 'react';
+import { useChartStore, PanelId, BubbleSide, ExhaustionSide } from '../../lib/store/chart';
 
 interface ChartSettingsDropdownProps {
   panelId: PanelId;
@@ -15,6 +15,11 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
   const setBubbleThreshold = useChartStore(s => s.setBubbleThreshold);
   const setBubbleSide = useChartStore(s => s.setBubbleSide);
+  const setExhaustionEnabled = useChartStore(s => s.setExhaustionEnabled);
+  const setExhaustionMinScore = useChartStore(s => s.setExhaustionMinScore);
+  const setExhaustionSide = useChartStore(s => s.setExhaustionSide);
+  const setExhaustionLookback = useChartStore(s => s.setExhaustionLookback);
+  const setExhaustionShowProvisional = useChartStore(s => s.setExhaustionShowProvisional);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -51,7 +56,7 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   ];
 
   return (
-    <div 
+    <div
       ref={dropdownRef}
       className="absolute top-12 right-4 w-72 bg-[#0D0D0D]/95 backdrop-blur-xl border border-[#1F1F1F] rounded-xl shadow-2xl z-50 p-4 animate-in fade-in zoom-in-95 duration-200"
     >
@@ -66,26 +71,24 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
         {panel.chartMode === 'footprint' && (
           <div className="space-y-3">
             <div className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Footprint Configuration</div>
-            
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => setFootprintMode(panelId, 'bid-ask')}
-                className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border transition-all duration-200 ${
-                  panel.footprintMode === 'bid-ask'
+                className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border transition-all duration-200 ${panel.footprintMode === 'bid-ask'
                     ? 'bg-accent/10 border-accent text-accent shadow-[0_0_15px_rgba(38,166,154,0.1)]'
                     : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                }`}
+                  }`}
               >
                 <div className="text-[11px] font-black">BID / ASK</div>
                 <div className="text-[9px] opacity-50 font-medium">Side-by-side</div>
               </button>
               <button
                 onClick={() => setFootprintMode(panelId, 'delta')}
-                className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border transition-all duration-200 ${
-                  panel.footprintMode === 'delta'
+                className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border transition-all duration-200 ${panel.footprintMode === 'delta'
                     ? 'bg-accent/10 border-accent text-accent shadow-[0_0_15px_rgba(38,166,154,0.1)]'
                     : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                }`}
+                  }`}
               >
                 <div className="text-[11px] font-black">DELTA</div>
                 <div className="text-[9px] opacity-50 font-medium">Net volume</div>
@@ -117,13 +120,11 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
             <div className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Volume Bubbles</div>
             <button
               onClick={() => setBubblesEnabled(panelId, !panel.bubblesEnabled)}
-              className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${
-                panel.bubblesEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-              }`}
+              className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.bubblesEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+                }`}
             >
-              <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${
-                panel.bubblesEnabled ? 'left-5' : 'left-1'
-              }`} />
+              <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.bubblesEnabled ? 'left-5' : 'left-1'
+                }`} />
             </button>
           </div>
 
@@ -147,11 +148,10 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                     <button
                       key={value}
                       onClick={() => setBubbleSide(panelId, value)}
-                      className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${
-                        panel.bubbleSide === value
+                      className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.bubbleSide === value
                           ? 'bg-[#1A1A1A] border-accent text-accent'
                           : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
+                        }`}
                     >
                       {label}
                     </button>
@@ -160,11 +160,87 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
               </div>
             </div>
           )}
-        </div>
+          {/* Exhaustion Settings */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Exhaustion Signals</div>
+              <button
+                onClick={() => setExhaustionEnabled(panelId, !panel.exhaustionEnabled)}
+                className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.exhaustionEnabled ? 'bg-[#F0B90B]' : 'bg-[#1F1F1F]'
+                  }`}
+              >
+                <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.exhaustionEnabled ? 'left-5' : 'left-1'
+                  }`} />
+              </button>
+            </div>
 
-        {/* Footer info */}
-        <div className="pt-2 border-t border-[#1F1F1F]">
-          <div className="text-[9px] text-text-dim/50 text-center font-medium">Settings apply to the currently focused panel</div>
+            {panel.exhaustionEnabled && (
+              <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Score</label>
+                    <span className="text-[12px] font-mono font-bold text-[#F0B90B]">{panel.exhaustionMinScore}</span>
+                  </div>
+                  <input
+                    type="range"
+                    value={panel.exhaustionMinScore}
+                    onChange={(e) => setExhaustionMinScore(panelId, Number(e.target.value))}
+                    className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#F0B90B]"
+                    min="30" max="90" step="5"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                  <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
+                  <div className="flex gap-1">
+                    {(['buyer', 'seller', 'both'] as ExhaustionSide[]).map(s => (
+                      <button
+                        key={s}
+                        onClick={() => setExhaustionSide(panelId, s)}
+                        className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.exhaustionSide === s
+                            ? 'bg-[#1A1A1A] border-[#F0B90B] text-[#F0B90B]'
+                            : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          }`}
+                      >
+                        {s === 'buyer' ? 'Buy' : s === 'seller' ? 'Sell' : 'Both'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Lookback window</label>
+                    <span className="text-[12px] font-mono font-bold text-accent">{panel.exhaustionLookback} Candles</span>
+                  </div>
+                  <input
+                    type="range"
+                    value={panel.exhaustionLookback}
+                    onChange={(e) => setExhaustionLookback(panelId, Number(e.target.value))}
+                    className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                    min="3" max="8" step="1"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                  <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Show on live candle</label>
+                  <button
+                    onClick={() => setExhaustionShowProvisional(panelId, !panel.exhaustionShowProvisional)}
+                    className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.exhaustionShowProvisional ? 'bg-[#3D7EFF]' : 'bg-[#1F1F1F]'
+                      }`}
+                  >
+                    <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.exhaustionShowProvisional ? 'left-5' : 'left-1'
+                      }`} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer info */}
+          <div className="pt-2 border-t border-[#1F1F1F]">
+            <div className="text-[9px] text-text-dim/50 text-center font-medium">Settings apply to the currently focused panel</div>
+          </div>
         </div>
       </div>
     </div>

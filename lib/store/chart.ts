@@ -5,6 +5,7 @@ import { Trade } from '../../types/trade';
 import { FootprintMode } from '../../types/footprint';
 import { AbsorptionResult } from '../../types/absorption';
 import { BubbleSide } from '../../components/chart/drawBubbles';
+import { ExhaustionResult } from '../../types/exhaustion';
 
 export type ChartMode = 'candle' | 'footprint';
 export type PanelId = 'left' | 'right';
@@ -12,6 +13,7 @@ export type LayoutMode = 'single' | 'dual';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type { BubbleSide };
 export type LineDrawMode = 'none' | 'horizontal' | 'vertical';
+export type ExhaustionSide = 'both' | 'buyer' | 'seller';
 
 export interface DrawnLine {
   id: string;
@@ -54,6 +56,12 @@ export interface PanelState {
   isProfileSelected: boolean;
   drawnLines: DrawnLine[];
   lineDrawMode: LineDrawMode;
+  exhaustionEnabled: boolean;
+  exhaustionMinScore: number;
+  exhaustionSide: ExhaustionSide;
+  exhaustionLookback: number;
+  exhaustionShowProvisional: boolean;
+  exhaustionMap: Map<number, ExhaustionResult>;
 }
 
 interface ChartState {
@@ -100,6 +108,12 @@ interface ChartState {
   addLine: (panelId: PanelId, line: DrawnLine) => void;
   removeLine: (panelId: PanelId, id: string) => void;
   setLineDrawMode: (panelId: PanelId, mode: LineDrawMode) => void;
+  setExhaustionEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setExhaustionMinScore: (panelId: PanelId, score: number) => void;
+  setExhaustionSide: (panelId: PanelId, side: ExhaustionSide) => void;
+  setExhaustionLookback: (panelId: PanelId, lookback: number) => void;
+  setExhaustionShowProvisional: (panelId: PanelId, show: boolean) => void;
+  setExhaustionMap: (panelId: PanelId, map: Map<number, ExhaustionResult>) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -140,6 +154,12 @@ function createDefaultPanel(id: PanelId): PanelState {
     isProfileSelected: false,
     drawnLines: [],
     lineDrawMode: 'none',
+    exhaustionEnabled: true,
+    exhaustionMinScore: 40,
+    exhaustionSide: 'both' as ExhaustionSide,
+    exhaustionLookback: 5,
+    exhaustionShowProvisional: true,
+    exhaustionMap: new Map(),
   };
 }
 
@@ -262,6 +282,24 @@ export const useChartStore = create<ChartState>()(
       setLineDrawMode: (panelId, lineDrawMode) =>
         set((state) => updatePanel(state, panelId, { lineDrawMode })),
 
+      setExhaustionEnabled: (panelId, exhaustionEnabled) =>
+        set((state) => updatePanel(state, panelId, { exhaustionEnabled })),
+
+      setExhaustionMinScore: (panelId, exhaustionMinScore) =>
+        set((state) => updatePanel(state, panelId, { exhaustionMinScore: Math.max(0, Math.min(100, exhaustionMinScore)) })),
+
+      setExhaustionSide: (panelId, exhaustionSide) =>
+        set((state) => updatePanel(state, panelId, { exhaustionSide })),
+
+      setExhaustionLookback: (panelId, exhaustionLookback) =>
+        set((state) => updatePanel(state, panelId, { exhaustionLookback: Math.max(3, Math.min(8, exhaustionLookback)) })),
+
+      setExhaustionShowProvisional: (panelId, exhaustionShowProvisional) =>
+        set((state) => updatePanel(state, panelId, { exhaustionShowProvisional })),
+
+      setExhaustionMap: (panelId, exhaustionMap) =>
+        set((state) => updatePanel(state, panelId, { exhaustionMap })),
+
       pushAllCandles: (panelId, candles) =>
         set((state) => updatePanel(state, panelId, { candles: candles.slice(-500) })),
 
@@ -299,7 +337,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 7,
+      version: 8,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -327,6 +365,11 @@ export const useChartStore = create<ChartState>()(
             isProfileSelected: false,
             drawnLines: p.drawnLines ?? [],
             lineDrawMode: 'none',
+            exhaustionEnabled: p.exhaustionEnabled ?? true,
+            exhaustionMinScore: p.exhaustionMinScore ?? 40,
+            exhaustionSide: p.exhaustionSide || 'both',
+            exhaustionLookback: p.exhaustionLookback ?? 5,
+            exhaustionShowProvisional: p.exhaustionShowProvisional ?? true,
           };
         };
         if (persisted.panels) {
@@ -377,6 +420,11 @@ export const useChartStore = create<ChartState>()(
             customProfileRange: state.panels.left.customProfileRange,
             customProfileLocked: state.panels.left.customProfileLocked,
             drawnLines: state.panels.left.drawnLines,
+            exhaustionEnabled: state.panels.left.exhaustionEnabled,
+            exhaustionMinScore: state.panels.left.exhaustionMinScore,
+            exhaustionSide: state.panels.left.exhaustionSide,
+            exhaustionLookback: state.panels.left.exhaustionLookback,
+            exhaustionShowProvisional: state.panels.left.exhaustionShowProvisional,
           },
           right: {
             pair: state.panels.right.pair,
@@ -398,6 +446,11 @@ export const useChartStore = create<ChartState>()(
             customProfileRange: state.panels.right.customProfileRange,
             customProfileLocked: state.panels.right.customProfileLocked,
             drawnLines: state.panels.right.drawnLines,
+            exhaustionEnabled: state.panels.right.exhaustionEnabled,
+            exhaustionMinScore: state.panels.right.exhaustionMinScore,
+            exhaustionSide: state.panels.right.exhaustionSide,
+            exhaustionLookback: state.panels.right.exhaustionLookback,
+            exhaustionShowProvisional: state.panels.right.exhaustionShowProvisional,
           },
         },
         tickSize: state.tickSize,

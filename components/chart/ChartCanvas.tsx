@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState } from '@/lib/store/chart';
+import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide } from '@/lib/store/chart';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { usePanZoom } from './usePanZoom';
@@ -20,7 +20,10 @@ import { drawLines } from './drawLines';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
+import { ExhaustionResult } from '@/types/exhaustion';
 import { AbsorptionTooltip } from './AbsorptionTooltip';
+import { drawExhaustion } from './drawExhaustion';
+import { ExhaustionTooltip } from './ExhaustionTooltip';
 
 interface ChartCanvasProps {
   panelId: PanelId;
@@ -55,6 +58,11 @@ interface ChartCanvasProps {
   isProfileSelected: boolean;
   drawnLines: PanelState['drawnLines'];
   lineDrawMode: PanelState['lineDrawMode'];
+  exhaustionEnabled: boolean;
+  exhaustionMinScore: number;
+  exhaustionSide: ExhaustionSide;
+  exhaustionShowProvisional: boolean;
+  exhaustionMap: Map<number, ExhaustionResult>;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -87,6 +95,11 @@ export function ChartCanvas({
   isProfileSelected,
   drawnLines,
   lineDrawMode,
+  exhaustionEnabled,
+  exhaustionMinScore,
+  exhaustionSide,
+  exhaustionShowProvisional,
+  exhaustionMap,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -112,6 +125,7 @@ export function ChartCanvas({
   const isHoveringDeleteDot = useRef(false);
 
   const [hoveredAbs, setHoveredAbs] = React.useState<{ result: AbsorptionResult, x: number, y: number } | null>(null);
+  const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
@@ -207,6 +221,11 @@ export function ChartCanvas({
         drawAbsorption(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, absorptionMap, absorptionShowLabels, absorptionMinScore, absorptionSide);
       }
 
+      // 5b. Exhaustion markers
+      if (exhaustionEnabled && exhaustionMap.size > 0) {
+        drawExhaustion(ctx, candles, { firstIndex, lastIndex }, indexToX, priceToY, currentBarWidth, exhaustionMap, { exhaustionMinScore, exhaustionSide, exhaustionShowProvisional });
+      }
+
       // 6. Custom Profile (on top of candles and other overlays)
       if (customProfileRange) {
         const customCandles = candles.slice(customProfileRange.firstIndex, customProfileRange.lastIndex + 1);
@@ -274,7 +293,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode]);
 
   const { 
     scrollOffset, 
@@ -676,7 +695,53 @@ export function ChartCanvas({
             }
           }
         }
-        if (!foundAbs) setHoveredAbs(null);
+        if (!foundAbs) {
+          setHoveredAbs(null);
+
+          // Exhaustion Hover Detection
+          let foundEx = false;
+          if (exhaustionEnabled && exhaustionMap.size > 0) {
+            const chartWidth = rect.width - priceAxisWidth;
+            const chartHeight = rect.height - timeAxisHeight;
+            const pCenter = priceCenter.current ?? 0;
+            const pRange = priceRange.current ?? 100;
+            const priceMin = pCenter - pRange / 2;
+            const priceMax = pCenter + pRange / 2;
+
+            const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
+            const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+
+            const { firstIndex, lastIndex } = getVisibleRange(candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+
+            for (let i = firstIndex; i <= lastIndex && i < candles.length; i++) {
+              const candle = candles[i];
+              const result = exhaustionMap.get(candle.time);
+              if (!result || result.score < exhaustionMinScore) continue;
+              if (exhaustionSide !== 'both' && result.direction !== exhaustionSide) continue;
+              if (result.provisional && !exhaustionShowProvisional) continue;
+
+              const ex = indexToX(i);
+              if (ex === null) continue;
+
+              const isBuyer = result.direction === 'buyer';
+              const rankOffset = result.rank === 'extreme' ? 5 : result.rank === 'strong' ? 4 : result.rank === 'moderate' ? 3 : 2;
+              const ey = isBuyer 
+                ? priceToY(candle.high) - 6 - rankOffset
+                : priceToY(candle.low) + 6 + rankOffset;
+
+              const dist = Math.sqrt((x - ex) ** 2 + (y - ey) ** 2);
+              if (dist < 14) {
+                setHoveredExhaustion({ result, x: ex, y: ey });
+                cursor = 'help';
+                foundEx = true;
+                break;
+              }
+            }
+          }
+          if (!foundEx) setHoveredExhaustion(null);
+        } else {
+          setHoveredExhaustion(null);
+        }
       }
 
       canvas.style.cursor = cursor;
@@ -842,6 +907,13 @@ export function ChartCanvas({
           result={hoveredAbs.result} 
           x={hoveredAbs.x} 
           y={hoveredAbs.y} 
+        />
+      )}
+      {hoveredExhaustion && (
+        <ExhaustionTooltip 
+          result={hoveredExhaustion.result} 
+          x={hoveredExhaustion.x} 
+          y={hoveredExhaustion.y} 
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useChartStore } from '../../lib/store/chart';
-import { ChevronLeft, ChevronRight, Settings, Database } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings, Database, Activity, Zap } from 'lucide-react';
 
 export function Sidebar() {
   const sidebarCollapsed = useChartStore(s => s.sidebarCollapsed);
@@ -11,6 +11,18 @@ export function Sidebar() {
   const activePanel = useChartStore(s => s.activePanel);
   const layoutMode = useChartStore(s => s.layoutMode);
   const panel = useChartStore(s => s.panels[s.activePanel]);
+  
+  // Absorption Stats
+  const absSignals = Array.from(panel.absorptionMap.values()).filter(r => r.score >= panel.absorptionMinScore);
+  const buyerAbs = absSignals.filter(r => r.direction === 'buyer').length;
+  const sellerAbs = absSignals.filter(r => r.direction === 'seller').length;
+
+  // Exhaustion Stats
+  const exhSignals = Array.from(panel.exhaustionMap.values()).filter(r => r.score >= panel.exhaustionMinScore);
+  const buyerExh = exhSignals.filter(r => r.direction === 'buyer').length;
+  const sellerExh = exhSignals.filter(r => r.direction === 'seller').length;
+  const lastExh = exhSignals.length > 0 ? exhSignals.sort((a, b) => b.candleTime - a.candleTime)[0] : null;
+  const lastExhTimeStr = lastExh ? new Date(lastExh.candleTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
 
   return (
     <aside
@@ -97,6 +109,71 @@ export function Sidebar() {
           </div>
         </div>
 
+        {/* Section: Signals Statistics */}
+        <div className="px-3 flex flex-col gap-6">
+          {/* Absorption Stats */}
+          <div>
+            {!sidebarCollapsed ? (
+              <h2 className="text-text-muted text-[10px] uppercase font-extrabold tracking-widest mb-3 flex items-center gap-2">
+                <Zap size={12} strokeWidth={3} className="text-[#26A69A]" />
+                Absorption
+              </h2>
+            ) : (
+              <div className="flex justify-center mb-3 text-[#26A69A]">
+                <Zap size={18} strokeWidth={2.5} />
+              </div>
+            )}
+            
+            {!sidebarCollapsed && (
+              <div className="flex flex-col gap-2 px-1">
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Buyer signals</span>
+                  <span className="font-mono font-bold text-[#EF5350]">{buyerAbs}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Seller signals</span>
+                  <span className="font-mono font-bold text-[#26A69A]">{sellerAbs}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Exhaustion Stats */}
+          <div>
+            {!sidebarCollapsed ? (
+              <h2 className="text-text-muted text-[10px] uppercase font-extrabold tracking-widest mb-3 flex items-center gap-2">
+                <Activity size={12} strokeWidth={3} className="text-[#F0B90B]" />
+                Exhaustion
+              </h2>
+            ) : (
+              <div className="flex justify-center mb-3 text-[#F0B90B]">
+                <Activity size={18} strokeWidth={2.5} />
+              </div>
+            )}
+            
+            {!sidebarCollapsed && (
+              <div className="flex flex-col gap-2 px-1">
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Buyer signals</span>
+                  <span className="font-mono font-bold text-[#F0B90B]">{buyerExh}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Seller signals</span>
+                  <span className="font-mono font-bold text-[#B39DDB]">{sellerExh}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] mt-1 pt-2 border-t border-border/50">
+                  <span className="text-text-muted text-[9px] font-black uppercase">Last Signal</span>
+                  <div className="flex gap-1.5 items-center">
+                    <span className="font-mono font-bold text-main">{lastExhTimeStr}</span>
+                    <span className={`text-[9px] font-black uppercase ${
+                      lastExh?.rank === 'extreme' ? 'text-[#F0B90B]' : 'text-text-dim'
+                    }`}>{lastExh?.rank || 'NONE'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="p-3 border-t border-border bg-background/50">

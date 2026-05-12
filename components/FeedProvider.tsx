@@ -5,11 +5,13 @@ import { useChartStore, PanelId } from '../lib/store/chart';
 import { feedAdapter } from '../lib/feeds';
 import { AggregationEngine } from '../lib/aggregation/engine';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
+import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
 import { getCandleTimeForTrade } from '../lib/utils/aggregation';
 import { ChartEngineContext } from './ChartEngineContext';
 import { Candle } from '../types/candle';
 import { Trade } from '../types/trade';
 import { AbsorptionResult } from '../types/absorption';
+import { ExhaustionResult } from '../types/exhaustion';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -28,11 +30,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const setLoadingHistory = useChartStore(s => s.setLoadingHistory);
   const triggerFootprintRedraw = useChartStore(s => s.triggerFootprintRedraw);
   const setAbsorptionMap = useChartStore(s => s.setAbsorptionMap);
+  const setExhaustionMap = useChartStore(s => s.setExhaustionMap);
+  const exhaustionLookback = useChartStore(s => s.panels[panelId].exhaustionLookback);
 
   const connectedRef = useRef(false);
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
   const pendingFootprintRedrawRef = useRef(false);
   const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
+  const exhaustionMapRef = useRef<Map<number, ExhaustionResult>>(new Map());
   const lastScoredCandleTimeRef = useRef<number | null>(null);
   // Each panel needs its own adapter instance for independent connections
   const adapterRef = useRef(feedAdapter.clone());
@@ -56,6 +61,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               absorptionMapRef.current = newMap;
               setAbsorptionMap(panelId, newMap);
             }
+
+            const newExhMap = scoreLatestExhaustion(candles, engineRef.current, absorptionMapRef.current, exhaustionMapRef.current, exhaustionLookback);
+            if (newExhMap !== exhaustionMapRef.current) {
+              exhaustionMapRef.current = newExhMap;
+              setExhaustionMap(panelId, newExhMap);
+            }
           }
         }
       }
@@ -73,8 +84,13 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const newMap = buildAbsorptionMap(currentCandles, engineRef.current);
     absorptionMapRef.current = newMap;
     setAbsorptionMap(panelId, newMap);
+
+    const newExhMap = buildExhaustionMap(currentCandles, engineRef.current, newMap, exhaustionLookback);
+    exhaustionMapRef.current = newExhMap;
+    setExhaustionMap(panelId, newExhMap);
+
     triggerFootprintRedraw(panelId);
-  }, [bucketSize, triggerFootprintRedraw, panelId, setAbsorptionMap]);
+  }, [bucketSize, exhaustionLookback, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap]);
 
   useEffect(() => {
     let active = true;
@@ -82,6 +98,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     setConnected(panelId, false);
     engineRef.current.reset();
     absorptionMapRef.current = new Map();
+    exhaustionMapRef.current = new Map();
     lastScoredCandleTimeRef.current = null;
 
     const adapter = adapterRef.current;
@@ -102,6 +119,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         const newMap = scoreLatestCandle(currentCandles, engineRef.current, absorptionMapRef.current);
         absorptionMapRef.current = newMap;
         setAbsorptionMap(panelId, newMap);
+
+        const newExhMap = scoreLatestExhaustion(currentCandles, engineRef.current, newMap, exhaustionMapRef.current, exhaustionLookback);
+        exhaustionMapRef.current = newExhMap;
+        setExhaustionMap(panelId, newExhMap);
       }
     };
 
@@ -135,6 +156,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         absorptionMapRef.current = absMap;
         setAbsorptionMap(panelId, absMap);
 
+        const exhMap = buildExhaustionMap(history, engineRef.current, absMap, exhaustionLookback);
+        exhaustionMapRef.current = exhMap;
+        setExhaustionMap(panelId, exhMap);
+
         adapter.subscribeCandles(pair, timeframe, handleCandle);
         adapter.subscribeTrades(pair, handleTrade);
       } catch (err) {
@@ -151,7 +176,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, panelId, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap]);
+  }, [pair, timeframe, panelId, exhaustionLookback, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap]);
 
   return <ChartEngineContext.Provider value={engineRef.current}>{children}</ChartEngineContext.Provider>;
 }

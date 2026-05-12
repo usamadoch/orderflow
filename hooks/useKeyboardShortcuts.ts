@@ -68,6 +68,21 @@ export function useKeyboardShortcuts() {
         setBucketSize(activePanel, panel.bucketSize + 1);
         return;
       }
+
+      // E: Log exhaustion map (Verification)
+      if (key === 'e') {
+        e.preventDefault();
+        console.log(`--- Exhaustion Map (${activePanel} panel) ---`);
+        if (panel.exhaustionMap.size === 0) {
+          console.log('No exhaustion signals detected.');
+        } else {
+          panel.exhaustionMap.forEach((res, time) => {
+            console.log(`[${new Date(time * 1000).toLocaleTimeString()}] Score: ${res.score} (${res.rank}) Dir: ${res.direction}`);
+            console.log(`   Reasons: ${res.reasons.join(', ')}`);
+          });
+        }
+        return;
+      }
     };
 
     window.addEventListener('keydown', handler);

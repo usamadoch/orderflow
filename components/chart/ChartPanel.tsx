@@ -53,6 +53,11 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           isProfileSelected={panel.isProfileSelected}
           drawnLines={panel.drawnLines}
           lineDrawMode={panel.lineDrawMode}
+          exhaustionEnabled={panel.exhaustionEnabled}
+          exhaustionMinScore={panel.exhaustionMinScore}
+          exhaustionSide={panel.exhaustionSide}
+          exhaustionShowProvisional={panel.exhaustionShowProvisional}
+          exhaustionMap={panel.exhaustionMap}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />
