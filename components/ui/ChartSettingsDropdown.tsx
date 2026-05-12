@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { BarChart2, Layers, Zap, X } from 'lucide-react';
 import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide } from '../../lib/store/chart';
 
 interface ChartSettingsDropdownProps {
@@ -70,9 +71,9 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   ];
 
   const tabs = [
-    { id: 'chart', label: 'Chart', icon: '📊' },
-    { id: 'profiles', label: 'Profiles', icon: '📋' },
-    { id: 'signals', label: 'Signals', icon: '🔔' },
+    { id: 'chart', label: 'Chart', icon: BarChart2 },
+    { id: 'profiles', label: 'Profiles', icon: Layers },
+    { id: 'signals', label: 'Signals', icon: Zap },
   ] as const;
 
   return (
@@ -91,7 +92,7 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
           onClick={onClose}
           className="text-text-dim hover:text-main transition-colors p-1"
         >
-          ✕
+          <X size={16} />
         </button>
       </div>
 
@@ -106,7 +107,7 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
               : 'border-transparent text-text-dim hover:text-main hover:bg-[#151515]'
               }`}
           >
-            <span className="mr-1.5 opacity-60">{tab.icon}</span>
+            <tab.icon size={12} className="mr-1.5 opacity-60 inline-block" />
             {tab.label}
           </button>
         ))}

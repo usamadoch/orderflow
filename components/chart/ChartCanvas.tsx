@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
+import { Lock, Unlock, X } from 'lucide-react';
 import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide } from '@/lib/store/chart';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
@@ -144,6 +145,7 @@ export function ChartCanvas({
 
   const hoveredLineId = useRef<string | null>(null);
   const isHoveringDeleteDot = useRef(false);
+  const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 });
 
   const [hoveredAbs, setHoveredAbs] = React.useState<{ result: AbsorptionResult, x: number, y: number } | null>(null);
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
@@ -220,8 +222,7 @@ export function ChartCanvas({
         customProfileRange,
         (idx) => indexToX(idx),
         (p) => priceToY(p),
-        currentBarWidth,
-        hoverZone.current !== null
+        currentBarWidth
       );
 
       if (chartMode === 'candle') {
@@ -265,15 +266,13 @@ export function ChartCanvas({
           ctx,
           customProfileRange,
           customProfile,
-          (idx) => indexToX(idx),
-          (p) => priceToY(p),
+          indexToX,
+          priceToY,
           currentBarWidth,
           bucketSize,
-          isHoveringClear.current,
           hoverZone.current !== null,
           customProfileLocked,
           isProfileSelected,
-          isHoveringLock.current,
           profileScaleMode,
           profileBucketSize,
           profileWidthPct,
@@ -420,7 +419,13 @@ export function ChartCanvas({
 
     setupCanvas();
 
-    const observer = new ResizeObserver(() => {
+    const observer = new ResizeObserver((entries) => {
+      if (entries[0]) {
+        setContainerSize({
+          width: entries[0].contentRect.width,
+          height: entries[0].contentRect.height
+        });
+      }
       setupCanvas();
     });
 
@@ -441,13 +446,12 @@ export function ChartCanvas({
     return () => clearInterval(timer);
   }, [redraw]);
 
-  // Handle clear button interaction
-  const getClearButtonPos = useCallback(() => {
-    if (!customProfileRange || !canvasRef.current) return null;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const chartWidth = rect.width - priceAxisWidth;
-    const chartHeight = rect.height - timeAxisHeight;
+  // Controls overlay positioning
+  const customProfileControls = useMemo(() => {
+    if (!customProfileRange || containerSize.width === 0) return null;
+
+    const chartWidth = containerSize.width - priceAxisWidth;
+    const chartHeight = containerSize.height - timeAxisHeight;
 
     const pCenter = priceCenter.current ?? 0;
     const pRange = priceRange.current ?? 100;
@@ -455,36 +459,14 @@ export function ChartCanvas({
     const priceMax = pCenter + pRange / 2;
 
     const { lastIndex, priceHigh } = customProfileRange;
-    const x2 = calcIndexToX(lastIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+    const x2 = calcIndexToX(lastIndex, candles.length, scrollOffsetProp, barWidthProp, chartWidth, profileWidth);
     const y1 = calcPriceToY(priceHigh, priceMin, priceMax, chartHeight);
 
     return {
-      x: x2 + barWidth.current / 2 - 6,
-      y: y1 + 4
+      top: y1 - 32, // Move outside/above the profile box
+      left: x2 + barWidthProp / 2 - 40,
     };
-  }, [customProfileRange, candles.length, priceAxisWidth, timeAxisHeight, profileWidth]);
-
-  const getLockButtonPos = useCallback(() => {
-    if (!customProfileRange || !canvasRef.current) return null;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const chartWidth = rect.width - priceAxisWidth;
-    const chartHeight = rect.height - timeAxisHeight;
-
-    const pCenter = priceCenter.current ?? 0;
-    const pRange = priceRange.current ?? 100;
-    const priceMin = pCenter - pRange / 2;
-    const priceMax = pCenter + pRange / 2;
-
-    const { lastIndex, priceHigh } = customProfileRange;
-    const x2 = calcIndexToX(lastIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-    const y1 = calcPriceToY(priceHigh, priceMin, priceMax, chartHeight);
-
-    return {
-      x: x2 + barWidth.current / 2 - 20,
-      y: y1 + 4
-    };
-  }, [customProfileRange, candles.length, priceAxisWidth, timeAxisHeight, profileWidth]);
+  }, [customProfileRange, containerSize, candles.length, priceAxisWidth, timeAxisHeight, profileWidth, scrollOffsetProp, barWidthProp, priceCenter, priceRange]);
 
   // Drawing Interaction Logic
   useEffect(() => {
@@ -540,28 +522,8 @@ export function ChartCanvas({
         return;
       }
 
-      // 2. Clear Button
-      const clearBtn = getClearButtonPos();
-      if (clearBtn) {
-        const dist = Math.sqrt((x - clearBtn.x) ** 2 + (y - clearBtn.y) ** 2);
-        if (dist < 12) {
-          useChartStore.getState().setCustomProfileRange(panelId, null);
-          redraw();
-          return;
-        }
-      }
-
-      // 3. Lock Button
-      const lockBtn = getLockButtonPos();
-      if (lockBtn) {
-        const dist = Math.sqrt((x - lockBtn.x) ** 2 + (y - lockBtn.y) ** 2);
-        if (dist < 12) {
-          const locked = useChartStore.getState().panels[panelId].customProfileLocked;
-          useChartStore.getState().setCustomProfileLocked(panelId, !locked);
-          redraw();
-          return;
-        }
-      }
+      // Interaction with React overlay buttons is handled by React DOM events
+      // No manual hit detection needed for Clear/Lock here anymore.
 
       // 4. Move/Resize Profile
       if (hoverZone.current && !useChartStore.getState().panels[panelId].customProfileLocked) {
@@ -572,7 +534,7 @@ export function ChartCanvas({
           isDraggingProfile.current = true;
         } else {
           isDraggingResize.current = true;
-          resizeEdge.current = hoverZone.current.replace('resize-', '') as any;
+          resizeEdge.current = hoverZone.current.replace('resize-', '') as 'left' | 'right' | 'top' | 'bottom';
         }
         useChartStore.getState().setProfileSelected(panelId, true);
         return;
@@ -612,30 +574,8 @@ export function ChartCanvas({
         else cursor = 'grabbing';
       } else if (lineDrawMode === 'none') {
         // Hover Detection
-        const clearBtn = getClearButtonPos();
-        const lockBtn = getLockButtonPos();
-
-        isHoveringClear.current = false;
-        isHoveringLock.current = false;
         hoverZone.current = null;
-
-        let hoveringAction = false;
-        if (clearBtn) {
-          const dist = Math.sqrt((x - clearBtn.x) ** 2 + (y - clearBtn.y) ** 2);
-          if (dist < 12) {
-            isHoveringClear.current = true;
-            cursor = 'pointer';
-            hoveringAction = true;
-          }
-        }
-        if (lockBtn && !hoveringAction) {
-          const dist = Math.sqrt((x - lockBtn.x) ** 2 + (y - lockBtn.y) ** 2);
-          if (dist < 12) {
-            isHoveringLock.current = true;
-            cursor = 'pointer';
-            hoveringAction = true;
-          }
-        }
+        const hoveringAction = false; 
 
         if (!hoveringAction) {
           if (customProfileRange) {
@@ -829,7 +769,6 @@ export function ChartCanvas({
         redraw();
       } else if (isDraggingProfile.current && dragAnchor.current && profileSnapshot.current) {
         const deltaX = x - dragAnchor.current.x;
-        const deltaY = y - dragAnchor.current.y;
 
         const currentBarWidth = barWidth.current;
         const indexDelta = Math.round(deltaX / currentBarWidth);
@@ -883,7 +822,7 @@ export function ChartCanvas({
       }
     };
 
-    const onMouseUp = (e: MouseEvent) => {
+    const onMouseUp = () => {
       if (isDraggingProfile.current || isDraggingResize.current) {
         isDraggingProfile.current = false;
         isDraggingResize.current = false;
@@ -968,7 +907,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset]);
 
 
   return (
@@ -991,6 +930,40 @@ export function ChartCanvas({
           x={hoveredExhaustion.x} 
           y={hoveredExhaustion.y} 
         />
+      )}
+
+      {/* Custom Profile Controls Overlay */}
+      {customProfileRange && customProfileControls && (
+        <div 
+          className="absolute flex items-center gap-1 p-1 bg-[#1A1A1A]/90 backdrop-blur-sm border border-[#333] rounded shadow-xl z-20"
+          style={{
+            top: `${customProfileControls.top}px`,
+            left: `${customProfileControls.left}px`,
+            transform: 'translateY(-4px)',
+          }}
+        >
+          <button
+            onClick={() => {
+              useChartStore.getState().setCustomProfileLocked(panelId, !customProfileLocked);
+              redraw();
+            }}
+            className={`p-1.5 hover:bg-[#2A2A2A] rounded-md transition-all ${customProfileLocked ? 'text-[#3D7EFF]' : 'text-gray-400'}`}
+            title={customProfileLocked ? "Unlock Profile" : "Lock Profile"}
+          >
+            {customProfileLocked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
+          </button>
+          <div className="w-[1px] h-4 bg-[#333] mx-0.5" />
+          <button
+            onClick={() => {
+              useChartStore.getState().setCustomProfileRange(panelId, null);
+              redraw();
+            }}
+            className="p-1.5 hover:bg-red-500/10 text-gray-400 hover:text-red-500 rounded-md transition-all"
+            title="Remove Profile"
+          >
+            <X size={15} strokeWidth={2.5} />
+          </button>
+        </div>
       )}
     </div>
   );

@@ -130,11 +130,9 @@ function scoreWickRejection(
 function scoreRangeShrink(
   candle: Candle,
   recentCandles: Candle[],
-  currentDelta: number,
+  _currentDelta: number,
   reasons: string[]
 ): number {
-  const direction = currentDelta >= 0 ? 1 : -1;
-  
   // All must be same direction in window (simplified: we only look at the ones provided)
   // Actually task says "last 4 candles with delta in same direction"
   // But we are passed last 5. 

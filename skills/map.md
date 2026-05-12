@@ -30,8 +30,8 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── AbsorptionTooltip.tsx # Hover breakdown of absorption signals (delta, volume, progression)
 │   │   ├── ExhaustionTooltip.tsx # Hover breakdown of exhaustion signals (momentum, rejection, compression)
 │   │   ├── drawBubbles.ts    # Volume bubbles overlay (threshold-filtered, radius/opacity-scaled)
-│   │   ├── drawVolumeProfile.ts # Renders profile with scaling, POC highlight, and VA fill
-│   │   ├── drawSelectionRect.ts # Handles custom profile logic and rendering with visual controls
+│   │   ├── drawVolumeProfile.ts # Unified amber profile with POC highlight and VA fill
+│   │   ├── drawSelectionRect.ts # Custom profile rendering with subtle borders and no background tint
 │   │   └── drawLines.ts         # Horizontal and Vertical line drawing tool
 │   ├── layout/               # General layout components
 │   │   ├── Header.tsx        # Top toolbar — Logo, Layout, Connection, Settings toggle

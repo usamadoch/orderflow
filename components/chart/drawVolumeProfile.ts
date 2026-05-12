@@ -27,7 +27,6 @@ export function drawVolumeProfile(
   const profileStartX = chartRight - effectiveWidth;
 
   const barOpacity = isCustomActive ? profileOpacity * 0.4 : profileOpacity;
-  const neutralOpacity = isCustomActive ? profileOpacity * 0.3 : profileOpacity * 0.75;
   const lineOpacity = isCustomActive ? 0.3 : 1;
 
   // ── Step 0: VA Background Fill ──
@@ -64,21 +63,9 @@ export function drawVolumeProfile(
 
     const barX = chartRight - calculatedBarWidth;
 
-    if (row.hasFP && row.totalVol > 0) {
-      const askWidth = calculatedBarWidth * (row.askVol / row.totalVol);
-      const bidWidth = calculatedBarWidth - askWidth;
-
-      // Ask portion (green)
-      ctx.fillStyle = `rgba(38, 166, 154, ${barOpacity})`;
-      ctx.fillRect(barX, yTop, askWidth, rowHeight);
-
-      // Bid portion (red)
-      ctx.fillStyle = `rgba(239, 83, 80, ${barOpacity})`;
-      ctx.fillRect(barX + askWidth, yTop, bidWidth, rowHeight);
-    } else {
-      ctx.fillStyle = `rgba(138, 138, 138, ${neutralOpacity})`;
-      ctx.fillRect(barX, yTop, calculatedBarWidth, rowHeight);
-    }
+    // Unified muted amber/orange color for institutional look
+    ctx.fillStyle = `rgba(217, 119, 6, ${barOpacity})`;
+    ctx.fillRect(barX, yTop, calculatedBarWidth, rowHeight);
   }
 
   // ── Step 1.5: POC Row Highlight ──
@@ -98,17 +85,8 @@ export function drawVolumeProfile(
         const highlightOpacity = Math.min(1.0, barOpacity + 0.2);
 
         // Re-draw with higher brightness
-        if (pocRow.hasFP) {
-          const askWidth = barW * (pocRow.askVol / pocRow.totalVol);
-          const bidWidth = barW - askWidth;
-          ctx.fillStyle = `rgba(38, 166, 154, ${highlightOpacity})`;
-          ctx.fillRect(barX, yTop, askWidth, rowHeight);
-          ctx.fillStyle = `rgba(239, 83, 80, ${highlightOpacity})`;
-          ctx.fillRect(barX + askWidth, yTop, bidWidth, rowHeight);
-        } else {
-          ctx.fillStyle = `rgba(138, 138, 138, ${Math.min(1.0, neutralOpacity + 0.2)})`;
-          ctx.fillRect(barX, yTop, barW, rowHeight);
-        }
+        ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
+        ctx.fillRect(barX, yTop, barW, rowHeight);
 
         // Amber outline
         ctx.strokeStyle = '#F0B90B';

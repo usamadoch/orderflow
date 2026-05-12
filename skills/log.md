@@ -1,5 +1,50 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-13] - Fix: Build Errors & Lint Warnings
+- **What changed**:
+  - **Code Clean-up**: 
+    - Removed unused variables `isHovered` (`drawSelectionRect.ts`), `neutralOpacity` (`drawVolumeProfile.ts`), and `direction` (`engine.ts`).
+    - Removed unused `deltaY` and `MouseEvent` argument from `onMouseUp` in `ChartCanvas.tsx`.
+  - **Type Safety**: Replaced `any` with specific union types in `ChartCanvas.tsx`.
+  - **Hook Dependencies**: Corrected missing dependencies in `useMemo` and `useEffect` across `ChartCanvas.tsx` and `usePanZoom.ts` to satisfy ESLint and ensure stable rendering.
+  - **Consistency**: Enforced `const` for variables that are never reassigned.
+- **Why it changed**: 
+  - To resolve build failures in the production pipeline and ensure codebase health.
+- **Impact**: 
+  - Clean production build with zero errors or warnings.
+  - Improved runtime stability by ensuring React hooks have all necessary reactive dependencies.
+
+## [2026-05-12] - UI/UX: Volume Profile Visual Styling & UX Improvements
+- **What changed**:
+  - **Unified Bar Coloring**: Both default and custom volume profiles now use a single unified muted amber color (`rgba(217, 119, 6, ...)`) instead of splitting bars into red/green based on buy/sell participation.
+  - **Institutional Aesthetics**: Applied a professional muted orange/amber tone that fits the dark theme without being distracting.
+  - **Custom Profile UX Refinement**:
+    - Removed the blue translucent background overlay to keep candles behind the profile fully visible.
+    - Removed dotted/dashed borders and the "CUSTOM" label for a lighter, cleaner look.
+    - Replaced emoji controls (ðŸ”’, ðŸ””, âœ•) with proper **Lucide icons** (`Lock`, `Unlock`, `X`).
+    - Migrated custom profile controls to a **React-based overlay** for better interactivity and visual polish.
+    - Moved control icons outside the profile box area (top-right edge) for improved accessibility and spacing.
+  - **Interaction Logic**: Simplified hit detection by delegating button clicks to the React DOM rather than manual coordinate math on the canvas.
+- **Why it changed**: 
+  - To align the tool with professional institutional charting aesthetics where volume structure is prioritized over noisy bid/ask splits within the profile.
+  - To improve chart readability by reducing visual weight and "heaviness" in custom selection areas.
+- **Impact**:
+  - A significantly cleaner and more professional-looking chart.
+  - Improved situational awareness as candles are no longer obscured by selection overlays.
+  - Better UX for managing custom ranges with modern, responsive icons and clean positioning.
+
+## [2026-05-12] - UI Refinement: Migrated Settings Tabs to Lucide Icons
+- **What changed**:
+  - Replaced emoji icons ('📊', '📋', '🔔') in `ChartSettingsDropdown.tsx` tabs with Lucide React components (`BarChart2`, `Layers`, `Zap`).
+  - Replaced the text-based close button ('✕') with a Lucide `X` icon.
+  - Standardized icon sizing and alignment across the settings dropdown tabs.
+- **Why it changed**: 
+  - To improve visual consistency with the rest of the application's UI, which already uses Lucide icons.
+  - Emojis vary significantly across browsers and operating systems, leading to an inconsistent experience.
+- **Impact**:
+  - A cleaner, more professional, and consistent look for the settings dropdown.
+  - Better alignment and visual balance in the tab navigation bar.
+
 ## [2026-05-12] - Security: Protected Signal Details (Auth Gated)
 - **What changed**:
   - **Auth System**: Implemented a simple password-based authentication system ("alpha") in the global Zustand store.

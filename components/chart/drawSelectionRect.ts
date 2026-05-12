@@ -16,8 +16,7 @@ export function drawSelectionRect(
   } | null,
   indexToX: (idx: number) => number,
   priceToY: (price: number) => number,
-  barWidth: number,
-  isHovered: boolean = false
+  barWidth: number
 ) {
   let x: number, y: number, width: number, height: number;
 
@@ -41,19 +40,15 @@ export function drawSelectionRect(
     return;
   }
 
-  ctx.save();
-  // Hover highlight state (background opacity increases from 0.06 to 0.10)
-  ctx.fillStyle = isHovered ? 'rgba(61, 126, 255, 0.10)' : 'rgba(61, 126, 255, 0.06)';
-  ctx.fillRect(x, y, width, height);
-  
-  // If we are actively dragging, also draw the border here so it's visible
+  // Background tint removed as requested to keep candles visible
+
+  // If we are actively dragging, draw a subtle solid border
   if (dragStart && dragEnd) {
-    ctx.strokeStyle = 'rgba(61, 126, 255, 0.5)';
+    ctx.strokeStyle = 'rgba(61, 126, 255, 0.4)';
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
     ctx.strokeRect(x, y, width, height);
   }
-  
+
   ctx.restore();
 }
 
@@ -74,11 +69,9 @@ export function drawCustomProfile(
   priceToY: (price: number) => number,
   barWidth: number,
   bucketSize: number,
-  isHoveringClear: boolean = false,
   isHovered: boolean = false,
   isLocked: boolean = false,
   isSelected: boolean = true,
-  isHoveringLock: boolean = false,
   profileScaleMode: 'linear' | 'sqrt' = 'sqrt',
   profileBucketSize: number = bucketSize,
   profileWidthPct: number = 70,
@@ -104,16 +97,12 @@ export function drawCustomProfile(
 
   ctx.save();
 
-  // 1. Border
+  // 1. Border (Subtle and solid)
   if (isSelected || isHovered) {
-    ctx.strokeStyle = 'rgba(61, 126, 255, 0.8)';
-    if (!isSelected) ctx.setLineDash([4, 4]);
-  } else {
-    ctx.strokeStyle = 'rgba(61, 126, 255, 0.35)';
-    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
   }
-  ctx.lineWidth = 1;
-  ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
 
   // 2. Profile Bars
   if (profile) {
@@ -135,7 +124,7 @@ export function drawCustomProfile(
     for (const row of profile.rows) {
       const rowTopY = priceToY(row.price + profileBucketSize);
       const rowBotY = priceToY(row.price);
-      
+
       const drawTopY = Math.max(rowTopY, rectY);
       const drawBotY = Math.min(rowBotY, rectY + rectHeight);
       const drawHeight = drawBotY - drawTopY;
@@ -157,17 +146,9 @@ export function drawCustomProfile(
 
       if (barWidthPx < 0.5) continue;
 
-      if (row.hasFP && row.totalVol > 0) {
-        const askWidth = barWidthPx * (row.askVol / row.totalVol);
-        const bidWidth = barWidthPx - askWidth;
-        ctx.fillStyle = `rgba(38, 166, 154, ${profileOpacity})`;
-        ctx.fillRect(barAnchorX, drawTopY, askWidth, drawHeight);
-        ctx.fillStyle = `rgba(239, 83, 80, ${profileOpacity})`;
-        ctx.fillRect(barAnchorX + askWidth, drawTopY, bidWidth, drawHeight);
-      } else {
-        ctx.fillStyle = `rgba(138, 138, 138, ${profileOpacity})`;
-        ctx.fillRect(barAnchorX, drawTopY, barWidthPx, drawHeight);
-      }
+      // Unified muted amber/orange color
+      ctx.fillStyle = `rgba(217, 119, 6, ${profileOpacity})`;
+      ctx.fillRect(barAnchorX, drawTopY, barWidthPx, drawHeight);
     }
 
     // POC Highlight
@@ -187,17 +168,8 @@ export function drawCustomProfile(
 
           if (barW >= 0.5) {
             const highlightOpacity = Math.min(1.0, profileOpacity + 0.2);
-            if (pocRow.hasFP) {
-              const askWidth = barW * (pocRow.askVol / pocRow.totalVol);
-              const bidWidth = barW - askWidth;
-              ctx.fillStyle = `rgba(38, 166, 154, ${highlightOpacity})`;
-              ctx.fillRect(barAnchorX, drawTopY, askWidth, drawHeight);
-              ctx.fillStyle = `rgba(239, 83, 80, ${highlightOpacity})`;
-              ctx.fillRect(barAnchorX + askWidth, drawTopY, bidWidth, drawHeight);
-            } else {
-              ctx.fillStyle = `rgba(138, 138, 138, ${Math.min(1.0, profileOpacity + 0.25)})`;
-              ctx.fillRect(barAnchorX, drawTopY, barW, drawHeight);
-            }
+            ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
+            ctx.fillRect(barAnchorX, drawTopY, barW, drawHeight);
 
             ctx.strokeStyle = '#F0B90B';
             ctx.lineWidth = 1;
@@ -253,33 +225,8 @@ export function drawCustomProfile(
     }
   }
 
-  // 5. Labels & Buttons
-  ctx.setLineDash([]);
-  ctx.font = '9px "JetBrains Mono"';
-  
-  // CUSTOM Label
-  ctx.fillStyle = '#3D7EFF';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText('CUSTOM', rectX + 4, rectY + 4);
-
-  // LOCKED Indicator
-  if (isLocked) {
-    ctx.fillStyle = '#4A4A4A';
-    ctx.fillText('LOCKED', rectX + 44, rectY + 4);
-  }
-
-  // Interaction Buttons (Top Right)
-  ctx.font = '10px "JetBrains Mono"';
-  ctx.fillStyle = isHoveringLock ? '#E8E8E8' : (isLocked ? '#3D7EFF' : '#8A8A8A');
-  ctx.textAlign = 'right';
-  ctx.fillText(isLocked ? '🔒' : '🔓', rectX + rectWidth - 20, rectY + 4);
-
-  ctx.font = '11px "JetBrains Mono"';
-  ctx.fillStyle = isHoveringClear ? '#E8E8E8' : '#8A8A8A';
-  ctx.fillText('✕', rectX + rectWidth - 6, rectY + 4);
-
-  // 6. Resize Handles
+  // 5. Interaction Buttons (Moved to React overlay in ChartCanvas.tsx)
+  // Resize handles still rendered on canvas for precision
   if (isSelected && isHovered && !isLocked) {
     ctx.fillStyle = 'rgba(61, 126, 255, 0.7)';
     ctx.fillRect(rectX - 2, rectY + rectHeight / 2 - 8, 4, 16);
