@@ -62,7 +62,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # Panel state, indicators, visual settings, and persistence (v11)
+│   │   └── chart.ts          # Panel state, indicators, visual settings, auth, and persistence (v11)
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions
@@ -89,3 +89,4 @@ A personal, minimal order flow charting tool for learning market microstructure.
 - **Data Layer:** Client-side WebSockets via `FeedAdapter` pattern (one per panel)
 - **Charting:** Custom HTML5 Canvas (Single Canvas Architecture per panel)
 - **Layout:** Single or Dual panel mode with independent pair/timeframe/mode per panel
+- **Auth:** Simple password protection for premium signal details ("alpha")

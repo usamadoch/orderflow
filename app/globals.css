@@ -37,3 +37,13 @@ h1, h2, h3, label {
   background: rgba(61, 126, 255, 0.3);
   color: white;
 }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.animate-shake {
+  animation: shake 0.2s ease-in-out 0s 2;
+}

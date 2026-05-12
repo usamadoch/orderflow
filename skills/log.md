@@ -1,5 +1,22 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-12] - Security: Protected Signal Details (Auth Gated)
+- **What changed**:
+  - **Auth System**: Implemented a simple password-based authentication system ("alpha") in the global Zustand store.
+  - **Unlock UI**: Added an "Unlock Details" button/input in the main `Header.tsx` to allow users to authenticate.
+  - **Protected Tooltips**:
+    - **AbsorptionTooltip.tsx**: Scores and signal reasons are now blurred and masked with a "Locked" overlay when not authenticated.
+    - **ExhaustionTooltip.tsx**: Scores, rank diamonds, and signal reasons are now blurred and masked with a "Restricted" overlay when not authenticated.
+  - **Visuals**: Used `backdrop-blur-md` and CSS `blur()` filters to create a premium "teasing" effect for protected data.
+  - **Feedback**: Added a shake animation for incorrect password entry.
+- **Why it changed**: 
+  - To protect detailed analytical information (scores, logic breakdown) while still allowing the public UI to show that signals exist. 
+  - Provides a mechanism for premium content gating or private analysis protection.
+- **Impact**:
+  - Detailed signal data is now only accessible to authorized users.
+  - Public users see visual indicators of signals but cannot read the underlying confidence levels or reasons.
+  - Professional UI feedback for authentication state.
+
 ## [2026-05-12] - UI/UX: Reorganized Settings Dropdown (Tabbed Interface)
 - **What changed**:
   - Refactored `ChartSettingsDropdown.tsx` to use a tabbed interface.

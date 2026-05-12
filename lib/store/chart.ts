@@ -142,6 +142,11 @@ interface ChartState {
   setSplitRatio: (ratio: number) => void;
   setTickSize: (size: number) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+
+  // Auth
+  isAuthenticated: boolean;
+  authenticate: (password: string) => boolean;
+  logout: () => void;
 }
 
 function createDefaultPanel(id: PanelId): PanelState {
@@ -218,6 +223,7 @@ export const useChartStore = create<ChartState>()(
       splitRatio: 0.5,
       tickSize: 0.5,
       sidebarCollapsed: false,
+      isAuthenticated: false,
 
       // Per-panel actions
       setPair: (panelId, pair) =>
@@ -395,6 +401,16 @@ export const useChartStore = create<ChartState>()(
       setSplitRatio: (splitRatio) => set({ splitRatio: Math.max(0.15, Math.min(0.85, splitRatio)) }),
       setTickSize: (tickSize) => set({ tickSize }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+
+      // Auth actions
+      authenticate: (password) => {
+        if (password === 'alpha') {
+          set({ isAuthenticated: true });
+          return true;
+        }
+        return false;
+      },
+      logout: () => set({ isAuthenticated: false }),
     }),
     {
       name: 'orderflow-settings',
@@ -546,6 +562,7 @@ export const useChartStore = create<ChartState>()(
         },
         tickSize: state.tickSize,
         sidebarCollapsed: state.sidebarCollapsed,
+        isAuthenticated: state.isAuthenticated,
       }),
     }
   )
