@@ -16,8 +16,8 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── FeedProvider.tsx      # PanelFeedProvider — per-panel WebSocket & REST lifecycle
 │   ├── ChartEngineContext.tsx# React context for AggregationEngine (one per panel)
 │   ├── chart/                # Chart-specific components
-│   │   ├── ChartPanel.tsx    # Panel wrapper — reads panel state, passes props to ChartCanvas
-│   │   ├── ChartCanvas.tsx   # Pure rendering canvas, accepts all data via props, handles cursor & hover logic
+│   │   ├── ChartPanel.tsx    # Panel wrapper — reads panel state, ensures proper layout container
+│   │   ├── ChartCanvas.tsx   # Pure rendering canvas, robust resizing via ResizeObserver & CSS w-full layout
 │   │   ├── useCoordinates.ts # Coordinate math (price-to-pixel, index-to-pixel)
 │   │   ├── usePanZoom.ts     # Anchored pan/zoom with interaction callback support
 │   │   ├── drawCandles.ts    # Candlestick draw function

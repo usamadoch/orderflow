@@ -167,8 +167,8 @@ export function ChartCanvas({
       const container = containerRef.current;
       if (!canvas || !ctx || !container) return;
 
-      const logicalWidth = container.offsetWidth;
-      const logicalHeight = container.offsetHeight;
+      const logicalWidth = canvas.clientWidth;
+      const logicalHeight = canvas.clientHeight;
 
       const chartWidth = logicalWidth - priceAxisWidth;
       const chartHeight = logicalHeight - timeAxisHeight;
@@ -975,7 +975,7 @@ export function ChartCanvas({
     <div ref={containerRef} className="w-full h-full relative bg-[#0D0D0D] overflow-hidden">
       <canvas
         ref={canvasRef}
-        className="absolute top-0 left-0 outline-none"
+        className="absolute top-0 left-0 w-full h-full outline-none"
         tabIndex={0}
       />
       {hoveredAbs && (

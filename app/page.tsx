@@ -52,9 +52,9 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
 
-        <main ref={containerRef} className="flex-1 relative flex bg-[#080808]">
+        <main ref={containerRef} className="flex-1 relative flex bg-[#080808] min-w-0">
           {/* Left Panel — always visible */}
-          <div style={{ width: leftPercent }} className="h-full flex shrink-0">
+          <div style={{ width: leftPercent }} className="h-full flex min-w-0">
             <PanelFeedProvider panelId="left">
               <ChartPanel panelId="left" />
             </PanelFeedProvider>
@@ -75,7 +75,7 @@ export default function Home() {
 
           {/* Right Panel — only in dual mode */}
           {layoutMode === 'dual' && (
-            <div style={{ width: rightPercent }} className="h-full flex shrink-0">
+            <div style={{ width: rightPercent }} className="h-full flex min-w-0">
               <PanelFeedProvider panelId="right">
                 <ChartPanel panelId="right" />
               </PanelFeedProvider>

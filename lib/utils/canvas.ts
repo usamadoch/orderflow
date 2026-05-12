@@ -2,10 +2,12 @@ import { FootprintCell } from '../../types/footprint';
 
 export function initCanvas(canvas: HTMLCanvasElement, container: HTMLElement) {
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = container.offsetWidth * dpr;
-  canvas.height = container.offsetHeight * dpr;
-  canvas.style.width = container.offsetWidth + 'px';
-  canvas.style.height = container.offsetHeight + 'px';
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  
   const ctx = canvas.getContext('2d');
   if (ctx) {
     ctx.scale(dpr, dpr);

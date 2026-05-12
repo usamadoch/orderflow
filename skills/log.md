@@ -1,5 +1,23 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-12] - Fix: Chart Layout Shifting & Resizing
+- **What changed**:
+  - **app/page.tsx**:
+    - Added `min-w-0` to the `main` content container and both chart panel wrappers.
+    - Removed `shrink-0` from panel wrappers to allow them to correctly respond to parent container size changes.
+  - **ChartCanvas.tsx**:
+    - Added `w-full h-full` to the `<canvas>` element to delegate layout to the CSS engine.
+    - Refactored `redraw` to use `canvas.clientWidth/Height` for high-precision rendering during transitions.
+  - **lib/utils/canvas.ts**:
+    - Simplified `initCanvas` to sync internal buffer with `clientWidth` and remove manual style overrides.
+- **Why it changed**: 
+  - To resolve a regression where expanding the sidebar pushed the right-side chart elements (price axis, volume profile) outside the visible viewport. 
+  - The fix ensures the layout engine can shrink panels proportionally when screen real estate is reclaimed by the sidebar.
+- **Impact**:
+  - Chart panels, axes, and profiles now remain perfectly visible and accessible regardless of sidebar state or split-screen ratio.
+  - Resizing transitions (sidebar toggle) are now smooth and robust.
+
+
 ## [2026-05-12] - Volume Profile Enhancements (Task 3 & 4) - COMPLETED
 - **What changed**:
   - **Custom Profile Integration**:
