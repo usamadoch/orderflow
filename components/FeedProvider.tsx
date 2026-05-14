@@ -100,6 +100,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     absorptionMapRef.current = new Map();
     exhaustionMapRef.current = new Map();
     lastScoredCandleTimeRef.current = null;
+    useChartStore.getState().setActiveMeasurement(panelId, null);
 
     const adapter = adapterRef.current;
     adapter.disconnect();

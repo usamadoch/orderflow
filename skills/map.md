@@ -32,14 +32,15 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawBubbles.ts    # Volume bubbles overlay (threshold-filtered, radius/opacity-scaled)
 │   │   ├── drawVolumeProfile.ts # Unified amber profile with POC highlight and VA fill
 │   │   ├── drawSelectionRect.ts # Custom profile rendering with subtle borders and no background tint
-│   │   └── drawLines.ts         # Horizontal and Vertical line drawing tool
+│   │   ├── drawLines.ts         # Horizontal and Vertical line drawing tool
+│   │   └── MeasurementPanel.tsx # Overlay showing measurement tool metrics
 │   ├── layout/               # General layout components
 │   │   ├── Header.tsx        # Top toolbar — Logo, Layout, Connection, Settings toggle
 │   │   └── Sidebar.tsx       # Collapsible sidebar — Data/Session stats
 │   └── ui/                   # Reusable UI components
 │       ├── ConnectionStatus.tsx # Combined live connection indicator
-│       ├── PanelToolbar.tsx     # Per-panel controls — Pair, TF, Mode, Drawing tools
-│       ├── ChartSettingsDropdown.tsx # Tabbed centralized settings (Chart, Profiles, Signals)
+│       ├── PanelToolbar.tsx     # Per-panel controls — Pair, TF, Mode, Drawing tools, Quick Toggles
+│       ├── ChartSettingsDropdown.tsx # Tabbed centralized settings (Chart, Profiles, Signals, Sessions)
 │       ├── PairSelector.tsx     # Pair switcher (panel-scoped)
 │       ├── TimeframeSelector.tsx# Timeframe switcher (panel-scoped)
 │       ├── ChartModeToggle.tsx  # Candle / Footprint toggle (panel-scoped)
@@ -50,7 +51,9 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │
 ├── lib/                      # Business logic, state, and utilities
 │   ├── draw/                 # Pure drawing logic (context-based)
-│   │   └── drawDeltaProfile.ts # Renders delta profile strip (ask-bid imbalance)
+│   │   ├── drawDeltaProfile.ts # Renders delta profile strip (ask-bid imbalance)
+│   │   ├── drawMeasurement.ts  # Renders measurement tool rectangle and metrics
+│   │   └── drawSessions.ts     # Renders trading session background boxes
 │   ├── aggregation/          # Trade aggregation logic
 │   │   └── engine.ts         # AggregationEngine (Real-time Trade Aggregation)
 │   ├── absorption/           # Absorption detection system
@@ -62,20 +65,23 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # Panel state, indicators, visual settings, auth, and persistence (v11)
+│   │   └── chart.ts          # Panel state, indicators, visual settings, sessions, auth, and persistence (v12)
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions
 │       ├── volumeProfile.ts  # Volume profile aggregation, POC, and VA math
 │       ├── chartUtils.ts     # Shared chart utilities (rolling averages, opacity, etc.)
 │       ├── delta.ts          # Delta calculation helpers (Planned)
-│       └── format.ts         # Timeframe parsing, countdowns, and price formatting
+│       ├── format.ts         # Price, volume, delta, and timeframe formatting
+│       ├── sessions.ts       # Session occurrence calculation logic
+│       └── measurement.ts    # Measurement metric calculation logic
 │
 ├── types/                    # TypeScript interfaces
 │   ├── candle.ts             # OHLCV definitions
 │   ├── footprint.ts          # Footprint data structures & FootprintMode ('bid-ask' | 'delta')
 │   ├── absorption.ts         # AbsorptionResult, AbsorptionDirection, AbsorptionRank
 │   ├── exhaustion.ts         # ExhaustionResult, ExhaustionDirection, ExhaustionRank
+│   ├── measurement.ts        # Measurement tool data structures
 │   └── trade.ts              # Individual trade tick definitions
 │
 ├── tailwind.config.ts        # Design system constraints and tokens
@@ -85,7 +91,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)
-- **State Management:** Zustand (panel-scoped, persisted to localStorage v6)
+- **State Management:** Zustand (panel-scoped, persisted to localStorage v12)
 - **Data Layer:** Client-side WebSockets via `FeedAdapter` pattern (one per panel)
 - **Charting:** Custom HTML5 Canvas (Single Canvas Architecture per panel)
 - **Layout:** Single or Dual panel mode with independent pair/timeframe/mode per panel

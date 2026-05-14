@@ -68,6 +68,10 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           profileShowVaLines={panel.profileShowVaLines}
           profileShowDelta={panel.profileShowDelta}
           deltaProfileWidth={panel.deltaProfileWidth}
+          measureToolActive={panel.measureToolActive}
+          activeMeasurement={panel.activeMeasurement}
+          sessionsEnabled={panel.sessionsEnabled}
+          sessions={panel.sessions}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />

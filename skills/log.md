@@ -1,5 +1,98 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-14] - Feature: Session Visualization (Phase 2 - COMPLETED)
+- **What changed**:
+  - **Rendering Engine**: Implemented `drawSessions.ts` to render subtle background boxes for Tokyo, London, and New York sessions.
+  - **Logic**: Implemented `getSessionOccurrences` in `lib/utils/sessions.ts` to identify session blocks across daily boundaries and varying timeframes.
+  - **Integration**: Wired `drawSessions` into `ChartCanvas.tsx` redraw loop, ensuring it renders behind all other chart content (candles, footprints, profiles).
+  - **Multi-Panel**: Sessions are rendered independently per panel, respecting individual scroll and zoom levels.
+  - **Visuals**: Added session labels (`TYO`, `LON`, `NYC`) at the top of boxes when wide enough. Overlapping sessions (London/NY) stack their colors naturally.
+  - **Helpers**: Added `hexToRgba` to `lib/utils/format.ts` for consistent transparency handling.
+- **Why it changed**: 
+  - To provide visual market context by highlighting major trading sessions directly on the canvas (Phase 2: Canvas Rendering & Multi-Panel).
+- **Impact**: 
+  - Users can now see colored session backgrounds that move and scale perfectly with the chart. Toggles and settings from Phase 1 are now fully functional on the canvas.
+
+
+## [2026-05-13] - Feature: Session Visualization (Phase 1 - COMPLETED)
+- **What changed**:
+  - **Store State**: Added `SessionConfig` and `SessionsState` to the global chart store. Defined default timings for Tokyo, London, and New York sessions in UTC.
+  - **Settings UI**: Integrated a new "SESSIONS" section in the `ChartSettingsDropdown.tsx` (Chart tab).
+    - Added master toggle for all sessions.
+    - Added per-session toggles, time configuration (hour number, minute select), and color pickers.
+    - Implemented validation to ensure end time is after start time.
+    - Applied specified styling with divider lines and `JetBrains Mono` labels.
+  - **Toolbar**: Added an 'S' quick-toggle button to `PanelToolbar.tsx` for easy session visibility control.
+  - **Keyboard Shortcuts**: Added 'S' key listener to `useKeyboardShortcuts.ts` to toggle sessions globally for the active panel.
+  - **Persistence**: Bumped store version to `12` and added migration/persistence logic for all new session settings.
+- **Why it changed**: 
+  - To provide traders with visual context of major market session windows (Tokyo, London, NY) directly on the chart (Phase 1: State & Configuration).
+- **Impact**: 
+  - Users can now configure session times and colors, and toggle them via settings, toolbar, or keyboard. Foundation laid for Phase 2 canvas rendering.
+
+## [2026-05-13] - Feature: Measurement Tool (Phase 3 - COMPLETED)
+- **What changed**:
+  - **Visuals**: Added directional arrow rendering in `drawMeasurementRect.ts` with color-coded sentiment (Green/Red).
+  - **UI Overlay**: Created `MeasurementPanel.tsx` to display real-time metrics (Price, %, Candles, Time, Ticks).
+  - **Footprint Integration**: Implemented `computeFootprintMetrics` to aggregate volume and delta within the measured range. Added footprint rows (Vol, Delta, Buy/Sell, B/S ratio) to the info panel when in Footprint mode.
+  - **UX & Polish**:
+    - Implemented smart positioning for the info panel (clamping/flipping to stay within viewport).
+    - Added volume and delta formatting with SI prefixes (k) and thousand separators.
+    - Optimized redraw loop to remove temporary debug logs and handle live measurement states cleanly.
+- **Why it changed**: 
+  - To complete the measurement tool feature set, providing professional visual feedback and deep order flow analysis for specific chart ranges.
+- **Impact**: 
+  - Users now have a fully functional TradingView-style measurement tool with institutional-grade footprint metrics.
+
+## [2026-05-13] - Feature: Measurement Tool (Phase 2)
+- **What changed**:
+  - **Data Structures**: Created `types/measurement.ts` for metric definitions.
+  - **Store Extension**: Updated `activeMeasurement` to store computed `metrics` upon finalization.
+  - **Coordinate Logic**: Implemented `computeMeasurementMetrics` in `lib/utils/measurement.ts` for pixel-to-chart conversion and metric calculation.
+  - **Formatting**: Added `formatElapsed` to `lib/utils/format.ts` for human-readable time intervals.
+  - **Canvas Integration**: Updated `ChartCanvas.tsx` to track coordinate systems and canvas dimensions via refs, enabling precise metric computation in `onMouseUp`.
+  - **Verification**: Added temporary console logging for measurement metrics to facilitate implementation testing.
+- **Why it changed**: 
+  - To provide traders with precise numerical data (price change, percentage, duration, ticks) for measured chart ranges (Phase 2: Coordinate Conversion).
+- **Impact**: 
+  - Measurements now compute and store real market metrics.
+  - Foundation ready for the final Phase 3 info panel rendering.
+
+## [2026-05-13] - Feature: Measurement Tool (Phase 1)
+- **What changed**:
+  - **Store Additions**: Added `measureToolActive` and `activeMeasurement` to the global chart store.
+  - **Toolbar Integration**: Added a Ruler button (`⟷`) to the panel toolbar for tool activation.
+  - **Keyboard Shortcuts**: Added `M` to toggle the tool and `Escape` to clear active measurements.
+  - **Drawing Logic**: Implemented `drawMeasurementRect.ts` for rendering a dashed rectangle and anchor point.
+  - **Interaction Engine**: Updated `ChartCanvas.tsx` to handle drag-based measurement logic with priority over other tools.
+  - **Mutual Exclusivity**: Ensured only one drawing tool (Measurement, Custom Profile, or Lines) is active at a time.
+- **Why it changed**: 
+  - To allow traders to measure price and time distances on the chart (Phase 1: Visual Interaction).
+- **Impact**: 
+  - Users can now draw, drag, and clear measurement rectangles on the canvas. 
+  - Professional crosshair interaction and tool switching logic.
+
+## [2026-05-13] - Fix: Measurement Tool Interaction (Locked Panning)
+- **What changed**:
+  - **usePanZoom.ts**: Updated the hook to accept `measureToolActive` and block panning/zooming when the tool is active.
+  - **ChartCanvas.tsx**: Passed the `measureToolActive` state to the `usePanZoom` hook.
+- **Why it changed**: 
+  - To prevent the chart from moving while a user is trying to measure a range, ensuring accuracy and a professional feel.
+- **Impact**: 
+  - The chart remains stationary during measurement dragging, allowing for precise point-to-point calculations.
+
+## [2026-05-13] - Refactor: Unified Canvas Interaction Logic
+- **What changed**:
+  - **Interaction Consolidation**: Unified the drag-to-select logic for the Measurement Tool and Custom Profile (Draw Mode).
+  - **Ref Management**: Removed redundant `isMeasuring` ref; now using shared `dragStart`, `dragEnd`, and `isDragging` refs.
+  - **Store Optimization**: Measurement live updates during drag now use local refs and `redraw()` instead of triggering store updates on every `mousemove`.
+  - **Code Quality**: Reduced code duplication in `onMouseDown`, `onMouseMove`, and `onMouseUp` handlers in `ChartCanvas.tsx`.
+- **Why it changed**: 
+  - To ensure a consistent interaction model across different chart tools and simplify future maintenance.
+- **Impact**: 
+  - Identical interaction feel between drawing profiles and measuring ranges.
+  - Slightly improved performance during measurement dragging.
+
 ## [2026-05-13] - Fix: Build Errors & Lint Warnings
 - **What changed**:
   - **Code Clean-up**: 
@@ -21,7 +114,7 @@
   - **Custom Profile UX Refinement**:
     - Removed the blue translucent background overlay to keep candles behind the profile fully visible.
     - Removed dotted/dashed borders and the "CUSTOM" label for a lighter, cleaner look.
-    - Replaced emoji controls (ðŸ”’, ðŸ””, âœ•) with proper **Lucide icons** (`Lock`, `Unlock`, `X`).
+    - Replaced emoji controls (🔒, 🔓, ✖) with proper **Lucide icons** (`Lock`, `Unlock`, `X`).
     - Migrated custom profile controls to a **React-based overlay** for better interactivity and visual polish.
     - Moved control icons outside the profile box area (top-right edge) for improved accessibility and spacing.
   - **Interaction Logic**: Simplified hit detection by delegating button clicks to the React DOM rather than manual coordinate math on the canvas.

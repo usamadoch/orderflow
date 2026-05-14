@@ -83,6 +83,33 @@ export function useKeyboardShortcuts() {
         }
         return;
       }
+
+      // M: Toggle measurement tool
+      if (key === 'm') {
+        e.preventDefault();
+        useChartStore.getState().setMeasureToolActive(activePanel, !panel.measureToolActive);
+        return;
+      }
+
+      // S: Toggle sessions
+      if (key === 's') {
+        e.preventDefault();
+        useChartStore.getState().setSessionsEnabled(activePanel, !panel.sessionsEnabled);
+        return;
+      }
+
+      // Escape: Clear active measurement
+      if (key === 'escape') {
+        e.preventDefault();
+        if (panel.activeMeasurement) {
+          useChartStore.getState().setActiveMeasurement(activePanel, null);
+        } else if (panel.isDrawMode) {
+          useChartStore.getState().setDrawMode(activePanel, false);
+        } else if (panel.lineDrawMode !== 'none') {
+          useChartStore.getState().setLineDrawMode(activePanel, 'none');
+        }
+        return;
+      }
     };
 
     window.addEventListener('keydown', handler);

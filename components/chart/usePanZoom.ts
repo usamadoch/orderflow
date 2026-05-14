@@ -12,6 +12,7 @@ export function usePanZoom(
   onBarWidthChange?: (v: number) => void,
   onScrollOffsetChange?: (v: number) => void,
   isDrawMode: boolean = false,
+  measureToolActive: boolean = false,
   canStartDrag?: (x: number, y: number) => boolean
 ) {
   const scrollOffset = useRef(initialScrollOffset);
@@ -46,7 +47,7 @@ export function usePanZoom(
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      if (isDrawMode) return;
+      if (isDrawMode || measureToolActive) return;
       if (canStartDrag && !canStartDrag(x, y)) return;
 
       if (x > rect.width - priceAxisWidth) {
@@ -75,8 +76,7 @@ export function usePanZoom(
         onRedraw();
         return;
       }
-      
-      if (isDrawMode) return;
+      if (isDrawMode || measureToolActive) return;
 
       const deltaX = e.clientX - lastX.current;
       const deltaY = e.clientY - lastY.current;
@@ -182,7 +182,7 @@ export function usePanZoom(
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange, isDrawMode, canStartDrag]);
+  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange, isDrawMode, measureToolActive, canStartDrag]);
 
   return { 
     scrollOffset, 

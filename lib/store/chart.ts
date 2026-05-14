@@ -6,14 +6,35 @@ import { FootprintMode } from '../../types/footprint';
 import { AbsorptionResult } from '../../types/absorption';
 import { BubbleSide } from '../../components/chart/drawBubbles';
 import { ExhaustionResult } from '../../types/exhaustion';
+import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
 
 export type ChartMode = 'candle' | 'footprint';
 export type PanelId = 'left' | 'right';
 export type LayoutMode = 'single' | 'dual';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type { BubbleSide };
-export type LineDrawMode = 'none' | 'horizontal' | 'vertical';
 export type ExhaustionSide = 'both' | 'buyer' | 'seller';
+export type LineDrawMode = 'none' | 'horizontal' | 'vertical';
+export type SessionId = 'tokyo' | 'london' | 'newYork';
+
+export interface SessionConfig {
+  enabled: boolean;
+  startHour: number; // 0–23, UTC
+  startMin: number; // 0 or 30 only
+  endHour: number;
+  endMin: number;
+  color: string; // hex color
+}
+
+export interface Measurement {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  live: boolean;
+  metrics: MeasurementMetrics | null;
+  footprintMetrics: FootprintMeasurementMetrics | null;
+}
 
 export interface DrawnLine {
   id: string;
@@ -73,6 +94,15 @@ export interface PanelState {
   profileShowVaLines: boolean;
   profileShowDelta: boolean;
   deltaProfileWidth: number;
+  measureToolActive: boolean;
+  activeMeasurement: Measurement | null;
+  // Session Visualization
+  sessionsEnabled: boolean;
+  sessions: {
+    tokyo: SessionConfig;
+    london: SessionConfig;
+    newYork: SessionConfig;
+  };
 }
 
 interface ChartState {
@@ -135,6 +165,12 @@ interface ChartState {
   setProfileShowVaLines: (panelId: PanelId, show: boolean) => void;
   setProfileShowDelta: (panelId: PanelId, show: boolean) => void;
   setDeltaProfileWidth: (panelId: PanelId, width: number) => void;
+  setMeasureToolActive: (panelId: PanelId, active: boolean) => void;
+  setActiveMeasurement: (panelId: PanelId, measurement: Measurement | null) => void;
+  setSessionsEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setSessionEnabled: (panelId: PanelId, sessionId: SessionId, enabled: boolean) => void;
+  setSessionTime: (panelId: PanelId, sessionId: SessionId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
+  setSessionColor: (panelId: PanelId, sessionId: SessionId, color: string) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -196,6 +232,29 @@ function createDefaultPanel(id: PanelId): PanelState {
     profileShowVaLines: true,
     profileShowDelta: true,
     deltaProfileWidth: 80,
+    measureToolActive: false,
+    activeMeasurement: null,
+    sessionsEnabled: true,
+    sessions: {
+      tokyo: {
+        enabled: true,
+        startHour: 0, startMin: 0,
+        endHour: 6, endMin: 0,
+        color: '#B39DDB',
+      },
+      london: {
+        enabled: true,
+        startHour: 7, startMin: 0,
+        endHour: 16, endMin: 0,
+        color: '#4FC3F7',
+      },
+      newYork: {
+        enabled: true,
+        startHour: 13, startMin: 0,
+        endHour: 22, endMin: 0,
+        color: '#81C784',
+      },
+    },
   };
 }
 
@@ -293,7 +352,15 @@ export const useChartStore = create<ChartState>()(
         set((state) => updatePanel(state, panelId, { bubbleSide })),
 
       setDrawMode: (panelId, isDrawMode) =>
-        set((state) => updatePanel(state, panelId, { isDrawMode })),
+        set((state) => {
+          const updates: Partial<PanelState> = { isDrawMode };
+          if (isDrawMode) {
+            updates.measureToolActive = false;
+            updates.activeMeasurement = null;
+            updates.lineDrawMode = 'none';
+          }
+          return updatePanel(state, panelId, updates);
+        }),
 
       setCustomProfileRange: (panelId, customProfileRange) =>
         set((state) => updatePanel(state, panelId, { customProfileRange, isProfileSelected: !!customProfileRange })),
@@ -317,7 +384,15 @@ export const useChartStore = create<ChartState>()(
         }),
 
       setLineDrawMode: (panelId, lineDrawMode) =>
-        set((state) => updatePanel(state, panelId, { lineDrawMode })),
+        set((state) => {
+          const updates: Partial<PanelState> = { lineDrawMode };
+          if (lineDrawMode !== 'none') {
+            updates.measureToolActive = false;
+            updates.activeMeasurement = null;
+            updates.isDrawMode = false;
+          }
+          return updatePanel(state, panelId, updates);
+        }),
 
       setExhaustionEnabled: (panelId, exhaustionEnabled) =>
         set((state) => updatePanel(state, panelId, { exhaustionEnabled })),
@@ -367,6 +442,69 @@ export const useChartStore = create<ChartState>()(
       setDeltaProfileWidth: (panelId, deltaProfileWidth) =>
         set((state) => updatePanel(state, panelId, { deltaProfileWidth })),
 
+      setMeasureToolActive: (panelId, measureToolActive) =>
+        set((state) => {
+          const updates: Partial<PanelState> = { measureToolActive };
+          if (measureToolActive) {
+            updates.isDrawMode = false;
+            updates.lineDrawMode = 'none';
+          } else {
+            updates.activeMeasurement = null;
+          }
+          return updatePanel(state, panelId, updates);
+        }),
+
+      setActiveMeasurement: (panelId, activeMeasurement) =>
+        set((state) => updatePanel(state, panelId, { activeMeasurement })),
+
+      setSessionsEnabled: (panelId, sessionsEnabled) =>
+        set((state) => updatePanel(state, panelId, { sessionsEnabled })),
+
+      setSessionEnabled: (panelId, sessionId, enabled) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, {
+            sessions: {
+              ...panel.sessions,
+              [sessionId]: { ...panel.sessions[sessionId], enabled }
+            }
+          });
+        }),
+
+      setSessionTime: (panelId, sessionId, field, value) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          const session = panel.sessions[sessionId];
+          const nextSession = { ...session, [field]: value };
+
+          // Validation: end time must be after start time
+          const startTotal = nextSession.startHour * 60 + nextSession.startMin;
+          const endTotal = nextSession.endHour * 60 + nextSession.endMin;
+
+          if (endTotal <= startTotal) {
+            // Revert if invalid
+            return state;
+          }
+
+          return updatePanel(state, panelId, {
+            sessions: {
+              ...panel.sessions,
+              [sessionId]: nextSession
+            }
+          });
+        }),
+
+      setSessionColor: (panelId, sessionId, color) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, {
+            sessions: {
+              ...panel.sessions,
+              [sessionId]: { ...panel.sessions[sessionId], color }
+            }
+          });
+        }),
+
       pushAllCandles: (panelId, candles) =>
         set((state) => updatePanel(state, panelId, { candles: candles.slice(-500) })),
 
@@ -414,7 +552,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 11,
+      version: 12,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -457,6 +595,12 @@ export const useChartStore = create<ChartState>()(
             profileShowVaLines: p.profileShowVaLines ?? true,
             profileShowDelta: p.profileShowDelta ?? true,
             deltaProfileWidth: p.deltaProfileWidth ?? 80,
+            sessionsEnabled: p.sessionsEnabled ?? true,
+            sessions: p.sessions ?? {
+              tokyo: { enabled: true, startHour: 0, startMin: 0, endHour: 6, endMin: 0, color: '#B39DDB' },
+              london: { enabled: true, startHour: 7, startMin: 0, endHour: 16, endMin: 0, color: '#4FC3F7' },
+              newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
+            },
           };
         };
         if (persisted.panels) {
@@ -522,6 +666,8 @@ export const useChartStore = create<ChartState>()(
             profileShowVaLines: state.panels.left.profileShowVaLines,
             profileShowDelta: state.panels.left.profileShowDelta,
             deltaProfileWidth: state.panels.left.deltaProfileWidth,
+            sessionsEnabled: state.panels.left.sessionsEnabled,
+            sessions: state.panels.left.sessions,
           },
           right: {
             pair: state.panels.right.pair,
@@ -558,6 +704,8 @@ export const useChartStore = create<ChartState>()(
             profileShowVaLines: state.panels.right.profileShowVaLines,
             profileShowDelta: state.panels.right.profileShowDelta,
             deltaProfileWidth: state.panels.right.deltaProfileWidth,
+            sessionsEnabled: state.panels.right.sessionsEnabled,
+            sessions: state.panels.right.sessions,
           },
         },
         tickSize: state.tickSize,

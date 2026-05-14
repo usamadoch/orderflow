@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { BarChart2, Layers, Zap, X } from 'lucide-react';
-import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide } from '../../lib/store/chart';
+import { BarChart2, Layers, Zap, X, Clock } from 'lucide-react';
+import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId } from '../../lib/store/chart';
 
 interface ChartSettingsDropdownProps {
   panelId: PanelId;
@@ -34,6 +34,10 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setProfileShowVaLines = useChartStore(s => s.setProfileShowVaLines);
   const setProfileShowDelta = useChartStore(s => s.setProfileShowDelta);
   const setDeltaProfileWidth = useChartStore(s => s.setDeltaProfileWidth);
+  const setSessionsEnabled = useChartStore(s => s.setSessionsEnabled);
+  const setSessionEnabled = useChartStore(s => s.setSessionEnabled);
+  const setSessionTime = useChartStore(s => s.setSessionTime);
+  const setSessionColor = useChartStore(s => s.setSessionColor);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const [activeTab, setActiveTab] = useState<'chart' | 'profiles' | 'signals'>('chart');
@@ -186,6 +190,108 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Session Visualization Settings */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Sessions</div>
+                  <button
+                    onClick={() => setSessionsEnabled(panelId, !panel.sessionsEnabled)}
+                    className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.sessionsEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+                      }`}
+                  >
+                    <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.sessionsEnabled ? 'left-5' : 'left-1'
+                      }`} />
+                  </button>
+                </div>
+
+                <div className="space-y-6 pt-2">
+                  {(['tokyo', 'london', 'newYork'] as SessionId[]).map((sid) => {
+                    const session = panel.sessions[sid];
+                    const label = sid.toUpperCase().replace('YORK', ' YORK');
+                    return (
+                      <div key={sid} className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-[1px] flex-1 bg-[#1F1F1F]" />
+                          <span className="text-[9px] font-bold font-mono tracking-tighter" style={{ color: session.color }}>
+                            {label}
+                          </span>
+                          <div className="h-[1px] flex-1 bg-[#1F1F1F]" />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => setSessionEnabled(panelId, sid, !session.enabled)}
+                            className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-200 ${session.enabled
+                              ? 'bg-accent/5 border-accent text-accent'
+                              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                              }`}
+                          >
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Enabled</span>
+                            <div className={`w-1.5 h-1.5 rounded-full ${session.enabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                          </button>
+
+                          <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#1F1F1F] bg-[#080808]">
+                            <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Color</span>
+                            <input
+                              type="color"
+                              value={session.color}
+                              onChange={(e) => setSessionColor(panelId, sid, e.target.value)}
+                              className="w-4 h-4 bg-transparent border-none cursor-pointer outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="flex flex-col gap-1.5 bg-[#080808] p-2 rounded-lg border border-[#1F1F1F]">
+                            <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time (UTC)</label>
+                            <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  value={session.startHour}
+                                  onChange={(e) => setSessionTime(panelId, sid, 'startHour', Number(e.target.value))}
+                                  className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
+                                  min="0" max="23" step="1"
+                                />
+                              <span className="text-text-dim/40">:</span>
+                              <select
+                                value={session.startMin}
+                                onChange={(e) => setSessionTime(panelId, sid, 'startMin', Number(e.target.value))}
+                                className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
+                              >
+                                <option value="0">00</option>
+                                <option value="30">30</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5 bg-[#080808] p-2 rounded-lg border border-[#1F1F1F]">
+                            <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time (UTC)</label>
+                            <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  value={session.endHour}
+                                  onChange={(e) => setSessionTime(panelId, sid, 'endHour', Number(e.target.value))}
+                                  className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
+                                  min="0" max="23" step="1"
+                                />
+                              <span className="text-text-dim/40">:</span>
+                              <select
+                                value={session.endMin}
+                                onChange={(e) => setSessionTime(panelId, sid, 'endMin', Number(e.target.value))}
+                                className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
+                              >
+                                <option value="0">00</option>
+                                <option value="30">30</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </>
           )}

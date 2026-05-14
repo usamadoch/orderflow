@@ -26,8 +26,8 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
             key={p}
             onClick={() => setPair(panelId, p)}
             className={`px-2 py-0.5 rounded text-[11px] font-bold tracking-tight transition-all duration-150 ${panel.pair === p
-                ? 'bg-accent text-white shadow-sm shadow-accent/20'
-                : 'text-text-dim hover:text-main hover:bg-[#151515]'
+              ? 'bg-accent text-white shadow-sm shadow-accent/20'
+              : 'text-text-dim hover:text-main hover:bg-[#151515]'
               }`}
           >
             {p.replace('USDT', '')}
@@ -43,8 +43,8 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
             key={tf}
             onClick={() => setTimeframe(panelId, tf)}
             className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-all duration-200 ${panel.timeframe === tf
-                ? 'bg-[#1A1A1A] text-accent border border-[#252525] shadow-sm'
-                : 'text-text-dim hover:text-main hover:bg-[#151515]'
+              ? 'bg-[#1A1A1A] text-accent border border-[#252525] shadow-sm'
+              : 'text-text-dim hover:text-main hover:bg-[#151515]'
               }`}
           >
             {tf}
@@ -57,8 +57,8 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         <button
           onClick={() => panel.chartMode !== 'candle' && setChartMode(panelId, 'candle')}
           className={`px-2 py-0.5 text-[10px] font-black rounded tracking-wider transition-all duration-200 ${panel.chartMode === 'candle'
-              ? 'bg-accent text-white shadow-sm shadow-accent/20'
-              : 'text-text-dim hover:text-main hover:bg-[#151515]'
+            ? 'bg-accent text-white shadow-sm shadow-accent/20'
+            : 'text-text-dim hover:text-main hover:bg-[#151515]'
             }`}
         >
           C
@@ -66,8 +66,8 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         <button
           onClick={() => panel.chartMode !== 'footprint' && setChartMode(panelId, 'footprint')}
           className={`px-2 py-0.5 text-[10px] font-black rounded tracking-wider transition-all duration-200 ${panel.chartMode === 'footprint'
-              ? 'bg-accent text-white shadow-sm shadow-accent/20'
-              : 'text-text-dim hover:text-main hover:bg-[#151515]'
+            ? 'bg-accent text-white shadow-sm shadow-accent/20'
+            : 'text-text-dim hover:text-main hover:bg-[#151515]'
             }`}
         >
           F
@@ -79,8 +79,8 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         <button
           onClick={() => useChartStore.getState().setDrawMode(panelId, !panel.isDrawMode)}
           className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black tracking-widest transition-all duration-200 ${panel.isDrawMode
-              ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-              : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
             }`}
           title="Toggle profile draw mode"
         >
@@ -93,8 +93,8 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         <button
           onClick={() => setLineDrawMode(panelId, panel.lineDrawMode === 'horizontal' ? 'none' : 'horizontal')}
           className={`h-5 w-6 flex items-center justify-center rounded text-[12px] font-bold transition-all duration-200 ${panel.lineDrawMode === 'horizontal'
-              ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-              : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
             }`}
           title="Horizontal Line"
         >
@@ -103,12 +103,40 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         <button
           onClick={() => setLineDrawMode(panelId, panel.lineDrawMode === 'vertical' ? 'none' : 'vertical')}
           className={`h-5 w-6 flex items-center justify-center rounded text-[12px] font-bold transition-all duration-200 ${panel.lineDrawMode === 'vertical'
-              ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-              : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
             }`}
           title="Vertical Line"
         >
           |
+        </button>
+      </div>
+
+      {/* Measurement Tool */}
+      <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
+        <button
+          onClick={() => useChartStore.getState().setMeasureToolActive(panelId, !panel.measureToolActive)}
+          className={`h-5 px-2 flex items-center justify-center rounded text-[10px] font-black tracking-widest transition-all duration-200 ${panel.measureToolActive
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            }`}
+          title="Measurement Tool (M)"
+        >
+          ⟷
+        </button>
+      </div>
+
+      {/* Sessions Quick Toggle */}
+      <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
+        <button
+          onClick={() => useChartStore.getState().setSessionsEnabled(panelId, !panel.sessionsEnabled)}
+          className={`h-5 w-6 flex items-center justify-center rounded text-[11px] font-black transition-all duration-200 ${panel.sessionsEnabled
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            }`}
+          title="Toggle Sessions (S)"
+        >
+          S
         </button>
       </div>
 

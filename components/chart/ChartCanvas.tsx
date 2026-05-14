@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Lock, Unlock, X } from 'lucide-react';
-import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide } from '@/lib/store/chart';
+import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide, Measurement } from '@/lib/store/chart';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { usePanZoom } from './usePanZoom';
@@ -26,6 +26,10 @@ import { AbsorptionTooltip } from './AbsorptionTooltip';
 import { drawExhaustion } from './drawExhaustion';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
 import { drawDeltaProfile } from '@/lib/draw/drawDeltaProfile';
+import { drawMeasurementRect } from '@/lib/draw/drawMeasurement';
+import { drawSessions } from '@/lib/draw/drawSessions';
+import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
+import { MeasurementPanel } from './MeasurementPanel';
 
 interface ChartCanvasProps {
   panelId: PanelId;
@@ -75,6 +79,10 @@ interface ChartCanvasProps {
   profileShowVaLines: boolean;
   profileShowDelta: boolean;
   deltaProfileWidth: number;
+  measureToolActive: boolean;
+  activeMeasurement: Measurement | null;
+  sessionsEnabled: boolean;
+  sessions: PanelState['sessions'];
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -122,6 +130,10 @@ export function ChartCanvas({
   profileShowVaLines,
   profileShowDelta,
   deltaProfileWidth,
+  measureToolActive,
+  activeMeasurement,
+  sessionsEnabled,
+  sessions,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -145,6 +157,11 @@ export function ChartCanvas({
 
   const hoveredLineId = useRef<string | null>(null);
   const isHoveringDeleteDot = useRef(false);
+  
+  const coordsRef = useRef<CoordinateSystem | null>(null);
+  const widthRef = useRef(0);
+  const heightRef = useRef(0);
+
   const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 });
 
   const [hoveredAbs, setHoveredAbs] = React.useState<{ result: AbsorptionResult, x: number, y: number } | null>(null);
@@ -205,6 +222,12 @@ export function ChartCanvas({
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
 
+      // Track coordinates for metric calculation
+      coordsRef.current = {
+        visiblePriceMin: priceMin,
+        visiblePriceMax: priceMax,
+      };
+
       const profileBucketSize = Math.max(5, Math.floor(bucketSize / 4));
 
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
@@ -213,6 +236,19 @@ export function ChartCanvas({
       drawLines(ctx, drawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, hoveredLineId.current, isHoveringDeleteDot.current);
 
       drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
+
+      // Session boxes - drawn behind everything
+      drawSessions(
+        ctx,
+        candles,
+        { firstIndex, lastIndex },
+        indexToX,
+        currentBarWidth,
+        logicalHeight,
+        timeAxisHeight,
+        sessions,
+        sessionsEnabled
+      );
 
       // Selection Rectangle (drawn below candles)
       drawSelectionRect(
@@ -327,6 +363,22 @@ export function ChartCanvas({
           profileShowVaLines
         );
       }
+      
+      // Measurement Rect (on top of profiles, below axes)
+      if (activeMeasurement) {
+        drawMeasurementRect(ctx, activeMeasurement, currentBarWidth);
+      } else if (measureToolActive && isDragging.current && dragStart.current && dragEnd.current) {
+        // Live measurement rendering during drag
+        drawMeasurementRect(ctx, {
+          startX: dragStart.current.x,
+          startY: dragStart.current.y,
+          endX: dragEnd.current.x,
+          endY: dragEnd.current.y,
+          live: true,
+          metrics: null,
+          footprintMetrics: null
+        }, currentBarWidth);
+      }
 
       drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth);
       drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
@@ -368,7 +420,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions]);
 
   const { 
     scrollOffset, 
@@ -392,6 +444,7 @@ export function ChartCanvas({
     onBarWidthChange,
     onScrollOffsetChange,
     isDrawMode,
+    measureToolActive,
     () => {
       // Prevent chart panning if we are over a custom profile or its buttons, or a line
       if (isHoveringClear.current || isHoveringLock.current || hoverZone.current || hoveredLineId.current) {
@@ -414,6 +467,8 @@ export function ChartCanvas({
 
     const setupCanvas = () => {
       ctxRef.current = initCanvas(canvas, container);
+      widthRef.current = canvas.clientWidth;
+      heightRef.current = canvas.clientHeight;
       redrawRef.current();
     };
 
@@ -509,16 +564,23 @@ export function ChartCanvas({
       }
 
       // Interaction Priority:
-      // 1. Draw mode
-      if (isDrawMode) {
+      // 1. Draw mode / Measurement tool
+      if (isDrawMode || measureToolActive) {
         // Only start if within chart area
-        if (x > canvas.width / devicePixelRatio - priceAxisWidth || y > canvas.height / devicePixelRatio - timeAxisHeight) {
+        const chartWidth = rect.width - priceAxisWidth;
+        const chartHeight = rect.height - timeAxisHeight;
+        if (x > chartWidth || y > chartHeight) {
           return;
         }
         dragStart.current = { x, y };
-        dragEnd.current = null;
+        dragEnd.current = { x, y }; // Initialize end at start
         isDragging.current = true;
-        useChartStore.getState().setCustomProfileRange(panelId, null);
+        
+        if (isDrawMode) {
+          useChartStore.getState().setCustomProfileRange(panelId, null);
+        } else {
+          useChartStore.getState().setActiveMeasurement(panelId, null);
+        }
         return;
       }
 
@@ -561,6 +623,8 @@ export function ChartCanvas({
       let cursor = 'crosshair';
 
       if (lineDrawMode !== 'none') {
+        cursor = 'crosshair';
+      } else if (measureToolActive) {
         cursor = 'crosshair';
       } else if (isDragging.current || isDrawMode) {
         cursor = 'crosshair';
@@ -764,7 +828,7 @@ export function ChartCanvas({
       redraw();
 
       // Drag Logic
-      if (isDragging.current && isDrawMode) {
+      if (isDragging.current && (isDrawMode || measureToolActive)) {
         dragEnd.current = { x, y };
         redraw();
       } else if (isDraggingProfile.current && dragAnchor.current && profileSnapshot.current) {
@@ -823,6 +887,52 @@ export function ChartCanvas({
     };
 
     const onMouseUp = () => {
+      if (!isDragging.current && !isDraggingProfile.current && !isDraggingResize.current) return;
+
+      if (isDragging.current && measureToolActive && dragStart.current && dragEnd.current) {
+        isDragging.current = false;
+        const dist = Math.sqrt((dragEnd.current.x - dragStart.current.x)**2 + (dragEnd.current.y - dragStart.current.y)**2);
+        if (dist < 4) {
+          useChartStore.getState().setActiveMeasurement(panelId, null);
+        } else {
+          let metrics = null;
+          if (coordsRef.current && candles.length > 0) {
+            metrics = computeMeasurementMetrics(
+              dragStart.current.x, dragStart.current.y,
+              dragEnd.current.x, dragEnd.current.y,
+              candles,
+              coordsRef.current,
+              timeframe,
+              widthRef.current,
+              heightRef.current,
+              scrollOffset.current,
+              barWidth.current,
+              profileWidth,
+              timeAxisHeight
+            );
+          }
+
+          let footprintMetrics = null;
+          if (metrics && chartMode === 'footprint' && engine) {
+            footprintMetrics = computeFootprintMetrics(metrics, candles, engine);
+          }
+
+          useChartStore.getState().setActiveMeasurement(panelId, {
+            startX: dragStart.current.x,
+            startY: dragStart.current.y,
+            endX: dragEnd.current.x,
+            endY: dragEnd.current.y,
+            live: false,
+            metrics,
+            footprintMetrics
+          });
+        }
+        dragStart.current = null;
+        dragEnd.current = null;
+        redraw();
+        return;
+      }
+
       if (isDraggingProfile.current || isDraggingResize.current) {
         isDraggingProfile.current = false;
         isDraggingResize.current = false;
@@ -833,11 +943,9 @@ export function ChartCanvas({
         return;
       }
 
-      if (!isDragging.current || !isDrawMode) return;
+      if (isDragging.current && isDrawMode && dragStart.current && dragEnd.current) {
+        isDragging.current = false;
 
-      isDragging.current = false;
-
-      if (dragStart.current && dragEnd.current) {
         const rect = canvas.getBoundingClientRect();
         const chartWidth = rect.width - priceAxisWidth;
         const currentBarWidth = barWidth.current;
@@ -870,20 +978,17 @@ export function ChartCanvas({
           });
           // Auto-exit draw mode after first draw
           useChartStore.getState().setDrawMode(panelId, false);
+        } else {
+          // If user clicks without dragging while in draw mode
+          useChartStore.getState().setCustomProfileRange(panelId, null);
+          useChartStore.getState().setDrawMode(panelId, false);
         }
       }
 
-      // If user clicks without dragging while in draw mode
-      if (!dragEnd.current) {
-        dragStart.current = null;
-        dragEnd.current = null;
-        useChartStore.getState().setCustomProfileRange(panelId, null);
-        useChartStore.getState().setDrawMode(panelId, false);
-        redraw();
-      }
-
+      isDragging.current = false;
       dragStart.current = null;
       dragEnd.current = null;
+      redraw();
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -907,7 +1012,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset]);
+  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset]);
 
 
   return (
@@ -931,6 +1036,11 @@ export function ChartCanvas({
           y={hoveredExhaustion.y} 
         />
       )}
+
+      <MeasurementPanel 
+        measurement={activeMeasurement}
+        canvasRect={canvasRef.current?.getBoundingClientRect() || null}
+      />
 
       {/* Custom Profile Controls Overlay */}
       {customProfileRange && customProfileControls && (
