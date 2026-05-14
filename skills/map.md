@@ -17,9 +17,9 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── ChartEngineContext.tsx# React context for AggregationEngine (one per panel)
 │   ├── chart/                # Chart-specific components
 │   │   ├── ChartPanel.tsx    # Panel wrapper — reads panel state, ensures proper layout container
-│   │   ├── ChartCanvas.tsx   # Pure rendering canvas, robust resizing via ResizeObserver & CSS w-full layout
-│   │   ├── useCoordinates.ts # Coordinate math (price-to-pixel, index-to-pixel)
-│   │   ├── usePanZoom.ts     # Anchored pan/zoom with interaction callback support
+│   │   ├── ChartCanvas.tsx   # Pure rendering canvas, precise HiDPI scaling, blur-resistant ResizeObserver, crosshair sync
+│   │   ├── useCoordinates.ts # Coordinate math (price-to-pixel, index-to-pixel, time-to-index)
+│   │   ├── usePanZoom.ts     # Anchored pan/zoom with optimized window-level interaction tracking
 │   │   ├── drawCandles.ts    # Candlestick draw function
 │   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
 │   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, 12px font)
@@ -65,7 +65,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # Panel state, timeframe-linked settings, sessions, auth, and persistence (v12)
+│   │   └── chart.ts          # Panel state, timeframe-linked settings, sessions, auth, persistence (v12), global crosshair sync
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions

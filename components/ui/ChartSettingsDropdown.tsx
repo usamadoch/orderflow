@@ -40,6 +40,8 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setSessionEnabled = useChartStore(s => s.setSessionEnabled);
   const setSessionTime = useChartStore(s => s.setSessionTime);
   const setSessionColor = useChartStore(s => s.setSessionColor);
+  const crosshairSyncEnabled = useChartStore(s => s.crosshairSyncEnabled);
+  const setCrosshairSyncEnabled = useChartStore(s => s.setCrosshairSyncEnabled);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const [activeTab, setActiveTab] = useState<'chart' | 'profiles' | 'signals' | 'sessions'>('chart');
@@ -279,6 +281,27 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Synchronized Crosshair */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Interaction</div>
+                    <button
+                      onClick={() => setCrosshairSyncEnabled(!crosshairSyncEnabled)}
+                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${crosshairSyncEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+                        }`}
+                    >
+                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${crosshairSyncEnabled ? 'left-5' : 'left-1'
+                        }`} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sync Crosshairs</label>
+                    <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
+                      {crosshairSyncEnabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                  </div>
                 </div>
               </>
             )}

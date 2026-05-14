@@ -91,3 +91,25 @@ export function xToIndex(
   const index = (candles.length - 1) + (x - drawableWidth + barWidth / 2 - scrollOffset) / barWidth;
   return Math.max(0, Math.min(candles.length - 1, Math.round(index)));
 }
+
+export function timeToIndex(time: number, candles: Candle[]) {
+  if (candles.length === 0) return 0;
+  
+  let left = 0;
+  let right = candles.length - 1;
+  let result = 0;
+  
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    if (candles[mid].time === time) {
+      return mid;
+    } else if (candles[mid].time < time) {
+      result = mid;
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+  
+  return result;
+}

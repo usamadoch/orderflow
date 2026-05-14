@@ -1,5 +1,59 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-14] - Fix: TypeScript Implicit Any Parameters
+- **What changed**:
+  - **ChartCanvas.tsx**: Explicitly defined parameter types for the anonymous callback function passed to `usePanZoom`.
+- **Why it changed**: 
+  - To resolve TypeScript "implicit any" errors and satisfy strict typing requirements.
+- **Impact**: 
+  - Improved type safety and resolved compiler warnings.
+
+## [2026-05-14] - Feature: Crosshair Synchronization Toggle
+- **What changed**:
+  - **State**: Added `crosshairSyncEnabled` to the global Zustand store.
+  - **UI**: Added a "Sync Crosshair" toggle in the `ChartSettingsDropdown` under the Chart tab.
+  - **Logic**: Updated `ChartCanvas` to only emit and respond to crosshair updates if the sync toggle is enabled.
+- **Why it changed**: 
+  - To allow users to opt-in or opt-out of crosshair synchronization across panels, providing more flexibility for independent analysis.
+- **Impact**: 
+  - Users can now toggle crosshair synchronization on or off via the settings panel.
+
+
+## [2026-05-14] - Fix: Canvas Sharpness & HiDPI Scaling
+- **What changed**:
+  - **Precise Layout Handling**: Replaced integer-based `clientWidth/Height` with sub-pixel precise `contentRect` from `ResizeObserver` and `getBoundingClientRect`.
+  - **Canvas Buffer Alignment**: Updated `initCanvas` to use `Math.round(width * dpr)` for the internal buffer size and explicitly set `canvas.style.width/height` to match the logical dimensions exactly.
+  - **DPR Change Listener**: Added a `matchMedia` listener to detect browser zoom changes and monitor swaps, triggering a re-initialization of the canvas buffer to maintain 1:1 pixel mapping.
+  - **Refactor**: Updated the `redraw` loop to use stored high-precision logical dimensions instead of re-querying the DOM.
+- **Why it changed**: 
+  - One panel appeared blurry because fractional layout widths (e.g., `500.5px`) were being floored to integers for the canvas buffer, causing the browser to stretch the resulting image. Additionally, zoom changes were not being detected, leading to stale buffer resolutions.
+- **Impact**: 
+  - Crystal clear, HD rendering on both chart panels regardless of fractional scaling, browser zoom level, or monitor DPI. Candles, text, and grid lines are perfectly sharp.
+
+
+## [2026-05-14] - Fix: Crosshair Synchronization & Performance Stabilization
+- **What changed**:
+  - **Interaction Optimization**: Restructured `usePanZoom.ts`'s `onMouseMove` to only trigger updates when the mouse is actually over the canvas. This prevents multiple panels from competing for global crosshair state and drastically reduces unnecessary redraws in idle panels.
+  - **Crosshair Sync Robustness**: Updated `drawCrosshair.ts` and `ChartCanvas.tsx` to handle partial (null) coordinates. Synced crosshairs can now render independent vertical (time) or horizontal (price) guide lines even if one axis is off-screen.
+  - **Performance**: Throttled crosshair store updates and improved the `requestAnimationFrame` redraw cycle to ensure smooth, lightweight movement without blinking or flickering.
+  - **Math & Bounds**: Added better bounds checking for synced guide lines and improved time extrapolation for gaps in history.
+- **Why it changed**: 
+  - The previous implementation caused panels to fight for the global state, leading to rendering instability, flickering, and high CPU usage. Synced lines would also disappear if the mouse was slightly out of bounds on the active panel.
+- **Impact**: 
+  - Silky smooth, stable synchronized crosshairs across multiple panels. No more flickering or disappearing lines. The interaction feels lightweight and professional.
+
+
+## [2026-05-14] - Feature: Synchronized Crosshairs
+- **What changed**:
+  - **State Management**: Added `GlobalCrosshair` state to `useChartStore` to track the active panel, hovered time, and hovered price.
+  - **Interaction**: Updated `usePanZoom.ts` to emit an `onCrosshairChange` callback containing the current mouse coordinates.
+  - **Rendering**: Updated `ChartCanvas.tsx` to subscribe to the global `crosshair` state. When the cursor is over another panel, it translates the global `time` and `price` back to local pixels using `timeToIndex` and renders a synchronized crosshair with axis labels.
+  - **Math**: Added `timeToIndex` binary search helper in `useCoordinates.ts` to accurately map timestamps to local chart indices across different timeframes.
+- **Why it changed**: 
+  - To implement professional multi-timeframe analysis capabilities. Users can now hover over an event on a 1m chart and instantly see where that exact moment and price level exist on a 15m or 1H chart.
+- **Impact**: 
+  - Significant improvement in navigation and context awareness between different timeframes. The app now feels more like an advanced charting platform.
+
 ## [2026-05-14] - Fix: Build Stability & Code Quality
 - **What changed**:
   - **Codebase Stability**: Resolved multiple build errors and warnings to ensure a clean production pipeline.

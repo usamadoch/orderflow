@@ -1,15 +1,19 @@
 import { FootprintCell } from '../../types/footprint';
 
-export function initCanvas(canvas: HTMLCanvasElement, container: HTMLElement) {
+export function initCanvas(canvas: HTMLCanvasElement, width: number, height: number) {
   const dpr = window.devicePixelRatio || 1;
-  const width = container.clientWidth;
-  const height = container.clientHeight;
   
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
+  // Use rounded values for internal buffer size to align with physical pixels
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  
+  // Set CSS dimensions to match logical dimensions precisely
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
   
   const ctx = canvas.getContext('2d');
   if (ctx) {
+    ctx.resetTransform();
     ctx.scale(dpr, dpr);
   }
   return ctx;

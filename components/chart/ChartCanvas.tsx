@@ -6,7 +6,7 @@ import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelSta
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { usePanZoom } from './usePanZoom';
-import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex } from './useCoordinates';
+import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex, timeToIndex } from './useCoordinates';
 import { drawCandles } from './drawCandles';
 import { drawFootprint } from './drawFootprint';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
@@ -188,8 +188,8 @@ export function ChartCanvas({
       const container = containerRef.current;
       if (!canvas || !ctx || !container) return;
 
-      const logicalWidth = canvas.clientWidth;
-      const logicalHeight = canvas.clientHeight;
+      const logicalWidth = widthRef.current;
+      const logicalHeight = heightRef.current;
 
       const chartWidth = logicalWidth - priceAxisWidth;
       const chartHeight = logicalHeight - timeAxisHeight;
@@ -392,22 +392,37 @@ export function ChartCanvas({
       }
 
       // Draw Crosshair
+      const crosshair = useChartStore.getState().crosshair;
+      const crosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
+      let mx: number | null = null;
+      let my: number | null = null;
+
       if (isMouseOver.current && mouseX.current !== null && mouseY.current !== null) {
-        const mx = mouseX.current;
-        const my = mouseY.current;
+        mx = mouseX.current;
+        my = mouseY.current;
+      } else if (crosshairSyncEnabled && crosshair.activePanel && crosshair.activePanel !== panelId) {
+        if (crosshair.time !== null) {
+          const syncedIndex = timeToIndex(crosshair.time, candles);
+          mx = indexToX(syncedIndex);
+        }
+        if (crosshair.price !== null) {
+          my = priceToY(crosshair.price);
+        }
+      }
 
-        // Only draw if within chart area
-        if (mx >= 0 && mx <= chartWidth && my >= 0 && my <= chartHeight) {
-          drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
+      if (mx !== null || my !== null) {
+        drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
 
-          // Price Label
+        // Price Label
+        if (my !== null && my >= 0 && my <= chartHeight) {
           const price = yToPrice(my, priceMin, priceMax, chartHeight);
           const step = calculatePriceStep(priceMax - priceMin, chartHeight);
           const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
-
           drawCrosshairPriceLabel(ctx, my, price, chartWidth, priceAxisWidth, chartHeight, precision);
+        }
 
-          // Time Label
+        // Time Label
+        if (mx !== null && mx >= 0 && mx <= chartWidth) {
           const index = xToIndex(mx, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
           let time = 0;
           if (candles[index]) {
@@ -454,7 +469,47 @@ export function ChartCanvas({
         return false;
       }
       return true;
-    }
+    },
+    // Crosshair Sync Handler
+    useCallback((x: number | null, y: number | null) => {
+      if (x === null || y === null) {
+        useChartStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        return;
+      }
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const chartWidth = canvas.clientWidth - priceAxisWidth;
+      const chartHeight = canvas.clientHeight - timeAxisHeight;
+
+      // Only update store if within chart area
+      if (x < 0 || x > chartWidth || y < 0 || y > chartHeight) {
+        return;
+      }
+
+      const pCenter = priceCenter.current ?? 0;
+      const pRange = priceRange.current ?? 100;
+      const priceMin = pCenter - pRange / 2;
+      const priceMax = pCenter + pRange / 2;
+
+      const price = yToPrice(y, priceMin, priceMax, chartHeight);
+      const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+      
+      let time = null;
+      if (candles[index]) {
+        time = candles[index].time;
+      } else if (candles.length > 0) {
+        const lastCandle = candles[candles.length - 1];
+        const firstCandle = candles[0];
+        const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
+        time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
+      }
+
+      const syncEnabled = useChartStore.getState().crosshairSyncEnabled;
+      if (syncEnabled) {
+        useChartStore.getState().setCrosshair({ activePanel: panelId, time, price });
+      }
+    }, [panelId, candles, priceAxisWidth, timeAxisHeight, profileWidth])
   );
 
   const redrawRef = useRef(redraw);
@@ -462,33 +517,80 @@ export function ChartCanvas({
     redrawRef.current = redraw;
   }, [redraw]);
 
+  // Subscribe to crosshair changes for sync rendering
+  useEffect(() => {
+    // Only subscribe if we are not the active panel (active panel redraws via mousemove)
+    return useChartStore.subscribe((state, prevState) => {
+      if (!state.crosshairSyncEnabled) {
+        // If sync was just disabled, trigger a final redraw to clear synced lines
+        if (prevState.crosshairSyncEnabled) {
+          redrawRef.current();
+        }
+        return;
+      }
+
+      if (state.crosshair.activePanel === panelId) return;
+
+      if (
+        state.crosshair.time !== prevState.crosshair.time ||
+        state.crosshair.price !== prevState.crosshair.price ||
+        state.crosshair.activePanel !== prevState.crosshair.activePanel ||
+        state.crosshairSyncEnabled !== prevState.crosshairSyncEnabled
+      ) {
+        redrawRef.current();
+      }
+    });
+  }, [panelId]);
+
   // Initial setup and resize handler
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    const setupCanvas = () => {
-      ctxRef.current = initCanvas(canvas, container);
-      widthRef.current = canvas.clientWidth;
-      heightRef.current = canvas.clientHeight;
+    const setupCanvas = (w: number, h: number) => {
+      ctxRef.current = initCanvas(canvas, w, h);
+      widthRef.current = w;
+      heightRef.current = h;
       redrawRef.current();
     };
 
-    setupCanvas();
+    // Initial setup with current bounds
+    const rect = container.getBoundingClientRect();
+    setupCanvas(rect.width, rect.height);
 
     const observer = new ResizeObserver((entries) => {
-      if (entries[0]) {
-        setContainerSize({
-          width: entries[0].contentRect.width,
-          height: entries[0].contentRect.height
-        });
+      const entry = entries[0];
+      if (entry) {
+        const w = entry.contentRect.width;
+        const h = entry.contentRect.height;
+        setContainerSize({ width: w, height: h });
+        setupCanvas(w, h);
       }
-      setupCanvas();
     });
 
     observer.observe(container);
-    return () => observer.disconnect();
+
+    // Listen for devicePixelRatio changes (zoom or monitor change)
+    let dprMedia: MediaQueryList | null = null;
+    const onDprChange = () => {
+      const r = container.getBoundingClientRect();
+      setupCanvas(r.width, r.height);
+      listenToDpr();
+    };
+
+    const listenToDpr = () => {
+      if (dprMedia) dprMedia.removeEventListener('change', onDprChange);
+      dprMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprMedia.addEventListener('change', onDprChange, { once: true });
+    };
+    
+    listenToDpr();
+
+    return () => {
+      observer.disconnect();
+      if (dprMedia) dprMedia.removeEventListener('change', onDprChange);
+    };
   }, []);
 
   // Redraw when data changes
@@ -1022,7 +1124,7 @@ export function ChartCanvas({
     <div ref={containerRef} className="w-full h-full relative bg-[#0D0D0D] overflow-hidden">
       <canvas
         ref={canvasRef}
-        className="absolute top-0 left-0 w-full h-full outline-none"
+        className="absolute top-0 left-0 outline-none"
         tabIndex={0}
       />
       {hoveredAbs && (

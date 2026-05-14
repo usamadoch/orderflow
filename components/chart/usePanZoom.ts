@@ -13,7 +13,8 @@ export function usePanZoom(
   onScrollOffsetChange?: (v: number) => void,
   isDrawMode: boolean = false,
   measureToolActive: boolean = false,
-  canStartDrag?: (x: number, y: number) => boolean
+  canStartDrag?: (x: number, y: number) => boolean,
+  onCrosshairChange?: (x: number | null, y: number | null) => void
 ) {
   const scrollOffset = useRef(initialScrollOffset);
   const barWidth = useRef(initialBarWidth);
@@ -68,14 +69,25 @@ export function usePanZoom(
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // Update crosshair position
-      mouseX.current = x;
-      mouseY.current = y;
+      const isOver = x >= 0 && x <= rect.width && y >= 0 && y <= rect.height;
 
-      if (!isDragging.current) {
-        onRedraw();
-        return;
+      // Only update local state if we are over the canvas or currently dragging (e.g. panning out of bounds)
+      if (isOver || isDragging.current) {
+        mouseX.current = x;
+        mouseY.current = y;
       }
+
+      // Only report crosshair changes if the mouse is actually over THIS chart area
+      if (isOver && !isDragging.current) {
+        onCrosshairChange?.(x, y);
+      }
+
+      // Always redraw on move if we are the active panel or dragging
+      if (isOver || isDragging.current) {
+        onRedraw();
+      }
+
+      if (!isDragging.current) return;
       if (isDrawMode || measureToolActive) return;
 
       const deltaX = e.clientX - lastX.current;
@@ -91,28 +103,23 @@ export function usePanZoom(
         // Panning in price
         if (priceCenter.current !== null && priceRange.current !== null) {
           const pricePerPixel = priceRange.current / (rect.height - timeAxisHeight);
-          // Dragging down (deltaY > 0) -> view moves up -> looking at higher prices -> center increases
           priceCenter.current += deltaY * pricePerPixel;
         }
       } else if (dragMode.current === 'price') {
         // Vertical zoom
         if (priceRange.current !== null) {
           const sensitivity = 0.005;
-          // Dragging down (deltaY > 0) -> zoom out -> range increases
           priceRange.current = Math.max(0.0001, priceRange.current * (1 + deltaY * sensitivity));
         }
       } else if (dragMode.current === 'time') {
         // Horizontal zoom
         const sensitivity = 0.01;
         const oldBarWidth = barWidth.current;
-        // Dragging right (deltaX > 0) -> zoom in -> barWidth increases
         const newBarWidth = Math.max(1, oldBarWidth * (1 + deltaX * sensitivity));
         
         if (oldBarWidth !== newBarWidth) {
           const chartWidth = rect.width - priceAxisWidth;
           const drawableWidth = chartWidth - profileWidth;
-          
-          // Anchor zoom to current mouse position
           scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
           barWidth.current = newBarWidth;
           onBarWidthChange?.(newBarWidth);
@@ -133,8 +140,8 @@ export function usePanZoom(
 
     const onMouseLeave = () => {
       isMouseOver.current = false;
-      mouseX.current = null;
-      mouseY.current = null;
+      // Don't clear mouseX/Y immediately, as they are needed for the final frame of redraw
+      onCrosshairChange?.(null, null);
       onRedraw();
     };
 
@@ -182,7 +189,7 @@ export function usePanZoom(
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange, isDrawMode, measureToolActive, canStartDrag]);
+  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange, isDrawMode, measureToolActive, canStartDrag, onCrosshairChange]);
 
   return { 
     scrollOffset, 

@@ -26,6 +26,12 @@ export interface SessionConfig {
   color: string; // hex color
 }
 
+export interface GlobalCrosshair {
+  activePanel: PanelId | null;
+  time: number | null;
+  price: number | null;
+}
+
 export type BubbleThresholdMode = 'absolute' | 'relative';
 
 export interface TimeframeSettings {
@@ -142,6 +148,8 @@ interface ChartState {
   // Shared settings
   tickSize: number;
   sidebarCollapsed: boolean;
+  crosshair: GlobalCrosshair;
+  crosshairSyncEnabled: boolean;
 
   // Per-panel actions
   setPair: (panelId: PanelId, pair: string) => void;
@@ -206,6 +214,8 @@ interface ChartState {
   setSplitRatio: (ratio: number) => void;
   setTickSize: (size: number) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  setCrosshair: (crosshair: GlobalCrosshair) => void;
+  setCrosshairSyncEnabled: (enabled: boolean) => void;
 
   // Auth
   isAuthenticated: boolean;
@@ -341,6 +351,8 @@ export const useChartStore = create<ChartState>()(
       splitRatio: 0.5,
       tickSize: 0.5,
       sidebarCollapsed: false,
+      crosshair: { activePanel: null, time: null, price: null },
+      crosshairSyncEnabled: true,
       isAuthenticated: false,
 
       // Per-panel actions
@@ -616,6 +628,14 @@ export const useChartStore = create<ChartState>()(
       setSplitRatio: (splitRatio) => set({ splitRatio: Math.max(0.15, Math.min(0.85, splitRatio)) }),
       setTickSize: (tickSize) => set({ tickSize }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      setCrosshair: (crosshair) => set({ crosshair }),
+      setCrosshairSyncEnabled: (crosshairSyncEnabled) => {
+        if (!crosshairSyncEnabled) {
+          set({ crosshairSyncEnabled, crosshair: { activePanel: null, time: null, price: null } });
+        } else {
+          set({ crosshairSyncEnabled });
+        }
+      },
 
       // Auth actions
       authenticate: (password) => {
@@ -798,6 +818,7 @@ export const useChartStore = create<ChartState>()(
         },
         tickSize: state.tickSize,
         sidebarCollapsed: state.sidebarCollapsed,
+        crosshairSyncEnabled: state.crosshairSyncEnabled,
         isAuthenticated: state.isAuthenticated,
       }),
     }

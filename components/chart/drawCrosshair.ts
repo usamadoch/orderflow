@@ -7,29 +7,31 @@ const CROSSHAIR_TEXT = '#FFFFFF';
 
 export function drawCrosshair(
   ctx: CanvasRenderingContext2D,
-  mouseX: number,
-  mouseY: number,
+  mouseX: number | null,
+  mouseY: number | null,
   chartWidth: number,
   chartHeight: number
 ) {
-  if (mouseX < 0 || mouseX > chartWidth || mouseY < 0 || mouseY > chartHeight) return;
-
   ctx.save();
   ctx.setLineDash([4, 4]);
   ctx.strokeStyle = '#8A8A8A';
   ctx.lineWidth = 1;
 
   // Horizontal line
-  ctx.beginPath();
-  ctx.moveTo(0, Math.round(mouseY) + 0.5);
-  ctx.lineTo(chartWidth, Math.round(mouseY) + 0.5);
-  ctx.stroke();
+  if (mouseY !== null && mouseY >= 0 && mouseY <= chartHeight) {
+    ctx.beginPath();
+    ctx.moveTo(0, Math.round(mouseY) + 0.5);
+    ctx.lineTo(chartWidth, Math.round(mouseY) + 0.5);
+    ctx.stroke();
+  }
 
   // Vertical line
-  ctx.beginPath();
-  ctx.moveTo(Math.round(mouseX) + 0.5, 0);
-  ctx.lineTo(Math.round(mouseX) + 0.5, chartHeight);
-  ctx.stroke();
+  if (mouseX !== null && mouseX >= 0 && mouseX <= chartWidth) {
+    ctx.beginPath();
+    ctx.moveTo(Math.round(mouseX) + 0.5, 0);
+    ctx.lineTo(Math.round(mouseX) + 0.5, chartHeight);
+    ctx.stroke();
+  }
 
   ctx.restore();
 }
