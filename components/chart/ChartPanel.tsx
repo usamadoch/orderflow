@@ -73,6 +73,10 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           activeMeasurement={panel.activeMeasurement}
           sessionsEnabled={panel.sessionsEnabled}
           sessions={panel.sessions}
+          liquidityZones={panel.liquidityZones}
+          liquidityEnabled={panel.liquidityEnabled}
+          liquidityOpacity={panel.liquidityOpacity}
+          liquidityBucketSize={panel.liquidityBucketSize}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />

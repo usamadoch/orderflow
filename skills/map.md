@@ -47,25 +47,29 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │       └── BucketSizeInput.tsx  # Bucket size config (panel-scoped)
 │
 ├── hooks/                    # Custom React hooks
-│   └── useKeyboardShortcuts.ts # Hotkeys targeting activePanel (1-5, C, F, R, [, ])
+│   └── useKeyboardShortcuts.ts # Hotkeys targeting activePanel (1-5, C, F, R, [, ], S, Q, L, M)
 │
 ├── lib/                      # Business logic, state, and utilities
 │   ├── draw/                 # Pure drawing logic (context-based)
 │   │   ├── drawDeltaProfile.ts # Renders delta profile strip (ask-bid imbalance)
 │   │   ├── drawMeasurement.ts  # Renders measurement tool rectangle and metrics
-│   │   └── drawSessions.ts     # Renders trading session background boxes
+│   │   ├── drawSessions.ts     # Renders trading session background boxes
+│   │   └── drawLiquidity.ts    # Renders orderbook liquidity zones as horizontal price bands
 │   ├── aggregation/          # Trade aggregation logic
 │   │   └── engine.ts         # AggregationEngine (Real-time Trade Aggregation)
 │   ├── absorption/           # Absorption detection system
 │   │   └── engine.ts         # scoreCandle, buildAbsorptionMap, scoreLatestCandle (Signals 1-5)
 │   ├── exhaustion/           # Exhaustion detection system
 │   │   └── engine.ts         # scoreExhaustion, buildExhaustionMap, scoreLatestExhaustion (Signals 1-5, relaxed constraints)
+│   ├── liquidity/            # Orderbook liquidity map system
+│   │   ├── orderbook.ts      # OrderbookManager — local in-memory orderbook (snapshot + incremental updates)
+│   │   └── aggregation.ts    # aggregateOrderbook — buckets raw levels into LiquidityZone[] with intensity scoring
 │   ├── feeds/                # Data adapters for WebSockets & REST
-│   │   ├── adapter.ts        # FeedAdapter interface (History + Live + clone())
-│   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
+│   │   ├── adapter.ts        # FeedAdapter interface (History + Live + Orderbook + clone())
+│   │   ├── binance.ts        # Binance implementation (REST klines/depth + WebSocket kline/aggTrade/depth streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # Panel state, timeframe-linked settings, sessions, auth, persistence (v12), global crosshair sync
+│   │   └── chart.ts          # Panel state, timeframe-linked settings, sessions, liquidity, auth, persistence (v13), global crosshair sync
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions
@@ -82,6 +86,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── absorption.ts         # AbsorptionResult, AbsorptionDirection, AbsorptionRank
 │   ├── exhaustion.ts         # ExhaustionResult, ExhaustionDirection, ExhaustionRank
 │   ├── measurement.ts        # Measurement tool data structures
+│   ├── liquidity.ts          # LiquidityZone interface for orderbook aggregation
 │   └── trade.ts              # Individual trade tick definitions
 │
 ├── artifacts/                # Reports and analytical documents

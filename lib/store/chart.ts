@@ -7,6 +7,7 @@ import { AbsorptionResult } from '../../types/absorption';
 import { BubbleSide } from '../../components/chart/drawBubbles';
 import { ExhaustionResult } from '../../types/exhaustion';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
+import { LiquidityZone } from '../../types/liquidity';
 
 export type ChartMode = 'candle' | 'footprint';
 export type PanelId = 'left' | 'right';
@@ -134,6 +135,13 @@ export interface PanelState {
     newYork: SessionConfig;
   };
   settingsByTimeframe: Record<string, Partial<TimeframeSettings>>;
+  // Liquidity Map
+  liquidityZones: LiquidityZone[];       // session only, not persisted
+  liquidityEnabled: boolean;              // default true, persisted
+  liquidityBucketSize: number;            // default 50, persisted
+  minimumLiquidityThreshold: number;      // default 5, persisted
+  liquidityOpacity: number;               // default 0.6, persisted
+  liquidityRange: number;                 // default 10 (percent), persisted
 }
 
 interface ChartState {
@@ -207,6 +215,14 @@ interface ChartState {
   setSessionEnabled: (panelId: PanelId, sessionId: SessionId, enabled: boolean) => void;
   setSessionTime: (panelId: PanelId, sessionId: SessionId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
   setSessionColor: (panelId: PanelId, sessionId: SessionId, color: string) => void;
+
+  // Liquidity
+  setLiquidityZones: (panelId: PanelId, zones: LiquidityZone[]) => void;
+  setLiquidityEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setLiquidityBucketSize: (panelId: PanelId, size: number) => void;
+  setMinimumLiquidityThreshold: (panelId: PanelId, threshold: number) => void;
+  setLiquidityOpacity: (panelId: PanelId, opacity: number) => void;
+  setLiquidityRange: (panelId: PanelId, range: number) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -296,6 +312,13 @@ function createDefaultPanel(id: PanelId): PanelState {
       },
     },
     settingsByTimeframe: {},
+    // Liquidity Map
+    liquidityZones: [],
+    liquidityEnabled: true,
+    liquidityBucketSize: 50,
+    minimumLiquidityThreshold: 5,
+    liquidityOpacity: 0.6,
+    liquidityRange: 10,
   };
 }
 
@@ -549,6 +572,25 @@ export const useChartStore = create<ChartState>()(
       setSessionsEnabled: (panelId, sessionsEnabled) =>
         set((state) => updatePanel(state, panelId, { sessionsEnabled })),
 
+      // Liquidity actions
+      setLiquidityZones: (panelId, liquidityZones) =>
+        set((state) => updatePanel(state, panelId, { liquidityZones })),
+
+      setLiquidityEnabled: (panelId, liquidityEnabled) =>
+        set((state) => updatePanel(state, panelId, { liquidityEnabled })),
+
+      setLiquidityBucketSize: (panelId, liquidityBucketSize) =>
+        set((state) => updatePanel(state, panelId, { liquidityBucketSize: Math.max(1, liquidityBucketSize) })),
+
+      setMinimumLiquidityThreshold: (panelId, minimumLiquidityThreshold) =>
+        set((state) => updatePanel(state, panelId, { minimumLiquidityThreshold: Math.max(0.1, minimumLiquidityThreshold) })),
+
+      setLiquidityOpacity: (panelId, liquidityOpacity) =>
+        set((state) => updatePanel(state, panelId, { liquidityOpacity: Math.max(0.1, Math.min(1.0, liquidityOpacity)) })),
+
+      setLiquidityRange: (panelId, liquidityRange) =>
+        set((state) => updatePanel(state, panelId, { liquidityRange: Math.max(1, Math.min(50, liquidityRange)) })),
+
       setSessionEnabled: (panelId, sessionId, enabled) =>
         set((state) => {
           const panel = state.panels[panelId];
@@ -649,7 +691,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 12,
+      version: 13,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -701,6 +743,12 @@ export const useChartStore = create<ChartState>()(
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
             settingsByTimeframe: p.settingsByTimeframe ?? {},
+            // Liquidity Map (v13)
+            liquidityEnabled: p.liquidityEnabled ?? true,
+            liquidityBucketSize: p.liquidityBucketSize ?? 50,
+            minimumLiquidityThreshold: p.minimumLiquidityThreshold ?? 5,
+            liquidityOpacity: p.liquidityOpacity ?? 0.6,
+            liquidityRange: p.liquidityRange ?? 10,
           };
         };
         if (persisted.panels) {
@@ -771,6 +819,11 @@ export const useChartStore = create<ChartState>()(
             deltaProfileWidth: state.panels.left.deltaProfileWidth,
             sessionsEnabled: state.panels.left.sessionsEnabled,
             sessions: state.panels.left.sessions,
+            liquidityEnabled: state.panels.left.liquidityEnabled,
+            liquidityBucketSize: state.panels.left.liquidityBucketSize,
+            minimumLiquidityThreshold: state.panels.left.minimumLiquidityThreshold,
+            liquidityOpacity: state.panels.left.liquidityOpacity,
+            liquidityRange: state.panels.left.liquidityRange,
             settingsByTimeframe: state.panels.left.settingsByTimeframe,
           },
           right: {
@@ -813,6 +866,11 @@ export const useChartStore = create<ChartState>()(
             deltaProfileWidth: state.panels.right.deltaProfileWidth,
             sessionsEnabled: state.panels.right.sessionsEnabled,
             sessions: state.panels.right.sessions,
+            liquidityEnabled: state.panels.right.liquidityEnabled,
+            liquidityBucketSize: state.panels.right.liquidityBucketSize,
+            minimumLiquidityThreshold: state.panels.right.minimumLiquidityThreshold,
+            liquidityOpacity: state.panels.right.liquidityOpacity,
+            liquidityRange: state.panels.right.liquidityRange,
             settingsByTimeframe: state.panels.right.settingsByTimeframe,
           },
         },

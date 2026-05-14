@@ -28,6 +28,7 @@ import { ExhaustionTooltip } from './ExhaustionTooltip';
 import { drawDeltaProfile } from '@/lib/draw/drawDeltaProfile';
 import { drawMeasurementRect } from '@/lib/draw/drawMeasurement';
 import { drawSessions } from '@/lib/draw/drawSessions';
+import { drawLiquidity } from '@/lib/draw/drawLiquidity';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
 import { MeasurementPanel } from './MeasurementPanel';
 
@@ -84,6 +85,10 @@ interface ChartCanvasProps {
   activeMeasurement: Measurement | null;
   sessionsEnabled: boolean;
   sessions: PanelState['sessions'];
+  liquidityZones: PanelState['liquidityZones'];
+  liquidityEnabled: boolean;
+  liquidityOpacity: number;
+  liquidityBucketSize: number;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -136,6 +141,10 @@ export function ChartCanvas({
   activeMeasurement,
   sessionsEnabled,
   sessions,
+  liquidityZones,
+  liquidityEnabled,
+  liquidityOpacity,
+  liquidityBucketSize,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -251,6 +260,26 @@ export function ChartCanvas({
         sessions,
         sessionsEnabled
       );
+
+      // Liquidity zones - drawn between grid and sessions/candles
+      if (liquidityEnabled && liquidityZones.length > 0) {
+        const lastCandlePrice = candles.length > 0 ? candles[candles.length - 1].close : null;
+        drawLiquidity(
+          ctx,
+          liquidityZones,
+          priceToY,
+          logicalWidth,
+          logicalHeight,
+          priceAxisWidth,
+          profileWidth,
+          liquidityOpacity,
+          liquidityBucketSize,
+          timeAxisHeight,
+          priceMin,
+          priceMax,
+          lastCandlePrice
+        );
+      }
 
       // Selection Rectangle (drawn below candles)
       drawSelectionRect(
@@ -438,7 +467,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize]);
 
   const { 
     scrollOffset, 

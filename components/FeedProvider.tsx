@@ -12,6 +12,8 @@ import { Candle } from '../types/candle';
 import { Trade } from '../types/trade';
 import { AbsorptionResult } from '../types/absorption';
 import { ExhaustionResult } from '../types/exhaustion';
+import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
+import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -35,6 +37,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const setAbsorptionMap = useChartStore(s => s.setAbsorptionMap);
   const setExhaustionMap = useChartStore(s => s.setExhaustionMap);
   const exhaustionLookback = useChartStore(s => s.panels[panelId].exhaustionLookback);
+  const setLiquidityZones = useChartStore(s => s.setLiquidityZones);
+  const liquidityEnabled = useChartStore(s => s.panels[panelId].liquidityEnabled);
+  const liquidityBucketSize = useChartStore(s => s.panels[panelId].liquidityBucketSize);
+  const minimumLiquidityThreshold = useChartStore(s => s.panels[panelId].minimumLiquidityThreshold);
+  const liquidityRange = useChartStore(s => s.panels[panelId].liquidityRange);
 
   const connectedRef = useRef(false);
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
@@ -44,6 +51,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const lastScoredCandleTimeRef = useRef<number | null>(null);
   // Each panel needs its own adapter instance for independent connections
   const adapterRef = useRef(feedAdapter.clone());
+  // Orderbook manager per panel
+  const orderbookRef = useRef<OrderbookManager>(new OrderbookManager());
+  const pendingAggregationRef = useRef(false);
 
   // Throttled redraw loop for footprint updates
   useEffect(() => {
@@ -204,13 +214,72 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     init();
 
+    // --- Orderbook lifecycle ---
+    let aggregationInterval: NodeJS.Timeout | null = null;
+    const obManager = orderbookRef.current;
+
+    const initOrderbook = async () => {
+      if (!adapter.fetchOrderbookSnapshot || !adapter.subscribeOrderbook) return;
+
+      try {
+        console.log(`[PanelFeed:${panelId}] Fetching orderbook snapshot for ${pair}...`);
+        const snapshot = await adapter.fetchOrderbookSnapshot(pair, 500);
+        if (!active) return;
+
+        obManager.initFromSnapshot(snapshot);
+        console.log(`[PanelFeed:${panelId}] Orderbook snapshot loaded (${snapshot.bids.length} bids, ${snapshot.asks.length} asks)`);
+
+        // Subscribe to incremental updates
+        adapter.subscribeOrderbook(pair, (update: DepthUpdate) => {
+          obManager.applyUpdate(update);
+          pendingAggregationRef.current = true;
+        });
+
+        // Throttled aggregation at 500ms
+        aggregationInterval = setInterval(() => {
+          if (!pendingAggregationRef.current) return;
+          pendingAggregationRef.current = false;
+
+          if (!obManager.isReady()) return;
+
+          const panelState = useChartStore.getState().panels[panelId];
+          if (!panelState.liquidityEnabled) return;
+
+          const midPrice = obManager.getMidPrice();
+          if (midPrice === null) return;
+
+          const zones = aggregateOrderbook(
+            obManager.getAllBids(),
+            obManager.getAllAsks(),
+            midPrice,
+            {
+              liquidityBucketSize: panelState.liquidityBucketSize,
+              minimumLiquidityThreshold: panelState.minimumLiquidityThreshold,
+              liquidityRange: panelState.liquidityRange,
+            }
+          );
+
+          setLiquidityZones(panelId, zones);
+          console.log(`[PanelFeed:${panelId}] Liquidity zones updated: ${zones.length} zones`);
+        }, 500);
+      } catch (err) {
+        console.error(`[PanelFeed:${panelId}] Orderbook init failed:`, err);
+      }
+    };
+
+    initOrderbook();
+
     return () => {
       active = false;
       adapter.disconnect();
+      if (adapter.disconnectOrderbook) adapter.disconnectOrderbook();
+      if (aggregationInterval) clearInterval(aggregationInterval);
+      obManager.reset();
+      setLiquidityZones(panelId, []);
       setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, panelId, exhaustionLookback, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, autoBucketSize, setComputedBucketSize, tickSize]);
+  }, [pair, timeframe, panelId, exhaustionLookback, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange]);
 
   return <ChartEngineContext.Provider value={engineRef.current}>{children}</ChartEngineContext.Provider>;
 }

@@ -1,5 +1,32 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-14] - Feature: Liquidity Map — Canvas Rendering, Settings & Controls (Level 1, Task 2)
+- **What changed**:
+  - **Draw Function**: Created `lib/draw/drawLiquidity.ts` — renders liquidity zones as horizontal price bands (teal for bids, red for asks) with intensity-based opacity, right-edge intensity stripes, and a current price reference dashed line. Pre-filters zones to visible price range.
+  - **ChartCanvas**: Wired `drawLiquidity` into the render loop between grid/sessions and candles (lowest visual layer). Added `liquidityZones`, `liquidityEnabled`, `liquidityOpacity`, `liquidityBucketSize` props.
+  - **ChartPanel**: Passes liquidity state from panel to ChartCanvas.
+  - **Settings Panel**: Added "Liquidity Map" section to the Chart tab in `ChartSettingsDropdown.tsx` with master toggle, opacity slider (10–100%), bucket size input ($10–$500), minimum size input (0.5–100 BTC), and range slider (5–20%).
+  - **Toolbar**: Added `Q` quick toggle button to `PanelToolbar.tsx` alongside the existing `S` sessions toggle.
+  - **Keyboard Shortcuts**: Added `Q` to toggle liquidity map and `L` to log zones to console for verification.
+- **Why it changed**:
+  - To visualize the aggregated orderbook liquidity data from Task 1 directly on the chart canvas, giving traders immediate visual context for where significant passive liquidity walls exist relative to current price.
+- **Impact**:
+  - Colored horizontal bands now appear on the chart showing where large orderbook walls are concentrated. Bands update ~2x/sec as the orderbook changes. Users can toggle via toolbar/keyboard and fine-tune appearance via settings. All existing features (candles, footprint, profiles, signals) render unaffected on top.
+
+## [2026-05-14] - Feature: Liquidity Map — Orderbook Data Flow & Aggregation Engine (Level 1, Task 1)
+- **What changed**:
+  - **Types**: Created `types/liquidity.ts` with `LiquidityZone` interface (price, totalQty, side, zoneSize, intensity, levelCount).
+  - **Orderbook Manager**: Created `lib/liquidity/orderbook.ts` — `OrderbookManager` class managing local in-memory orderbook with `initFromSnapshot()`, `applyUpdate()`, stale-update filtering, and accessor methods (getTopBids, getTopAsks, getBestBid/Ask, getMidPrice).
+  - **Aggregation Engine**: Created `lib/liquidity/aggregation.ts` — `aggregateOrderbook()` function that buckets raw orderbook levels by configurable `$50` ranges, filters by minimum quantity threshold (`5 BTC`), calculates intensity (0–1), and returns `LiquidityZone[]`.
+  - **Feed Adapter**: Extended `FeedAdapter` interface with optional `fetchOrderbookSnapshot()`, `subscribeOrderbook()`, and `disconnectOrderbook()` methods.
+  - **Binance Adapter**: Implemented orderbook support in `BinanceAdapter` — REST snapshot via `/api/v3/depth?limit=500`, separate WebSocket for `@depth@100ms` stream, with independent reconnect logic.
+  - **Store**: Added liquidity state to `PanelState` — `liquidityZones` (session-only), `liquidityEnabled`, `liquidityBucketSize`, `minimumLiquidityThreshold`, `liquidityOpacity`, `liquidityRange`. Added 6 setter actions. Bumped store version to `13` with migration.
+  - **FeedProvider**: Wired full orderbook lifecycle — snapshot fetch on connect, incremental WS updates via `OrderbookManager`, throttled 500ms aggregation interval storing zones via `setLiquidityZones`. Proper cleanup on disconnect/pair change.
+- **Why it changed**:
+  - To establish the data pipeline for the Liquidity Map feature — connecting to Binance's orderbook, maintaining a local copy, and aggregating raw levels into meaningful liquidity zones that can be consumed by the canvas renderer in Task 2.
+- **Impact**:
+  - Live orderbook data now flows into the application at 100ms intervals. Aggregated liquidity zones update in the store at ~2Hz. Console logs verify zone counts and updates. Nothing renders visually yet — that is Task 2's scope.
+
 ## [2026-05-14] - Fix: TypeScript Implicit Any Parameters
 - **What changed**:
   - **ChartCanvas.tsx**: Explicitly defined parameter types for the anonymous callback function passed to `usePanZoom`.

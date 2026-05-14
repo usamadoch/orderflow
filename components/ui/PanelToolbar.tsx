@@ -138,6 +138,16 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         >
           S
         </button>
+        <button
+          onClick={() => useChartStore.getState().setLiquidityEnabled(panelId, !panel.liquidityEnabled)}
+          className={`h-5 w-6 flex items-center justify-center rounded text-[11px] font-black transition-all duration-200 ${panel.liquidityEnabled
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            }`}
+          title="Toggle Liquidity Map (Q)"
+        >
+          Q
+        </button>
       </div>
 
     </div>

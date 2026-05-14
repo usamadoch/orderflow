@@ -98,6 +98,33 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Q: Toggle liquidity map
+      if (key === 'q') {
+        e.preventDefault();
+        useChartStore.getState().setLiquidityEnabled(activePanel, !panel.liquidityEnabled);
+        return;
+      }
+
+      // L: Log liquidity zones (verification)
+      if (key === 'l') {
+        e.preventDefault();
+        console.log(`--- Liquidity Zones (${activePanel} panel) ---`);
+        const zones = panel.liquidityZones;
+        if (zones.length === 0) {
+          console.log('No liquidity zones available.');
+        } else {
+          console.log(`${zones.length} zones:`);
+          console.table(zones.map(z => ({
+            price: z.price,
+            totalQty: z.totalQty.toFixed(2),
+            side: z.side,
+            intensity: z.intensity.toFixed(2),
+            levelCount: z.levelCount,
+          })));
+        }
+        return;
+      }
+
       // Escape: Clear active measurement
       if (key === 'escape') {
         e.preventDefault();
