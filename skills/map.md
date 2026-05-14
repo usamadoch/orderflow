@@ -40,7 +40,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── ui/                   # Reusable UI components
 │       ├── ConnectionStatus.tsx # Combined live connection indicator
 │       ├── PanelToolbar.tsx     # Per-panel controls — Pair, TF, Mode, Drawing tools, Quick Toggles
-│       ├── ChartSettingsDropdown.tsx # Tabbed centralized settings (Chart, Profiles, Signals, Sessions)
+│       ├── ChartSettingsDropdown.tsx # Draggable settings window with vertical sidebar navigation
 │       ├── PairSelector.tsx     # Pair switcher (panel-scoped)
 │       ├── TimeframeSelector.tsx# Timeframe switcher (panel-scoped)
 │       ├── ChartModeToggle.tsx  # Candle / Footprint toggle (panel-scoped)

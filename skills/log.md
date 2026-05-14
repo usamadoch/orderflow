@@ -1,5 +1,31 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-14] - UI/UX: Settings Panel Sidebar Redesign
+- **What changed**:
+  - **Layout**: Redesigned the settings panel from a horizontal tab bar to a professional vertical sidebar navigation.
+  - **Dimensions**: Increased panel width to 440px to accommodate the sidebar and content more comfortably.
+  - **Navigation**: Moved 'Chart', 'Profiles', 'Signals', and 'Sessions' into a dedicated left-side menu with icons and labels.
+  - **Organization**: Promoted 'Sessions' to a top-level category for easier access.
+  - **Aesthetics**: Added subtle background tints, inset shadows for active states, and improved spacing/typography throughout.
+- **Why it changed**: 
+  - To improve scalability as more features are added and to provide a cleaner, more intuitive interface for managing complex chart configurations.
+- **Impact**: 
+  - Significantly faster navigation between settings categories and better visual hierarchy. The panel feels more like a professional analytical tool.
+
+
+## [2026-05-14] - Feature: Draggable Floating Settings Panel
+- **What changed**:
+  - **Interaction**: Refactored `ChartSettingsDropdown.tsx` from a static dropdown to a draggable floating window.
+  - **Positioning**: Switched from `absolute` to `fixed` positioning, allowing the panel to move across the entire viewport.
+  - **Drag Logic**: Implemented custom `mousedown`/`mousemove`/`mouseup` handlers on the panel header with screen-bound clamping.
+  - **Persistence**: Removed "click-outside" closure logic to treat the settings panel as a persistent tool window.
+  - **Visuals**: Added a `grab` cursor and a vertical grip icon to the header to indicate draggability. Added a subtle ring/shadow highlight while dragging.
+- **Why it changed**: 
+  - To prevent the settings panel from blocking critical chart data (candles, footprints, profiles) and allow users to analyze market structure while simultaneously adjusting parameters.
+- **Impact**: 
+  - Users can now freely reposition the settings menu anywhere on the screen. It remains open during chart interactions, providing a more flexible and uninterrupted workflow.
+
+
 ## [2026-05-14] - Feature: Session Visualization (Phase 2 - COMPLETED)
 - **What changed**:
   - **Rendering Engine**: Implemented `drawSessions.ts` to render subtle background boxes for Tokyo, London, and New York sessions.
