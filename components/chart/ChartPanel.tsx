@@ -44,6 +44,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           absorptionMap={panel.absorptionMap}
           bubblesEnabled={panel.bubblesEnabled}
           bubbleThreshold={panel.bubbleThreshold}
+          bubbleThresholdMode={panel.bubbleThresholdMode}
           bubbleMinRadius={panel.bubbleMinRadius}
           bubbleMaxRadius={panel.bubbleMaxRadius}
           bubbleSide={panel.bubbleSide}

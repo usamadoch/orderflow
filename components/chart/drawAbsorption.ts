@@ -38,6 +38,22 @@ function rgba(hex: string, a: number): string {
 
 // ── Main Draw ────────────────────────────────────────────
 
+function getTimeframeScale(timeframe: string): number {
+  if (timeframe.endsWith('m')) {
+    const mins = parseInt(timeframe);
+    if (mins >= 60) return 1.4;
+    if (mins >= 15) return 1.2;
+    return 1.0;
+  }
+  if (timeframe.endsWith('h')) {
+    const hours = parseInt(timeframe);
+    if (hours >= 4) return 1.6;
+    return 1.4;
+  }
+  if (timeframe.endsWith('d')) return 1.8;
+  return 1.0;
+}
+
 export function drawAbsorption(
   ctx: CanvasRenderingContext2D,
   candles: Candle[],
@@ -48,8 +64,10 @@ export function drawAbsorption(
   absorptionMap: Map<number, AbsorptionResult>,
   showLabels: boolean,
   minScore: number,
-  sideFilter: 'both' | 'buyer' | 'seller'
+  sideFilter: 'both' | 'buyer' | 'seller',
+  timeframe: string
 ) {
+  const tfScale = getTimeframeScale(timeframe);
   for (let i = firstIndex; i <= lastIndex && i < candles.length; i++) {
     const candle = candles[i];
     const result = absorptionMap.get(candle.time);
@@ -59,14 +77,15 @@ export function drawAbsorption(
 
     const color = result.direction === 'seller' ? COLOR_SELLER_ABS : COLOR_BUYER_ABS;
     const cfg = getRankConfig(result.rank);
+    const radius = cfg.radius * tfScale;
     const x = indexToX(i);
 
     // Position: seller absorption below low, buyer absorption above high
     let y: number;
     if (result.direction === 'seller') {
-      y = priceToY(candle.low) + 8 + cfg.radius;
+      y = priceToY(candle.low) + 8 + radius;
     } else {
-      y = priceToY(candle.high) - 8 - cfg.radius;
+      y = priceToY(candle.high) - 8 - radius;
     }
 
     // Provisional: reduced opacity, dashed
@@ -76,20 +95,20 @@ export function drawAbsorption(
     // ── Glow ──
     if (cfg.glow && !isProvisional) {
       ctx.beginPath();
-      ctx.arc(x, y, cfg.radius * 2, 0, Math.PI * 2);
+      ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
       ctx.fillStyle = rgba(color, 0.15);
       ctx.fill();
     }
 
     // ── Main circle ──
     ctx.beginPath();
-    ctx.arc(x, y, cfg.radius, 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fillStyle = rgba(color, effectiveAlpha);
     ctx.fill();
 
     if (cfg.stroke && !isProvisional) {
       ctx.strokeStyle = rgba(color, effectiveAlpha);
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 * tfScale;
       ctx.stroke();
     }
 
@@ -110,8 +129,8 @@ export function drawAbsorption(
 
       const label = cfg.showScore ? `ABS ${result.score}` : 'ABS';
       const labelY = result.direction === 'seller'
-        ? y + cfg.radius + 10
-        : y - cfg.radius - 4;
+        ? y + radius + 10
+        : y - radius - 4;
 
       ctx.fillText(label, x, labelY);
     }

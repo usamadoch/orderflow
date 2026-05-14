@@ -26,6 +26,28 @@ export interface SessionConfig {
   color: string; // hex color
 }
 
+export type BubbleThresholdMode = 'absolute' | 'relative';
+
+export interface TimeframeSettings {
+  bucketSize: number;
+  autoBucketSize: boolean;
+  bubbleThreshold: number;
+  bubbleThresholdMode: BubbleThresholdMode;
+  absorptionMinScore: number;
+  exhaustionMinScore: number;
+  exhaustionLookback: number;
+  profileWidthPct: number;
+  profileOpacity: number;
+  profileMinRowWidth: number;
+  profileScaleMode: 'linear' | 'sqrt';
+  profileShowPocHighlight: boolean;
+  profileShowVaFill: boolean;
+  profileShowPocLine: boolean;
+  profileShowVaLines: boolean;
+  profileShowDelta: boolean;
+  deltaProfileWidth: number;
+}
+
 export interface Measurement {
   startX: number;
   startY: number;
@@ -49,6 +71,7 @@ export interface PanelState {
   chartMode: ChartMode;
   footprintMode: FootprintMode;
   bucketSize: number;
+  autoBucketSize: boolean;
   barWidth: number;
   scrollOffset: number;
   candles: Candle[];
@@ -63,6 +86,7 @@ export interface PanelState {
   absorptionMap: Map<number, AbsorptionResult>;
   bubblesEnabled: boolean;
   bubbleThreshold: number;
+  bubbleThresholdMode: BubbleThresholdMode;
   bubbleMinRadius: number;
   bubbleMaxRadius: number;
   bubbleSide: BubbleSide;
@@ -103,6 +127,7 @@ export interface PanelState {
     london: SessionConfig;
     newYork: SessionConfig;
   };
+  settingsByTimeframe: Record<string, Partial<TimeframeSettings>>;
 }
 
 interface ChartState {
@@ -139,7 +164,10 @@ interface ChartState {
   setAbsorptionMap: (panelId: PanelId, map: Map<number, AbsorptionResult>) => void;
   setBubblesEnabled: (panelId: PanelId, enabled: boolean) => void;
   setBubbleThreshold: (panelId: PanelId, threshold: number) => void;
+  setBubbleThresholdMode: (panelId: PanelId, mode: BubbleThresholdMode) => void;
   setBubbleMinRadius: (panelId: PanelId, radius: number) => void;
+  setAutoBucketSize: (panelId: PanelId, auto: boolean) => void;
+  setComputedBucketSize: (panelId: PanelId, bucketSize: number) => void;
   setBubbleMaxRadius: (panelId: PanelId, radius: number) => void;
   setBubbleSide: (panelId: PanelId, side: BubbleSide) => void;
   setDrawMode: (panelId: PanelId, enabled: boolean) => void;
@@ -193,6 +221,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     chartMode: 'candle',
     footprintMode: 'bid-ask',
     bucketSize: 10,
+    autoBucketSize: false,
     barWidth: 12,
     scrollOffset: 0,
     candles: [],
@@ -207,6 +236,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     absorptionMap: new Map(),
     bubblesEnabled: true,
     bubbleThreshold: 50,
+    bubbleThresholdMode: 'absolute',
     bubbleMinRadius: 4,
     bubbleMaxRadius: 20,
     bubbleSide: 'both' as BubbleSide,
@@ -255,17 +285,43 @@ function createDefaultPanel(id: PanelId): PanelState {
         color: '#81C784',
       },
     },
+    settingsByTimeframe: {},
   };
 }
 
 function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<PanelState>): Partial<ChartState> {
+  const panel = state.panels[panelId];
+  const newPanel = { ...panel, ...updates };
+
+  // If any timeframe setting is updated, save it to settingsByTimeframe for the CURRENT timeframe
+  const timeframeSettingsKeys: (keyof TimeframeSettings)[] = [
+    'bucketSize', 'autoBucketSize', 'bubbleThreshold', 'bubbleThresholdMode',
+    'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
+    'profileWidthPct', 'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
+    'profileShowPocHighlight', 'profileShowVaFill', 'profileShowPocLine',
+    'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth'
+  ];
+  
+  let settingsChanged = false;
+  const currentTfSettings: Partial<TimeframeSettings> = { ...newPanel.settingsByTimeframe[newPanel.timeframe] };
+  for (const key of timeframeSettingsKeys) {
+    if (key in updates) {
+      currentTfSettings[key] = updates[key] as any;
+      settingsChanged = true;
+    }
+  }
+
+  if (settingsChanged) {
+    newPanel.settingsByTimeframe = {
+      ...newPanel.settingsByTimeframe,
+      [newPanel.timeframe]: currentTfSettings
+    };
+  }
+
   return {
     panels: {
       ...state.panels,
-      [panelId]: {
-        ...state.panels[panelId],
-        ...updates,
-      },
+      [panelId]: newPanel,
     },
   };
 }
@@ -289,7 +345,16 @@ export const useChartStore = create<ChartState>()(
         set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [] })),
 
       setTimeframe: (panelId, timeframe) =>
-        set((state) => updatePanel(state, panelId, { timeframe, candles: [], trades: [] })),
+        set((state) => {
+          const panel = state.panels[panelId];
+          const savedSettings = panel.settingsByTimeframe[timeframe] || {};
+          return updatePanel(state, panelId, { 
+            timeframe, 
+            candles: [], 
+            trades: [],
+            ...savedSettings
+          });
+        }),
 
       setChartMode: (panelId, chartMode) =>
         set((state) => updatePanel(state, panelId, { chartMode })),
@@ -298,7 +363,13 @@ export const useChartStore = create<ChartState>()(
         set((state) => updatePanel(state, panelId, { footprintMode })),
 
       setBucketSize: (panelId, bucketSize) =>
+        set((state) => updatePanel(state, panelId, { bucketSize, autoBucketSize: false })),
+
+      setComputedBucketSize: (panelId, bucketSize) =>
         set((state) => updatePanel(state, panelId, { bucketSize })),
+
+      setAutoBucketSize: (panelId, autoBucketSize) =>
+        set((state) => updatePanel(state, panelId, { autoBucketSize })),
 
       setBarWidth: (panelId, barWidth) =>
         set((state) => updatePanel(state, panelId, { barWidth })),
@@ -334,7 +405,10 @@ export const useChartStore = create<ChartState>()(
         set((state) => updatePanel(state, panelId, { bubblesEnabled })),
 
       setBubbleThreshold: (panelId, bubbleThreshold) =>
-        set((state) => updatePanel(state, panelId, { bubbleThreshold: Math.max(1, bubbleThreshold) })),
+        set((state) => updatePanel(state, panelId, { bubbleThreshold: Math.max(0.1, bubbleThreshold) })),
+
+      setBubbleThresholdMode: (panelId, bubbleThresholdMode) =>
+        set((state) => updatePanel(state, panelId, { bubbleThresholdMode })),
 
       setBubbleMinRadius: (panelId, bubbleMinRadius) =>
         set((state) => {
@@ -565,12 +639,14 @@ export const useChartStore = create<ChartState>()(
           return {
             ...p,
             footprintMode: p.footprintMode || 'bid-ask',
+            autoBucketSize: p.autoBucketSize ?? false,
             absorptionEnabled: p.absorptionEnabled ?? true,
             absorptionMinScore: p.absorptionMinScore ?? 50,
             absorptionSide: p.absorptionSide || 'both',
             absorptionShowLabels: p.absorptionShowLabels ?? true,
             bubblesEnabled: p.bubblesEnabled ?? true,
             bubbleThreshold: p.bubbleThreshold ?? 50,
+            bubbleThresholdMode: p.bubbleThresholdMode || 'absolute',
             bubbleMinRadius: p.bubbleMinRadius ?? 4,
             bubbleMaxRadius: p.bubbleMaxRadius ?? 20,
             bubbleSide: p.bubbleSide || 'both',
@@ -579,7 +655,7 @@ export const useChartStore = create<ChartState>()(
             customProfileLocked: p.customProfileLocked ?? false,
             isProfileSelected: false,
             drawnLines: p.drawnLines ?? [],
-            lineDrawMode: 'none',
+            lineDrawMode: p.lineDrawMode || 'none',
             exhaustionEnabled: p.exhaustionEnabled ?? true,
             exhaustionMinScore: p.exhaustionMinScore ?? 40,
             exhaustionSide: p.exhaustionSide || 'both',
@@ -601,6 +677,7 @@ export const useChartStore = create<ChartState>()(
               london: { enabled: true, startHour: 7, startMin: 0, endHour: 16, endMin: 0, color: '#4FC3F7' },
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
+            settingsByTimeframe: p.settingsByTimeframe ?? {},
           };
         };
         if (persisted.panels) {
@@ -637,6 +714,7 @@ export const useChartStore = create<ChartState>()(
             chartMode: state.panels.left.chartMode,
             footprintMode: state.panels.left.footprintMode,
             bucketSize: state.panels.left.bucketSize,
+            autoBucketSize: state.panels.left.autoBucketSize,
             barWidth: state.panels.left.barWidth,
             absorptionEnabled: state.panels.left.absorptionEnabled,
             absorptionMinScore: state.panels.left.absorptionMinScore,
@@ -644,6 +722,7 @@ export const useChartStore = create<ChartState>()(
             absorptionShowLabels: state.panels.left.absorptionShowLabels,
             bubblesEnabled: state.panels.left.bubblesEnabled,
             bubbleThreshold: state.panels.left.bubbleThreshold,
+            bubbleThresholdMode: state.panels.left.bubbleThresholdMode,
             bubbleMinRadius: state.panels.left.bubbleMinRadius,
             bubbleMaxRadius: state.panels.left.bubbleMaxRadius,
             bubbleSide: state.panels.left.bubbleSide,
@@ -651,6 +730,7 @@ export const useChartStore = create<ChartState>()(
             customProfileRange: state.panels.left.customProfileRange,
             customProfileLocked: state.panels.left.customProfileLocked,
             drawnLines: state.panels.left.drawnLines,
+            lineDrawMode: state.panels.left.lineDrawMode,
             exhaustionEnabled: state.panels.left.exhaustionEnabled,
             exhaustionMinScore: state.panels.left.exhaustionMinScore,
             exhaustionSide: state.panels.left.exhaustionSide,
@@ -668,6 +748,7 @@ export const useChartStore = create<ChartState>()(
             deltaProfileWidth: state.panels.left.deltaProfileWidth,
             sessionsEnabled: state.panels.left.sessionsEnabled,
             sessions: state.panels.left.sessions,
+            settingsByTimeframe: state.panels.left.settingsByTimeframe,
           },
           right: {
             pair: state.panels.right.pair,
@@ -675,6 +756,7 @@ export const useChartStore = create<ChartState>()(
             chartMode: state.panels.right.chartMode,
             footprintMode: state.panels.right.footprintMode,
             bucketSize: state.panels.right.bucketSize,
+            autoBucketSize: state.panels.right.autoBucketSize,
             barWidth: state.panels.right.barWidth,
             absorptionEnabled: state.panels.right.absorptionEnabled,
             absorptionMinScore: state.panels.right.absorptionMinScore,
@@ -682,6 +764,7 @@ export const useChartStore = create<ChartState>()(
             absorptionShowLabels: state.panels.right.absorptionShowLabels,
             bubblesEnabled: state.panels.right.bubblesEnabled,
             bubbleThreshold: state.panels.right.bubbleThreshold,
+            bubbleThresholdMode: state.panels.right.bubbleThresholdMode,
             bubbleMinRadius: state.panels.right.bubbleMinRadius,
             bubbleMaxRadius: state.panels.right.bubbleMaxRadius,
             bubbleSide: state.panels.right.bubbleSide,
@@ -689,6 +772,7 @@ export const useChartStore = create<ChartState>()(
             customProfileRange: state.panels.right.customProfileRange,
             customProfileLocked: state.panels.right.customProfileLocked,
             drawnLines: state.panels.right.drawnLines,
+            lineDrawMode: state.panels.right.lineDrawMode,
             exhaustionEnabled: state.panels.right.exhaustionEnabled,
             exhaustionMinScore: state.panels.right.exhaustionMinScore,
             exhaustionSide: state.panels.right.exhaustionSide,
@@ -706,6 +790,7 @@ export const useChartStore = create<ChartState>()(
             deltaProfileWidth: state.panels.right.deltaProfileWidth,
             sessionsEnabled: state.panels.right.sessionsEnabled,
             sessions: state.panels.right.sessions,
+            settingsByTimeframe: state.panels.right.settingsByTimeframe,
           },
         },
         tickSize: state.tickSize,

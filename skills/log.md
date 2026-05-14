@@ -1,5 +1,30 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-14] - Feature: Timeframe Scaling & Adaptive Settings
+- **What changed**:
+  - **Timeframe-Linked Settings**: Refactored `PanelState` in `chart.ts` to include `settingsByTimeframe`. Settings like bucket size, thresholds, and profile UI are now saved per timeframe and automatically restored on switch.
+  - **Auto-Bucketing**: Added `autoBucketSize` toggle to `ChartSettingsDropdown`. Implemented logic in `FeedProvider` to compute ideal bucket size using ATR (Average True Range) on historical candles (targeting ~25 rows per footprint).
+  - **Statistical Thresholding**: Added `bubbleThresholdMode` (Fixed vs Adaptive). When set to Adaptive, `drawBubbles.ts` calculates a rolling average cell volume and multiplies it by the threshold.
+  - **Timeframe-Aware Context**: Updated `drawAbsorption.ts` and `drawExhaustion.ts` to receive the active `timeframe` and apply a visual scaling multiplier (up to 1.8x) for higher timeframes (1H, 4H, Daily).
+- **Why it changed**: 
+  - To eliminate the manual overhead of readjusting analytical settings (like bucket size and volume thresholds) every time the user switches between low (execution) and high (contextual) timeframes.
+- **Impact**: 
+  - Creates a more professional, "smart" charting experience. Footprints remain readable regardless of volatility, bubbles highlight true relative extremes, and higher timeframe signals carry more visual weight without altering core detection logic.
+
+## [2026-05-14] - Research: Chart Settings & Signal Behavior Report
+- **What changed**:
+  - **Documentation**: Created a detailed analytical report `timeframe_behavior_report.md` exploring the relationship between timeframe changes and analytical settings.
+  - **Analysis**: Conducted a codebase audit of `lib/store/chart.ts`, `lib/absorption/engine.ts`, `lib/exhaustion/engine.ts`, and `lib/aggregation/engine.ts`.
+  - **Findings**:
+    - Identified that settings like `bucketSize`, `bubbleThreshold`, and `minScore` are currently **static** (global per panel).
+    - Found that signal engines are **logically adaptive** (using rolling averages) but **mechanically static** (relying on fixed user thresholds).
+    - Highlighted the "Noise" and "Significance" problems when switching between low (1m) and high (1H+) timeframes.
+  - **Recommendations**: Outlined a roadmap for **Timeframe-Linked Settings**, **Auto-Bucketing** (ATR-based), and **Statistical Thresholding** (Z-Score).
+- **Why it changed**: 
+  - To provide a solid theoretical and practical understanding of how the chart's analytical layer responds to timeframe shifts before implementing automatic scaling features.
+- **Impact**: 
+  - Establishes a clear plan for improving the professional feel of the tool by reducing manual adjustment overhead during multi-timeframe analysis.
+
 ## [2026-05-14] - UI/UX: Settings Panel Sidebar Redesign
 - **What changed**:
   - **Layout**: Redesigned the settings panel from a horizontal tab bar to a professional vertical sidebar navigation.

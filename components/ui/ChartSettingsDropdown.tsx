@@ -15,6 +15,7 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setBucketSize = useChartStore(s => s.setBucketSize);
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
   const setBubbleThreshold = useChartStore(s => s.setBubbleThreshold);
+  const setBubbleThresholdMode = useChartStore(s => s.setBubbleThresholdMode);
   const setBubbleSide = useChartStore(s => s.setBubbleSide);
   const setExhaustionEnabled = useChartStore(s => s.setExhaustionEnabled);
   const setExhaustionMinScore = useChartStore(s => s.setExhaustionMinScore);
@@ -34,6 +35,7 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setProfileShowVaLines = useChartStore(s => s.setProfileShowVaLines);
   const setProfileShowDelta = useChartStore(s => s.setProfileShowDelta);
   const setDeltaProfileWidth = useChartStore(s => s.setDeltaProfileWidth);
+  const setAutoBucketSize = useChartStore(s => s.setAutoBucketSize);
   const setSessionsEnabled = useChartStore(s => s.setSessionsEnabled);
   const setSessionEnabled = useChartStore(s => s.setSessionEnabled);
   const setSessionTime = useChartStore(s => s.setSessionTime);
@@ -197,14 +199,24 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                   <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
                     <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bucket Size</label>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setAutoBucketSize(panelId, !panel.autoBucketSize)}
+                        className={`px-2 py-1 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.autoBucketSize
+                          ? 'bg-accent/10 border-accent text-accent'
+                          : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          }`}
+                      >
+                        Auto
+                      </button>
                       <input
                         type="number"
                         value={panel.bucketSize}
+                        disabled={panel.autoBucketSize}
                         onChange={(e) => {
                           const val = Number(e.target.value);
                           if (val > 0) setBucketSize(panelId, val);
                         }}
-                        className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main"
+                        className={`w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold transition-all text-main ${panel.autoBucketSize ? 'opacity-50 cursor-not-allowed' : 'focus:border-accent focus:outline-none'}`}
                         min="1"
                       />
                       <span className="text-[9px] text-text-dim font-black uppercase">Ticks</span>
@@ -230,13 +242,22 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                     <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
                       <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Volume</label>
-                        <input
-                          type="number"
-                          value={localThreshold}
-                          onChange={handleThresholdChange}
-                          className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                          min="1"
-                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setBubbleThresholdMode(panelId, panel.bubbleThresholdMode === 'absolute' ? 'relative' : 'absolute')}
+                            className="px-2 py-1 bg-[#1A1A1A] border border-[#1F1F1F] rounded text-[10px] font-black text-text-dim hover:text-main transition-colors uppercase"
+                          >
+                            {panel.bubbleThresholdMode === 'absolute' ? 'Fixed (BTC)' : 'Adaptive (x Avg)'}
+                          </button>
+                          <input
+                            type="number"
+                            value={localThreshold}
+                            onChange={handleThresholdChange}
+                            step={panel.bubbleThresholdMode === 'relative' ? "0.5" : "1"}
+                            className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                            min="0.1"
+                          />
+                        </div>
                       </div>
 
                       <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">

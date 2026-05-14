@@ -50,6 +50,7 @@ interface ChartCanvasProps {
   absorptionMap: Map<number, AbsorptionResult>;
   bubblesEnabled: boolean;
   bubbleThreshold: number;
+  bubbleThresholdMode: 'absolute' | 'relative';
   bubbleMinRadius: number;
   bubbleMaxRadius: number;
   bubbleSide: BubbleSide;
@@ -106,6 +107,7 @@ export function ChartCanvas({
   absorptionMap,
   bubblesEnabled,
   bubbleThreshold,
+  bubbleThresholdMode,
   bubbleMinRadius,
   bubbleMaxRadius,
   bubbleSide,
@@ -271,6 +273,7 @@ export function ChartCanvas({
       if (bubblesEnabled) {
         drawBubbles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, bucketSize, engine, currentBarWidth, {
           bubbleThreshold,
+          bubbleThresholdMode,
           bubbleMinRadius,
           bubbleMaxRadius,
           bubbleSide,
@@ -279,12 +282,12 @@ export function ChartCanvas({
 
       // 5. Absorption markers
       if (absorptionEnabled && absorptionMap.size > 0) {
-        drawAbsorption(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, absorptionMap, absorptionShowLabels, absorptionMinScore, absorptionSide);
+        drawAbsorption(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, absorptionMap, absorptionShowLabels, absorptionMinScore, absorptionSide, timeframe);
       }
 
       // 5b. Exhaustion markers
       if (exhaustionEnabled && exhaustionMap.size > 0) {
-        drawExhaustion(ctx, candles, { firstIndex, lastIndex }, indexToX, priceToY, currentBarWidth, exhaustionMap, { exhaustionMinScore, exhaustionSide, exhaustionShowProvisional });
+        drawExhaustion(ctx, candles, { firstIndex, lastIndex }, indexToX, priceToY, currentBarWidth, exhaustionMap, { exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, timeframe });
       }
 
       // 6. Custom Profile (on top of candles and other overlays)

@@ -2,6 +2,22 @@ import { Candle } from '@/types/candle';
 import { ExhaustionResult, ExhaustionRank } from '@/types/exhaustion';
 import { ExhaustionSide } from '@/lib/store/chart';
 
+function getTimeframeScale(timeframe: string): number {
+  if (timeframe.endsWith('m')) {
+    const mins = parseInt(timeframe);
+    if (mins >= 60) return 1.4;
+    if (mins >= 15) return 1.2;
+    return 1.0;
+  }
+  if (timeframe.endsWith('h')) {
+    const hours = parseInt(timeframe);
+    if (hours >= 4) return 1.6;
+    return 1.4;
+  }
+  if (timeframe.endsWith('d')) return 1.8;
+  return 1.0;
+}
+
 /**
  * Renders exhaustion markers on the chart.
  * Exhaustion markers are small horizontal dashes near the candle extreme (high for buyer, low for seller).
@@ -14,12 +30,13 @@ export function drawExhaustion(
   priceToY: (p: number) => number,
   barWidth: number,
   exhaustionMap: Map<number, ExhaustionResult>,
-  settings: { exhaustionMinScore: number; exhaustionSide: ExhaustionSide; exhaustionShowProvisional: boolean }
+  settings: { exhaustionMinScore: number; exhaustionSide: ExhaustionSide; exhaustionShowProvisional: boolean; timeframe: string }
 ) {
   if (barWidth < 5) return;
 
   const { firstIndex, lastIndex } = visibleRange;
-  const { exhaustionMinScore, exhaustionSide, exhaustionShowProvisional } = settings;
+  const { exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, timeframe } = settings;
+  const tfScale = getTimeframeScale(timeframe);
 
   for (let i = firstIndex; i <= lastIndex; i++) {
     const candle = candles[i];
@@ -40,13 +57,13 @@ export function drawExhaustion(
     const color = isBuyer ? '#F0B90B' : '#B39DDB';
     const opacity = result.provisional ? 0.35 : getRankOpacity(result.rank);
     
-    const rankOffset = getRankOffset(result.rank);
+    const rankOffset = getRankOffset(result.rank) * tfScale;
     const yBase = isBuyer 
-      ? priceToY(candle.high) - 6 - rankOffset
-      : priceToY(candle.low) + 6 + rankOffset;
+      ? priceToY(candle.high) - (6 * tfScale) - rankOffset
+      : priceToY(candle.low) + (6 * tfScale) + rankOffset;
 
-    const dashWidth = barWidth * getRankWidthMultiplier(result.rank);
-    const thickness = getRankThickness(result.rank);
+    const dashWidth = barWidth * getRankWidthMultiplier(result.rank) * tfScale;
+    const thickness = getRankThickness(result.rank) * tfScale;
 
     // Style
     ctx.strokeStyle = color;
@@ -61,7 +78,8 @@ export function drawExhaustion(
 
     // Extreme: Draw secondary dash 4px further out
     if (result.rank === 'extreme' && !result.provisional) {
-      const y2 = isBuyer ? yBase - 4 : yBase + 4;
+      const gap = 4 * tfScale;
+      const y2 = isBuyer ? yBase - gap : yBase + gap;
       ctx.beginPath();
       ctx.moveTo(x - dashWidth / 2, y2);
       ctx.lineTo(x + dashWidth / 2, y2);

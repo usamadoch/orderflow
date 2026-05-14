@@ -22,13 +22,16 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const pair = useChartStore(s => s.panels[panelId].pair);
   const timeframe = useChartStore(s => s.panels[panelId].timeframe);
   const bucketSize = useChartStore(s => s.panels[panelId].bucketSize);
+  const autoBucketSize = useChartStore(s => s.panels[panelId].autoBucketSize);
   const chartMode = useChartStore(s => s.panels[panelId].chartMode);
+  const tickSize = useChartStore(s => s.tickSize);
   const pushCandle = useChartStore(s => s.pushCandle);
   const pushTrade = useChartStore(s => s.pushTrade);
   const setConnected = useChartStore(s => s.setConnected);
   const pushAllCandles = useChartStore(s => s.pushAllCandles);
   const setLoadingHistory = useChartStore(s => s.setLoadingHistory);
   const triggerFootprintRedraw = useChartStore(s => s.triggerFootprintRedraw);
+  const setComputedBucketSize = useChartStore(s => s.setComputedBucketSize);
   const setAbsorptionMap = useChartStore(s => s.setAbsorptionMap);
   const setExhaustionMap = useChartStore(s => s.setExhaustionMap);
   const exhaustionLookback = useChartStore(s => s.panels[panelId].exhaustionLookback);
@@ -92,6 +95,24 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     triggerFootprintRedraw(panelId);
   }, [bucketSize, exhaustionLookback, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap]);
 
+  // Handle autoBucketSize toggle
+  useEffect(() => {
+    if (autoBucketSize) {
+      const currentCandles = useChartStore.getState().panels[panelId].candles || [];
+      if (currentCandles.length > 0) {
+        const recentCandles = currentCandles.slice(-100);
+        const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length;
+        const targetTicks = avgRange / tickSize;
+        const computedSize = Math.max(1, Math.round(targetTicks / 25));
+        
+        if (computedSize !== bucketSize) {
+          setComputedBucketSize(panelId, computedSize);
+          // the bucketSize effect will catch this and reset the engine
+        }
+      }
+    }
+  }, [autoBucketSize, tickSize, panelId, setComputedBucketSize, bucketSize]);
+
   useEffect(() => {
     let active = true;
     connectedRef.current = false;
@@ -147,6 +168,18 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         if (!active) return;
 
         pushAllCandles(panelId, history);
+
+        // Auto Bucket Size Calculation
+        if (autoBucketSize && history.length > 0) {
+          const recentCandles = history.slice(-100); // use last 100 candles for avg
+          const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length;
+          const targetTicks = avgRange / tickSize;
+          // Aim for ~25 rows per footprint
+          const computedSize = Math.max(1, Math.round(targetTicks / 25));
+          setComputedBucketSize(panelId, computedSize);
+          engineRef.current.reset(computedSize);
+        }
+
         history.forEach(c => engineRef.current.ingestCandle(c));
 
         console.log(`[PanelFeed:${panelId}] History loaded (${history.length} candles). Connecting WS...`);

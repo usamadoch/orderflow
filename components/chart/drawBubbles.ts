@@ -5,6 +5,7 @@ export type BubbleSide = 'both' | 'buy' | 'sell';
 
 interface BubbleSettings {
   bubbleThreshold: number;
+  bubbleThresholdMode?: 'absolute' | 'relative';
   bubbleMinRadius: number;
   bubbleMaxRadius: number;
   bubbleSide: BubbleSide;
@@ -28,10 +29,26 @@ export function drawBubbles(
   barWidth: number,
   settings: BubbleSettings
 ) {
-  const { bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide } = settings;
+  const { bubbleThreshold, bubbleThresholdMode = 'absolute', bubbleMinRadius, bubbleMaxRadius, bubbleSide } = settings;
 
   // Performance guard — bars too small, bubbles would overlap and be unreadable
   if (barWidth < 4) return;
+
+  // Compute adaptive threshold if relative
+  let actualThreshold = bubbleThreshold;
+  if (bubbleThresholdMode === 'relative') {
+    let sumVol = 0;
+    let count = 0;
+    for (let i = firstIndex; i <= lastIndex; i++) {
+      if (candles[i]) {
+        sumVol += candles[i].volume;
+        count++;
+      }
+    }
+    const avgCandleVol = count > 0 ? sumVol / count : 0;
+    const avgCellVol = avgCandleVol / 25; // Estimate average volume per bucket cell
+    actualThreshold = bubbleThreshold * avgCellVol;
+  }
 
   // Step 1 — Find maxVol across all visible cells (single-side)
   let maxVol = 0;
@@ -61,10 +78,10 @@ export function drawBubbles(
     const qualifiedCells: { price: number; vol: number; side: 'buy' | 'sell' }[] = [];
 
     fp.cells.forEach((cell, priceBucket) => {
-      if (bubbleSide !== 'sell' && cell.askVol >= bubbleThreshold) {
+      if (bubbleSide !== 'sell' && cell.askVol >= actualThreshold) {
         qualifiedCells.push({ price: priceBucket, vol: cell.askVol, side: 'buy' });
       }
-      if (bubbleSide !== 'buy' && cell.bidVol >= bubbleThreshold) {
+      if (bubbleSide !== 'buy' && cell.bidVol >= actualThreshold) {
         qualifiedCells.push({ price: priceBucket, vol: cell.bidVol, side: 'sell' });
       }
     });

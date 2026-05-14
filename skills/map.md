@@ -25,11 +25,11 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, 12px font)
 │   │   ├── drawPriceLine.ts  # Live price badge with countdown and direction-color
 │   │   ├── drawCrosshair.ts  # TradingView-style crosshair with axis labels
-│   │   ├── drawAbsorption.ts # Absorption markers (minor/strong/extreme), glow, labels
-│   │   ├── drawExhaustion.ts # Exhaustion markers (dash scaling, rank-based labels)
+│   │   ├── drawAbsorption.ts # Absorption markers (minor/strong/extreme), glow, labels, timeframe-scaled
+│   │   ├── drawExhaustion.ts # Exhaustion markers (dash scaling, rank-based labels), timeframe-scaled
 │   │   ├── AbsorptionTooltip.tsx # Hover breakdown of absorption signals (delta, volume, progression)
 │   │   ├── ExhaustionTooltip.tsx # Hover breakdown of exhaustion signals (momentum, rejection, compression)
-│   │   ├── drawBubbles.ts    # Volume bubbles overlay (threshold-filtered, radius/opacity-scaled)
+│   │   ├── drawBubbles.ts    # Volume bubbles overlay (adaptive thresholds, radius/opacity-scaled)
 │   │   ├── drawVolumeProfile.ts # Unified amber profile with POC highlight and VA fill
 │   │   ├── drawSelectionRect.ts # Custom profile rendering with subtle borders and no background tint
 │   │   ├── drawLines.ts         # Horizontal and Vertical line drawing tool
@@ -40,7 +40,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   └── ui/                   # Reusable UI components
 │       ├── ConnectionStatus.tsx # Combined live connection indicator
 │       ├── PanelToolbar.tsx     # Per-panel controls — Pair, TF, Mode, Drawing tools, Quick Toggles
-│       ├── ChartSettingsDropdown.tsx # Draggable settings window with vertical sidebar navigation
+│       ├── ChartSettingsDropdown.tsx # Draggable settings window with vertical sidebar navigation, adaptive toggles
 │       ├── PairSelector.tsx     # Pair switcher (panel-scoped)
 │       ├── TimeframeSelector.tsx# Timeframe switcher (panel-scoped)
 │       ├── ChartModeToggle.tsx  # Candle / Footprint toggle (panel-scoped)
@@ -65,7 +65,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
-│   │   └── chart.ts          # Panel state, indicators, visual settings, sessions, auth, and persistence (v12)
+│   │   └── chart.ts          # Panel state, timeframe-linked settings, sessions, auth, and persistence (v12)
 │   └── utils/                # Helper functions
 │       ├── aggregation.ts    # Trade -> footprint cell math
 │       ├── canvas.ts         # HTML5 canvas rendering functions
@@ -83,6 +83,9 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── exhaustion.ts         # ExhaustionResult, ExhaustionDirection, ExhaustionRank
 │   ├── measurement.ts        # Measurement tool data structures
 │   └── trade.ts              # Individual trade tick definitions
+│
+├── artifacts/                # Reports and analytical documents
+│   └── timeframe_behavior_report.md # Analysis of settings behavior across timeframes
 │
 ├── tailwind.config.ts        # Design system constraints and tokens
 └── package.json              # Project dependencies (zustand, etc.)
