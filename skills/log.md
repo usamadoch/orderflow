@@ -1,5 +1,19 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-14] - Fix: Build Stability & Code Quality
+- **What changed**:
+  - **Codebase Stability**: Resolved multiple build errors and warnings to ensure a clean production pipeline.
+  - **Fixes**:
+    - **ChartCanvas.tsx**: Added missing `useEffect` dependencies (`chartMode`, `engine`, `timeframe`) in the interaction logic effect.
+    - **MeasurementPanel.tsx**: Removed unused `useMemo` import.
+    - **FeedProvider.tsx**: Added missing `useEffect` dependencies (`autoBucketSize`, `setComputedBucketSize`, `tickSize`) in the main initialization effect.
+    - **lib/store/chart.ts**: Replaced unsafe `any` cast with `Object.assign` for dynamic property updates in the `updatePanel` helper function.
+- **Why it changed**: 
+  - To ensure the production build is stable and adheres to strict ESLint and TypeScript rules.
+- **Impact**: 
+  - `npm run build` now completes successfully with zero errors or warnings, ensuring a reliable deployment state.
+
+
 ## [2026-05-14] - Fix: Exhaustion Engine Restrictiveness Review
 - **What changed**:
   - **Constraint Relaxation**: Changed `allSameDirection` check to `sameDirectionCount`. The engine now allows up to 1 counter-directional candle in the lookback window instead of strictly requiring 100% direction match across 6 candles.

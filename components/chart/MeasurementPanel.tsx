@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Measurement } from '@/lib/store/chart';
 import { formatPrice, formatVol, formatDelta } from '@/lib/utils/format';
 

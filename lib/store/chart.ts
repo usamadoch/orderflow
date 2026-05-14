@@ -306,8 +306,11 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
   const currentTfSettings: Partial<TimeframeSettings> = { ...newPanel.settingsByTimeframe[newPanel.timeframe] };
   for (const key of timeframeSettingsKeys) {
     if (key in updates) {
-      currentTfSettings[key] = updates[key] as any;
-      settingsChanged = true;
+      const value = updates[key as keyof PanelState];
+      if (value !== undefined) {
+        Object.assign(currentTfSettings, { [key]: value });
+        settingsChanged = true;
+      }
     }
   }
 
