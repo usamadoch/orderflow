@@ -59,7 +59,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── absorption/           # Absorption detection system
 │   │   └── engine.ts         # scoreCandle, buildAbsorptionMap, scoreLatestCandle (Signals 1-5)
 │   ├── exhaustion/           # Exhaustion detection system
-│   │   └── engine.ts         # scoreExhaustion, buildExhaustionMap, scoreLatestExhaustion (Signals 1-5)
+│   │   └── engine.ts         # scoreExhaustion, buildExhaustionMap, scoreLatestExhaustion (Signals 1-5, relaxed constraints)
 │   ├── feeds/                # Data adapters for WebSockets & REST
 │   │   ├── adapter.ts        # FeedAdapter interface (History + Live + clone())
 │   │   ├── binance.ts        # Binance implementation (REST klines + WebSocket streams)

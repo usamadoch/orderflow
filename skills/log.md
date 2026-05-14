@@ -1,5 +1,14 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-14] - Fix: Exhaustion Engine Restrictiveness Review
+- **What changed**:
+  - **Constraint Relaxation**: Changed `allSameDirection` check to `sameDirectionCount`. The engine now allows up to 1 counter-directional candle in the lookback window instead of strictly requiring 100% direction match across 6 candles.
+  - **Logic Alignment**: Fixed a mutual exclusivity bug between Signal 1 (momentum decay) and Signal 2 (weak continuation). S2 previously required current delta to be >1.5x the average, while S1 required current delta to be decaying (smaller than past). Lowered S2 thresholds to >0.8x and >0.5x.
+- **Why it changed**: 
+  - An audit of the exhaustion implementation found it was excessively restrictive, filtering out almost all valid exhaustion signals due to impossible mathematical contradictions and overly strict direction requirements.
+  - The goal is to make the system realistically responsive to market exhaustion while maintaining the integrity of the design spec.
+- **Impact**: 
+  - Exhaustion signals now appear much more consistently when momentum fades. Signal 1 and Signal 2 can now successfully trigger together, resulting in higher confidence scores on genuine exhaustion candles.
 ## [2026-05-14] - Feature: Absorption Engine Improvements (Signals 4 & 5)
 - **What changed**:
   - **Signal 4 Review**: Corrected the Imbalance Cluster logic to exactly match the specification `ratio = askVol / (bidVol + 1)` and properly verify cluster stacks.

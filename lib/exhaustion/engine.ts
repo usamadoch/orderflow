@@ -84,10 +84,10 @@ function scoreWeakContinuation(
   const continuationRatio = priceMove / avgPriceMove;
 
   let pts = 0;
-  if (continuationRatio < 0.3 && deltaRatio > 2) {
+  if (continuationRatio < 0.3 && deltaRatio > 0.8) {
     pts = 25;
     reasons.push(`Extreme effort vs result (delta ${deltaRatio.toFixed(1)}x, move ${continuationRatio.toFixed(1)}x)`);
-  } else if (continuationRatio < 0.5 && deltaRatio > 1.5) {
+  } else if (continuationRatio < 0.5 && deltaRatio > 0.5) {
     pts = 15;
     reasons.push(`Weak continuation (delta ${deltaRatio.toFixed(1)}x, move ${continuationRatio.toFixed(1)}x)`);
   }
@@ -232,10 +232,10 @@ export function scoreExhaustion(
   const direction: ExhaustionDirection = delta > 0 ? 'buyer' : 'seller';
   const sign = delta > 0 ? 1 : -1;
 
-  // Direction Classification: All candles in the window must have delta in the same direction
-  // (or zero) as the current candle. Mixed direction = not exhaustion.
-  const allSameDirection = recentFootprints.every(fp => !fp || fp.delta === 0 || Math.sign(fp.delta) === sign);
-  if (!allSameDirection) return null;
+  // Direction Classification: Predominantly same direction.
+  // Allow at most 1 counter-directional candle in the window to prevent over-filtering.
+  const sameDirectionCount = recentFootprints.filter(fp => !fp || fp.delta === 0 || Math.sign(fp.delta) === sign).length;
+  if (sameDirectionCount < recentFootprints.length - 1) return null;
 
   const { avgAbsDelta, avgPriceMove } = getRollingAverages(recentCandles, recentFootprints);
 
