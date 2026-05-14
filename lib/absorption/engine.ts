@@ -160,14 +160,17 @@ function scoreImbalanceCluster(
     const askVol = cell.askVol;
     const bidVol = cell.bidVol;
     
+    // Imbalance definition per cell
+    const ratio = askVol / (bidVol + 1);
+
     // Ratio > 3 => Ask Imbalance (Aggressive Buyers)
-    if (askVol > bidVol * 3 && askVol > 0) {
+    if (ratio > 3) {
       currentStackedAsk++;
       maxStackedAsk = Math.max(maxStackedAsk, currentStackedAsk);
       currentStackedBid = 0;
     } 
     // Ratio < 0.33 => Bid Imbalance (Aggressive Sellers)
-    else if (bidVol > askVol * 3 && bidVol > 0) {
+    else if (ratio < 0.33 && bidVol > 0) {
       currentStackedBid++;
       maxStackedBid = Math.max(maxStackedBid, currentStackedBid);
       currentStackedAsk = 0;
@@ -210,6 +213,69 @@ function scoreImbalanceCluster(
   return pts;
 }
 
+// ── Signal 5 — Repeated Level Defense (max 10 pts) ───────
+
+function scoreRepeatedDefense(
+  footprint: FootprintCandle | null,
+  delta: number,
+  recentFootprints: (FootprintCandle | null)[],
+  reasons: string[]
+): number {
+  if (!footprint) return 0;
+  
+  // Look back at the last 5 candles
+  const last5 = recentFootprints.slice(-5).filter(f => f !== null) as FootprintCandle[];
+  if (last5.length === 0) return 0;
+
+  const isSellAggression = delta < 0;
+
+  const avgCellVol = footprint.cells.size > 0 ? footprint.volume / footprint.cells.size : 0;
+  const highVolThreshold = avgCellVol * 1.5;
+
+  let maxTimesDefended = 0;
+
+  for (const [price, cell] of footprint.cells.entries()) {
+    const cellVol = cell.bidVol + cell.askVol;
+    if (cellVol < highVolThreshold || cellVol === 0) continue;
+    
+    // Check if it's high volume on the aggressor side
+    if (isSellAggression && cell.bidVol <= cell.askVol) continue;
+    if (!isSellAggression && cell.askVol <= cell.bidVol) continue;
+
+    let timesDefended = 0;
+    for (const prev of last5) {
+      const prevCell = prev.cells.get(price);
+      if (!prevCell) continue;
+      
+      const prevAvgVol = prev.cells.size > 0 ? prev.volume / prev.cells.size : 0;
+      const prevCellVol = prevCell.bidVol + prevCell.askVol;
+      
+      if (prevCellVol >= prevAvgVol * 1.5) {
+        if (isSellAggression && prevCell.bidVol > prevCell.askVol) {
+          timesDefended++;
+        } else if (!isSellAggression && prevCell.askVol > prevCell.bidVol) {
+          timesDefended++;
+        }
+      }
+    }
+    
+    if (timesDefended > maxTimesDefended) {
+      maxTimesDefended = timesDefended;
+    }
+  }
+  
+  let pts = 0;
+  if (maxTimesDefended >= 3) {
+    pts = 10;
+    reasons.push(`Level defended ${maxTimesDefended} times in last 5 candles`);
+  } else if (maxTimesDefended === 2) {
+    pts = 5;
+    reasons.push(`Level defended 2 times in last 5 candles`);
+  }
+  
+  return pts;
+}
+
 // ── Main Scoring Function ────────────────────────────────
 
 export function scoreCandle(
@@ -238,8 +304,8 @@ export function scoreCandle(
   const s3 = scorePoorProgression(candle, delta, reasons);
   const s4 = scoreImbalanceCluster(footprint, delta, candle, reasons);
 
-  // ── Signal 5 (not yet implemented) ──
-  const s5 = 0;
+  // ── Signal 5 ──
+  const s5 = scoreRepeatedDefense(footprint, delta, recentFootprints, reasons);
 
   const rawScore = s1 + s2 + s3 + s4 + s5;
   const score = clamp(rawScore, 0, 100);

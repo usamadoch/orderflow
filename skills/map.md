@@ -57,7 +57,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── aggregation/          # Trade aggregation logic
 │   │   └── engine.ts         # AggregationEngine (Real-time Trade Aggregation)
 │   ├── absorption/           # Absorption detection system
-│   │   └── engine.ts         # scoreCandle, buildAbsorptionMap, scoreLatestCandle (Signals 1-4)
+│   │   └── engine.ts         # scoreCandle, buildAbsorptionMap, scoreLatestCandle (Signals 1-5)
 │   ├── exhaustion/           # Exhaustion detection system
 │   │   └── engine.ts         # scoreExhaustion, buildExhaustionMap, scoreLatestExhaustion (Signals 1-5)
 │   ├── feeds/                # Data adapters for WebSockets & REST

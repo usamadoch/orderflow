@@ -1,5 +1,15 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-14] - Feature: Absorption Engine Improvements (Signals 4 & 5)
+- **What changed**:
+  - **Signal 4 Review**: Corrected the Imbalance Cluster logic to exactly match the specification `ratio = askVol / (bidVol + 1)` and properly verify cluster stacks.
+  - **Signal 5 Implementation**: Implemented "Repeated Level Defense" logic (`scoreRepeatedDefense`), tracking when specific price levels see high volume on the aggressor side over the past 5 candles.
+  - **Integration**: Updated `engine.ts` to include Signal 5 scoring in the final absorption calculation.
+- **Why it changed**: 
+  - To complete the Absorption Detection System's logic based on the design specification in `skills/tasks/new/absorption.md`.
+- **Impact**: 
+  - The absorption engine now correctly uses all 5 signals, adding greater depth and accuracy to its calculations and visual markers.
+
 ## [2026-05-14] - Feature: Timeframe Scaling & Adaptive Settings
 - **What changed**:
   - **Timeframe-Linked Settings**: Refactored `PanelState` in `chart.ts` to include `settingsByTimeframe`. Settings like bucket size, thresholds, and profile UI are now saved per timeframe and automatically restored on switch.
