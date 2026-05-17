@@ -29,8 +29,12 @@ import { drawDeltaProfile } from '@/lib/draw/drawDeltaProfile';
 import { drawMeasurementRect } from '@/lib/draw/drawMeasurement';
 import { drawSessions } from '@/lib/draw/drawSessions';
 import { drawLiquidity } from '@/lib/draw/drawLiquidity';
+import { drawLiquidityHeatmap } from '@/lib/draw/drawLiquidityHeatmap';
+import { buildHeatmapRows } from '@/lib/liquidity/heatmap';
+import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
 import { MeasurementPanel } from './MeasurementPanel';
+import { HeatmapRow } from '@/types/liquidity';
 
 interface ChartCanvasProps {
   panelId: PanelId;
@@ -89,6 +93,16 @@ interface ChartCanvasProps {
   liquidityEnabled: boolean;
   liquidityOpacity: number;
   liquidityBucketSize: number;
+  liquidityHistory: LiquidityHistoryManager | null;
+  liquidityHeatmapEnabled: boolean;
+  liquidityHeatmapOpacity: number;
+  liquidityHeatmapAgeFade: number;
+  liquidityHeatmapWidth: number;
+  liquidityHeatmapShowPulled: boolean;
+  liquidityHeatmapShowConsumed: boolean;
+  liquidityHeatmapShowPersistence: boolean;
+  liquidityHeatmapShowCurrentLabel: boolean;
+  liquidityHeatmapProfileSync: boolean;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -145,6 +159,16 @@ export function ChartCanvas({
   liquidityEnabled,
   liquidityOpacity,
   liquidityBucketSize,
+  liquidityHistory,
+  liquidityHeatmapEnabled,
+  liquidityHeatmapOpacity,
+  liquidityHeatmapAgeFade,
+  liquidityHeatmapWidth,
+  liquidityHeatmapShowPulled,
+  liquidityHeatmapShowConsumed,
+  liquidityHeatmapShowPersistence,
+  liquidityHeatmapShowCurrentLabel,
+  liquidityHeatmapProfileSync,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -183,7 +207,11 @@ export function ChartCanvas({
   const priceAxisWidth = 85;
   const timeAxisHeight = 24;
   const baseProfileWidth = 120;
-  const profileWidth = baseProfileWidth;
+  
+  let profileWidth = baseProfileWidth;
+  if (liquidityHeatmapEnabled) {
+    profileWidth += liquidityHeatmapWidth;
+  }
 
   const redraw = useCallback(() => {
     if (isRedrawScheduled.current) return;
@@ -371,6 +399,14 @@ export function ChartCanvas({
         }
       }
 
+      const lastCandle = candles[candles.length - 1];
+      const isScrolled = candles.length > 0 && (candles.length - lastIndex) > 50;
+
+      let heatmapRows: HeatmapRow[] | undefined = undefined;
+      if (liquidityHeatmapEnabled && liquidityHistory) {
+        heatmapRows = buildHeatmapRows(liquidityHistory, priceMin, priceMax, liquidityBucketSize, lastCandle?.close || 0);
+      }
+
       // Volume Profile
       const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
       const profile = buildProfile(visibleCandles, engine, bucketSize, profileBucketSize);
@@ -392,7 +428,8 @@ export function ChartCanvas({
           profileShowPocHighlight,
           profileShowVaFill,
           profileShowPocLine,
-          profileShowVaLines
+          profileShowVaLines,
+          liquidityHeatmapProfileSync ? heatmapRows : undefined
         );
       }
       
@@ -415,7 +452,23 @@ export function ChartCanvas({
       drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth);
       drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
-      const lastCandle = candles[candles.length - 1];
+      if (heatmapRows && liquidityHistory) {
+        // The heatmap strip is drawn right before the volume profile
+        const stripX = chartWidth - profileWidth; // start of reserved space (heatmap comes first from the left)
+        drawLiquidityHeatmap(ctx, heatmapRows, priceToY, stripX, liquidityHeatmapWidth, liquidityBucketSize, {
+          heatmapOpacity: liquidityHeatmapOpacity,
+          ageFadeFactor: liquidityHeatmapAgeFade,
+          showPulled: liquidityHeatmapShowPulled,
+          showConsumed: liquidityHeatmapShowConsumed,
+          showPersistence: liquidityHeatmapShowPersistence,
+          totalSnapshots: liquidityHistory.getHistory().length,
+          currentPrice: lastCandle?.close || 0,
+          isScrolled,
+          showCurrentLabel: liquidityHeatmapShowCurrentLabel,
+          canvasHeight: chartHeight
+        });
+      }
+
       if (lastCandle) {
         drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
       }
@@ -467,13 +520,14 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync]);
+
+  const scrollOffset = useRef(scrollOffsetProp);
+  const barWidth = useRef(barWidthProp);
+  const priceCenter = useRef<number | null>(null);
+  const priceRange = useRef<number | null>(null);
 
   const { 
-    scrollOffset, 
-    barWidth, 
-    priceCenter, 
-    priceRange, 
     mouseX, 
     mouseY, 
     isMouseOver,
@@ -538,7 +592,8 @@ export function ChartCanvas({
       if (syncEnabled) {
         useChartStore.getState().setCrosshair({ activePanel: panelId, time, price });
       }
-    }, [panelId, candles, priceAxisWidth, timeAxisHeight, profileWidth])
+    }, [panelId, candles, priceAxisWidth, timeAxisHeight, profileWidth]),
+    { scrollOffset, barWidth, priceCenter, priceRange }
   );
 
   const redrawRef = useRef(redraw);

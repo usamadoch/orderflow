@@ -14,6 +14,7 @@ import { AbsorptionResult } from '../types/absorption';
 import { ExhaustionResult } from '../types/exhaustion';
 import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
+import { LiquidityHistoryManager } from '../lib/liquidity/history';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -40,6 +41,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const setLiquidityZones = useChartStore(s => s.setLiquidityZones);
   const liquidityEnabled = useChartStore(s => s.panels[panelId].liquidityEnabled);
   const liquidityBucketSize = useChartStore(s => s.panels[panelId].liquidityBucketSize);
+  const liquidityHistoryDepth = useChartStore(s => s.panels[panelId].liquidityHistoryDepth);
   const minimumLiquidityThreshold = useChartStore(s => s.panels[panelId].minimumLiquidityThreshold);
   const liquidityRange = useChartStore(s => s.panels[panelId].liquidityRange);
 
@@ -54,6 +56,16 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   // Orderbook manager per panel
   const orderbookRef = useRef<OrderbookManager>(new OrderbookManager());
   const pendingAggregationRef = useRef(false);
+  const liquidityHistoryRef = useRef<LiquidityHistoryManager>(new LiquidityHistoryManager(liquidityBucketSize, liquidityHistoryDepth));
+
+  // Update history bucket size
+  useEffect(() => {
+    liquidityHistoryRef.current.setBucketSize(liquidityBucketSize);
+  }, [liquidityBucketSize]);
+
+  useEffect(() => {
+    liquidityHistoryRef.current.setMaxSnapshots(liquidityHistoryDepth);
+  }, [liquidityHistoryDepth]);
 
   // Throttled redraw loop for footprint updates
   useEffect(() => {
@@ -132,6 +144,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     exhaustionMapRef.current = new Map();
     lastScoredCandleTimeRef.current = null;
     useChartStore.getState().setActiveMeasurement(panelId, null);
+    liquidityHistoryRef.current.reset();
 
     const adapter = adapterRef.current;
     adapter.disconnect();
@@ -155,6 +168,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         const newExhMap = scoreLatestExhaustion(currentCandles, engineRef.current, newMap, exhaustionMapRef.current, exhaustionLookback);
         exhaustionMapRef.current = newExhMap;
         setExhaustionMap(panelId, newExhMap);
+
+        const panelState = useChartStore.getState().panels[panelId];
+        if (panelState.liquidityHistoryEnabled) {
+          liquidityHistoryRef.current.captureSnapshot(candle.time, orderbookRef.current);
+        }
       }
     };
 
@@ -281,5 +299,36 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     };
   }, [pair, timeframe, panelId, exhaustionLookback, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange]);
 
-  return <ChartEngineContext.Provider value={engineRef.current}>{children}</ChartEngineContext.Provider>;
+  // Temporary Verification Hotkey
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key.toLowerCase() === 'h') {
+        const activePanel = useChartStore.getState().activePanel;
+        if (activePanel === panelId) {
+          console.log(`--- Liquidity History (${panelId} panel) ---`);
+          const history = liquidityHistoryRef.current.getHistory();
+          console.log(`Snapshot count: ${history.length}`);
+          if (history.length > 0) {
+            const firstSnapshot = history[0];
+            console.log(`First snapshot zones:`, firstSnapshot.zones.length);
+            const firstBid = firstSnapshot.zones.find(z => z.side === 'bid');
+            if (firstBid) {
+              const priceHistory = liquidityHistoryRef.current.getPriceHistory(firstBid.price, 'bid');
+              console.log(`Price History for ${firstBid.price} (bid):`, priceHistory);
+              if (priceHistory.length > 0) {
+                import('../lib/liquidity/analysis').then(({ getLiquidityBehavior }) => {
+                  console.log(`Behavior for ${firstBid.price}:`, getLiquidityBehavior(priceHistory));
+                });
+              }
+            }
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [panelId]);
+
+  return <ChartEngineContext.Provider value={{ engine: engineRef.current, liquidityHistory: liquidityHistoryRef.current }}>{children}</ChartEngineContext.Provider>;
 }

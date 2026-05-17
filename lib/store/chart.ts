@@ -142,6 +142,17 @@ export interface PanelState {
   minimumLiquidityThreshold: number;      // default 5, persisted
   liquidityOpacity: number;               // default 0.6, persisted
   liquidityRange: number;                 // default 10 (percent), persisted
+  liquidityHistoryEnabled: boolean;       // default true, persisted
+  liquidityHistoryDepth: number;          // max snapshots, default 200, persisted
+  liquidityHeatmapEnabled: boolean;
+  liquidityHeatmapOpacity: number;
+  liquidityHeatmapAgeFade: number;
+  liquidityHeatmapWidth: number;
+  liquidityHeatmapShowPulled: boolean;
+  liquidityHeatmapShowConsumed: boolean;
+  liquidityHeatmapShowPersistence: boolean;
+  liquidityHeatmapShowCurrentLabel: boolean;
+  liquidityHeatmapProfileSync: boolean;
 }
 
 interface ChartState {
@@ -223,6 +234,17 @@ interface ChartState {
   setMinimumLiquidityThreshold: (panelId: PanelId, threshold: number) => void;
   setLiquidityOpacity: (panelId: PanelId, opacity: number) => void;
   setLiquidityRange: (panelId: PanelId, range: number) => void;
+  setLiquidityHistoryEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setLiquidityHistoryDepth: (panelId: PanelId, depth: number) => void;
+  setLiquidityHeatmapEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setLiquidityHeatmapOpacity: (panelId: PanelId, opacity: number) => void;
+  setLiquidityHeatmapAgeFade: (panelId: PanelId, fade: number) => void;
+  setLiquidityHeatmapWidth: (panelId: PanelId, width: number) => void;
+  setLiquidityHeatmapShowPulled: (panelId: PanelId, show: boolean) => void;
+  setLiquidityHeatmapShowConsumed: (panelId: PanelId, show: boolean) => void;
+  setLiquidityHeatmapShowPersistence: (panelId: PanelId, show: boolean) => void;
+  setLiquidityHeatmapShowCurrentLabel: (panelId: PanelId, show: boolean) => void;
+  setLiquidityHeatmapProfileSync: (panelId: PanelId, sync: boolean) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -319,6 +341,17 @@ function createDefaultPanel(id: PanelId): PanelState {
     minimumLiquidityThreshold: 5,
     liquidityOpacity: 0.6,
     liquidityRange: 10,
+    liquidityHistoryEnabled: true,
+    liquidityHistoryDepth: 200,
+    liquidityHeatmapEnabled: true,
+    liquidityHeatmapOpacity: 0.7,
+    liquidityHeatmapAgeFade: 0.6,
+    liquidityHeatmapWidth: 60,
+    liquidityHeatmapShowPulled: true,
+    liquidityHeatmapShowConsumed: true,
+    liquidityHeatmapShowPersistence: true,
+    liquidityHeatmapShowCurrentLabel: true,
+    liquidityHeatmapProfileSync: false,
   };
 }
 
@@ -591,6 +624,39 @@ export const useChartStore = create<ChartState>()(
       setLiquidityRange: (panelId, liquidityRange) =>
         set((state) => updatePanel(state, panelId, { liquidityRange: Math.max(1, Math.min(50, liquidityRange)) })),
 
+      setLiquidityHistoryEnabled: (panelId, liquidityHistoryEnabled) =>
+        set((state) => updatePanel(state, panelId, { liquidityHistoryEnabled })),
+
+      setLiquidityHistoryDepth: (panelId, liquidityHistoryDepth) =>
+        set((state) => updatePanel(state, panelId, { liquidityHistoryDepth: Math.max(50, Math.min(500, liquidityHistoryDepth)) })),
+
+      setLiquidityHeatmapEnabled: (panelId, liquidityHeatmapEnabled) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapEnabled })),
+
+      setLiquidityHeatmapOpacity: (panelId, liquidityHeatmapOpacity) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapOpacity: Math.max(0, Math.min(1.0, liquidityHeatmapOpacity)) })),
+
+      setLiquidityHeatmapAgeFade: (panelId, liquidityHeatmapAgeFade) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapAgeFade: Math.max(0, Math.min(1.0, liquidityHeatmapAgeFade)) })),
+
+      setLiquidityHeatmapWidth: (panelId, liquidityHeatmapWidth) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapWidth: Math.max(30, Math.min(120, liquidityHeatmapWidth)) })),
+
+      setLiquidityHeatmapShowPulled: (panelId, liquidityHeatmapShowPulled) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapShowPulled })),
+
+      setLiquidityHeatmapShowConsumed: (panelId, liquidityHeatmapShowConsumed) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapShowConsumed })),
+
+      setLiquidityHeatmapShowPersistence: (panelId, liquidityHeatmapShowPersistence) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapShowPersistence })),
+
+      setLiquidityHeatmapShowCurrentLabel: (panelId, liquidityHeatmapShowCurrentLabel) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapShowCurrentLabel })),
+
+      setLiquidityHeatmapProfileSync: (panelId, liquidityHeatmapProfileSync) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapProfileSync })),
+
       setSessionEnabled: (panelId, sessionId, enabled) =>
         set((state) => {
           const panel = state.panels[panelId];
@@ -691,7 +757,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 13,
+      version: 16,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -743,12 +809,24 @@ export const useChartStore = create<ChartState>()(
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
             settingsByTimeframe: p.settingsByTimeframe ?? {},
-            // Liquidity Map (v13)
+            // Liquidity Map (v13 & v14)
             liquidityEnabled: p.liquidityEnabled ?? true,
             liquidityBucketSize: p.liquidityBucketSize ?? 50,
             minimumLiquidityThreshold: p.minimumLiquidityThreshold ?? 5,
             liquidityOpacity: p.liquidityOpacity ?? 0.6,
             liquidityRange: p.liquidityRange ?? 10,
+            liquidityHistoryEnabled: p.liquidityHistoryEnabled ?? true,
+            liquidityHistoryDepth: Math.max(50, Math.min(500, p.liquidityHistoryDepth ?? 200)),
+            // Heatmap (v15)
+            liquidityHeatmapEnabled: p.liquidityHeatmapEnabled ?? true,
+            liquidityHeatmapOpacity: p.liquidityHeatmapOpacity ?? 0.7,
+            liquidityHeatmapAgeFade: p.liquidityHeatmapAgeFade ?? 0.6,
+            liquidityHeatmapWidth: p.liquidityHeatmapWidth ?? 60,
+            liquidityHeatmapShowPulled: p.liquidityHeatmapShowPulled ?? true,
+            liquidityHeatmapShowConsumed: p.liquidityHeatmapShowConsumed ?? true,
+            liquidityHeatmapShowPersistence: p.liquidityHeatmapShowPersistence ?? true,
+            liquidityHeatmapShowCurrentLabel: p.liquidityHeatmapShowCurrentLabel ?? true,
+            liquidityHeatmapProfileSync: p.liquidityHeatmapProfileSync ?? false,
           };
         };
         if (persisted.panels) {
@@ -824,6 +902,17 @@ export const useChartStore = create<ChartState>()(
             minimumLiquidityThreshold: state.panels.left.minimumLiquidityThreshold,
             liquidityOpacity: state.panels.left.liquidityOpacity,
             liquidityRange: state.panels.left.liquidityRange,
+            liquidityHistoryEnabled: state.panels.left.liquidityHistoryEnabled,
+            liquidityHistoryDepth: state.panels.left.liquidityHistoryDepth,
+            liquidityHeatmapEnabled: state.panels.left.liquidityHeatmapEnabled,
+            liquidityHeatmapOpacity: state.panels.left.liquidityHeatmapOpacity,
+            liquidityHeatmapAgeFade: state.panels.left.liquidityHeatmapAgeFade,
+            liquidityHeatmapWidth: state.panels.left.liquidityHeatmapWidth,
+            liquidityHeatmapShowPulled: state.panels.left.liquidityHeatmapShowPulled,
+            liquidityHeatmapShowConsumed: state.panels.left.liquidityHeatmapShowConsumed,
+            liquidityHeatmapShowPersistence: state.panels.left.liquidityHeatmapShowPersistence,
+            liquidityHeatmapShowCurrentLabel: state.panels.left.liquidityHeatmapShowCurrentLabel,
+            liquidityHeatmapProfileSync: state.panels.left.liquidityHeatmapProfileSync,
             settingsByTimeframe: state.panels.left.settingsByTimeframe,
           },
           right: {
@@ -871,6 +960,17 @@ export const useChartStore = create<ChartState>()(
             minimumLiquidityThreshold: state.panels.right.minimumLiquidityThreshold,
             liquidityOpacity: state.panels.right.liquidityOpacity,
             liquidityRange: state.panels.right.liquidityRange,
+            liquidityHistoryEnabled: state.panels.right.liquidityHistoryEnabled,
+            liquidityHistoryDepth: state.panels.right.liquidityHistoryDepth,
+            liquidityHeatmapEnabled: state.panels.right.liquidityHeatmapEnabled,
+            liquidityHeatmapOpacity: state.panels.right.liquidityHeatmapOpacity,
+            liquidityHeatmapAgeFade: state.panels.right.liquidityHeatmapAgeFade,
+            liquidityHeatmapWidth: state.panels.right.liquidityHeatmapWidth,
+            liquidityHeatmapShowPulled: state.panels.right.liquidityHeatmapShowPulled,
+            liquidityHeatmapShowConsumed: state.panels.right.liquidityHeatmapShowConsumed,
+            liquidityHeatmapShowPersistence: state.panels.right.liquidityHeatmapShowPersistence,
+            liquidityHeatmapShowCurrentLabel: state.panels.right.liquidityHeatmapShowCurrentLabel,
+            liquidityHeatmapProfileSync: state.panels.right.liquidityHeatmapProfileSync,
             settingsByTimeframe: state.panels.right.settingsByTimeframe,
           },
         },

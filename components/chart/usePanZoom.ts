@@ -1,5 +1,12 @@
 import { useRef, useEffect } from 'react';
 
+export interface PanZoomRefs {
+  scrollOffset: React.MutableRefObject<number>;
+  barWidth: React.MutableRefObject<number>;
+  priceCenter: React.MutableRefObject<number | null>;
+  priceRange: React.MutableRefObject<number | null>;
+}
+
 export function usePanZoom(
   canvasRef: React.RefObject<HTMLCanvasElement>,
   onRedraw: () => void,
@@ -14,12 +21,19 @@ export function usePanZoom(
   isDrawMode: boolean = false,
   measureToolActive: boolean = false,
   canStartDrag?: (x: number, y: number) => boolean,
-  onCrosshairChange?: (x: number | null, y: number | null) => void
+  onCrosshairChange?: (x: number | null, y: number | null) => void,
+  externalRefs?: PanZoomRefs
 ) {
-  const scrollOffset = useRef(initialScrollOffset);
-  const barWidth = useRef(initialBarWidth);
-  const priceCenter = useRef<number | null>(null);
-  const priceRange = useRef<number | null>(null);
+  const localScrollOffset = useRef(initialScrollOffset);
+  const localBarWidth = useRef(initialBarWidth);
+  const localPriceCenter = useRef<number | null>(null);
+  const localPriceRange = useRef<number | null>(null);
+
+  const scrollOffset = externalRefs?.scrollOffset || localScrollOffset;
+  const barWidth = externalRefs?.barWidth || localBarWidth;
+  const priceCenter = externalRefs?.priceCenter || localPriceCenter;
+  const priceRange = externalRefs?.priceRange || localPriceRange;
+
   const isDragging = useRef(false);
   const dragMode = useRef<'chart' | 'price' | 'time'>('chart');
   const lastX = useRef(0);
