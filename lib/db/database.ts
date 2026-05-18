@@ -3,6 +3,7 @@ import { mkdirSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import type { Candle } from '../../types/candle'
 import type { FootprintCell } from '../../types/footprint'
+import type { Trade } from '../../types/trade'
 
 const databaseUrl = process.env.TURSO_DATABASE_URL ?? 'file:./data/market.db'
 const localDatabasePath = databaseUrl.startsWith('file:')
@@ -13,6 +14,7 @@ export const DB_CONFIG = {
   retentionHours: Number(process.env.DB_RETENTION_HOURS ?? '48'),
   cleanupIntervalMinutes: 30,
   maxCandlesPerQuery: 1000,
+  maxTradesPerQuery: 50000,
 }
 
 function ensureLocalDatabaseDirectory() {
@@ -66,11 +68,24 @@ export type CandleInsertInput = Pick<Candle, 'open' | 'high' | 'low' | 'close' |
   isClosed?: boolean
 }
 
+export interface RawTradeRow {
+  id: number
+  symbol: string
+  aggregate_trade_id: number
+  trade_time: number
+  price: number
+  quantity: number
+  is_buyer_maker: number
+  stored_at: number
+}
+
 export interface FootprintCellWriteInput {
   bucketPrice: number
   bidVol: number
   askVol: number
 }
+
+export type RawTradeWriteInput = Trade
 
 export interface ClosedCandleSnapshotInput {
   symbol: string
@@ -228,6 +243,30 @@ export async function initDatabase() {
 
             PRIMARY KEY(symbol, timeframe, candle_time)
           )
+        `,
+        args: [],
+      },
+      {
+        sql: `
+          CREATE TABLE IF NOT EXISTS raw_trades (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol             TEXT    NOT NULL,
+            aggregate_trade_id INTEGER NOT NULL,
+            trade_time         INTEGER NOT NULL,
+            price              REAL    NOT NULL,
+            quantity           REAL    NOT NULL,
+            is_buyer_maker     INTEGER NOT NULL,
+            stored_at          INTEGER NOT NULL DEFAULT (unixepoch()),
+
+            UNIQUE(symbol, aggregate_trade_id)
+          )
+        `,
+        args: [],
+      },
+      {
+        sql: `
+          CREATE INDEX IF NOT EXISTS idx_raw_trades_query
+            ON raw_trades(symbol, trade_time ASC)
         `,
         args: [],
       },
@@ -425,6 +464,33 @@ export async function persistClosedCandleSnapshot({
   })
 }
 
+export async function insertRawTradeBatch(symbol: string, trades: RawTradeWriteInput[]) {
+  const rows = trades.filter((trade) => Number.isFinite(trade.id))
+  if (rows.length === 0) return
+
+  await withDbWriteRetry('Raw trade batch write', async () => {
+    await db.batch(
+      rows.map((trade) => ({
+        sql: `
+          INSERT OR IGNORE INTO raw_trades (
+            symbol, aggregate_trade_id, trade_time, price, quantity, is_buyer_maker
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          symbol,
+          trade.id!,
+          trade.time,
+          trade.price,
+          trade.quantity,
+          trade.isBuyerMaker ? 1 : 0,
+        ],
+      })),
+      'write',
+    )
+  })
+}
+
 export async function insertCandleDelta(
   symbol: string,
   timeframe: string,
@@ -461,11 +527,37 @@ export async function deleteOldData(retentionHours = DB_CONFIG.retentionHours) {
         sql: 'DELETE FROM candle_delta WHERE candle_time < ?',
         args: [cutoff],
       },
+      {
+        sql: 'DELETE FROM raw_trades WHERE trade_time < ?',
+        args: [cutoff * 1000],
+      },
     ],
     'write',
   )
 
   return results.reduce((total, result) => total + Number(result.rowsAffected ?? 0), 0)
+}
+
+export async function getRawTrades(
+  symbol: string,
+  startTimeMs: number,
+  endTimeMs: number,
+  limit = DB_CONFIG.maxTradesPerQuery,
+) {
+  const boundedLimit = Math.max(1, Math.min(limit, DB_CONFIG.maxTradesPerQuery))
+
+  const result = await db.execute({
+    sql: `
+      SELECT *
+      FROM raw_trades
+      WHERE symbol = ? AND trade_time >= ? AND trade_time < ?
+      ORDER BY trade_time ASC
+      LIMIT ?
+    `,
+    args: [symbol, startTimeMs, endTimeMs, boundedLimit],
+  })
+
+  return result.rows as unknown as RawTradeRow[]
 }
 
 export async function getCandles(

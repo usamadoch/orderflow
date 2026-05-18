@@ -148,6 +148,7 @@ export class BinanceAdapter implements FeedAdapter {
       } else if (parsed.stream.includes('@aggTrade') && this.tradeCb) {
         const data = parsed.data;
         const trade: Trade = {
+          id: data.a,
           time: data.T, // unix ms
           price: parseFloat(data.p),
           quantity: parseFloat(data.q),

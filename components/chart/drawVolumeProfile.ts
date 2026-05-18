@@ -16,6 +16,7 @@ export function drawVolumeProfile(
   profileWidthPct: number = 70,
   profileOpacity: number = 0.4,
   profileMinRowWidth: number = 2,
+  profileMinRowHeight: number = 1,
   profileBucketSize: number = bucketSize,
   profileScaleMode: 'linear' | 'sqrt' = 'sqrt',
   showPocHighlight: boolean = true,
@@ -25,7 +26,9 @@ export function drawVolumeProfile(
   heatmapRows?: HeatmapRow[]
 ) {
   const chartRight = canvasWidth - priceAxisWidth;
-  const effectiveWidth = profileWidth * (profileWidthPct / 100);
+  const effectiveWidth = Math.max(0, profileWidth * (profileWidthPct / 100));
+  if (effectiveWidth <= 0 || profile.maxVol <= 0) return;
+
   const profileStartX = chartRight - effectiveWidth;
 
   const barOpacity = isCustomActive ? profileOpacity * 0.4 : profileOpacity;
@@ -41,14 +44,13 @@ export function drawVolumeProfile(
 
   // ── Step 1: Profile Bars ──
   for (const row of profile.rows) {
-    const yTop = priceToY(row.price + profileBucketSize);
-    const yBot = priceToY(row.price);
-    const rowHeight = yBot - yTop;
+    const yRange = getProfileRowYRange(row.price, profileBucketSize, priceToY, profileMinRowHeight);
+    if (!yRange) continue;
 
-    if (rowHeight < 0.5) continue;
+    const { yTop, rowHeight } = yRange;
 
     let calculatedBarWidth: number;
-    const volRatio = row.totalVol / profile.maxVol;
+    const volRatio = Math.max(0, Math.min(1, row.totalVol / profile.maxVol));
 
     if (profileScaleMode === 'sqrt') {
       calculatedBarWidth = Math.sqrt(volRatio) * effectiveWidth;
@@ -60,6 +62,7 @@ export function drawVolumeProfile(
     if (row.totalVol > 0 && profileMinRowWidth > 0) {
       calculatedBarWidth = Math.max(profileMinRowWidth, calculatedBarWidth);
     }
+    calculatedBarWidth = Math.min(effectiveWidth, calculatedBarWidth);
 
     if (calculatedBarWidth < 0.5) continue;
 
@@ -74,47 +77,49 @@ export function drawVolumeProfile(
   if (showPocHighlight) {
     const pocRow = profile.rows.find(r => r.price === profile.poc);
     if (pocRow) {
-      const yTop = priceToY(pocRow.price + profileBucketSize);
-      const yBot = priceToY(pocRow.price);
-      const rowHeight = yBot - yTop;
+      const yRange = getProfileRowYRange(pocRow.price, profileBucketSize, priceToY, profileMinRowHeight);
+      if (yRange) {
+        const { yTop, rowHeight } = yRange;
 
-      const volRatio = pocRow.totalVol / profile.maxVol;
-      let barW = (profileScaleMode === 'sqrt' ? Math.sqrt(volRatio) : volRatio) * effectiveWidth;
-      if (pocRow.totalVol > 0 && profileMinRowWidth > 0) barW = Math.max(profileMinRowWidth, barW);
+        const volRatio = Math.max(0, Math.min(1, pocRow.totalVol / profile.maxVol));
+        let barW = (profileScaleMode === 'sqrt' ? Math.sqrt(volRatio) : volRatio) * effectiveWidth;
+        if (pocRow.totalVol > 0 && profileMinRowWidth > 0) barW = Math.max(profileMinRowWidth, barW);
+        barW = Math.min(effectiveWidth, barW);
 
-      if (barW >= 0.5) {
-        const barX = chartRight - barW;
-        const highlightOpacity = Math.min(1.0, barOpacity + 0.2);
+        if (barW >= 0.5) {
+          const barX = chartRight - barW;
+          const highlightOpacity = Math.min(1.0, barOpacity + 0.2);
 
-        // Re-draw with higher brightness
-        ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
-        ctx.fillRect(barX, yTop, barW, rowHeight);
+          // Re-draw with higher brightness
+          ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
+          ctx.fillRect(barX, yTop, barW, rowHeight);
 
-        // Amber outline
-        ctx.strokeStyle = '#F0B90B';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(barX, yTop, barW, rowHeight);
+          // Amber outline
+          ctx.strokeStyle = '#F0B90B';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(barX, yTop, barW, rowHeight);
 
-        // Internal POC label
-        if (rowHeight >= 10 && barW >= 20) {
-          ctx.fillStyle = '#F0B90B';
-          ctx.font = '8px "JetBrains Mono"';
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('POC', barX + 3, yTop + rowHeight / 2 + 1);
-        }
-
-        // Optional Enrichment: POC Glow from Heatmap
-        if (heatmapRows) {
-          const matchingHeatmapRow = heatmapRows.find(
-            hr => hr.price >= pocRow.price && hr.price < pocRow.price + profileBucketSize
-          );
-          if (matchingHeatmapRow && matchingHeatmapRow.intensity >= 0.9) {
-            ctx.shadowColor = '#F0B90B';
-            ctx.shadowBlur = 10;
+          // Internal POC label
+          if (rowHeight >= 10 && barW >= 20) {
             ctx.fillStyle = '#F0B90B';
-            ctx.fillRect(barX, yTop, 2, rowHeight);
-            ctx.shadowBlur = 0; // reset
+            ctx.font = '8px "JetBrains Mono"';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('POC', barX + 3, yTop + rowHeight / 2 + 1);
+          }
+
+          // Optional Enrichment: POC Glow from Heatmap
+          if (heatmapRows) {
+            const matchingHeatmapRow = heatmapRows.find(
+              hr => hr.price >= pocRow.price && hr.price < pocRow.price + profileBucketSize
+            );
+            if (matchingHeatmapRow && matchingHeatmapRow.intensity >= 0.9) {
+              ctx.shadowColor = '#F0B90B';
+              ctx.shadowBlur = 10;
+              ctx.fillStyle = '#F0B90B';
+              ctx.fillRect(barX, yTop, 2, rowHeight);
+              ctx.shadowBlur = 0; // reset
+            }
           }
         }
       }
@@ -203,4 +208,25 @@ export function drawVolumeProfile(
     }
     ctx.restore();
   }
+}
+
+function getProfileRowYRange(
+  price: number,
+  profileBucketSize: number,
+  priceToY: (price: number) => number,
+  minRowHeight: number,
+) {
+  let yTop = priceToY(price + profileBucketSize);
+  let yBot = priceToY(price);
+  let rowHeight = yBot - yTop;
+
+  if (rowHeight <= 0) return null;
+  if (minRowHeight > 0 && rowHeight < minRowHeight) {
+    const center = (yTop + yBot) / 2;
+    yTop = center - minRowHeight / 2;
+    yBot = center + minRowHeight / 2;
+    rowHeight = minRowHeight;
+  }
+
+  return { yTop, yBot, rowHeight };
 }

@@ -1,4 +1,5 @@
 export interface Trade {
+  id?: number;
   time: number;
   price: number;
   quantity: number;

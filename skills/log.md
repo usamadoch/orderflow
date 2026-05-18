@@ -1,5 +1,27 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-18] - Improvement: Volume Profile Resolution Controls and Readability
+- **What changed**:
+  - Added persisted Volume Profile row-size settings in ticks, separate from chart candle/footprint bucket size.
+  - Added a minimum row-height rendering control so high-detail profiles remain readable when rows become subpixel thin.
+  - Updated visible, custom, and delta profile renderers to clamp bar widths to the actual available profile area and respect the new row-height setting.
+  - Wired the new settings through `ChartSettingsDropdown`, store persistence, `ChartPanel`, and `ChartCanvas`.
+- **Why it changed**:
+  - Fine raw-trade profile aggregation made profiles more precise, but very small rows and width scaling made the rendered profile hard to read and visually inconsistent.
+- **Impact summary**:
+  - Users can now tune profile aggregation detail independently from chart buckets while keeping profile width, opacity, scaling, POC/VA/LVN, and delta rendering compatible with the existing settings system.
+
+## [2026-05-18] - Improvement: Fine-Grain Volume Profile Aggregation
+- **What changed**:
+  - Added a raw-trade Volume Profile engine that aggregates Binance `aggTrade` data at tick-size resolution behind a replaceable `VolumeProfileSource` interface.
+  - Parsed Binance aggregate trade ids, stored raw trades in an idempotent `raw_trades` table, added a raw-trade history API, and hydrated stored trades on panel startup.
+  - Updated `FeedProvider`, `ChartEngineContext`, `ChartPanel`, and `ChartCanvas` so visible/custom profiles use fine raw-trade data first and fall back to the existing footprint/candle profile when raw trades are unavailable.
+  - Kept chart candles, footprint buckets, absorption/exhaustion/iceberg logic, and profile drawing controls on their existing bucket behavior.
+- **Why it changed**:
+  - Volume Profile rows were tied to chart bucket size, so larger auto buckets made the profile blocky and less precise.
+- **Impact summary**:
+  - Volume Profile rendering can now stay smooth at `tickSize` resolution even when chart/footprint buckets are larger. The new per-panel source is isolated today but structured so a shared raw-trade cache can replace it later without rewriting rendering integration.
+
 ## [2026-05-18] - Improvement: Drawing Price Label Placement
 - **What changed**:
   - Moved horizontal ray price labels from the right price scale to the ray's left starting point, slightly above the line.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useChartStore, PanelId } from '../lib/store/chart';
 import { feedAdapter } from '../lib/feeds';
 import { AggregationEngine } from '../lib/aggregation/engine';
@@ -9,6 +9,7 @@ import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/eng
 import { IcebergEngine } from '../lib/iceberg/engine';
 import { getCandleTimeForTrade } from '../lib/utils/aggregation';
 import { ChartEngineContext } from './ChartEngineContext';
+import { RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
 import { Candle } from '../types/candle';
 import { FootprintCell } from '../types/footprint';
 import { Trade } from '../types/trade';
@@ -18,7 +19,7 @@ import { IcebergLevel } from '../types/iceberg';
 import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
-import { storeClosedCandleAction } from '../lib/actions/storageActions';
+import { storeClosedCandleAction, storeRawTradesAction } from '../lib/actions/storageActions';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -31,6 +32,9 @@ interface StoredFootprintCell {
   askVol: number;
   delta: number;
 }
+
+const RAW_TRADE_FLUSH_MS = 2000;
+const RAW_TRADE_FLUSH_SIZE = 500;
 
 export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps) {
   const pair = useChartStore(s => s.panels[panelId].pair);
@@ -62,7 +66,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
   const connectedRef = useRef(false);
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
+  const volumeProfileEngineRef = useRef(new RawTradeVolumeProfileEngine());
   const pendingFootprintRedrawRef = useRef(false);
+  const pendingProfileRedrawRef = useRef(false);
+  const rawTradeQueueRef = useRef<Trade[]>([]);
+  const [volumeProfileRevision, setVolumeProfileRevision] = useState(0);
   const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
   const exhaustionMapRef = useRef<Map<number, ExhaustionResult>>(new Map());
   const icebergEngineRef = useRef<IcebergEngine>(new IcebergEngine(bucketSize, icebergLookback));
@@ -100,13 +108,20 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   // Throttled redraw loop for footprint updates
   useEffect(() => {
     const interval = setInterval(() => {
-      if (pendingFootprintRedrawRef.current && chartMode === 'footprint') {
-        pendingFootprintRedrawRef.current = false;
+      const hadFootprintUpdate = pendingFootprintRedrawRef.current;
+      const hadProfileUpdate = pendingProfileRedrawRef.current;
+
+      if (hadFootprintUpdate && chartMode === 'footprint') {
         triggerFootprintRedraw(panelId);
       }
 
+      if (hadProfileUpdate) {
+        pendingProfileRedrawRef.current = false;
+        setVolumeProfileRevision(Date.now());
+      }
+
       // Re-score provisional (live) candle on footprint updates
-      if (pendingFootprintRedrawRef.current || chartMode === 'footprint') {
+      if (hadFootprintUpdate || chartMode === 'footprint') {
         const candles = useChartStore.getState().panels[panelId].candles || [];
         if (candles.length > 0) {
           const last = candles[candles.length - 1];
@@ -124,6 +139,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             }
           }
         }
+      }
+
+      if (hadFootprintUpdate) {
+        pendingFootprintRedrawRef.current = false;
       }
     }, 100);
     return () => clearInterval(interval);
@@ -177,6 +196,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     connectedRef.current = false;
     setConnected(panelId, false);
     engineRef.current.reset();
+    volumeProfileEngineRef.current.reset();
+    rawTradeQueueRef.current = [];
+    pendingProfileRedrawRef.current = false;
     absorptionMapRef.current = new Map();
     exhaustionMapRef.current = new Map();
     icebergEngineRef.current.reset();
@@ -188,6 +210,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     const adapter = adapterRef.current;
     adapter.disconnect();
+
+    const flushRawTrades = () => {
+      if (rawTradeQueueRef.current.length === 0) return;
+
+      const batch = rawTradeQueueRef.current.splice(0, RAW_TRADE_FLUSH_SIZE);
+      storeRawTradesAction(pair, batch).catch((err) => {
+        console.error('[Storage] Raw trade batch save request failed:', err);
+      });
+    };
 
     const handleCandle = (candle: Candle) => {
       if (!connectedRef.current) {
@@ -278,8 +309,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       else if (timeframe.endsWith('d')) timeframeSeconds = parseInt(timeframe) * 86400;
 
       engineRef.current.ingestTrade(trade, getCandleTimeForTrade(trade.time, timeframeSeconds));
+      volumeProfileEngineRef.current.ingestTrade(trade);
+      rawTradeQueueRef.current.push(trade);
+      pendingProfileRedrawRef.current = true;
       pushTrade(panelId, trade);
       pendingFootprintRedrawRef.current = true;
+
+      if (rawTradeQueueRef.current.length >= RAW_TRADE_FLUSH_SIZE) {
+        flushRawTrades();
+      }
     };
 
     const fetchStoredHistory = async () => {
@@ -331,6 +369,34 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }));
     };
 
+    const hydrateStoredRawTrades = async (candles: Candle[]) => {
+      if (candles.length === 0) return;
+
+      const start = candles[0].time * 1000;
+      const inferredSeconds = candles.length >= 2
+        ? Math.max(1, candles[candles.length - 1].time - candles[candles.length - 2].time)
+        : 60;
+      const end = (candles[candles.length - 1].time + inferredSeconds) * 1000;
+      const params = new URLSearchParams({
+        symbol: pair,
+        start: String(start),
+        end: String(end),
+        limit: '50000',
+      });
+
+      const response = await fetch(`/api/history/trades?${params.toString()}`, {
+        cache: 'no-store',
+      });
+
+      if (!response.ok) return;
+
+      const trades = await response.json() as Trade[];
+      if (trades.length === 0) return;
+
+      volumeProfileEngineRef.current.hydrateTrades(trades);
+      pendingProfileRedrawRef.current = true;
+    };
+
     const init = async () => {
       try {
         setLoadingHistory(panelId, true);
@@ -370,6 +436,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           await hydrateStoredFootprints(history);
           if (!active) return;
         }
+        await hydrateStoredRawTrades(history);
+        if (!active) return;
 
         console.log(`[PanelFeed:${panelId}] ${loadedFromDatabase ? 'Stored' : 'Binance'} history loaded (${history.length} candles). Connecting WS...`);
         setLoadingHistory(panelId, false);
@@ -415,6 +483,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     // --- Orderbook lifecycle ---
     let aggregationInterval: NodeJS.Timeout | null = null;
+    const rawTradeFlushInterval = setInterval(flushRawTrades, RAW_TRADE_FLUSH_MS);
     const obManager = orderbookRef.current;
 
     const initOrderbook = async () => {
@@ -471,6 +540,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     return () => {
       active = false;
       adapter.disconnect();
+      flushRawTrades();
+      clearInterval(rawTradeFlushInterval);
       if (adapter.disconnectOrderbook) adapter.disconnectOrderbook();
       if (aggregationInterval) clearInterval(aggregationInterval);
       obManager.reset();
@@ -511,5 +582,17 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [panelId]);
 
-  return <ChartEngineContext.Provider value={{ engine: engineRef.current, liquidityHistory: liquidityHistoryRef.current, icebergEngine: icebergEngineRef.current }}>{children}</ChartEngineContext.Provider>;
+  return (
+    <ChartEngineContext.Provider
+      value={{
+        engine: engineRef.current,
+        liquidityHistory: liquidityHistoryRef.current,
+        icebergEngine: icebergEngineRef.current,
+        volumeProfileEngine: volumeProfileEngineRef.current,
+        volumeProfileRevision,
+      }}
+    >
+      {children}
+    </ChartEngineContext.Provider>
+  );
 }

@@ -11,6 +11,7 @@ interface ChartSettingsDropdownProps {
 
 export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdownProps) {
   const panel = useChartStore(s => s.panels[panelId]);
+  const tickSize = useChartStore(s => s.tickSize);
   const setFootprintMode = useChartStore(s => s.setFootprintMode);
   const setBucketSize = useChartStore(s => s.setBucketSize);
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
@@ -32,6 +33,8 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setAbsorptionMinScore = useChartStore(s => s.setAbsorptionMinScore);
   const setAbsorptionSide = useChartStore(s => s.setAbsorptionSide);
   const setProfileWidthPct = useChartStore(s => s.setProfileWidthPct);
+  const setProfileResolutionTicks = useChartStore(s => s.setProfileResolutionTicks);
+  const setProfileMinRowHeight = useChartStore(s => s.setProfileMinRowHeight);
   const setProfileOpacity = useChartStore(s => s.setProfileOpacity);
   const setProfileMinRowWidth = useChartStore(s => s.setProfileMinRowWidth);
   const setProfileScaleMode = useChartStore(s => s.setProfileScaleMode);
@@ -704,6 +707,22 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
 
                     <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
                       <div className="flex justify-between items-center mb-1">
+                        <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
+                        <span className="text-[12px] font-mono font-bold text-accent">
+                          {panel.profileResolutionTicks}t / {(panel.profileResolutionTicks * tickSize).toFixed(2)}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        value={panel.profileResolutionTicks}
+                        onChange={(e) => setProfileResolutionTicks(panelId, Number(e.target.value))}
+                        className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                        min="1" max="40" step="1"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Width</label>
                         <span className="text-[12px] font-mono font-bold text-accent">{panel.profileWidthPct}%</span>
                       </div>
@@ -743,6 +762,22 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                         onChange={(e) => setProfileMinRowWidth(panelId, Number(e.target.value))}
                         className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
                         min="0" max="8" step="1"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Height</label>
+                        <span className="text-[12px] font-mono font-bold text-accent">
+                          {panel.profileMinRowHeight === 0 ? 'OFF' : `${panel.profileMinRowHeight}px`}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        value={panel.profileMinRowHeight}
+                        onChange={(e) => setProfileMinRowHeight(panelId, Number(e.target.value))}
+                        className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                        min="0" max="4" step="0.5"
                       />
                     </div>
 

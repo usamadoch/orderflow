@@ -1,5 +1,6 @@
 import type { Candle } from '../../types/candle'
-import { persistClosedCandleSnapshot } from './database'
+import type { Trade } from '../../types/trade'
+import { insertRawTradeBatch, persistClosedCandleSnapshot } from './database'
 
 export interface SerializedFootprintCell {
   bucketPrice: number
@@ -44,6 +45,17 @@ export async function storeClosedCandle(
       `[Storage] Failed to store full candle snapshot for ${symbol} ${timeframe} ${formatCandleTime(candle.time)} after retries:`,
       error,
     )
+  }
+}
+
+export async function storeRawTrades(symbol: string, trades: Trade[]) {
+  try {
+    const storableTrades = trades.filter((trade) => Number.isFinite(trade.id))
+    if (storableTrades.length === 0) return
+
+    await insertRawTradeBatch(symbol, storableTrades)
+  } catch (error) {
+    console.error(`[Storage] Failed to store raw trades for ${symbol}:`, error)
   }
 }
 

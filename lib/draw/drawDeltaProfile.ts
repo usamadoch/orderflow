@@ -13,6 +13,7 @@ export function drawDeltaProfile(
   profileBucketSize: number,
   profileOpacity: number = 0.4,
   profileMinRowWidth: number = 2,
+  profileMinRowHeight: number = 1,
   profileScaleMode: 'linear' | 'sqrt' = 'sqrt'
 ) {
   if (profile.maxAbsDelta <= 0 || deltaProfileWidth <= 0) return;
@@ -41,11 +42,9 @@ export function drawDeltaProfile(
     const rowDelta = row.askVol - row.bidVol;
     if (rowDelta === 0) continue;
 
-    const yTop = priceToY(row.price + profileBucketSize);
-    const yBot = priceToY(row.price);
-    const rowHeight = yBot - yTop;
-
-    if (rowHeight < 0.5) continue;
+    const yRange = getDeltaProfileRowYRange(row.price, profileBucketSize, priceToY, profileMinRowHeight);
+    if (!yRange) continue;
+    const { yTop, rowHeight } = yRange;
 
     const absDelta = Math.abs(rowDelta);
     const deltaRatio = absDelta / profile.maxAbsDelta;
@@ -60,6 +59,7 @@ export function drawDeltaProfile(
     if (profileMinRowWidth > 0) {
       barW = Math.max(profileMinRowWidth, barW);
     }
+    barW = Math.min(deltaProfileWidth, barW);
 
     if (barW < 0.5) continue;
 
@@ -78,4 +78,25 @@ export function drawDeltaProfile(
       ctx.fillRect(drawX, yTop, drawW, rowHeight);
     }
   }
+}
+
+function getDeltaProfileRowYRange(
+  price: number,
+  profileBucketSize: number,
+  priceToY: (price: number) => number,
+  minRowHeight: number,
+) {
+  let yTop = priceToY(price + profileBucketSize);
+  let yBot = priceToY(price);
+  let rowHeight = yBot - yTop;
+
+  if (rowHeight <= 0) return null;
+  if (minRowHeight > 0 && rowHeight < minRowHeight) {
+    const center = (yTop + yBot) / 2;
+    yTop = center - minRowHeight / 2;
+    yBot = center + minRowHeight / 2;
+    rowHeight = minRowHeight;
+  }
+
+  return { yTop, yBot, rowHeight };
 }

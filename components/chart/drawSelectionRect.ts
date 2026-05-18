@@ -77,6 +77,7 @@ export function drawCustomProfile(
   profileWidthPct: number = 70,
   profileOpacity: number = 0.5,
   profileMinRowWidth: number = 2,
+  profileMinRowHeight: number = 1,
   showPocHighlight: boolean = true,
   showVaFill: boolean = true,
   showPocLine: boolean = true,
@@ -107,7 +108,7 @@ export function drawCustomProfile(
   // 2. Profile Bars
   if (profile) {
     const barAnchorX = Math.min(x1, x2);
-    const barMaxWidth = rectWidth * (profileWidthPct / 100);
+    const barMaxWidth = Math.max(0, rectWidth * (profileWidthPct / 100));
 
     // VA Area Fill
     if (showVaFill) {
@@ -122,17 +123,13 @@ export function drawCustomProfile(
     }
 
     for (const row of profile.rows) {
-      const rowTopY = priceToY(row.price + profileBucketSize);
-      const rowBotY = priceToY(row.price);
+      const yRange = getCustomProfileRowYRange(row.price, profileBucketSize, priceToY, profileMinRowHeight, rectY, rectHeight);
+      if (!yRange) continue;
 
-      const drawTopY = Math.max(rowTopY, rectY);
-      const drawBotY = Math.min(rowBotY, rectY + rectHeight);
-      const drawHeight = drawBotY - drawTopY;
-
-      if (drawHeight <= 0) continue;
+      const { drawTopY, drawHeight } = yRange;
 
       let barWidthPx: number;
-      const volRatio = row.totalVol / profile.maxVol;
+      const volRatio = profile.maxVol > 0 ? Math.max(0, Math.min(1, row.totalVol / profile.maxVol)) : 0;
 
       if (profileScaleMode === 'sqrt') {
         barWidthPx = Math.sqrt(volRatio) * barMaxWidth;
@@ -143,6 +140,7 @@ export function drawCustomProfile(
       if (row.totalVol > 0 && profileMinRowWidth > 0) {
         barWidthPx = Math.max(profileMinRowWidth, barWidthPx);
       }
+      barWidthPx = Math.min(barMaxWidth, barWidthPx);
 
       if (barWidthPx < 0.5) continue;
 
@@ -155,16 +153,14 @@ export function drawCustomProfile(
     if (showPocHighlight) {
       const pocRow = profile.rows.find(r => r.price === profile.poc);
       if (pocRow) {
-        const rowTopY = priceToY(pocRow.price + profileBucketSize);
-        const rowBotY = priceToY(pocRow.price);
-        const drawTopY = Math.max(rowTopY, rectY);
-        const drawBotY = Math.min(rowBotY, rectY + rectHeight);
-        const drawHeight = drawBotY - drawTopY;
+        const yRange = getCustomProfileRowYRange(pocRow.price, profileBucketSize, priceToY, profileMinRowHeight, rectY, rectHeight);
 
-        if (drawHeight > 0) {
-          const volRatio = pocRow.totalVol / profile.maxVol;
+        if (yRange) {
+          const { drawTopY, drawHeight } = yRange;
+          const volRatio = profile.maxVol > 0 ? Math.max(0, Math.min(1, pocRow.totalVol / profile.maxVol)) : 0;
           let barW = (profileScaleMode === 'sqrt' ? Math.sqrt(volRatio) : volRatio) * barMaxWidth;
           if (pocRow.totalVol > 0 && profileMinRowWidth > 0) barW = Math.max(profileMinRowWidth, barW);
+          barW = Math.min(barMaxWidth, barW);
 
           if (barW >= 0.5) {
             const highlightOpacity = Math.min(1.0, profileOpacity + 0.2);
@@ -258,4 +254,32 @@ export function drawCustomProfile(
   }
 
   ctx.restore();
+}
+
+function getCustomProfileRowYRange(
+  price: number,
+  profileBucketSize: number,
+  priceToY: (price: number) => number,
+  minRowHeight: number,
+  rectY: number,
+  rectHeight: number,
+) {
+  let rowTopY = priceToY(price + profileBucketSize);
+  let rowBotY = priceToY(price);
+  const rowHeight = rowBotY - rowTopY;
+
+  if (rowHeight <= 0) return null;
+  if (minRowHeight > 0 && rowHeight < minRowHeight) {
+    const center = (rowTopY + rowBotY) / 2;
+    rowTopY = center - minRowHeight / 2;
+    rowBotY = center + minRowHeight / 2;
+  }
+
+  const drawTopY = Math.max(rowTopY, rectY);
+  const drawBotY = Math.min(rowBotY, rectY + rectHeight);
+  const drawHeight = drawBotY - drawTopY;
+
+  if (drawHeight <= 0) return null;
+
+  return { drawTopY, drawBotY, drawHeight };
 }

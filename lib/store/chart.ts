@@ -50,6 +50,8 @@ export interface TimeframeSettings {
   icebergShowLabels: boolean;
   icebergShowTint: boolean;
   profileWidthPct: number;
+  profileResolutionTicks: number;
+  profileMinRowHeight: number;
   profileOpacity: number;
   profileMinRowWidth: number;
   profileScaleMode: 'linear' | 'sqrt';
@@ -134,6 +136,8 @@ export interface PanelState {
   icebergLevels: IcebergLevel[];
   // Volume Profile Visuals
   profileWidthPct: number;
+  profileResolutionTicks: number;
+  profileMinRowHeight: number;
   profileOpacity: number;
   profileMinRowWidth: number;
   profileScaleMode: 'linear' | 'sqrt';
@@ -237,6 +241,8 @@ interface ChartState {
   setIcebergShowTint: (panelId: PanelId, show: boolean) => void;
   setIcebergLevels: (panelId: PanelId, levels: IcebergLevel[]) => void;
   setProfileWidthPct: (panelId: PanelId, pct: number) => void;
+  setProfileResolutionTicks: (panelId: PanelId, ticks: number) => void;
+  setProfileMinRowHeight: (panelId: PanelId, height: number) => void;
   setProfileOpacity: (panelId: PanelId, opacity: number) => void;
   setProfileMinRowWidth: (panelId: PanelId, width: number) => void;
   setProfileScaleMode: (panelId: PanelId, mode: 'linear' | 'sqrt') => void;
@@ -334,6 +340,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     icebergShowTint: true,
     icebergLevels: [],
     profileWidthPct: 70,
+    profileResolutionTicks: 1,
+    profileMinRowHeight: 1,
     profileOpacity: 0.4,
     profileMinRowWidth: 2,
     profileScaleMode: 'sqrt',
@@ -398,7 +406,8 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
     'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
     'icebergShowLabels', 'icebergShowTint',
-    'profileWidthPct', 'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
+    'profileWidthPct', 'profileResolutionTicks', 'profileMinRowHeight',
+    'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
     'profileShowPocHighlight', 'profileShowVaFill', 'profileShowPocLine',
     'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth'
   ];
@@ -625,6 +634,12 @@ export const useChartStore = create<ChartState>()(
       setProfileWidthPct: (panelId, profileWidthPct) =>
         set((state) => updatePanel(state, panelId, { profileWidthPct: Math.max(10, Math.min(100, profileWidthPct)) })),
 
+      setProfileResolutionTicks: (panelId, profileResolutionTicks) =>
+        set((state) => updatePanel(state, panelId, { profileResolutionTicks: Math.max(1, Math.min(100, Math.round(profileResolutionTicks))) })),
+
+      setProfileMinRowHeight: (panelId, profileMinRowHeight) =>
+        set((state) => updatePanel(state, panelId, { profileMinRowHeight: Math.max(0, Math.min(4, profileMinRowHeight)) })),
+
       setProfileOpacity: (panelId, profileOpacity) =>
         set((state) => updatePanel(state, panelId, { profileOpacity: Math.max(0.1, Math.min(1.0, profileOpacity)) })),
 
@@ -822,7 +837,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 18,
+      version: 19,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -865,6 +880,8 @@ export const useChartStore = create<ChartState>()(
             icebergShowTint: p.icebergShowTint ?? true,
             icebergLevels: [],
             profileWidthPct: p.profileWidthPct ?? 70,
+            profileResolutionTicks: p.profileResolutionTicks ?? 1,
+            profileMinRowHeight: p.profileMinRowHeight ?? 1,
             profileOpacity: p.profileOpacity ?? 0.4,
             profileMinRowWidth: p.profileMinRowWidth ?? 2,
             profileScaleMode: p.profileScaleMode || 'sqrt',
@@ -964,6 +981,8 @@ export const useChartStore = create<ChartState>()(
             icebergShowLabels: state.panels.left.icebergShowLabels,
             icebergShowTint: state.panels.left.icebergShowTint,
             profileWidthPct: state.panels.left.profileWidthPct,
+            profileResolutionTicks: state.panels.left.profileResolutionTicks,
+            profileMinRowHeight: state.panels.left.profileMinRowHeight,
             profileOpacity: state.panels.left.profileOpacity,
             profileMinRowWidth: state.panels.left.profileMinRowWidth,
             profileScaleMode: state.panels.left.profileScaleMode,
@@ -1028,6 +1047,8 @@ export const useChartStore = create<ChartState>()(
             icebergShowLabels: state.panels.right.icebergShowLabels,
             icebergShowTint: state.panels.right.icebergShowTint,
             profileWidthPct: state.panels.right.profileWidthPct,
+            profileResolutionTicks: state.panels.right.profileResolutionTicks,
+            profileMinRowHeight: state.panels.right.profileMinRowHeight,
             profileOpacity: state.panels.right.profileOpacity,
             profileMinRowWidth: state.panels.right.profileMinRowWidth,
             profileScaleMode: state.panels.right.profileScaleMode,

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useChartStore, PanelId } from '@/lib/store/chart';
-import { useChartEngine, useLiquidityHistory } from '../ChartEngineContext';
+import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine } from '../ChartEngineContext';
 import { ChartCanvas } from './ChartCanvas';
 import { PanelToolbar } from '../ui/PanelToolbar';
 // import { PanelToolbar } from '../ui/PanelToolbar';
@@ -16,8 +16,10 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const setActivePanel = useChartStore(s => s.setActivePanel);
   const setBarWidth = useChartStore(s => s.setBarWidth);
   const setScrollOffset = useChartStore(s => s.setScrollOffset);
+  const tickSize = useChartStore(s => s.tickSize);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
+  const { volumeProfileEngine, volumeProfileRevision } = useVolumeProfileEngine();
 
   return (
     <div
@@ -38,6 +40,9 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           footprintTrigger={panel.footprintTrigger}
           isLoadingHistory={panel.isLoadingHistory}
           engine={engine}
+          volumeProfileEngine={volumeProfileEngine}
+          volumeProfileRevision={volumeProfileRevision}
+          tickSize={tickSize}
           absorptionEnabled={panel.absorptionEnabled}
           absorptionMinScore={panel.absorptionMinScore}
           absorptionSide={panel.absorptionSide}
@@ -68,6 +73,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           icebergShowTint={panel.icebergShowTint}
           icebergLevels={panel.icebergLevels}
           profileWidthPct={panel.profileWidthPct}
+          profileResolutionTicks={panel.profileResolutionTicks}
+          profileMinRowHeight={panel.profileMinRowHeight}
           profileOpacity={panel.profileOpacity}
           profileMinRowWidth={panel.profileMinRowWidth}
           profileScaleMode={panel.profileScaleMode}

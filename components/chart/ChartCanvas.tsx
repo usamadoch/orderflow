@@ -5,6 +5,7 @@ import { Lock, Unlock, X } from 'lucide-react';
 import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide, Measurement, DrawnLine } from '@/lib/store/chart';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
+import type { VolumeProfileSource } from '@/lib/volumeProfile/profileEngine';
 import { usePanZoom } from './usePanZoom';
 import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex, timeToIndex } from './useCoordinates';
 import { drawCandles } from './drawCandles';
@@ -162,6 +163,9 @@ interface ChartCanvasProps {
   footprintTrigger: number;
   isLoadingHistory: boolean;
   engine: AggregationEngine;
+  volumeProfileEngine: VolumeProfileSource;
+  volumeProfileRevision: number;
+  tickSize: number;
   absorptionEnabled: boolean;
   absorptionMinScore: number;
   absorptionSide: AbsorptionSide;
@@ -197,6 +201,8 @@ interface ChartCanvasProps {
   icebergShowTint: boolean;
   icebergLevels: IcebergLevel[];
   profileWidthPct: number;
+  profileResolutionTicks: number;
+  profileMinRowHeight: number;
   profileOpacity: number;
   profileMinRowWidth: number;
   profileScaleMode: 'linear' | 'sqrt';
@@ -240,6 +246,9 @@ export function ChartCanvas({
   footprintTrigger,
   isLoadingHistory,
   engine,
+  volumeProfileEngine,
+  volumeProfileRevision,
+  tickSize,
   absorptionEnabled,
   absorptionMinScore,
   absorptionSide,
@@ -270,6 +279,8 @@ export function ChartCanvas({
   icebergShowTint,
   icebergLevels,
   profileWidthPct,
+  profileResolutionTicks,
+  profileMinRowHeight,
   profileOpacity,
   profileMinRowWidth,
   profileScaleMode,
@@ -417,7 +428,9 @@ export function ChartCanvas({
         visiblePriceMax: priceMax,
       };
 
-      const profileBucketSize = Math.max(5, Math.floor(bucketSize / 4));
+      const profileBucketSize = tickSize > 0
+        ? tickSize * Math.max(1, profileResolutionTicks)
+        : Math.max(1, bucketSize / 4);
 
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
       const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
@@ -514,7 +527,12 @@ export function ChartCanvas({
         const customFirstIndex = Math.min(customProfileRange.firstIndex, customProfileRange.lastIndex);
         const customLastIndex = Math.max(customProfileRange.firstIndex, customProfileRange.lastIndex);
         const customCandles = candles.slice(customFirstIndex, customLastIndex + 1);
-        const customProfile = buildProfile(
+        const customProfile = volumeProfileEngine.buildProfile({
+          candles: customCandles,
+          profileBucketSize,
+          priceHigh: customProfileRange.priceHigh,
+          priceLow: customProfileRange.priceLow,
+        }) ?? buildProfile(
           customCandles, 
           engine, 
           bucketSize, 
@@ -538,6 +556,7 @@ export function ChartCanvas({
           profileWidthPct,
           profileOpacity,
           profileMinRowWidth,
+          profileMinRowHeight,
           profileShowPocHighlight,
           profileShowVaFill,
           profileShowPocLine,
@@ -558,6 +577,7 @@ export function ChartCanvas({
             profileBucketSize,
             profileOpacity,
             profileMinRowWidth,
+            profileMinRowHeight,
             profileScaleMode
           );
         }
@@ -573,7 +593,10 @@ export function ChartCanvas({
 
       // Volume Profile
       const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
-      const profile = buildProfile(visibleCandles, engine, bucketSize, profileBucketSize);
+      const profile = volumeProfileEngine.buildProfile({
+        candles: visibleCandles,
+        profileBucketSize,
+      }) ?? buildProfile(visibleCandles, engine, bucketSize, profileBucketSize);
       if (profile) {
         drawVolumeProfile(
           ctx, 
@@ -587,6 +610,7 @@ export function ChartCanvas({
           profileWidthPct,
           profileOpacity,
           profileMinRowWidth,
+          profileMinRowHeight,
           profileBucketSize,
           profileScaleMode,
           profileShowPocHighlight,
@@ -718,7 +742,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -921,7 +945,7 @@ export function ChartCanvas({
   // Redraw when data changes
   useEffect(() => {
     redraw();
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, redraw, isLoadingHistory, drawnLines, lineDrawMode]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, volumeProfileRevision, redraw, isLoadingHistory, drawnLines, lineDrawMode]);
 
   // Real-time countdown timer
   useEffect(() => {

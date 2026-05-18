@@ -136,6 +136,24 @@ types/iceberg.ts → IcebergLevel, IcebergSide, and IcebergRank detection output
 artifacts/pi_deployment.md → pm2 production deployment and restart notes for Raspberry Pi.
 
 Latest responsibility updates:
+lib/store/chart.ts → Zustand panel state, persisted settings, drawing overlays, and independent Volume Profile row-size/readability controls.
+components/ui/ChartSettingsDropdown.tsx → Draggable settings window with chart, profile resolution/rendering, sessions, signal, and liquidity controls.
+components/chart/ChartPanel.tsx → Panel state bridge from store/context into ChartCanvas, including fine profile source, tick size, and profile resolution settings.
+components/chart/ChartCanvas.tsx → Canvas render orchestration using independent profile row-size aggregation and readable row rendering settings.
+components/chart/drawVolumeProfile.ts → Visible Volume Profile renderer with width clamping, min row height support, POC, VA, LVN, and profile bars.
+components/chart/drawSelectionRect.ts → Custom profile rectangle/profile renderer with width clamping, min row height support, LVN markers, and resize handles.
+lib/draw/drawDeltaProfile.ts → Delta profile strip renderer aligned to independent profile row size and readable row height settings.
+types/trade.ts → Trade tick shape, including optional Binance aggregate trade id for raw-trade persistence.
+lib/volumeProfile/profileEngine.ts → Fine raw-trade Volume Profile source/aggregator with a replaceable interface for future shared cache support.
+app/api/history/trades/route.ts → API route returning stored raw trades for a symbol/time window.
+lib/feeds/binance.ts → Binance adapter for REST/WS market data, including aggTrade id parsing.
+components/ChartEngineContext.tsx → Shared chart engine context, including fine Volume Profile source and redraw revision.
+components/FeedProvider.tsx → Panel feed lifecycle, raw trade hydration/storage batching, fine profile ingestion, and existing chart/footprint feed orchestration.
+components/chart/ChartPanel.tsx → Panel state bridge from store/context into ChartCanvas, including fine profile source and tick size.
+components/chart/ChartCanvas.tsx → Canvas render orchestration using tick-size raw-trade Volume Profile first with existing footprint/candle fallback.
+lib/db/database.ts → Turso/libSQL schema and helpers for candles, footprints, deltas, metadata, and raw trade storage/history.
+lib/db/marketStorage.ts → Best-effort closed-candle and raw-trade storage orchestration.
+lib/actions/storageActions.ts → Server Action bridge for closed-candle snapshots and raw-trade batch storage.
 components/chart/ChartCanvas.tsx → Custom volume profile hit-testing, cursor/crosshair suppression, controls positioning, and resize/move orchestration.
 components/chart/drawSelectionRect.ts → Custom profile rectangle/profile rendering, including LVN markers and resize handles.
 components/chart/drawVolumeProfile.ts → Visible volume profile rendering for POC, VA, LVN levels, and profile bars.
