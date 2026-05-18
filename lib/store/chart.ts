@@ -6,7 +6,9 @@ import { FootprintMode } from '../../types/footprint';
 import { AbsorptionResult } from '../../types/absorption';
 import { BubbleSide } from '../../components/chart/drawBubbles';
 import { ExhaustionResult } from '../../types/exhaustion';
+import { IcebergLevel } from '../../types/iceberg';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
+import { LiquidityZone } from '../../types/liquidity';
 
 export type ChartMode = 'candle' | 'footprint';
 export type PanelId = 'left' | 'right';
@@ -42,6 +44,11 @@ export interface TimeframeSettings {
   absorptionMinScore: number;
   exhaustionMinScore: number;
   exhaustionLookback: number;
+  icebergMinScore: number;
+  icebergLookback: number;
+  icebergShowSuspected: boolean;
+  icebergShowLabels: boolean;
+  icebergShowTint: boolean;
   profileWidthPct: number;
   profileOpacity: number;
   profileMinRowWidth: number;
@@ -113,6 +120,13 @@ export interface PanelState {
   exhaustionLookback: number;
   exhaustionShowProvisional: boolean;
   exhaustionMap: Map<number, ExhaustionResult>;
+  icebergEnabled: boolean;
+  icebergMinScore: number;
+  icebergLookback: number;
+  icebergShowSuspected: boolean;
+  icebergShowLabels: boolean;
+  icebergShowTint: boolean;
+  icebergLevels: IcebergLevel[];
   // Volume Profile Visuals
   profileWidthPct: number;
   profileOpacity: number;
@@ -134,6 +148,24 @@ export interface PanelState {
     newYork: SessionConfig;
   };
   settingsByTimeframe: Record<string, Partial<TimeframeSettings>>;
+  // Liquidity Map
+  liquidityZones: LiquidityZone[];       // session only, not persisted
+  liquidityEnabled: boolean;              // default true, persisted
+  liquidityBucketSize: number;            // default 50, persisted
+  minimumLiquidityThreshold: number;      // default 5, persisted
+  liquidityOpacity: number;               // default 0.6, persisted
+  liquidityRange: number;                 // default 10 (percent), persisted
+  liquidityHistoryEnabled: boolean;       // default true, persisted
+  liquidityHistoryDepth: number;          // max snapshots, default 200, persisted
+  liquidityHeatmapEnabled: boolean;
+  liquidityHeatmapOpacity: number;
+  liquidityHeatmapAgeFade: number;
+  liquidityHeatmapWidth: number;
+  liquidityHeatmapShowPulled: boolean;
+  liquidityHeatmapShowConsumed: boolean;
+  liquidityHeatmapShowPersistence: boolean;
+  liquidityHeatmapShowCurrentLabel: boolean;
+  liquidityHeatmapProfileSync: boolean;
 }
 
 interface ChartState {
@@ -191,6 +223,13 @@ interface ChartState {
   setExhaustionLookback: (panelId: PanelId, lookback: number) => void;
   setExhaustionShowProvisional: (panelId: PanelId, show: boolean) => void;
   setExhaustionMap: (panelId: PanelId, map: Map<number, ExhaustionResult>) => void;
+  setIcebergEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setIcebergMinScore: (panelId: PanelId, score: number) => void;
+  setIcebergLookback: (panelId: PanelId, lookback: number) => void;
+  setIcebergShowSuspected: (panelId: PanelId, show: boolean) => void;
+  setIcebergShowLabels: (panelId: PanelId, show: boolean) => void;
+  setIcebergShowTint: (panelId: PanelId, show: boolean) => void;
+  setIcebergLevels: (panelId: PanelId, levels: IcebergLevel[]) => void;
   setProfileWidthPct: (panelId: PanelId, pct: number) => void;
   setProfileOpacity: (panelId: PanelId, opacity: number) => void;
   setProfileMinRowWidth: (panelId: PanelId, width: number) => void;
@@ -207,6 +246,25 @@ interface ChartState {
   setSessionEnabled: (panelId: PanelId, sessionId: SessionId, enabled: boolean) => void;
   setSessionTime: (panelId: PanelId, sessionId: SessionId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
   setSessionColor: (panelId: PanelId, sessionId: SessionId, color: string) => void;
+
+  // Liquidity
+  setLiquidityZones: (panelId: PanelId, zones: LiquidityZone[]) => void;
+  setLiquidityEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setLiquidityBucketSize: (panelId: PanelId, size: number) => void;
+  setMinimumLiquidityThreshold: (panelId: PanelId, threshold: number) => void;
+  setLiquidityOpacity: (panelId: PanelId, opacity: number) => void;
+  setLiquidityRange: (panelId: PanelId, range: number) => void;
+  setLiquidityHistoryEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setLiquidityHistoryDepth: (panelId: PanelId, depth: number) => void;
+  setLiquidityHeatmapEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setLiquidityHeatmapOpacity: (panelId: PanelId, opacity: number) => void;
+  setLiquidityHeatmapAgeFade: (panelId: PanelId, fade: number) => void;
+  setLiquidityHeatmapWidth: (panelId: PanelId, width: number) => void;
+  setLiquidityHeatmapShowPulled: (panelId: PanelId, show: boolean) => void;
+  setLiquidityHeatmapShowConsumed: (panelId: PanelId, show: boolean) => void;
+  setLiquidityHeatmapShowPersistence: (panelId: PanelId, show: boolean) => void;
+  setLiquidityHeatmapShowCurrentLabel: (panelId: PanelId, show: boolean) => void;
+  setLiquidityHeatmapProfileSync: (panelId: PanelId, sync: boolean) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -262,6 +320,13 @@ function createDefaultPanel(id: PanelId): PanelState {
     exhaustionLookback: 5,
     exhaustionShowProvisional: true,
     exhaustionMap: new Map(),
+    icebergEnabled: true,
+    icebergMinScore: 45,
+    icebergLookback: 10,
+    icebergShowSuspected: true,
+    icebergShowLabels: true,
+    icebergShowTint: true,
+    icebergLevels: [],
     profileWidthPct: 70,
     profileOpacity: 0.4,
     profileMinRowWidth: 2,
@@ -296,6 +361,24 @@ function createDefaultPanel(id: PanelId): PanelState {
       },
     },
     settingsByTimeframe: {},
+    // Liquidity Map
+    liquidityZones: [],
+    liquidityEnabled: true,
+    liquidityBucketSize: 50,
+    minimumLiquidityThreshold: 5,
+    liquidityOpacity: 0.6,
+    liquidityRange: 10,
+    liquidityHistoryEnabled: true,
+    liquidityHistoryDepth: 200,
+    liquidityHeatmapEnabled: true,
+    liquidityHeatmapOpacity: 0.7,
+    liquidityHeatmapAgeFade: 0.6,
+    liquidityHeatmapWidth: 60,
+    liquidityHeatmapShowPulled: true,
+    liquidityHeatmapShowConsumed: true,
+    liquidityHeatmapShowPersistence: true,
+    liquidityHeatmapShowCurrentLabel: true,
+    liquidityHeatmapProfileSync: false,
   };
 }
 
@@ -307,6 +390,8 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
   const timeframeSettingsKeys: (keyof TimeframeSettings)[] = [
     'bucketSize', 'autoBucketSize', 'bubbleThreshold', 'bubbleThresholdMode',
     'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
+    'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
+    'icebergShowLabels', 'icebergShowTint',
     'profileWidthPct', 'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
     'profileShowPocHighlight', 'profileShowVaFill', 'profileShowPocLine',
     'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth'
@@ -357,7 +442,7 @@ export const useChartStore = create<ChartState>()(
 
       // Per-panel actions
       setPair: (panelId, pair) =>
-        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [] })),
+        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], icebergLevels: [] })),
 
       setTimeframe: (panelId, timeframe) =>
         set((state) => {
@@ -367,6 +452,7 @@ export const useChartStore = create<ChartState>()(
             timeframe, 
             candles: [], 
             trades: [],
+            icebergLevels: [],
             ...savedSettings
           });
         }),
@@ -501,6 +587,27 @@ export const useChartStore = create<ChartState>()(
       setExhaustionMap: (panelId, exhaustionMap) =>
         set((state) => updatePanel(state, panelId, { exhaustionMap })),
 
+      setIcebergEnabled: (panelId, icebergEnabled) =>
+        set((state) => updatePanel(state, panelId, { icebergEnabled })),
+
+      setIcebergMinScore: (panelId, icebergMinScore) =>
+        set((state) => updatePanel(state, panelId, { icebergMinScore: Math.max(30, Math.min(80, icebergMinScore)) })),
+
+      setIcebergLookback: (panelId, icebergLookback) =>
+        set((state) => updatePanel(state, panelId, { icebergLookback: Math.max(5, Math.min(20, icebergLookback)) })),
+
+      setIcebergShowSuspected: (panelId, icebergShowSuspected) =>
+        set((state) => updatePanel(state, panelId, { icebergShowSuspected })),
+
+      setIcebergShowLabels: (panelId, icebergShowLabels) =>
+        set((state) => updatePanel(state, panelId, { icebergShowLabels })),
+
+      setIcebergShowTint: (panelId, icebergShowTint) =>
+        set((state) => updatePanel(state, panelId, { icebergShowTint })),
+
+      setIcebergLevels: (panelId, icebergLevels) =>
+        set((state) => updatePanel(state, panelId, { icebergLevels })),
+
       setProfileWidthPct: (panelId, profileWidthPct) =>
         set((state) => updatePanel(state, panelId, { profileWidthPct: Math.max(10, Math.min(100, profileWidthPct)) })),
 
@@ -548,6 +655,58 @@ export const useChartStore = create<ChartState>()(
 
       setSessionsEnabled: (panelId, sessionsEnabled) =>
         set((state) => updatePanel(state, panelId, { sessionsEnabled })),
+
+      // Liquidity actions
+      setLiquidityZones: (panelId, liquidityZones) =>
+        set((state) => updatePanel(state, panelId, { liquidityZones })),
+
+      setLiquidityEnabled: (panelId, liquidityEnabled) =>
+        set((state) => updatePanel(state, panelId, { liquidityEnabled })),
+
+      setLiquidityBucketSize: (panelId, liquidityBucketSize) =>
+        set((state) => updatePanel(state, panelId, { liquidityBucketSize: Math.max(1, liquidityBucketSize) })),
+
+      setMinimumLiquidityThreshold: (panelId, minimumLiquidityThreshold) =>
+        set((state) => updatePanel(state, panelId, { minimumLiquidityThreshold: Math.max(0.1, minimumLiquidityThreshold) })),
+
+      setLiquidityOpacity: (panelId, liquidityOpacity) =>
+        set((state) => updatePanel(state, panelId, { liquidityOpacity: Math.max(0.1, Math.min(1.0, liquidityOpacity)) })),
+
+      setLiquidityRange: (panelId, liquidityRange) =>
+        set((state) => updatePanel(state, panelId, { liquidityRange: Math.max(1, Math.min(50, liquidityRange)) })),
+
+      setLiquidityHistoryEnabled: (panelId, liquidityHistoryEnabled) =>
+        set((state) => updatePanel(state, panelId, { liquidityHistoryEnabled })),
+
+      setLiquidityHistoryDepth: (panelId, liquidityHistoryDepth) =>
+        set((state) => updatePanel(state, panelId, { liquidityHistoryDepth: Math.max(50, Math.min(500, liquidityHistoryDepth)) })),
+
+      setLiquidityHeatmapEnabled: (panelId, liquidityHeatmapEnabled) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapEnabled })),
+
+      setLiquidityHeatmapOpacity: (panelId, liquidityHeatmapOpacity) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapOpacity: Math.max(0, Math.min(1.0, liquidityHeatmapOpacity)) })),
+
+      setLiquidityHeatmapAgeFade: (panelId, liquidityHeatmapAgeFade) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapAgeFade: Math.max(0, Math.min(1.0, liquidityHeatmapAgeFade)) })),
+
+      setLiquidityHeatmapWidth: (panelId, liquidityHeatmapWidth) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapWidth: Math.max(30, Math.min(120, liquidityHeatmapWidth)) })),
+
+      setLiquidityHeatmapShowPulled: (panelId, liquidityHeatmapShowPulled) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapShowPulled })),
+
+      setLiquidityHeatmapShowConsumed: (panelId, liquidityHeatmapShowConsumed) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapShowConsumed })),
+
+      setLiquidityHeatmapShowPersistence: (panelId, liquidityHeatmapShowPersistence) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapShowPersistence })),
+
+      setLiquidityHeatmapShowCurrentLabel: (panelId, liquidityHeatmapShowCurrentLabel) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapShowCurrentLabel })),
+
+      setLiquidityHeatmapProfileSync: (panelId, liquidityHeatmapProfileSync) =>
+        set((state) => updatePanel(state, panelId, { liquidityHeatmapProfileSync })),
 
       setSessionEnabled: (panelId, sessionId, enabled) =>
         set((state) => {
@@ -649,7 +808,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 12,
+      version: 18,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -684,6 +843,13 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: p.exhaustionSide || 'both',
             exhaustionLookback: p.exhaustionLookback ?? 5,
             exhaustionShowProvisional: p.exhaustionShowProvisional ?? true,
+            icebergEnabled: p.icebergEnabled ?? true,
+            icebergMinScore: p.icebergMinScore ?? 45,
+            icebergLookback: Math.max(5, Math.min(20, p.icebergLookback ?? 10)),
+            icebergShowSuspected: p.icebergShowSuspected ?? true,
+            icebergShowLabels: p.icebergShowLabels ?? true,
+            icebergShowTint: p.icebergShowTint ?? true,
+            icebergLevels: [],
             profileWidthPct: p.profileWidthPct ?? 70,
             profileOpacity: p.profileOpacity ?? 0.4,
             profileMinRowWidth: p.profileMinRowWidth ?? 2,
@@ -701,6 +867,24 @@ export const useChartStore = create<ChartState>()(
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
             settingsByTimeframe: p.settingsByTimeframe ?? {},
+            // Liquidity Map (v13 & v14)
+            liquidityEnabled: p.liquidityEnabled ?? true,
+            liquidityBucketSize: p.liquidityBucketSize ?? 50,
+            minimumLiquidityThreshold: p.minimumLiquidityThreshold ?? 5,
+            liquidityOpacity: p.liquidityOpacity ?? 0.6,
+            liquidityRange: p.liquidityRange ?? 10,
+            liquidityHistoryEnabled: p.liquidityHistoryEnabled ?? true,
+            liquidityHistoryDepth: Math.max(50, Math.min(500, p.liquidityHistoryDepth ?? 200)),
+            // Heatmap (v15)
+            liquidityHeatmapEnabled: p.liquidityHeatmapEnabled ?? true,
+            liquidityHeatmapOpacity: p.liquidityHeatmapOpacity ?? 0.7,
+            liquidityHeatmapAgeFade: p.liquidityHeatmapAgeFade ?? 0.6,
+            liquidityHeatmapWidth: p.liquidityHeatmapWidth ?? 60,
+            liquidityHeatmapShowPulled: p.liquidityHeatmapShowPulled ?? true,
+            liquidityHeatmapShowConsumed: p.liquidityHeatmapShowConsumed ?? true,
+            liquidityHeatmapShowPersistence: p.liquidityHeatmapShowPersistence ?? true,
+            liquidityHeatmapShowCurrentLabel: p.liquidityHeatmapShowCurrentLabel ?? true,
+            liquidityHeatmapProfileSync: p.liquidityHeatmapProfileSync ?? false,
           };
         };
         if (persisted.panels) {
@@ -759,6 +943,12 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: state.panels.left.exhaustionSide,
             exhaustionLookback: state.panels.left.exhaustionLookback,
             exhaustionShowProvisional: state.panels.left.exhaustionShowProvisional,
+            icebergEnabled: state.panels.left.icebergEnabled,
+            icebergMinScore: state.panels.left.icebergMinScore,
+            icebergLookback: state.panels.left.icebergLookback,
+            icebergShowSuspected: state.panels.left.icebergShowSuspected,
+            icebergShowLabels: state.panels.left.icebergShowLabels,
+            icebergShowTint: state.panels.left.icebergShowTint,
             profileWidthPct: state.panels.left.profileWidthPct,
             profileOpacity: state.panels.left.profileOpacity,
             profileMinRowWidth: state.panels.left.profileMinRowWidth,
@@ -771,6 +961,22 @@ export const useChartStore = create<ChartState>()(
             deltaProfileWidth: state.panels.left.deltaProfileWidth,
             sessionsEnabled: state.panels.left.sessionsEnabled,
             sessions: state.panels.left.sessions,
+            liquidityEnabled: state.panels.left.liquidityEnabled,
+            liquidityBucketSize: state.panels.left.liquidityBucketSize,
+            minimumLiquidityThreshold: state.panels.left.minimumLiquidityThreshold,
+            liquidityOpacity: state.panels.left.liquidityOpacity,
+            liquidityRange: state.panels.left.liquidityRange,
+            liquidityHistoryEnabled: state.panels.left.liquidityHistoryEnabled,
+            liquidityHistoryDepth: state.panels.left.liquidityHistoryDepth,
+            liquidityHeatmapEnabled: state.panels.left.liquidityHeatmapEnabled,
+            liquidityHeatmapOpacity: state.panels.left.liquidityHeatmapOpacity,
+            liquidityHeatmapAgeFade: state.panels.left.liquidityHeatmapAgeFade,
+            liquidityHeatmapWidth: state.panels.left.liquidityHeatmapWidth,
+            liquidityHeatmapShowPulled: state.panels.left.liquidityHeatmapShowPulled,
+            liquidityHeatmapShowConsumed: state.panels.left.liquidityHeatmapShowConsumed,
+            liquidityHeatmapShowPersistence: state.panels.left.liquidityHeatmapShowPersistence,
+            liquidityHeatmapShowCurrentLabel: state.panels.left.liquidityHeatmapShowCurrentLabel,
+            liquidityHeatmapProfileSync: state.panels.left.liquidityHeatmapProfileSync,
             settingsByTimeframe: state.panels.left.settingsByTimeframe,
           },
           right: {
@@ -801,6 +1007,12 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: state.panels.right.exhaustionSide,
             exhaustionLookback: state.panels.right.exhaustionLookback,
             exhaustionShowProvisional: state.panels.right.exhaustionShowProvisional,
+            icebergEnabled: state.panels.right.icebergEnabled,
+            icebergMinScore: state.panels.right.icebergMinScore,
+            icebergLookback: state.panels.right.icebergLookback,
+            icebergShowSuspected: state.panels.right.icebergShowSuspected,
+            icebergShowLabels: state.panels.right.icebergShowLabels,
+            icebergShowTint: state.panels.right.icebergShowTint,
             profileWidthPct: state.panels.right.profileWidthPct,
             profileOpacity: state.panels.right.profileOpacity,
             profileMinRowWidth: state.panels.right.profileMinRowWidth,
@@ -813,6 +1025,22 @@ export const useChartStore = create<ChartState>()(
             deltaProfileWidth: state.panels.right.deltaProfileWidth,
             sessionsEnabled: state.panels.right.sessionsEnabled,
             sessions: state.panels.right.sessions,
+            liquidityEnabled: state.panels.right.liquidityEnabled,
+            liquidityBucketSize: state.panels.right.liquidityBucketSize,
+            minimumLiquidityThreshold: state.panels.right.minimumLiquidityThreshold,
+            liquidityOpacity: state.panels.right.liquidityOpacity,
+            liquidityRange: state.panels.right.liquidityRange,
+            liquidityHistoryEnabled: state.panels.right.liquidityHistoryEnabled,
+            liquidityHistoryDepth: state.panels.right.liquidityHistoryDepth,
+            liquidityHeatmapEnabled: state.panels.right.liquidityHeatmapEnabled,
+            liquidityHeatmapOpacity: state.panels.right.liquidityHeatmapOpacity,
+            liquidityHeatmapAgeFade: state.panels.right.liquidityHeatmapAgeFade,
+            liquidityHeatmapWidth: state.panels.right.liquidityHeatmapWidth,
+            liquidityHeatmapShowPulled: state.panels.right.liquidityHeatmapShowPulled,
+            liquidityHeatmapShowConsumed: state.panels.right.liquidityHeatmapShowConsumed,
+            liquidityHeatmapShowPersistence: state.panels.right.liquidityHeatmapShowPersistence,
+            liquidityHeatmapShowCurrentLabel: state.panels.right.liquidityHeatmapShowCurrentLabel,
+            liquidityHeatmapProfileSync: state.panels.right.liquidityHeatmapProfileSync,
             settingsByTimeframe: state.panels.right.settingsByTimeframe,
           },
         },

@@ -6,16 +6,30 @@ import { feedAdapter } from '../lib/feeds';
 import { AggregationEngine } from '../lib/aggregation/engine';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
+import { IcebergEngine } from '../lib/iceberg/engine';
 import { getCandleTimeForTrade } from '../lib/utils/aggregation';
 import { ChartEngineContext } from './ChartEngineContext';
 import { Candle } from '../types/candle';
+import { FootprintCell } from '../types/footprint';
 import { Trade } from '../types/trade';
 import { AbsorptionResult } from '../types/absorption';
 import { ExhaustionResult } from '../types/exhaustion';
+import { IcebergLevel } from '../types/iceberg';
+import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
+import { aggregateOrderbook } from '../lib/liquidity/aggregation';
+import { LiquidityHistoryManager } from '../lib/liquidity/history';
+import { storeClosedCandleAction } from '../lib/actions/storageActions';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
   children: React.ReactNode;
+}
+
+interface StoredFootprintCell {
+  bucketPrice: number;
+  bidVol: number;
+  askVol: number;
+  delta: number;
 }
 
 export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps) {
@@ -35,15 +49,53 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const setAbsorptionMap = useChartStore(s => s.setAbsorptionMap);
   const setExhaustionMap = useChartStore(s => s.setExhaustionMap);
   const exhaustionLookback = useChartStore(s => s.panels[panelId].exhaustionLookback);
+  const setIcebergLevels = useChartStore(s => s.setIcebergLevels);
+  const icebergEnabled = useChartStore(s => s.panels[panelId].icebergEnabled);
+  const icebergMinScore = useChartStore(s => s.panels[panelId].icebergMinScore);
+  const icebergLookback = useChartStore(s => s.panels[panelId].icebergLookback);
+  const setLiquidityZones = useChartStore(s => s.setLiquidityZones);
+  const liquidityEnabled = useChartStore(s => s.panels[panelId].liquidityEnabled);
+  const liquidityBucketSize = useChartStore(s => s.panels[panelId].liquidityBucketSize);
+  const liquidityHistoryDepth = useChartStore(s => s.panels[panelId].liquidityHistoryDepth);
+  const minimumLiquidityThreshold = useChartStore(s => s.panels[panelId].minimumLiquidityThreshold);
+  const liquidityRange = useChartStore(s => s.panels[panelId].liquidityRange);
 
   const connectedRef = useRef(false);
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
   const pendingFootprintRedrawRef = useRef(false);
   const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
   const exhaustionMapRef = useRef<Map<number, ExhaustionResult>>(new Map());
+  const icebergEngineRef = useRef<IcebergEngine>(new IcebergEngine(bucketSize, icebergLookback));
+  const icebergLevelsRef = useRef<IcebergLevel[]>([]);
   const lastScoredCandleTimeRef = useRef<number | null>(null);
   // Each panel needs its own adapter instance for independent connections
   const adapterRef = useRef(feedAdapter.clone());
+  // Orderbook manager per panel
+  const orderbookRef = useRef<OrderbookManager>(new OrderbookManager());
+  const pendingAggregationRef = useRef(false);
+  const liquidityHistoryRef = useRef<LiquidityHistoryManager>(new LiquidityHistoryManager(liquidityBucketSize, liquidityHistoryDepth));
+
+  // Update history bucket size
+  useEffect(() => {
+    icebergEngineRef.current.setLookbackWindow(icebergLookback);
+    const currentCandles = useChartStore.getState().panels[panelId].candles || [];
+    const levels = currentCandles.length > 0 && icebergEnabled
+      ? icebergEngineRef.current
+        .update(currentCandles, engineRef.current)
+        .filter(level => level.score >= icebergMinScore)
+        .slice(0, 20)
+      : [];
+    icebergLevelsRef.current = levels;
+    setIcebergLevels(panelId, levels);
+  }, [icebergLookback, icebergEnabled, icebergMinScore, panelId, setIcebergLevels]);
+
+  useEffect(() => {
+    liquidityHistoryRef.current.setBucketSize(liquidityBucketSize);
+  }, [liquidityBucketSize]);
+
+  useEffect(() => {
+    liquidityHistoryRef.current.setMaxSnapshots(liquidityHistoryDepth);
+  }, [liquidityHistoryDepth]);
 
   // Throttled redraw loop for footprint updates
   useEffect(() => {
@@ -81,6 +133,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   // Handle engine bucket size updates without reconnecting socket
   useEffect(() => {
     engineRef.current.reset(bucketSize);
+    icebergEngineRef.current.setBucketSize(bucketSize);
     const currentCandles = useChartStore.getState().panels[panelId].candles || [];
     currentCandles.forEach(c => engineRef.current.ingestCandle(c));
     // Rebuild absorption map with new bucket size
@@ -92,8 +145,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     exhaustionMapRef.current = newExhMap;
     setExhaustionMap(panelId, newExhMap);
 
+    const levels = icebergEnabled
+      ? icebergEngineRef.current.update(currentCandles, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
+      : [];
+    icebergLevelsRef.current = levels;
+    setIcebergLevels(panelId, levels);
+
     triggerFootprintRedraw(panelId);
-  }, [bucketSize, exhaustionLookback, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap]);
+  }, [bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap, setIcebergLevels]);
 
   // Handle autoBucketSize toggle
   useEffect(() => {
@@ -120,8 +179,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     engineRef.current.reset();
     absorptionMapRef.current = new Map();
     exhaustionMapRef.current = new Map();
+    icebergEngineRef.current.reset();
+    icebergLevelsRef.current = [];
+    setIcebergLevels(panelId, []);
     lastScoredCandleTimeRef.current = null;
     useChartStore.getState().setActiveMeasurement(panelId, null);
+    liquidityHistoryRef.current.reset();
 
     const adapter = adapterRef.current;
     adapter.disconnect();
@@ -134,6 +197,41 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       engineRef.current.ingestCandle(candle);
       pushCandle(panelId, candle);
 
+      if (candle.isClosed) {
+        const footprint = engineRef.current.getFootprintCandle(candle.time);
+        const cells = footprint
+          ? Array.from(footprint.cells.entries()).map(([bucketPrice, cell]) => ({
+            bucketPrice,
+            bidVol: cell.bidVol,
+            askVol: cell.askVol,
+          }))
+          : [];
+        let buyVol = 0;
+        let sellVol = 0;
+
+        if (footprint) {
+          footprint.cells.forEach((cell) => {
+            buyVol += cell.askVol;
+            sellVol += cell.bidVol;
+          });
+        } else {
+          console.warn(`[Storage] Missing footprint for ${pair} ${timeframe} candle ${candle.time}`);
+        }
+
+        storeClosedCandleAction(
+          pair,
+          timeframe,
+          candle,
+          cells,
+          footprint?.delta ?? 0,
+          buyVol,
+          sellVol,
+          bucketSize,
+        ).catch((err) => {
+          console.error('[Storage] Failed to store candle:', err);
+        });
+      }
+
       // Score closed candles incrementally
       if (candle.isClosed && candle.time !== lastScoredCandleTimeRef.current) {
         lastScoredCandleTimeRef.current = candle.time;
@@ -145,6 +243,31 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         const newExhMap = scoreLatestExhaustion(currentCandles, engineRef.current, newMap, exhaustionMapRef.current, exhaustionLookback);
         exhaustionMapRef.current = newExhMap;
         setExhaustionMap(panelId, newExhMap);
+
+        const icebergLevels = icebergEnabled
+          ? icebergEngineRef.current.update(currentCandles, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
+          : [];
+        icebergLevelsRef.current = icebergLevels;
+        setIcebergLevels(panelId, icebergLevels);
+        console.log(`--- Iceberg Levels (${panelId} panel) ---`);
+        if (icebergLevels.length === 0) {
+          console.log('No iceberg levels detected.');
+        } else {
+          console.table(icebergLevels.map(level => ({
+            price: level.price,
+            score: level.score,
+            rank: level.rank,
+            side: level.side,
+            totalVolume: level.totalVolume.toFixed(2),
+            candleCount: level.candleCount,
+            reasons: level.reasons.join('; '),
+          })));
+        }
+
+        const panelState = useChartStore.getState().panels[panelId];
+        if (panelState.liquidityHistoryEnabled) {
+          liquidityHistoryRef.current.captureSnapshot(candle.time, orderbookRef.current);
+        }
       }
     };
 
@@ -159,11 +282,73 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       pendingFootprintRedrawRef.current = true;
     };
 
+    const fetchStoredHistory = async () => {
+      const params = new URLSearchParams({
+        symbol: pair,
+        timeframe,
+        limit: '500',
+      });
+      const response = await fetch(`/api/history/candles?${params.toString()}`, {
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        throw new Error(`History API returned ${response.status}`);
+      }
+
+      return await response.json() as Candle[];
+    };
+
+    const hydrateStoredFootprints = async (candles: Candle[]) => {
+      await Promise.all(candles.map(async (candle) => {
+        const params = new URLSearchParams({
+          symbol: pair,
+          timeframe,
+          candleTime: String(candle.time),
+          bucketSize: String(bucketSize),
+        });
+        const response = await fetch(`/api/history/footprint?${params.toString()}`, {
+          cache: 'no-store',
+        });
+
+        if (!response.ok) return;
+
+        const rows = await response.json() as StoredFootprintCell[];
+        if (rows.length === 0) return;
+
+        const cells = new Map<number, FootprintCell>(
+          rows.map((row) => [
+            row.bucketPrice,
+            {
+              bidVol: row.bidVol,
+              askVol: row.askVol,
+            },
+          ]),
+        );
+        const delta = rows.reduce((total, row) => total + row.delta, 0);
+
+        engineRef.current.hydrateFootprintCandle(candle, cells, delta);
+      }));
+    };
+
     const init = async () => {
       try {
         setLoadingHistory(panelId, true);
-        console.log(`[PanelFeed:${panelId}] Fetching history for ${pair} ${timeframe}...`);
-        const history = await adapter.fetchHistory(pair, timeframe);
+        console.log(`[PanelFeed:${panelId}] Fetching stored history for ${pair} ${timeframe}...`);
+        let history: Candle[] = [];
+        let loadedFromDatabase = false;
+
+        try {
+          history = await fetchStoredHistory();
+          loadedFromDatabase = history.length > 0;
+        } catch (err) {
+          console.warn('[History] Could not load stored candles:', err);
+        }
+
+        if (!loadedFromDatabase) {
+          console.log(`[PanelFeed:${panelId}] No stored history. Fetching Binance history for ${pair} ${timeframe}...`);
+          history = await adapter.fetchHistory(pair, timeframe);
+        }
 
         if (!active) return;
 
@@ -181,8 +366,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
 
         history.forEach(c => engineRef.current.ingestCandle(c));
+        if (loadedFromDatabase) {
+          await hydrateStoredFootprints(history);
+          if (!active) return;
+        }
 
-        console.log(`[PanelFeed:${panelId}] History loaded (${history.length} candles). Connecting WS...`);
+        console.log(`[PanelFeed:${panelId}] ${loadedFromDatabase ? 'Stored' : 'Binance'} history loaded (${history.length} candles). Connecting WS...`);
         setLoadingHistory(panelId, false);
 
         // Build initial absorption map from history
@@ -194,6 +383,26 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         exhaustionMapRef.current = exhMap;
         setExhaustionMap(panelId, exhMap);
 
+        const icebergLevels = icebergEnabled
+          ? icebergEngineRef.current.update(history, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
+          : [];
+        icebergLevelsRef.current = icebergLevels;
+        setIcebergLevels(panelId, icebergLevels);
+        console.log(`--- Initial Iceberg Levels (${panelId} panel) ---`);
+        if (icebergLevels.length === 0) {
+          console.log('No iceberg levels detected.');
+        } else {
+          console.table(icebergLevels.map(level => ({
+            price: level.price,
+            score: level.score,
+            rank: level.rank,
+            side: level.side,
+            totalVolume: level.totalVolume.toFixed(2),
+            candleCount: level.candleCount,
+            reasons: level.reasons.join('; '),
+          })));
+        }
+
         adapter.subscribeCandles(pair, timeframe, handleCandle);
         adapter.subscribeTrades(pair, handleTrade);
       } catch (err) {
@@ -204,13 +413,103 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     init();
 
+    // --- Orderbook lifecycle ---
+    let aggregationInterval: NodeJS.Timeout | null = null;
+    const obManager = orderbookRef.current;
+
+    const initOrderbook = async () => {
+      if (!adapter.fetchOrderbookSnapshot || !adapter.subscribeOrderbook) return;
+
+      try {
+        console.log(`[PanelFeed:${panelId}] Fetching orderbook snapshot for ${pair}...`);
+        const snapshot = await adapter.fetchOrderbookSnapshot(pair, 500);
+        if (!active) return;
+
+        obManager.initFromSnapshot(snapshot);
+        console.log(`[PanelFeed:${panelId}] Orderbook snapshot loaded (${snapshot.bids.length} bids, ${snapshot.asks.length} asks)`);
+
+        // Subscribe to incremental updates
+        adapter.subscribeOrderbook(pair, (update: DepthUpdate) => {
+          obManager.applyUpdate(update);
+          pendingAggregationRef.current = true;
+        });
+
+        // Throttled aggregation at 500ms
+        aggregationInterval = setInterval(() => {
+          if (!pendingAggregationRef.current) return;
+          pendingAggregationRef.current = false;
+
+          if (!obManager.isReady()) return;
+
+          const panelState = useChartStore.getState().panels[panelId];
+          if (!panelState.liquidityEnabled) return;
+
+          const midPrice = obManager.getMidPrice();
+          if (midPrice === null) return;
+
+          const zones = aggregateOrderbook(
+            obManager.getAllBids(),
+            obManager.getAllAsks(),
+            midPrice,
+            {
+              liquidityBucketSize: panelState.liquidityBucketSize,
+              minimumLiquidityThreshold: panelState.minimumLiquidityThreshold,
+              liquidityRange: panelState.liquidityRange,
+            }
+          );
+
+          setLiquidityZones(panelId, zones);
+          console.log(`[PanelFeed:${panelId}] Liquidity zones updated: ${zones.length} zones`);
+        }, 500);
+      } catch (err) {
+        console.error(`[PanelFeed:${panelId}] Orderbook init failed:`, err);
+      }
+    };
+
+    initOrderbook();
+
     return () => {
       active = false;
       adapter.disconnect();
+      if (adapter.disconnectOrderbook) adapter.disconnectOrderbook();
+      if (aggregationInterval) clearInterval(aggregationInterval);
+      obManager.reset();
+      setLiquidityZones(panelId, []);
       setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, panelId, exhaustionLookback, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, autoBucketSize, setComputedBucketSize, tickSize]);
+  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange]);
 
-  return <ChartEngineContext.Provider value={engineRef.current}>{children}</ChartEngineContext.Provider>;
+  // Temporary Verification Hotkey
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key.toLowerCase() === 'h') {
+        const activePanel = useChartStore.getState().activePanel;
+        if (activePanel === panelId) {
+          console.log(`--- Liquidity History (${panelId} panel) ---`);
+          const history = liquidityHistoryRef.current.getHistory();
+          console.log(`Snapshot count: ${history.length}`);
+          if (history.length > 0) {
+            const firstSnapshot = history[0];
+            console.log(`First snapshot zones:`, firstSnapshot.zones.length);
+            const firstBid = firstSnapshot.zones.find(z => z.side === 'bid');
+            if (firstBid) {
+              const priceHistory = liquidityHistoryRef.current.getPriceHistory(firstBid.price, 'bid');
+              console.log(`Price History for ${firstBid.price} (bid):`, priceHistory);
+              if (priceHistory.length > 0) {
+                import('../lib/liquidity/analysis').then(({ getLiquidityBehavior }) => {
+                  console.log(`Behavior for ${firstBid.price}:`, getLiquidityBehavior(priceHistory));
+                });
+              }
+            }
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [panelId]);
+
+  return <ChartEngineContext.Provider value={{ engine: engineRef.current, liquidityHistory: liquidityHistoryRef.current, icebergEngine: icebergEngineRef.current }}>{children}</ChartEngineContext.Provider>;
 }

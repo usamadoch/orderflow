@@ -4,7 +4,6 @@ Implement:
 task1.md
 
 
-
 CONTEXT RULES:
 - 
 

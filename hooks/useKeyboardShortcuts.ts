@@ -84,6 +84,28 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // I: Log iceberg levels (Verification)
+      if (key === 'i') {
+        e.preventDefault();
+        console.log(`--- Iceberg Levels (${activePanel} panel) ---`);
+        if (panel.icebergLevels.length === 0) {
+          console.log('No iceberg levels detected.');
+        } else {
+          console.table(panel.icebergLevels.map(level => ({
+            price: level.price,
+            score: level.score,
+            rank: level.rank,
+            side: level.side,
+            totalVolume: level.totalVolume.toFixed(2),
+            candleCount: level.candleCount,
+            avgVolumePerCandle: level.avgVolumePerCandle.toFixed(2),
+            cumulativeDelta: level.cumulativeDelta.toFixed(2),
+            reasons: level.reasons.join('; '),
+          })));
+        }
+        return;
+      }
+
       // M: Toggle measurement tool
       if (key === 'm') {
         e.preventDefault();
@@ -95,6 +117,40 @@ export function useKeyboardShortcuts() {
       if (key === 's') {
         e.preventDefault();
         useChartStore.getState().setSessionsEnabled(activePanel, !panel.sessionsEnabled);
+        return;
+      }
+
+      // Q: Toggle liquidity map
+      if (key === 'q') {
+        e.preventDefault();
+        useChartStore.getState().setLiquidityEnabled(activePanel, !panel.liquidityEnabled);
+        return;
+      }
+
+      // K: Toggle iceberg levels
+      if (key === 'k') {
+        e.preventDefault();
+        useChartStore.getState().setIcebergEnabled(activePanel, !panel.icebergEnabled);
+        return;
+      }
+
+      // L: Log liquidity zones (verification)
+      if (key === 'l') {
+        e.preventDefault();
+        console.log(`--- Liquidity Zones (${activePanel} panel) ---`);
+        const zones = panel.liquidityZones;
+        if (zones.length === 0) {
+          console.log('No liquidity zones available.');
+        } else {
+          console.log(`${zones.length} zones:`);
+          console.table(zones.map(z => ({
+            price: z.price,
+            totalQty: z.totalQty.toFixed(2),
+            side: z.side,
+            intensity: z.intensity.toFixed(2),
+            levelCount: z.levelCount,
+          })));
+        }
         return;
       }
 
