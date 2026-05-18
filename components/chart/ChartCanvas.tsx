@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Lock, Unlock, X } from 'lucide-react';
-import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide, Measurement } from '@/lib/store/chart';
+import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide, Measurement, DrawnLine } from '@/lib/store/chart';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { usePanZoom } from './usePanZoom';
@@ -17,7 +17,7 @@ import { drawVolumeProfile } from './drawVolumeProfile';
 import { drawAbsorption } from './drawAbsorption';
 import { drawBubbles } from './drawBubbles';
 import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
-import { drawLines } from './drawLines';
+import { drawDrawingPriceLabels, drawLines } from './drawLines';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
@@ -40,6 +40,76 @@ import { HeatmapRow } from '@/types/liquidity';
 import { IcebergTooltip } from './IcebergTooltip';
 
 type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
+type DrawingHitZone = 'hover' | 'move' | 'delete' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
+
+function getDrawingHitZone(
+  line: DrawnLine,
+  x: number,
+  y: number,
+  indexToX: (index: number) => number | null,
+  priceToY: (price: number) => number,
+  chartWidth: number,
+  chartHeight: number,
+  barWidth: number
+): DrawingHitZone | null {
+  if (line.type === 'horizontal') {
+    const ly = priceToY(line.value);
+    if (Math.abs(y - ly) < 6 && x <= chartWidth) {
+      return Math.abs(x - (chartWidth - 6)) < 8 && Math.abs(y - ly) < 8 ? 'delete' : 'hover';
+    }
+    return null;
+  }
+
+  if (line.type === 'vertical') {
+    const lx = indexToX(line.value);
+    if (lx !== null && Math.abs(x - lx) < 6 && y <= chartHeight) {
+      return Math.abs(x - lx) < 8 && Math.abs(y - 10) < 8 ? 'delete' : 'hover';
+    }
+    return null;
+  }
+
+  if (line.type === 'horizontal-ray') {
+    const startIndex = line.startIndex ?? 0;
+    const lx = indexToX(startIndex);
+    const ly = priceToY(line.value);
+    if (lx === null || ly < 0 || ly > chartHeight) return null;
+
+    if (Math.abs(x - (chartWidth - 6)) < 8 && Math.abs(y - ly) < 8) return 'delete';
+    if (Math.abs(x - lx) < 8 && Math.abs(y - ly) < 8) return 'resize-left';
+    if (x >= Math.max(0, lx) && x <= chartWidth && Math.abs(y - ly) < 6) return 'move';
+    return null;
+  }
+
+  if (
+    line.type === 'box' &&
+    line.firstIndex !== undefined &&
+    line.lastIndex !== undefined &&
+    line.priceHigh !== undefined &&
+    line.priceLow !== undefined
+  ) {
+    const x1 = indexToX(line.firstIndex);
+    const x2 = indexToX(line.lastIndex);
+    if (x1 === null || x2 === null) return null;
+
+    const left = Math.min(x1, x2) - barWidth / 2;
+    const right = Math.max(x1, x2) + barWidth / 2;
+    const top = priceToY(line.priceHigh);
+    const bottom = priceToY(line.priceLow);
+    const minY = Math.min(top, bottom);
+    const maxY = Math.max(top, bottom);
+    const pad = 7;
+
+    if (Math.abs(x - right) < 8 && Math.abs(y - minY) < 8) return 'delete';
+    if (x < left - pad || x > right + pad || y < minY - pad || y > maxY + pad) return null;
+    if (Math.abs(x - left) <= pad) return 'resize-left';
+    if (Math.abs(x - right) <= pad) return 'resize-right';
+    if (Math.abs(y - minY) <= pad) return 'resize-top';
+    if (Math.abs(y - maxY) <= pad) return 'resize-bottom';
+    return 'move';
+  }
+
+  return null;
+}
 
 function getCustomProfileHitZone(
   customProfileRange: PanelState['customProfileRange'],
@@ -250,6 +320,10 @@ export function ChartCanvas({
 
   const hoveredLineId = useRef<string | null>(null);
   const isHoveringDeleteDot = useRef(false);
+  const hoveredDrawingZone = useRef<DrawingHitZone | null>(null);
+  const isDraggingDrawing = useRef(false);
+  const drawingDragZone = useRef<DrawingHitZone | null>(null);
+  const drawingSnapshot = useRef<DrawnLine | null>(null);
   
   const coordsRef = useRef<CoordinateSystem | null>(null);
   const widthRef = useRef(0);
@@ -348,7 +422,7 @@ export function ChartCanvas({
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
       const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
 
-      drawLines(ctx, drawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, hoveredLineId.current, isHoveringDeleteDot.current);
+      drawLines(ctx, drawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, hoveredLineId.current, isHoveringDeleteDot.current);
 
       drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
@@ -388,8 +462,8 @@ export function ChartCanvas({
       // Selection Rectangle (drawn below candles)
       drawSelectionRect(
         ctx,
-        dragStart.current,
-        dragEnd.current,
+        isDrawMode ? dragStart.current : null,
+        isDrawMode ? dragEnd.current : null,
         customProfileRange,
         (idx) => indexToX(idx),
         (p) => priceToY(p),
@@ -537,9 +611,43 @@ export function ChartCanvas({
           metrics: null,
           footprintMetrics: null
         }, currentBarWidth);
+      } else if (lineDrawMode === 'box' && isDragging.current && dragStart.current && dragEnd.current) {
+        const firstIndex = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+        const lastIndex = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+        const priceHigh = Math.max(
+          yToPrice(dragStart.current.y, priceMin, priceMax, chartHeight),
+          yToPrice(dragEnd.current.y, priceMin, priceMax, chartHeight)
+        );
+        const priceLow = Math.min(
+          yToPrice(dragStart.current.y, priceMin, priceMax, chartHeight),
+          yToPrice(dragEnd.current.y, priceMin, priceMax, chartHeight)
+        );
+
+        drawLines(
+          ctx,
+          [{
+            id: 'active-box',
+            type: 'box',
+            value: priceHigh,
+            firstIndex,
+            lastIndex,
+            priceHigh,
+            priceLow,
+          }],
+          indexToX,
+          priceToY,
+          logicalWidth,
+          logicalHeight,
+          timeAxisHeight,
+          priceAxisWidth,
+          currentBarWidth,
+          'active-box',
+          false
+        );
       }
 
       drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth);
+      drawDrawingPriceLabels(ctx, drawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth);
       drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
       if (heatmapRows && liquidityHistory) {
@@ -634,7 +742,7 @@ export function ChartCanvas({
     scrollOffsetProp,
     onBarWidthChange,
     onScrollOffsetChange,
-    isDrawMode,
+    isDrawMode || lineDrawMode !== 'none',
     measureToolActive,
     (x: number, y: number) => {
       // Prevent chart panning if we are over a custom profile or its buttons, or a line
@@ -856,13 +964,25 @@ export function ChartCanvas({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // 0. Line Drawing and Deletion
+      // 0. Line Drawing, Deletion, and Drawing Movement
       if (hoveredLineId.current && isHoveringDeleteDot.current) {
         useChartStore.getState().removeLine(panelId, hoveredLineId.current);
         hoveredLineId.current = null;
         isHoveringDeleteDot.current = false;
+        hoveredDrawingZone.current = null;
         redraw();
         return;
+      }
+
+      if (hoveredLineId.current && hoveredDrawingZone.current && hoveredDrawingZone.current !== 'hover') {
+        const targetLine = useChartStore.getState().panels[panelId].drawnLines.find((line) => line.id === hoveredLineId.current);
+        if (targetLine) {
+          dragAnchor.current = { x, y };
+          drawingSnapshot.current = targetLine;
+          drawingDragZone.current = hoveredDrawingZone.current;
+          isDraggingDrawing.current = true;
+          return;
+        }
       }
 
       if (lineDrawMode !== 'none') {
@@ -877,9 +997,22 @@ export function ChartCanvas({
           const priceMax = pCenter + pRange / 2;
           const price = yToPrice(y, priceMin, priceMax, chartHeight);
           useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal', value: price });
+        } else if (lineDrawMode === 'horizontal-ray') {
+          const pCenter = priceCenter.current ?? 0;
+          const pRange = priceRange.current ?? 100;
+          const priceMin = pCenter - pRange / 2;
+          const priceMax = pCenter + pRange / 2;
+          const price = yToPrice(y, priceMin, priceMax, chartHeight);
+          const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal-ray', value: price, startIndex: index });
         } else if (lineDrawMode === 'vertical') {
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
           useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'vertical', value: index });
+        } else if (lineDrawMode === 'box') {
+          dragStart.current = { x, y };
+          dragEnd.current = { x, y };
+          isDragging.current = true;
+          return;
         }
         useChartStore.getState().setLineDrawMode(panelId, 'none');
         redraw();
@@ -971,10 +1104,15 @@ export function ChartCanvas({
 
       if (lineDrawMode !== 'none') {
         cursor = 'crosshair';
+        hoveredLineId.current = null;
+        hoveredDrawingZone.current = null;
+        isHoveringDeleteDot.current = false;
       } else if (measureToolActive) {
         cursor = 'crosshair';
       } else if (isDragging.current || isDrawMode) {
         cursor = 'crosshair';
+      } else if (isDraggingDrawing.current) {
+        cursor = drawingDragZone.current === 'move' ? 'grabbing' : 'crosshair';
       } else if (isDraggingProfile.current) {
         cursor = 'grabbing';
       } else if (isDraggingResize.current) {
@@ -1028,6 +1166,7 @@ export function ChartCanvas({
           // Line Hover Detection
           hoveredLineId.current = null;
           isHoveringDeleteDot.current = false;
+          hoveredDrawingZone.current = null;
 
           if (!hoveringAction && !hoverZone.current) {
             const chartWidth = rect.width - priceAxisWidth;
@@ -1041,30 +1180,16 @@ export function ChartCanvas({
             const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
             for (const line of drawnLines) {
-              if (line.type === 'horizontal') {
-                const ly = priceToY(line.value);
-                if (Math.abs(y - ly) < 6 && x <= chartWidth) {
-                  hoveredLineId.current = line.id;
-                  cursor = 'pointer';
-                  // Check delete dot
-                  const dotX = chartWidth - 6;
-                  if (Math.abs(x - dotX) < 8 && Math.abs(y - ly) < 8) {
-                    isHoveringDeleteDot.current = true;
-                  }
-                  break;
-                }
-              } else {
-                const lx = indexToX(line.value);
-                if (lx !== null && Math.abs(x - lx) < 6 && y <= chartHeight) {
-                  hoveredLineId.current = line.id;
-                  cursor = 'pointer';
-                  // Check delete dot
-                  const dotY = 10;
-                  if (Math.abs(x - lx) < 8 && Math.abs(y - dotY) < 8) {
-                    isHoveringDeleteDot.current = true;
-                  }
-                  break;
-                }
+              const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current);
+              if (hitZone) {
+                hoveredLineId.current = line.id;
+                hoveredDrawingZone.current = hitZone;
+                isHoveringDeleteDot.current = hitZone === 'delete';
+                if (hitZone === 'move') cursor = 'grab';
+                else if (hitZone === 'resize-left' || hitZone === 'resize-right') cursor = 'ew-resize';
+                else if (hitZone === 'resize-top' || hitZone === 'resize-bottom') cursor = 'ns-resize';
+                else cursor = 'pointer';
+                break;
               }
             }
           }
@@ -1213,9 +1338,74 @@ export function ChartCanvas({
       redraw();
 
       // Drag Logic
-      if (isDragging.current && (isDrawMode || measureToolActive)) {
+      if (isDragging.current && (isDrawMode || measureToolActive || lineDrawMode === 'box')) {
         dragEnd.current = { x, y };
         redraw();
+      } else if (isDraggingDrawing.current && dragAnchor.current && drawingSnapshot.current && drawingDragZone.current) {
+        const chartWidth = rect.width - priceAxisWidth;
+        const chartHeight = rect.height - timeAxisHeight;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+        const snapshot = drawingSnapshot.current;
+        const zone = drawingDragZone.current;
+
+        if (snapshot.type === 'horizontal-ray') {
+          const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
+          const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
+          const priceDelta = priceAtCurrent - priceAtAnchor;
+
+          if (zone === 'resize-left') {
+            useChartStore.getState().updateLine(panelId, snapshot.id, {
+              startIndex: xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth),
+              value: priceAtCurrent,
+            });
+          } else if (zone === 'move') {
+            const indexDelta = Math.round((x - dragAnchor.current.x) / barWidth.current);
+            useChartStore.getState().updateLine(panelId, snapshot.id, {
+              startIndex: (snapshot.startIndex ?? 0) + indexDelta,
+              value: snapshot.value + priceDelta,
+            });
+          }
+          redraw();
+        } else if (
+          snapshot.type === 'box' &&
+          snapshot.firstIndex !== undefined &&
+          snapshot.lastIndex !== undefined &&
+          snapshot.priceHigh !== undefined &&
+          snapshot.priceLow !== undefined
+        ) {
+          const updates: Partial<DrawnLine> = {};
+
+          if (zone === 'move') {
+            const indexDelta = Math.round((x - dragAnchor.current.x) / barWidth.current);
+            const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
+            const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
+            const priceDelta = priceAtCurrent - priceAtAnchor;
+            updates.firstIndex = Math.max(0, Math.min(candles.length - 1, snapshot.firstIndex + indexDelta));
+            updates.lastIndex = Math.max(0, Math.min(candles.length - 1, snapshot.lastIndex + indexDelta));
+            updates.priceHigh = snapshot.priceHigh + priceDelta;
+            updates.priceLow = snapshot.priceLow + priceDelta;
+          } else if (zone === 'resize-left' || zone === 'resize-right') {
+            const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+            if (zone === 'resize-left') {
+              updates.firstIndex = Math.min(index, snapshot.lastIndex - 1);
+            } else {
+              updates.lastIndex = Math.max(index, snapshot.firstIndex + 1);
+            }
+          } else if (zone === 'resize-top' || zone === 'resize-bottom') {
+            const price = yToPrice(y, priceMin, priceMax, chartHeight);
+            if (zone === 'resize-top') {
+              updates.priceHigh = Math.max(price, snapshot.priceLow + bucketSize);
+            } else {
+              updates.priceLow = Math.min(price, snapshot.priceHigh - bucketSize);
+            }
+          }
+
+          useChartStore.getState().updateLine(panelId, snapshot.id, updates);
+          redraw();
+        }
       } else if (isDraggingProfile.current && dragAnchor.current && profileSnapshot.current) {
         const deltaX = x - dragAnchor.current.x;
 
@@ -1278,7 +1468,16 @@ export function ChartCanvas({
     };
 
     const onMouseUp = () => {
-      if (!isDragging.current && !isDraggingProfile.current && !isDraggingResize.current) return;
+      if (!isDragging.current && !isDraggingProfile.current && !isDraggingResize.current && !isDraggingDrawing.current) return;
+
+      if (isDraggingDrawing.current) {
+        isDraggingDrawing.current = false;
+        dragAnchor.current = null;
+        drawingSnapshot.current = null;
+        drawingDragZone.current = null;
+        redraw();
+        return;
+      }
 
       if (isDragging.current && measureToolActive && dragStart.current && dragEnd.current) {
         isDragging.current = false;
@@ -1318,6 +1517,49 @@ export function ChartCanvas({
             footprintMetrics
           });
         }
+        dragStart.current = null;
+        dragEnd.current = null;
+        redraw();
+        return;
+      }
+
+      if (isDragging.current && lineDrawMode === 'box' && dragStart.current && dragEnd.current) {
+        isDragging.current = false;
+
+        const rect = canvas.getBoundingClientRect();
+        const chartWidth = rect.width - priceAxisWidth;
+        const currentBarWidth = barWidth.current;
+        const currentScrollOffset = scrollOffset.current;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+        const chartHeight = rect.height - timeAxisHeight;
+
+        const idx1 = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+        const idx2 = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+        const p1 = yToPrice(dragStart.current.y, priceMin, priceMax, chartHeight);
+        const p2 = yToPrice(dragEnd.current.y, priceMin, priceMax, chartHeight);
+        const firstIndex = Math.min(idx1, idx2);
+        const lastIndex = Math.max(idx1, idx2);
+        const priceHigh = Math.max(p1, p2);
+        const priceLow = Math.min(p1, p2);
+        const widthPx = Math.abs(dragEnd.current.x - dragStart.current.x);
+        const heightPx = Math.abs(dragEnd.current.y - dragStart.current.y);
+
+        if (widthPx >= 5 && heightPx >= 5) {
+          useChartStore.getState().addLine(panelId, {
+            id: crypto.randomUUID(),
+            type: 'box',
+            value: priceHigh,
+            firstIndex,
+            lastIndex,
+            priceHigh,
+            priceLow,
+          });
+        }
+
+        useChartStore.getState().setLineDrawMode(panelId, 'none');
         dragStart.current = null;
         dragEnd.current = null;
         redraw();
@@ -1387,6 +1629,9 @@ export function ChartCanvas({
         dragStart.current = null;
         dragEnd.current = null;
         isDragging.current = false;
+        isDraggingDrawing.current = false;
+        drawingSnapshot.current = null;
+        drawingDragZone.current = null;
         useChartStore.getState().setCustomProfileRange(panelId, null);
         redraw();
       }

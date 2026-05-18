@@ -1,5 +1,26 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-18] - Improvement: Drawing Price Label Placement
+- **What changed**:
+  - Moved horizontal ray price labels from the right price scale to the ray's left starting point, slightly above the line.
+  - Moved box top/bottom price labels to the left edge outside the rectangle, above the top edge and below the bottom edge.
+  - Kept existing drawing creation, movement, resizing, deletion, and toolbar behavior unchanged.
+- **Why it changed**:
+  - Multiple drawing labels on the right-side price scale became visually crowded.
+- **Impact summary**:
+  - Drawing labels are now clearer and stay associated with their own line or box instead of stacking on the chart price axis.
+
+## [2026-05-18] - Feature: Compact Drawing Tools, Horizontal Rays, and Boxes
+- **What changed**:
+  - Added a new right-extending horizontal ray drawing mode that starts at the clicked candle position, extends to the right edge, and renders a price-axis label.
+  - Added a box drawing mode with live drag preview, top/bottom price labels, delete dot, hover handles, movement, and edge resizing.
+  - Extended drawing state with `horizontal-ray` and `box` while leaving the existing horizontal and vertical line cases intact.
+  - Replaced the separate profile, line, and measurement buttons in `PanelToolbar.tsx` with a compact drawing-tool dropdown.
+- **Why it changed**:
+  - More drawing tools were making the per-panel header crowded and hard to use while resizing or dragging chart panels.
+- **Impact summary**:
+  - Users can create labeled right-side rays and labeled price boxes from the drawing selector. Existing horizontal and vertical line tools still use their original creation and delete behavior.
+
 ## [2026-05-18] - Fix: Custom Volume Profile Interaction and LVN Support
 - **What changed**:
   - Added shared custom profile hit-testing in `ChartCanvas.tsx` so cursor state, drag blocking, move/resize starts, and crosshair suppression use the same profile bounds.

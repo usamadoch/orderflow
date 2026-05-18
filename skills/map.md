@@ -143,6 +143,13 @@ lib/utils/volumeProfile.ts → Volume profile aggregation, POC/VA math, and LVN 
 components/FeedProvider.tsx → Panel feed lifecycle, DB-backed startup history restore, and non-blocking closed-candle snapshot save requests.
 lib/db/database.ts → Turso/libSQL client singleton, schema setup, atomic closed-candle batch writes with transient retry, metadata, and history query helpers.
 lib/db/marketStorage.ts → Best-effort closed-candle snapshot storage orchestration using one atomic DB write and clear failure logging.
+components/chart/ChartCanvas.tsx → Canvas render orchestration, drawing tool creation, hover/delete, and move/resize interactions for drawable overlays.
+components/chart/drawLines.ts → Canvas renderer for horizontal/vertical lines, right-extending horizontal rays, boxes, handles, delete dots, and price labels.
+components/ui/PanelToolbar.tsx → Per-panel toolbar controls with compact drawing-tool selector plus signal/session quick toggles.
+lib/store/chart.ts → Zustand panel state, persisted settings, drawing tool modes, drawable overlay storage, and drawing update actions.
+
+components/chart/drawLines.ts → Drawing overlay renderer with left-anchored price labels for rays and outside-edge box labels.
+components/chart/ChartCanvas.tsx → Canvas render orchestration passing drawing geometry into overlay label rendering.
 
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)

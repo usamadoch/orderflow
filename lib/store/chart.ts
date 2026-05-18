@@ -16,7 +16,7 @@ export type LayoutMode = 'single' | 'dual';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type { BubbleSide };
 export type ExhaustionSide = 'both' | 'buyer' | 'seller';
-export type LineDrawMode = 'none' | 'horizontal' | 'vertical';
+export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box';
 export type SessionId = 'tokyo' | 'london' | 'newYork';
 
 export interface SessionConfig {
@@ -73,8 +73,13 @@ export interface Measurement {
 
 export interface DrawnLine {
   id: string;
-  type: 'horizontal' | 'vertical';
-  value: number; // price for horizontal, candle index for vertical
+  type: 'horizontal' | 'vertical' | 'horizontal-ray' | 'box';
+  value: number; // price for horizontal/ray, candle index for vertical, top price fallback for box
+  startIndex?: number;
+  firstIndex?: number;
+  lastIndex?: number;
+  priceHigh?: number;
+  priceLow?: number;
 }
 
 export interface PanelState {
@@ -215,6 +220,7 @@ interface ChartState {
   setCustomProfileLocked: (panelId: PanelId, locked: boolean) => void;
   setProfileSelected: (panelId: PanelId, selected: boolean) => void;
   addLine: (panelId: PanelId, line: DrawnLine) => void;
+  updateLine: (panelId: PanelId, id: string, updates: Partial<DrawnLine>) => void;
   removeLine: (panelId: PanelId, id: string) => void;
   setLineDrawMode: (panelId: PanelId, mode: LineDrawMode) => void;
   setExhaustionEnabled: (panelId: PanelId, enabled: boolean) => void;
@@ -550,6 +556,14 @@ export const useChartStore = create<ChartState>()(
         set((state) => {
           const panel = state.panels[panelId];
           return updatePanel(state, panelId, { drawnLines: [...panel.drawnLines, line] });
+        }),
+
+      updateLine: (panelId, id, updates) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, {
+            drawnLines: panel.drawnLines.map((line) => line.id === id ? { ...line, ...updates } : line),
+          });
         }),
 
       removeLine: (panelId, id) =>
