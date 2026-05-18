@@ -24,6 +24,14 @@ export function Sidebar() {
   const lastExh = exhSignals.length > 0 ? exhSignals.sort((a, b) => b.candleTime - a.candleTime)[0] : null;
   const lastExhTimeStr = lastExh ? new Date(lastExh.candleTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
 
+  // Iceberg Stats
+  const icebergLevels = panel.icebergLevels.filter(level => level.score >= panel.icebergMinScore);
+  const activeIcebergs = icebergLevels.filter(level => level.isActive).length;
+  const confirmedIcebergs = icebergLevels.filter(level => level.rank === 'confirmed').length;
+  const probableIcebergs = icebergLevels.filter(level => level.rank === 'probable').length;
+  const lastIceberg = icebergLevels.length > 0 ? [...icebergLevels].sort((a, b) => b.detectedAt - a.detectedAt)[0] : null;
+  const lastIcebergTimeStr = lastIceberg ? new Date(lastIceberg.detectedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
+
   return (
     <aside
       className={`font-sans border-r border-border bg-surface flex flex-col shrink-0 transition-all duration-300 ease-in-out z-10 shadow-lg ${sidebarCollapsed ? 'w-12' : 'w-52'
@@ -169,6 +177,41 @@ export function Sidebar() {
                       lastExh?.rank === 'extreme' ? 'text-[#F0B90B]' : 'text-text-dim'
                     }`}>{lastExh?.rank || 'NONE'}</span>
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Iceberg Stats */}
+          <div>
+            {!sidebarCollapsed ? (
+              <h2 className="text-text-muted text-[10px] uppercase font-extrabold tracking-widest mb-3 flex items-center gap-2">
+                <Activity size={12} strokeWidth={3} className="text-[#26A69A]" />
+                Iceberg
+              </h2>
+            ) : (
+              <div className="flex justify-center mb-3 text-[#26A69A]">
+                <Activity size={18} strokeWidth={2.5} />
+              </div>
+            )}
+
+            {!sidebarCollapsed && (
+              <div className="flex flex-col gap-2 px-1">
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Active levels</span>
+                  <span className="font-mono font-bold text-[#26A69A]">{activeIcebergs}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Confirmed</span>
+                  <span className="font-mono font-bold text-[#26A69A]">{confirmedIcebergs}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Probable</span>
+                  <span className="font-mono font-bold text-[#EF5350]">{probableIcebergs}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] mt-1 pt-2 border-t border-border/50">
+                  <span className="text-text-muted text-[9px] font-black uppercase">Last Detected</span>
+                  <span className="font-mono font-bold text-main">{lastIcebergTimeStr}</span>
                 </div>
               </div>
             )}

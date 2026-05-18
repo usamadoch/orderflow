@@ -15,6 +15,9 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setTimeframe = useChartStore(s => s.setTimeframe);
   const setChartMode = useChartStore(s => s.setChartMode);
   const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
+  const setAbsorptionEnabled = useChartStore(s => s.setAbsorptionEnabled);
+  const setExhaustionEnabled = useChartStore(s => s.setExhaustionEnabled);
+  const setIcebergEnabled = useChartStore(s => s.setIcebergEnabled);
 
 
   return (
@@ -85,6 +88,43 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
           title="Toggle profile draw mode"
         >
           PROFILE
+        </button>
+      </div>
+
+      {/* Signal Toggles */}
+      <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
+        <span className={`text-[9px] font-black tracking-widest ${panel.absorptionEnabled || panel.exhaustionEnabled || panel.icebergEnabled ? 'text-text-dim' : 'text-[#333]'}`}>
+          SIGNALS
+        </span>
+        <button
+          onClick={() => setAbsorptionEnabled(panelId, !panel.absorptionEnabled)}
+          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.absorptionEnabled
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            }`}
+          title="Toggle Absorption"
+        >
+          ABS
+        </button>
+        <button
+          onClick={() => setExhaustionEnabled(panelId, !panel.exhaustionEnabled)}
+          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.exhaustionEnabled
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            }`}
+          title="Toggle Exhaustion"
+        >
+          EX
+        </button>
+        <button
+          onClick={() => setIcebergEnabled(panelId, !panel.icebergEnabled)}
+          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.icebergEnabled
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            }`}
+          title="Toggle Iceberg (K)"
+        >
+          ICE
         </button>
       </div>
 

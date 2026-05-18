@@ -22,6 +22,7 @@ import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
 import { ExhaustionResult } from '@/types/exhaustion';
+import { IcebergLevel } from '@/types/iceberg';
 import { AbsorptionTooltip } from './AbsorptionTooltip';
 import { drawExhaustion } from './drawExhaustion';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
@@ -30,11 +31,13 @@ import { drawMeasurementRect } from '@/lib/draw/drawMeasurement';
 import { drawSessions } from '@/lib/draw/drawSessions';
 import { drawLiquidity } from '@/lib/draw/drawLiquidity';
 import { drawLiquidityHeatmap } from '@/lib/draw/drawLiquidityHeatmap';
+import { drawIceberg } from '@/lib/draw/drawIceberg';
 import { buildHeatmapRows } from '@/lib/liquidity/heatmap';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
 import { MeasurementPanel } from './MeasurementPanel';
 import { HeatmapRow } from '@/types/liquidity';
+import { IcebergTooltip } from './IcebergTooltip';
 
 interface ChartCanvasProps {
   panelId: PanelId;
@@ -75,6 +78,13 @@ interface ChartCanvasProps {
   exhaustionSide: ExhaustionSide;
   exhaustionShowProvisional: boolean;
   exhaustionMap: Map<number, ExhaustionResult>;
+  icebergEnabled: boolean;
+  icebergMinScore: number;
+  icebergLookback: number;
+  icebergShowSuspected: boolean;
+  icebergShowLabels: boolean;
+  icebergShowTint: boolean;
+  icebergLevels: IcebergLevel[];
   profileWidthPct: number;
   profileOpacity: number;
   profileMinRowWidth: number;
@@ -141,6 +151,13 @@ export function ChartCanvas({
   exhaustionSide,
   exhaustionShowProvisional,
   exhaustionMap,
+  icebergEnabled,
+  icebergMinScore,
+  icebergLookback,
+  icebergShowSuspected,
+  icebergShowLabels,
+  icebergShowTint,
+  icebergLevels,
   profileWidthPct,
   profileOpacity,
   profileMinRowWidth,
@@ -201,6 +218,7 @@ export function ChartCanvas({
 
   const [hoveredAbs, setHoveredAbs] = React.useState<{ result: AbsorptionResult, x: number, y: number } | null>(null);
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
+  const [hoveredIceberg, setHoveredIceberg] = React.useState<{ level: IcebergLevel, x: number, y: number } | null>(null);
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
@@ -345,6 +363,18 @@ export function ChartCanvas({
       // 5b. Exhaustion markers
       if (exhaustionEnabled && exhaustionMap.size > 0) {
         drawExhaustion(ctx, candles, { firstIndex, lastIndex }, indexToX, priceToY, currentBarWidth, exhaustionMap, { exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, timeframe });
+      }
+
+      // 5c. Iceberg level markers
+      if (icebergEnabled && icebergLevels.length > 0) {
+        drawIceberg(ctx, icebergLevels, candles, indexToX, priceToY, currentBarWidth, bucketSize, {
+          icebergMinScore,
+          icebergShowSuspected,
+          icebergShowLabels,
+          icebergShowTint,
+          icebergLookback,
+          absorptionMap,
+        });
       }
 
       // 6. Custom Profile (on top of candles and other overlays)
@@ -520,7 +550,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1007,9 +1037,53 @@ export function ChartCanvas({
               }
             }
           }
-          if (!foundEx) setHoveredExhaustion(null);
+          if (!foundEx) {
+            setHoveredExhaustion(null);
+
+            // Iceberg Hover Detection
+            let foundIceberg = false;
+            if (icebergEnabled && icebergLevels.length > 0) {
+              const chartWidth = rect.width - priceAxisWidth;
+              const chartHeight = rect.height - timeAxisHeight;
+              const pCenter = priceCenter.current ?? 0;
+              const pRange = priceRange.current ?? 100;
+              const priceMin = pCenter - pRange / 2;
+              const priceMax = pCenter + pRange / 2;
+
+              const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
+              const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+
+              for (const level of icebergLevels) {
+                if (level.score < icebergMinScore) continue;
+                if (!icebergShowSuspected && level.rank === 'suspected') continue;
+
+                const end = Number.isFinite(level.windowEndIndex) ? level.windowEndIndex : candles.length - 1;
+                const start = Number.isFinite(level.windowStartIndex)
+                  ? level.windowStartIndex
+                  : Math.max(0, end - icebergLookback + 1);
+                const x1 = indexToX(Math.max(0, Math.min(candles.length - 1, start)));
+                const x2 = indexToX(Math.max(0, Math.min(candles.length - 1, end)));
+                if (x1 === null || x2 === null) continue;
+
+                const minX = Math.min(x1, x2) - barWidth.current / 2;
+                const maxX = Math.max(x1, x2) + barWidth.current / 2;
+                const iy = priceToY(level.price + bucketSize / 2);
+
+                if (x >= minX && x <= maxX && Math.abs(y - iy) <= 8) {
+                  setHoveredIceberg({ level, x: Math.min(maxX, x + 8), y: iy });
+                  cursor = 'help';
+                  foundIceberg = true;
+                  break;
+                }
+              }
+            }
+            if (!foundIceberg) setHoveredIceberg(null);
+          } else {
+            setHoveredIceberg(null);
+          }
         } else {
           setHoveredExhaustion(null);
+          setHoveredIceberg(null);
         }
       }
 
@@ -1201,7 +1275,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe]);
+  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe]);
 
 
   return (
@@ -1223,6 +1297,13 @@ export function ChartCanvas({
           result={hoveredExhaustion.result} 
           x={hoveredExhaustion.x} 
           y={hoveredExhaustion.y} 
+        />
+      )}
+      {hoveredIceberg && (
+        <IcebergTooltip
+          level={hoveredIceberg.level}
+          x={hoveredIceberg.x}
+          y={hoveredIceberg.y}
         />
       )}
 

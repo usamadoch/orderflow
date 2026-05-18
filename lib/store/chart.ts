@@ -6,6 +6,7 @@ import { FootprintMode } from '../../types/footprint';
 import { AbsorptionResult } from '../../types/absorption';
 import { BubbleSide } from '../../components/chart/drawBubbles';
 import { ExhaustionResult } from '../../types/exhaustion';
+import { IcebergLevel } from '../../types/iceberg';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
 import { LiquidityZone } from '../../types/liquidity';
 
@@ -43,6 +44,11 @@ export interface TimeframeSettings {
   absorptionMinScore: number;
   exhaustionMinScore: number;
   exhaustionLookback: number;
+  icebergMinScore: number;
+  icebergLookback: number;
+  icebergShowSuspected: boolean;
+  icebergShowLabels: boolean;
+  icebergShowTint: boolean;
   profileWidthPct: number;
   profileOpacity: number;
   profileMinRowWidth: number;
@@ -114,6 +120,13 @@ export interface PanelState {
   exhaustionLookback: number;
   exhaustionShowProvisional: boolean;
   exhaustionMap: Map<number, ExhaustionResult>;
+  icebergEnabled: boolean;
+  icebergMinScore: number;
+  icebergLookback: number;
+  icebergShowSuspected: boolean;
+  icebergShowLabels: boolean;
+  icebergShowTint: boolean;
+  icebergLevels: IcebergLevel[];
   // Volume Profile Visuals
   profileWidthPct: number;
   profileOpacity: number;
@@ -210,6 +223,13 @@ interface ChartState {
   setExhaustionLookback: (panelId: PanelId, lookback: number) => void;
   setExhaustionShowProvisional: (panelId: PanelId, show: boolean) => void;
   setExhaustionMap: (panelId: PanelId, map: Map<number, ExhaustionResult>) => void;
+  setIcebergEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setIcebergMinScore: (panelId: PanelId, score: number) => void;
+  setIcebergLookback: (panelId: PanelId, lookback: number) => void;
+  setIcebergShowSuspected: (panelId: PanelId, show: boolean) => void;
+  setIcebergShowLabels: (panelId: PanelId, show: boolean) => void;
+  setIcebergShowTint: (panelId: PanelId, show: boolean) => void;
+  setIcebergLevels: (panelId: PanelId, levels: IcebergLevel[]) => void;
   setProfileWidthPct: (panelId: PanelId, pct: number) => void;
   setProfileOpacity: (panelId: PanelId, opacity: number) => void;
   setProfileMinRowWidth: (panelId: PanelId, width: number) => void;
@@ -300,6 +320,13 @@ function createDefaultPanel(id: PanelId): PanelState {
     exhaustionLookback: 5,
     exhaustionShowProvisional: true,
     exhaustionMap: new Map(),
+    icebergEnabled: true,
+    icebergMinScore: 45,
+    icebergLookback: 10,
+    icebergShowSuspected: true,
+    icebergShowLabels: true,
+    icebergShowTint: true,
+    icebergLevels: [],
     profileWidthPct: 70,
     profileOpacity: 0.4,
     profileMinRowWidth: 2,
@@ -363,6 +390,8 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
   const timeframeSettingsKeys: (keyof TimeframeSettings)[] = [
     'bucketSize', 'autoBucketSize', 'bubbleThreshold', 'bubbleThresholdMode',
     'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
+    'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
+    'icebergShowLabels', 'icebergShowTint',
     'profileWidthPct', 'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
     'profileShowPocHighlight', 'profileShowVaFill', 'profileShowPocLine',
     'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth'
@@ -413,7 +442,7 @@ export const useChartStore = create<ChartState>()(
 
       // Per-panel actions
       setPair: (panelId, pair) =>
-        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [] })),
+        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], icebergLevels: [] })),
 
       setTimeframe: (panelId, timeframe) =>
         set((state) => {
@@ -423,6 +452,7 @@ export const useChartStore = create<ChartState>()(
             timeframe, 
             candles: [], 
             trades: [],
+            icebergLevels: [],
             ...savedSettings
           });
         }),
@@ -556,6 +586,27 @@ export const useChartStore = create<ChartState>()(
 
       setExhaustionMap: (panelId, exhaustionMap) =>
         set((state) => updatePanel(state, panelId, { exhaustionMap })),
+
+      setIcebergEnabled: (panelId, icebergEnabled) =>
+        set((state) => updatePanel(state, panelId, { icebergEnabled })),
+
+      setIcebergMinScore: (panelId, icebergMinScore) =>
+        set((state) => updatePanel(state, panelId, { icebergMinScore: Math.max(30, Math.min(80, icebergMinScore)) })),
+
+      setIcebergLookback: (panelId, icebergLookback) =>
+        set((state) => updatePanel(state, panelId, { icebergLookback: Math.max(5, Math.min(20, icebergLookback)) })),
+
+      setIcebergShowSuspected: (panelId, icebergShowSuspected) =>
+        set((state) => updatePanel(state, panelId, { icebergShowSuspected })),
+
+      setIcebergShowLabels: (panelId, icebergShowLabels) =>
+        set((state) => updatePanel(state, panelId, { icebergShowLabels })),
+
+      setIcebergShowTint: (panelId, icebergShowTint) =>
+        set((state) => updatePanel(state, panelId, { icebergShowTint })),
+
+      setIcebergLevels: (panelId, icebergLevels) =>
+        set((state) => updatePanel(state, panelId, { icebergLevels })),
 
       setProfileWidthPct: (panelId, profileWidthPct) =>
         set((state) => updatePanel(state, panelId, { profileWidthPct: Math.max(10, Math.min(100, profileWidthPct)) })),
@@ -757,7 +808,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 16,
+      version: 18,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -792,6 +843,13 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: p.exhaustionSide || 'both',
             exhaustionLookback: p.exhaustionLookback ?? 5,
             exhaustionShowProvisional: p.exhaustionShowProvisional ?? true,
+            icebergEnabled: p.icebergEnabled ?? true,
+            icebergMinScore: p.icebergMinScore ?? 45,
+            icebergLookback: Math.max(5, Math.min(20, p.icebergLookback ?? 10)),
+            icebergShowSuspected: p.icebergShowSuspected ?? true,
+            icebergShowLabels: p.icebergShowLabels ?? true,
+            icebergShowTint: p.icebergShowTint ?? true,
+            icebergLevels: [],
             profileWidthPct: p.profileWidthPct ?? 70,
             profileOpacity: p.profileOpacity ?? 0.4,
             profileMinRowWidth: p.profileMinRowWidth ?? 2,
@@ -885,6 +943,12 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: state.panels.left.exhaustionSide,
             exhaustionLookback: state.panels.left.exhaustionLookback,
             exhaustionShowProvisional: state.panels.left.exhaustionShowProvisional,
+            icebergEnabled: state.panels.left.icebergEnabled,
+            icebergMinScore: state.panels.left.icebergMinScore,
+            icebergLookback: state.panels.left.icebergLookback,
+            icebergShowSuspected: state.panels.left.icebergShowSuspected,
+            icebergShowLabels: state.panels.left.icebergShowLabels,
+            icebergShowTint: state.panels.left.icebergShowTint,
             profileWidthPct: state.panels.left.profileWidthPct,
             profileOpacity: state.panels.left.profileOpacity,
             profileMinRowWidth: state.panels.left.profileMinRowWidth,
@@ -943,6 +1007,12 @@ export const useChartStore = create<ChartState>()(
             exhaustionSide: state.panels.right.exhaustionSide,
             exhaustionLookback: state.panels.right.exhaustionLookback,
             exhaustionShowProvisional: state.panels.right.exhaustionShowProvisional,
+            icebergEnabled: state.panels.right.icebergEnabled,
+            icebergMinScore: state.panels.right.icebergMinScore,
+            icebergLookback: state.panels.right.icebergLookback,
+            icebergShowSuspected: state.panels.right.icebergShowSuspected,
+            icebergShowLabels: state.panels.right.icebergShowLabels,
+            icebergShowTint: state.panels.right.icebergShowTint,
             profileWidthPct: state.panels.right.profileWidthPct,
             profileOpacity: state.panels.right.profileOpacity,
             profileMinRowWidth: state.panels.right.profileMinRowWidth,

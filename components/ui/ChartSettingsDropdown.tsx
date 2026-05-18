@@ -22,6 +22,12 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setExhaustionSide = useChartStore(s => s.setExhaustionSide);
   const setExhaustionLookback = useChartStore(s => s.setExhaustionLookback);
   const setExhaustionShowProvisional = useChartStore(s => s.setExhaustionShowProvisional);
+  const setIcebergEnabled = useChartStore(s => s.setIcebergEnabled);
+  const setIcebergMinScore = useChartStore(s => s.setIcebergMinScore);
+  const setIcebergLookback = useChartStore(s => s.setIcebergLookback);
+  const setIcebergShowSuspected = useChartStore(s => s.setIcebergShowSuspected);
+  const setIcebergShowLabels = useChartStore(s => s.setIcebergShowLabels);
+  const setIcebergShowTint = useChartStore(s => s.setIcebergShowTint);
   const setAbsorptionEnabled = useChartStore(s => s.setAbsorptionEnabled);
   const setAbsorptionMinScore = useChartStore(s => s.setAbsorptionMinScore);
   const setAbsorptionSide = useChartStore(s => s.setAbsorptionSide);
@@ -943,6 +949,73 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                           <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.exhaustionShowProvisional ? 'left-5' : 'left-1'
                             }`} />
                         </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Iceberg Settings */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Iceberg Detection</div>
+                    <button
+                      onClick={() => setIcebergEnabled(panelId, !panel.icebergEnabled)}
+                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.icebergEnabled ? 'bg-[#26A69A]' : 'bg-[#1F1F1F]'
+                        }`}
+                    >
+                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.icebergEnabled ? 'left-5' : 'left-1'
+                        }`} />
+                    </button>
+                  </div>
+
+                  {panel.icebergEnabled && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Minimum score</label>
+                          <span className="text-[12px] font-mono font-bold text-[#26A69A]">{panel.icebergMinScore}</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.icebergMinScore}
+                          onChange={(e) => setIcebergMinScore(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#26A69A]"
+                          min="30" max="80" step="5"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Lookback window</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{panel.icebergLookback} Candles</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.icebergLookback}
+                          onChange={(e) => setIcebergLookback(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="5" max="20" step="1"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2">
+                        {[
+                          ['Show suspected', panel.icebergShowSuspected, () => setIcebergShowSuspected(panelId, !panel.icebergShowSuspected)],
+                          ['Show labels', panel.icebergShowLabels, () => setIcebergShowLabels(panelId, !panel.icebergShowLabels)],
+                          ['Show background tint', panel.icebergShowTint, () => setIcebergShowTint(panelId, !panel.icebergShowTint)],
+                        ].map(([label, enabled, onClick]) => (
+                          <button
+                            key={label as string}
+                            onClick={onClick as () => void}
+                            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${enabled
+                              ? 'bg-[#26A69A]/5 border-[#26A69A] text-[#26A69A]'
+                              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                              }`}
+                          >
+                            <span className="text-[10px] font-bold uppercase tracking-wider">{label as string}</span>
+                            <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-[#26A69A] shadow-[0_0_8px_rgba(38,166,154,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}

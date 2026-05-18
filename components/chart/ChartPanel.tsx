@@ -60,6 +60,13 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           exhaustionSide={panel.exhaustionSide}
           exhaustionShowProvisional={panel.exhaustionShowProvisional}
           exhaustionMap={panel.exhaustionMap}
+          icebergEnabled={panel.icebergEnabled}
+          icebergMinScore={panel.icebergMinScore}
+          icebergLookback={panel.icebergLookback}
+          icebergShowSuspected={panel.icebergShowSuspected}
+          icebergShowLabels={panel.icebergShowLabels}
+          icebergShowTint={panel.icebergShowTint}
+          icebergLevels={panel.icebergLevels}
           profileWidthPct={panel.profileWidthPct}
           profileOpacity={panel.profileOpacity}
           profileMinRowWidth={panel.profileMinRowWidth}

@@ -84,6 +84,28 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // I: Log iceberg levels (Verification)
+      if (key === 'i') {
+        e.preventDefault();
+        console.log(`--- Iceberg Levels (${activePanel} panel) ---`);
+        if (panel.icebergLevels.length === 0) {
+          console.log('No iceberg levels detected.');
+        } else {
+          console.table(panel.icebergLevels.map(level => ({
+            price: level.price,
+            score: level.score,
+            rank: level.rank,
+            side: level.side,
+            totalVolume: level.totalVolume.toFixed(2),
+            candleCount: level.candleCount,
+            avgVolumePerCandle: level.avgVolumePerCandle.toFixed(2),
+            cumulativeDelta: level.cumulativeDelta.toFixed(2),
+            reasons: level.reasons.join('; '),
+          })));
+        }
+        return;
+      }
+
       // M: Toggle measurement tool
       if (key === 'm') {
         e.preventDefault();
@@ -102,6 +124,13 @@ export function useKeyboardShortcuts() {
       if (key === 'q') {
         e.preventDefault();
         useChartStore.getState().setLiquidityEnabled(activePanel, !panel.liquidityEnabled);
+        return;
+      }
+
+      // K: Toggle iceberg levels
+      if (key === 'k') {
+        e.preventDefault();
+        useChartStore.getState().setIcebergEnabled(activePanel, !panel.icebergEnabled);
         return;
       }
 

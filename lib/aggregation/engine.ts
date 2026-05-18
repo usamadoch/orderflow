@@ -88,6 +88,20 @@ export class AggregationEngine {
     }
   }
 
+  hydrateFootprintCandle(candle: Candle, cells: Map<number, FootprintCell>, delta?: number) {
+    this.footprintMap.set(candle.time, {
+      time: candle.time,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+      delta: delta ?? Array.from(cells.values()).reduce((total, cell) => total + cell.askVol - cell.bidVol, 0),
+      cells,
+      isClosed: candle.isClosed
+    });
+  }
+
   getFootprintCandle(time: number): FootprintCandle | null {
     return this.footprintMap.get(time) || null;
   }
