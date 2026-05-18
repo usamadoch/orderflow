@@ -1,5 +1,16 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-18] - Fix: Reliable Remote Candle Snapshot Storage
+- **What changed**:
+  - Added `persistClosedCandleSnapshot` in `lib/db/database.ts` to write the candle row, footprint rows, candle delta row, and `last_candle_stored` metadata in one `db.batch(..., 'write')`.
+  - Added a very small transient-error retry around that batch for remote Turso write failures such as `fetch failed`, timeouts, and connection resets.
+  - Updated `lib/db/marketStorage.ts` to use the new single-write helper instead of separate sequential insert calls.
+  - Tightened the storage error wording in `components/FeedProvider.tsx` so failed save requests are easier to distinguish from chart/runtime issues.
+- **Why it changed**:
+  - Remote Turso writes were happening as multiple separate requests, so a single timeout could leave one closed candle partially saved or not saved at all.
+- **Impact summary**:
+  - Closed-candle persistence is now atomic per candle snapshot and gets one small retry for transient network issues, which should reduce intermittent missing entries without changing chart behavior.
+
 ## [2026-05-18] - Feature: DB History APIs, Cleanup Job, and Startup Restore
 - **What changed**:
   - Added a server cleanup job that runs on startup and then on the configured retention interval.

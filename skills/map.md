@@ -135,6 +135,11 @@ lib/store/chart.ts → Zustand panel state, persisted settings, and session-only
 types/iceberg.ts → IcebergLevel, IcebergSide, and IcebergRank detection output types.
 artifacts/pi_deployment.md → pm2 production deployment and restart notes for Raspberry Pi.
 
+Latest responsibility updates:
+components/FeedProvider.tsx → Panel feed lifecycle, DB-backed startup history restore, and non-blocking closed-candle snapshot save requests.
+lib/db/database.ts → Turso/libSQL client singleton, schema setup, atomic closed-candle batch writes with transient retry, metadata, and history query helpers.
+lib/db/marketStorage.ts → Best-effort closed-candle snapshot storage orchestration using one atomic DB write and clear failure logging.
+
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)

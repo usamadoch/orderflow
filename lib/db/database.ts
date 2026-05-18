@@ -66,6 +66,97 @@ export type CandleInsertInput = Pick<Candle, 'open' | 'high' | 'low' | 'close' |
   isClosed?: boolean
 }
 
+export interface FootprintCellWriteInput {
+  bucketPrice: number
+  bidVol: number
+  askVol: number
+}
+
+export interface ClosedCandleSnapshotInput {
+  symbol: string
+  timeframe: string
+  candle: CandleInsertInput
+  cells: FootprintCellWriteInput[]
+  delta: number
+  buyVol: number
+  sellVol: number
+  bucketSize: number
+  storedAtIso?: string
+}
+
+const TRANSIENT_DB_ERROR_CODES = new Set([
+  'ECONNABORTED',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+])
+
+const DB_WRITE_MAX_ATTEMPTS = 2
+const DB_WRITE_RETRY_DELAY_MS = 300
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
+}
+
+function isTransientDbWriteError(error: unknown) {
+  const seen = new Set<object>()
+  let current: unknown = error
+
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current)
+
+    const code = 'code' in current ? String(current.code ?? '') : ''
+    const message = 'message' in current ? String(current.message ?? '').toLowerCase() : ''
+
+    if (TRANSIENT_DB_ERROR_CODES.has(code)) return true
+
+    if (
+      message.includes('fetch failed')
+      || message.includes('timed out')
+      || message.includes('timeout')
+      || message.includes('socket hang up')
+      || message.includes('connection reset')
+    ) {
+      return true
+    }
+
+    current = 'cause' in current ? current.cause : null
+  }
+
+  return false
+}
+
+async function withDbWriteRetry<T>(label: string, operation: () => Promise<T>) {
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= DB_WRITE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error
+
+      const shouldRetry = attempt < DB_WRITE_MAX_ATTEMPTS && isTransientDbWriteError(error)
+
+      if (!shouldRetry) {
+        throw error
+      }
+
+      console.warn(
+        `[DB] ${label} failed (attempt ${attempt}/${DB_WRITE_MAX_ATTEMPTS}). Retrying in ${DB_WRITE_RETRY_DELAY_MS}ms...`,
+        error,
+      )
+      await delay(DB_WRITE_RETRY_DELAY_MS)
+    }
+  }
+
+  throw lastError
+}
+
 export async function initDatabase() {
   const nowIso = new Date().toISOString()
 
@@ -242,6 +333,96 @@ export async function insertFootprintBatch(
     })),
     'write',
   )
+}
+
+export async function persistClosedCandleSnapshot({
+  symbol,
+  timeframe,
+  candle,
+  cells,
+  delta,
+  buyVol,
+  sellVol,
+  bucketSize,
+  storedAtIso = new Date().toISOString(),
+}: ClosedCandleSnapshotInput) {
+  if (candle.isClosed === false) return
+
+  const openTime = candle.open_time ?? candle.time
+
+  if (openTime == null) {
+    throw new Error('persistClosedCandleSnapshot requires candle.open_time or candle.time')
+  }
+
+  const statements: Array<{ sql: string; args: Array<string | number> }> = [
+    {
+      sql: `
+        INSERT OR REPLACE INTO candles (
+          symbol, timeframe, open_time, open, high, low, close, volume, close_time
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      args: [
+        symbol,
+        timeframe,
+        openTime,
+        candle.open,
+        candle.high,
+        candle.low,
+        candle.close,
+        candle.volume,
+        candle.close_time ?? openTime,
+      ],
+    },
+  ]
+
+  if (cells.length > 0) {
+    statements.push(
+      ...cells.map((cell) => ({
+        sql: `
+          INSERT OR REPLACE INTO footprint_cells (
+            symbol, timeframe, candle_time, bucket_price, bucket_size, bid_vol, ask_vol, delta
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          symbol,
+          timeframe,
+          openTime,
+          cell.bucketPrice,
+          bucketSize,
+          cell.bidVol,
+          cell.askVol,
+          cell.askVol - cell.bidVol,
+        ],
+      })),
+    )
+
+    statements.push({
+      sql: `
+        INSERT OR REPLACE INTO candle_delta (
+          symbol, timeframe, candle_time, total_delta, buy_vol, sell_vol
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      args: [symbol, timeframe, openTime, delta, buyVol, sellVol],
+    })
+  }
+
+  statements.push({
+    sql: `
+      INSERT INTO collector_meta (key, value, updated_at)
+      VALUES (?, ?, unixepoch())
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = unixepoch()
+    `,
+    args: ['last_candle_stored', storedAtIso],
+  })
+
+  await withDbWriteRetry('Closed candle snapshot write', async () => {
+    await db.batch(statements, 'write')
+  })
 }
 
 export async function insertCandleDelta(

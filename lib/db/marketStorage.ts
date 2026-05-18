@@ -1,11 +1,5 @@
 import type { Candle } from '../../types/candle'
-import type { FootprintCell } from '../../types/footprint'
-import {
-  insertCandle,
-  insertCandleDelta,
-  insertFootprintBatch,
-  updateMeta,
-} from './database'
+import { persistClosedCandleSnapshot } from './database'
 
 export interface SerializedFootprintCell {
   bucketPrice: number
@@ -26,31 +20,30 @@ export async function storeClosedCandle(
   try {
     if (!candle.isClosed) return
 
-    await insertCandle(symbol, timeframe, candle)
-
     if (cells.length === 0) {
       console.warn(`[Storage] ${symbol} ${timeframe} ${formatCandleTime(candle.time)} stored OHLCV with no footprint cells`)
-    } else {
-      const cellMap = new Map<number, FootprintCell>(
-        cells.map((cell) => [
-          cell.bucketPrice,
-          {
-            bidVol: cell.bidVol,
-            askVol: cell.askVol,
-          },
-        ]),
-      )
-
-      await insertFootprintBatch(symbol, timeframe, candle.time, cellMap, bucketSize)
-      await insertCandleDelta(symbol, timeframe, candle.time, delta, buyVol, sellVol)
     }
 
-    await updateMeta('last_candle_stored', new Date().toISOString())
+    await persistClosedCandleSnapshot({
+      symbol,
+      timeframe,
+      candle,
+      cells,
+      delta,
+      buyVol,
+      sellVol,
+      bucketSize,
+      storedAtIso: new Date().toISOString(),
+    })
+
     console.log(
       `[Storage] ${symbol} ${timeframe} ${formatCandleTime(candle.time)} stored - ${cells.length} cells, delta: ${formatSigned(delta)}`,
     )
   } catch (error) {
-    console.error('[Storage] Failed to store closed candle:', error)
+    console.error(
+      `[Storage] Failed to store full candle snapshot for ${symbol} ${timeframe} ${formatCandleTime(candle.time)} after retries:`,
+      error,
+    )
   }
 }
 

@@ -228,7 +228,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           sellVol,
           bucketSize,
         ).catch((err) => {
-          console.error('[Storage] Failed to store candle:', err);
+          console.error('[Storage] Candle snapshot save request failed:', err);
         });
       }
 
