@@ -1,5 +1,17 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-18] - Fix: Custom Volume Profile Interaction and LVN Support
+- **What changed**:
+  - Added shared custom profile hit-testing in `ChartCanvas.tsx` so cursor state, drag blocking, move/resize starts, and crosshair suppression use the same profile bounds.
+  - Fixed the cursor fallback that was overwriting profile `grab` / resize cursors with the default chart crosshair.
+  - Stabilized the lock/remove profile overlay position by clamping it inside the chart area.
+  - Repaired side resizing by clamping left/right and top/bottom drags so the profile range cannot invert or collapse below the minimum size.
+  - Added LVN detection to `buildProfile` and rendered LVN dashed levels in both visible and custom volume profiles.
+- **Why it changed**:
+  - Later interaction refactors left profile hover state disconnected from cursor/crosshair and resize start behavior, and the profile metrics did not expose low-volume nodes.
+- **Impact summary**:
+  - Custom Volume Profile interactions now show the correct cursor, block chart crosshair/panning while interacting, expose lock/remove controls reliably, resize from all four sides, and display LVNs without changing unrelated chart systems.
+
 ## [2026-05-18] - Fix: Reliable Remote Candle Snapshot Storage
 - **What changed**:
   - Added `persistClosedCandleSnapshot` in `lib/db/database.ts` to write the candle row, footprint rows, candle delta row, and `last_candle_stored` metadata in one `db.batch(..., 'write')`.

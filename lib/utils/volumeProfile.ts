@@ -15,6 +15,7 @@ export interface VolumeProfile {
   poc:      number;         // price of highest volume bucket
   vaHigh:   number;         // top of 70% value area
   vaLow:    number;         // bottom of 70% value area
+  lvns:     number[];       // local low-volume node bucket prices
   maxVol:   number;         // highest single row volume (for bar width scaling)
   maxAbsDelta: number;      // highest absolute delta (for delta bar scaling)
   totalVol: number;         // sum of all row volumes
@@ -115,6 +116,7 @@ export function buildProfile(
 
   const poc = findPOC(rows);
   const { vaHigh, vaLow } = findValueArea(rows, totalVol);
+  const lvns = findLowVolumeNodes(rows);
 
   const maxAbsDelta = rows.reduce((max, r) => {
     const delta = Math.abs(r.askVol - r.bidVol);
@@ -129,6 +131,7 @@ export function buildProfile(
     poc,
     vaHigh,
     vaLow,
+    lvns,
   };
 }
 
@@ -192,4 +195,36 @@ export function findValueArea(
     vaHigh: rows[hi].price,
     vaLow: rows[lo].price,
   };
+}
+
+/**
+ * Find local low-volume nodes: materially quiet buckets between stronger
+ * neighbors. The cap keeps LVN marks useful instead of turning into chart dust.
+ */
+export function findLowVolumeNodes(rows: ProfileRow[], maxNodes: number = 5): number[] {
+  if (rows.length < 3) return [];
+
+  const avgVol = rows.reduce((sum, row) => sum + row.totalVol, 0) / rows.length;
+  const candidates: { price: number; score: number }[] = [];
+
+  for (let i = 1; i < rows.length - 1; i++) {
+    const prev = rows[i - 1].totalVol;
+    const current = rows[i].totalVol;
+    const next = rows[i + 1].totalVol;
+    const neighborMin = Math.min(prev, next);
+    const neighborAvg = (prev + next) / 2;
+
+    if (current <= neighborMin * 0.65 && current <= avgVol * 0.85) {
+      candidates.push({
+        price: rows[i].price,
+        score: neighborAvg - current,
+      });
+    }
+  }
+
+  return candidates
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxNodes)
+    .map(candidate => candidate.price)
+    .sort((a, b) => a - b);
 }

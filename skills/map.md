@@ -136,6 +136,10 @@ types/iceberg.ts → IcebergLevel, IcebergSide, and IcebergRank detection output
 artifacts/pi_deployment.md → pm2 production deployment and restart notes for Raspberry Pi.
 
 Latest responsibility updates:
+components/chart/ChartCanvas.tsx → Custom volume profile hit-testing, cursor/crosshair suppression, controls positioning, and resize/move orchestration.
+components/chart/drawSelectionRect.ts → Custom profile rectangle/profile rendering, including LVN markers and resize handles.
+components/chart/drawVolumeProfile.ts → Visible volume profile rendering for POC, VA, LVN levels, and profile bars.
+lib/utils/volumeProfile.ts → Volume profile aggregation, POC/VA math, and LVN detection.
 components/FeedProvider.tsx → Panel feed lifecycle, DB-backed startup history restore, and non-blocking closed-candle snapshot save requests.
 lib/db/database.ts → Turso/libSQL client singleton, schema setup, atomic closed-candle batch writes with transient retry, metadata, and history query helpers.
 lib/db/marketStorage.ts → Best-effort closed-candle snapshot storage orchestration using one atomic DB write and clear failure logging.

@@ -39,6 +39,47 @@ import { MeasurementPanel } from './MeasurementPanel';
 import { HeatmapRow } from '@/types/liquidity';
 import { IcebergTooltip } from './IcebergTooltip';
 
+type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
+
+function getCustomProfileHitZone(
+  customProfileRange: PanelState['customProfileRange'],
+  x: number,
+  y: number,
+  candlesLength: number,
+  scrollOffset: number,
+  barWidth: number,
+  chartWidth: number,
+  chartHeight: number,
+  profileWidth: number,
+  priceMin: number,
+  priceMax: number,
+  isLocked: boolean
+): CustomProfileHitZone | null {
+  if (!customProfileRange || candlesLength === 0 || x > chartWidth || y > chartHeight) return null;
+
+  const rx1 = calcIndexToX(customProfileRange.firstIndex, candlesLength, scrollOffset, barWidth, chartWidth, profileWidth) - barWidth / 2;
+  const rx2 = calcIndexToX(customProfileRange.lastIndex, candlesLength, scrollOffset, barWidth, chartWidth, profileWidth) + barWidth / 2;
+  const ry1 = calcPriceToY(customProfileRange.priceHigh, priceMin, priceMax, chartHeight);
+  const ry2 = calcPriceToY(customProfileRange.priceLow, priceMin, priceMax, chartHeight);
+
+  const minX = Math.min(rx1, rx2);
+  const maxX = Math.max(rx1, rx2);
+  const minY = Math.min(ry1, ry2);
+  const maxY = Math.max(ry1, ry2);
+  const handlePad = 6;
+
+  if (x < minX - handlePad || x > maxX + handlePad || y < minY - handlePad || y > maxY + handlePad) {
+    return null;
+  }
+
+  if (isLocked) return 'move';
+  if (Math.abs(x - minX) <= handlePad) return 'resize-left';
+  if (Math.abs(x - maxX) <= handlePad) return 'resize-right';
+  if (Math.abs(y - minY) <= handlePad) return 'resize-top';
+  if (Math.abs(y - maxY) <= handlePad) return 'resize-bottom';
+  return 'move';
+}
+
 interface ChartCanvasProps {
   panelId: PanelId;
   candles: Candle[];
@@ -278,6 +319,23 @@ export function ChartCanvas({
       const pRange = priceRange.current;
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
+      const localProfileHitZone =
+        isMouseOver.current && mouseX.current !== null && mouseY.current !== null
+          ? getCustomProfileHitZone(
+              customProfileRange,
+              mouseX.current,
+              mouseY.current,
+              candles.length,
+              currentScrollOffset,
+              currentBarWidth,
+              chartWidth,
+              chartHeight,
+              profileWidth,
+              priceMin,
+              priceMax,
+              customProfileLocked
+            )
+          : null;
 
       // Track coordinates for metric calculation
       coordsRef.current = {
@@ -379,7 +437,9 @@ export function ChartCanvas({
 
       // 6. Custom Profile (on top of candles and other overlays)
       if (customProfileRange) {
-        const customCandles = candles.slice(customProfileRange.firstIndex, customProfileRange.lastIndex + 1);
+        const customFirstIndex = Math.min(customProfileRange.firstIndex, customProfileRange.lastIndex);
+        const customLastIndex = Math.max(customProfileRange.firstIndex, customProfileRange.lastIndex);
+        const customCandles = candles.slice(customFirstIndex, customLastIndex + 1);
         const customProfile = buildProfile(
           customCandles, 
           engine, 
@@ -509,7 +569,7 @@ export function ChartCanvas({
       let mx: number | null = null;
       let my: number | null = null;
 
-      if (isMouseOver.current && mouseX.current !== null && mouseY.current !== null) {
+      if (isMouseOver.current && mouseX.current !== null && mouseY.current !== null && !localProfileHitZone) {
         mx = mouseX.current;
         my = mouseY.current;
       } else if (crosshairSyncEnabled && crosshair.activePanel && crosshair.activePanel !== panelId) {
@@ -576,10 +636,34 @@ export function ChartCanvas({
     onScrollOffsetChange,
     isDrawMode,
     measureToolActive,
-    () => {
+    (x: number, y: number) => {
       // Prevent chart panning if we are over a custom profile or its buttons, or a line
       if (isHoveringClear.current || isHoveringLock.current || hoverZone.current || hoveredLineId.current) {
         return false;
+      }
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const chartWidth = canvas.clientWidth - priceAxisWidth;
+        const chartHeight = canvas.clientHeight - timeAxisHeight;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+        const profileHitZone = getCustomProfileHitZone(
+          customProfileRange,
+          x,
+          y,
+          candles.length,
+          scrollOffset.current,
+          barWidth.current,
+          chartWidth,
+          chartHeight,
+          profileWidth,
+          priceMin,
+          priceMax,
+          customProfileLocked
+        );
+        if (profileHitZone) return false;
       }
       return true;
     },
@@ -604,6 +688,25 @@ export function ChartCanvas({
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
+      const profileHitZone = getCustomProfileHitZone(
+        customProfileRange,
+        x,
+        y,
+        candles.length,
+        scrollOffset.current,
+        barWidth.current,
+        chartWidth,
+        chartHeight,
+        profileWidth,
+        priceMin,
+        priceMax,
+        customProfileLocked
+      );
+
+      if (profileHitZone) {
+        useChartStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        return;
+      }
 
       const price = yToPrice(y, priceMin, priceMax, chartHeight);
       const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
@@ -622,7 +725,7 @@ export function ChartCanvas({
       if (syncEnabled) {
         useChartStore.getState().setCrosshair({ activePanel: panelId, time, price });
       }
-    }, [panelId, candles, priceAxisWidth, timeAxisHeight, profileWidth]),
+    }, [panelId, candles, priceAxisWidth, timeAxisHeight, profileWidth, customProfileRange, customProfileLocked]),
     { scrollOffset, barWidth, priceCenter, priceRange }
   );
 
@@ -733,14 +836,15 @@ export function ChartCanvas({
     const priceMax = pCenter + pRange / 2;
 
     const { lastIndex, priceHigh } = customProfileRange;
-    const x2 = calcIndexToX(lastIndex, candles.length, scrollOffsetProp, barWidthProp, chartWidth, profileWidth);
+    const x2 = calcIndexToX(lastIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
     const y1 = calcPriceToY(priceHigh, priceMin, priceMax, chartHeight);
+    const overlayWidth = 76;
 
     return {
-      top: y1 - 32, // Move outside/above the profile box
-      left: x2 + barWidthProp / 2 - 40,
+      top: Math.max(4, Math.min(chartHeight - 34, y1 - 32)),
+      left: Math.max(4, Math.min(chartWidth - overlayWidth - 4, x2 + barWidth.current / 2 - overlayWidth / 2)),
     };
-  }, [customProfileRange, containerSize, candles.length, priceAxisWidth, timeAxisHeight, profileWidth, scrollOffsetProp, barWidthProp, priceCenter, priceRange]);
+  }, [customProfileRange, containerSize, candles.length, priceAxisWidth, timeAxisHeight, profileWidth, scrollOffset, barWidth, priceCenter, priceRange]);
 
   // Drawing Interaction Logic
   useEffect(() => {
@@ -807,22 +911,46 @@ export function ChartCanvas({
       // No manual hit detection needed for Clear/Lock here anymore.
 
       // 4. Move/Resize Profile
-      if (hoverZone.current && !useChartStore.getState().panels[panelId].customProfileLocked) {
-        dragAnchor.current = { x, y };
-        profileSnapshot.current = useChartStore.getState().panels[panelId].customProfileRange;
+      const chartWidth = rect.width - priceAxisWidth;
+      const chartHeight = rect.height - timeAxisHeight;
+      const pCenter = priceCenter.current ?? 0;
+      const pRange = priceRange.current ?? 100;
+      const priceMin = pCenter - pRange / 2;
+      const priceMax = pCenter + pRange / 2;
+      const currentPanel = useChartStore.getState().panels[panelId];
+      const profileHitZone = getCustomProfileHitZone(
+        currentPanel.customProfileRange,
+        x,
+        y,
+        candles.length,
+        scrollOffset.current,
+        barWidth.current,
+        chartWidth,
+        chartHeight,
+        profileWidth,
+        priceMin,
+        priceMax,
+        currentPanel.customProfileLocked
+      );
 
-        if (hoverZone.current === 'move') {
+      hoverZone.current = profileHitZone;
+
+      if (profileHitZone && !currentPanel.customProfileLocked) {
+        dragAnchor.current = { x, y };
+        profileSnapshot.current = currentPanel.customProfileRange;
+
+        if (profileHitZone === 'move') {
           isDraggingProfile.current = true;
         } else {
           isDraggingResize.current = true;
-          resizeEdge.current = hoverZone.current.replace('resize-', '') as 'left' | 'right' | 'top' | 'bottom';
+          resizeEdge.current = profileHitZone.replace('resize-', '') as 'left' | 'right' | 'top' | 'bottom';
         }
         useChartStore.getState().setProfileSelected(panelId, true);
         return;
       }
 
       // 5. Select Profile (if clicked inside while locked)
-      if (hoverZone.current) {
+      if (profileHitZone) {
         useChartStore.getState().setProfileSelected(panelId, true);
         redraw();
         return;
@@ -869,32 +997,26 @@ export function ChartCanvas({
             const priceMin = pCenter - pRange / 2;
             const priceMax = pCenter + pRange / 2;
 
-            const rx1 = calcIndexToX(customProfileRange.firstIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth) - barWidth.current / 2;
-            const rx2 = calcIndexToX(customProfileRange.lastIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth) + barWidth.current / 2;
-            const ry1 = calcPriceToY(customProfileRange.priceHigh, priceMin, priceMax, chartHeight);
-            const ry2 = calcPriceToY(customProfileRange.priceLow, priceMin, priceMax, chartHeight);
+            hoverZone.current = getCustomProfileHitZone(
+              customProfileRange,
+              x,
+              y,
+              candles.length,
+              scrollOffset.current,
+              barWidth.current,
+              chartWidth,
+              chartHeight,
+              profileWidth,
+              priceMin,
+              priceMax,
+              useChartStore.getState().panels[panelId].customProfileLocked
+            );
 
-            const minX = Math.min(rx1, rx2);
-            const maxX = Math.max(rx1, rx2);
-            const minY = Math.min(ry1, ry2);
-            const maxY = Math.max(ry1, ry2);
-
-            if (x >= minX - 6 && x <= maxX + 6 && y >= minY - 6 && y <= maxY + 6) {
-              const isLocked = useChartStore.getState().panels[panelId].customProfileLocked;
-              if (isLocked) {
-                hoverZone.current = 'move';
-                cursor = 'crosshair';
-              } else {
-                if (Math.abs(x - minX) < 6) hoverZone.current = 'resize-left';
-                else if (Math.abs(x - maxX) < 6) hoverZone.current = 'resize-right';
-                else if (Math.abs(y - minY) < 6) hoverZone.current = 'resize-top';
-                else if (Math.abs(y - maxY) < 6) hoverZone.current = 'resize-bottom';
-                else hoverZone.current = 'move';
-
-                if (hoverZone.current === 'move') cursor = 'grab';
-                else if (hoverZone.current.includes('left') || hoverZone.current.includes('right')) cursor = 'ew-resize';
-                else cursor = 'ns-resize';
-              }
+            if (hoverZone.current) {
+              if (useChartStore.getState().panels[panelId].customProfileLocked) cursor = 'pointer';
+              else if (hoverZone.current === 'move') cursor = 'grab';
+              else if (hoverZone.current.includes('left') || hoverZone.current.includes('right')) cursor = 'ew-resize';
+              else cursor = 'ns-resize';
             } else {
               // Check Axes
               if (x > rect.width - priceAxisWidth) cursor = 'ns-resize';
@@ -907,7 +1029,7 @@ export function ChartCanvas({
           hoveredLineId.current = null;
           isHoveringDeleteDot.current = false;
 
-          if (!hoveringAction) {
+          if (!hoveringAction && !hoverZone.current) {
             const chartWidth = rect.width - priceAxisWidth;
             const chartHeight = rect.height - timeAxisHeight;
             const pCenter = priceCenter.current ?? 0;
@@ -947,7 +1069,7 @@ export function ChartCanvas({
             }
           }
 
-          if (!hoveredLineId.current && !hoveringAction) {
+          if (!hoveredLineId.current && !hoveringAction && !hoverZone.current) {
             // Check Axes
             if (x > rect.width - priceAxisWidth) cursor = 'ns-resize';
             else if (y > rect.height - timeAxisHeight) cursor = 'ew-resize';
@@ -957,7 +1079,7 @@ export function ChartCanvas({
 
         // Absorption Hover Detection
         let foundAbs = false;
-        if (absorptionEnabled && absorptionMap.size > 0) {
+        if (!hoverZone.current && absorptionEnabled && absorptionMap.size > 0) {
           const chartWidth = rect.width - priceAxisWidth;
           const chartHeight = rect.height - timeAxisHeight;
           const pCenter = priceCenter.current ?? 0;
@@ -999,7 +1121,7 @@ export function ChartCanvas({
 
           // Exhaustion Hover Detection
           let foundEx = false;
-          if (exhaustionEnabled && exhaustionMap.size > 0) {
+          if (!hoverZone.current && exhaustionEnabled && exhaustionMap.size > 0) {
             const chartWidth = rect.width - priceAxisWidth;
             const chartHeight = rect.height - timeAxisHeight;
             const pCenter = priceCenter.current ?? 0;
@@ -1042,7 +1164,7 @@ export function ChartCanvas({
 
             // Iceberg Hover Detection
             let foundIceberg = false;
-            if (icebergEnabled && icebergLevels.length > 0) {
+            if (!hoverZone.current && icebergEnabled && icebergLevels.length > 0) {
               const chartWidth = rect.width - priceAxisWidth;
               const chartHeight = rect.height - timeAxisHeight;
               const pCenter = priceCenter.current ?? 0;
@@ -1131,12 +1253,18 @@ export function ChartCanvas({
 
         if (resizeEdge.current === 'left' || resizeEdge.current === 'right') {
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-          if (resizeEdge.current === 'left') updatedRange.firstIndex = index;
-          else updatedRange.lastIndex = index;
+          if (resizeEdge.current === 'left') {
+            updatedRange.firstIndex = Math.min(index, profileSnapshot.current.lastIndex - 2);
+          } else {
+            updatedRange.lastIndex = Math.max(index, profileSnapshot.current.firstIndex + 2);
+          }
         } else {
           const price = yToPrice(y, priceMin, priceMax, chartHeight);
-          if (resizeEdge.current === 'top') updatedRange.priceHigh = price;
-          else updatedRange.priceLow = price;
+          if (resizeEdge.current === 'top') {
+            updatedRange.priceHigh = Math.max(price, profileSnapshot.current.priceLow + bucketSize);
+          } else {
+            updatedRange.priceLow = Math.min(price, profileSnapshot.current.priceHigh - bucketSize);
+          }
         }
 
         const bucketSizeVal = useChartStore.getState().panels[panelId].bucketSize;

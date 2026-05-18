@@ -180,4 +180,27 @@ export function drawVolumeProfile(
     }
     ctx.restore();
   }
+
+  // â”€â”€ Step 4: LVN Lines â”€â”€
+  if (profile.lvns.length > 0) {
+    ctx.save();
+    ctx.globalAlpha = lineOpacity;
+    ctx.strokeStyle = '#22D3EE';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    ctx.fillStyle = '#22D3EE';
+    ctx.font = 'bold 9px "JetBrains Mono"';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+
+    for (const lvn of profile.lvns) {
+      const lvnY = priceToY(lvn + profileBucketSize / 2);
+      ctx.beginPath();
+      ctx.moveTo(profileStartX, Math.round(lvnY) + 0.5);
+      ctx.lineTo(chartRight, Math.round(lvnY) + 0.5);
+      ctx.stroke();
+      ctx.fillText('LVN', profileStartX + 3, lvnY - 2);
+    }
+    ctx.restore();
+  }
 }

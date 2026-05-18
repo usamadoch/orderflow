@@ -223,9 +223,31 @@ export function drawCustomProfile(
         ctx.stroke();
       }
     }
+
+    // 5. LVN Lines
+    if (profile.lvns.length > 0) {
+      ctx.strokeStyle = '#22D3EE';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+      ctx.fillStyle = '#22D3EE';
+      ctx.font = '8px "JetBrains Mono"';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+
+      for (const lvn of profile.lvns) {
+        const lvnY = priceToY(lvn + profileBucketSize / 2);
+        if (lvnY < rectY || lvnY > rectY + rectHeight) continue;
+
+        ctx.beginPath();
+        ctx.moveTo(rectX, Math.round(lvnY) + 0.5);
+        ctx.lineTo(rectX + rectWidth, Math.round(lvnY) + 0.5);
+        ctx.stroke();
+        ctx.fillText('LVN', rectX + 3, lvnY - 2);
+      }
+    }
   }
 
-  // 5. Interaction Buttons (Moved to React overlay in ChartCanvas.tsx)
+  // 6. Interaction Buttons (Moved to React overlay in ChartCanvas.tsx)
   // Resize handles still rendered on canvas for precision
   if (isSelected && isHovered && !isLocked) {
     ctx.fillStyle = 'rgba(61, 126, 255, 0.7)';
