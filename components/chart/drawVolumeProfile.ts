@@ -1,4 +1,5 @@
 import { VolumeProfile } from '@/lib/utils/volumeProfile';
+import { HeatmapRow } from '@/types/liquidity';
 
 /**
  * Draw horizontal volume profile bars, POC line, VA lines, and labels.
@@ -20,7 +21,8 @@ export function drawVolumeProfile(
   showPocHighlight: boolean = true,
   showVaFill: boolean = true,
   showPocLine: boolean = true,
-  showVaLines: boolean = true
+  showVaLines: boolean = true,
+  heatmapRows?: HeatmapRow[]
 ) {
   const chartRight = canvasWidth - priceAxisWidth;
   const effectiveWidth = profileWidth * (profileWidthPct / 100);
@@ -100,6 +102,20 @@ export function drawVolumeProfile(
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
           ctx.fillText('POC', barX + 3, yTop + rowHeight / 2 + 1);
+        }
+
+        // Optional Enrichment: POC Glow from Heatmap
+        if (heatmapRows) {
+          const matchingHeatmapRow = heatmapRows.find(
+            hr => hr.price >= pocRow.price && hr.price < pocRow.price + profileBucketSize
+          );
+          if (matchingHeatmapRow && matchingHeatmapRow.intensity >= 0.9) {
+            ctx.shadowColor = '#F0B90B';
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = '#F0B90B';
+            ctx.fillRect(barX, yTop, 2, rowHeight);
+            ctx.shadowBlur = 0; // reset
+          }
         }
       }
     }

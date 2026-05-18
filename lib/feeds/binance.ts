@@ -1,5 +1,6 @@
 import { FeedAdapter } from './adapter';
 import { Candle } from '../../types/candle';
+import { OrderbookSnapshot, DepthUpdate } from '../liquidity/orderbook';
 import { Trade } from '../../types/trade';
 
 export class BinanceAdapter implements FeedAdapter {
@@ -13,6 +14,14 @@ export class BinanceAdapter implements FeedAdapter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private connectPending: boolean = false;
   private restBase = 'https://api.binance.com/api/v3';
+
+  // Orderbook — separate WebSocket
+  private obWs: WebSocket | null = null;
+  private obCb: ((update: DepthUpdate) => void) | null = null;
+  private obReconnectAttempts: number = 0;
+  private obShouldReconnect: boolean = false;
+  private obReconnectTimer: NodeJS.Timeout | null = null;
+  private obPair: string | null = null;
 
   async fetchHistory(pair: string, timeframe: string, limit: number = 500): Promise<Candle[]> {
     const symbol = pair.toUpperCase();
@@ -185,6 +194,110 @@ export class BinanceAdapter implements FeedAdapter {
       this.ws.close();
       this.ws = null;
     }
+  }
+
+  // ─── Orderbook Support ─────────────────────────────────────────
+
+  async fetchOrderbookSnapshot(pair: string, limit: number = 500): Promise<OrderbookSnapshot> {
+    const symbol = pair.toUpperCase();
+    const url = `${this.restBase}/depth?symbol=${symbol}&limit=${limit}`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      return {
+        lastUpdateId: data.lastUpdateId,
+        bids: data.bids,
+        asks: data.asks,
+      };
+    } catch (e) {
+      console.error(`[BinanceAdapter] Orderbook snapshot fetch failed:`, e);
+      return { lastUpdateId: 0, bids: [], asks: [] };
+    }
+  }
+
+  subscribeOrderbook(pair: string, cb: (update: DepthUpdate) => void): void {
+    this.obPair = pair.toLowerCase();
+    this.obCb = cb;
+    this.obShouldReconnect = true;
+    this.obReconnectAttempts = 0;
+    this.connectOrderbook();
+  }
+
+  private connectOrderbook(): void {
+    if (this.obWs) {
+      this.obWs.onopen = null;
+      this.obWs.onmessage = null;
+      this.obWs.onerror = null;
+      this.obWs.onclose = null;
+      this.obWs.close();
+      this.obWs = null;
+    }
+
+    if (!this.obPair || !this.obCb) return;
+
+    const url = `wss://stream.binance.com:9443/ws/${this.obPair}@depth@100ms`;
+    this.obWs = new WebSocket(url);
+
+    this.obWs.onopen = () => {
+      this.obReconnectAttempts = 0;
+      console.log(`[BinanceAdapter] Orderbook stream connected: ${this.obPair}@depth@100ms`);
+    };
+
+    this.obWs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data) as DepthUpdate;
+        if (this.obCb) this.obCb(data);
+      } catch (e) {
+        console.error(`[BinanceAdapter] Error parsing orderbook message:`, e);
+      }
+    };
+
+    this.obWs.onerror = (error) => {
+      if (this.obWs && this.obWs.readyState !== WebSocket.CLOSED) {
+        console.error(`[BinanceAdapter] Orderbook WS error:`, error);
+      }
+    };
+
+    this.obWs.onclose = (event) => {
+      if (this.obShouldReconnect && event.code !== 1000) {
+        this.scheduleObReconnect();
+      }
+    };
+  }
+
+  private scheduleObReconnect(): void {
+    if (this.obReconnectAttempts >= 10) {
+      console.error(`[BinanceAdapter] Max orderbook reconnect attempts reached.`);
+      return;
+    }
+    if (this.obReconnectTimer) clearTimeout(this.obReconnectTimer);
+
+    const delay = Math.min(1000 * Math.pow(2, this.obReconnectAttempts), 30000);
+    this.obReconnectAttempts++;
+    console.log(`[BinanceAdapter] Orderbook reconnecting in ${delay}ms (Attempt ${this.obReconnectAttempts})`);
+
+    this.obReconnectTimer = setTimeout(() => {
+      this.connectOrderbook();
+    }, delay);
+  }
+
+  disconnectOrderbook(): void {
+    this.obShouldReconnect = false;
+    if (this.obReconnectTimer) {
+      clearTimeout(this.obReconnectTimer);
+      this.obReconnectTimer = null;
+    }
+    if (this.obWs) {
+      this.obWs.onopen = null;
+      this.obWs.onmessage = null;
+      this.obWs.onerror = null;
+      this.obWs.onclose = null;
+      this.obWs.close();
+      this.obWs = null;
+    }
+    this.obCb = null;
   }
 
   clone(): BinanceAdapter {

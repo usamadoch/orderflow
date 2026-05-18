@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useChartStore, PanelId } from '@/lib/store/chart';
-import { useChartEngine } from '../ChartEngineContext';
+import { useChartEngine, useLiquidityHistory } from '../ChartEngineContext';
 import { ChartCanvas } from './ChartCanvas';
 import { PanelToolbar } from '../ui/PanelToolbar';
 // import { PanelToolbar } from '../ui/PanelToolbar';
@@ -17,6 +17,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const setBarWidth = useChartStore(s => s.setBarWidth);
   const setScrollOffset = useChartStore(s => s.setScrollOffset);
   const engine = useChartEngine();
+  const liquidityHistory = useLiquidityHistory();
 
   return (
     <div
@@ -80,6 +81,20 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           activeMeasurement={panel.activeMeasurement}
           sessionsEnabled={panel.sessionsEnabled}
           sessions={panel.sessions}
+          liquidityZones={panel.liquidityZones}
+          liquidityEnabled={panel.liquidityEnabled}
+          liquidityOpacity={panel.liquidityOpacity}
+          liquidityBucketSize={panel.liquidityBucketSize}
+          liquidityHistory={liquidityHistory}
+          liquidityHeatmapEnabled={panel.liquidityHeatmapEnabled}
+          liquidityHeatmapOpacity={panel.liquidityHeatmapOpacity}
+          liquidityHeatmapAgeFade={panel.liquidityHeatmapAgeFade}
+          liquidityHeatmapWidth={panel.liquidityHeatmapWidth}
+          liquidityHeatmapShowPulled={panel.liquidityHeatmapShowPulled}
+          liquidityHeatmapShowConsumed={panel.liquidityHeatmapShowConsumed}
+          liquidityHeatmapShowPersistence={panel.liquidityHeatmapShowPersistence}
+          liquidityHeatmapShowCurrentLabel={panel.liquidityHeatmapShowCurrentLabel}
+          liquidityHeatmapProfileSync={panel.liquidityHeatmapProfileSync}
           onBarWidthChange={(v) => setBarWidth(panelId, v)}
           onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
         />

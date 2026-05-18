@@ -48,6 +48,21 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setSessionColor = useChartStore(s => s.setSessionColor);
   const crosshairSyncEnabled = useChartStore(s => s.crosshairSyncEnabled);
   const setCrosshairSyncEnabled = useChartStore(s => s.setCrosshairSyncEnabled);
+  const setLiquidityEnabled = useChartStore(s => s.setLiquidityEnabled);
+  const setLiquidityBucketSize = useChartStore(s => s.setLiquidityBucketSize);
+  const setMinimumLiquidityThreshold = useChartStore(s => s.setMinimumLiquidityThreshold);
+  const setLiquidityOpacity = useChartStore(s => s.setLiquidityOpacity);
+  const setLiquidityRange = useChartStore(s => s.setLiquidityRange);
+  const setLiquidityHeatmapEnabled = useChartStore(s => s.setLiquidityHeatmapEnabled);
+  const setLiquidityHeatmapOpacity = useChartStore(s => s.setLiquidityHeatmapOpacity);
+  const setLiquidityHeatmapAgeFade = useChartStore(s => s.setLiquidityHeatmapAgeFade);
+  const setLiquidityHeatmapWidth = useChartStore(s => s.setLiquidityHeatmapWidth);
+  const setLiquidityHeatmapShowPulled = useChartStore(s => s.setLiquidityHeatmapShowPulled);
+  const setLiquidityHeatmapShowConsumed = useChartStore(s => s.setLiquidityHeatmapShowConsumed);
+  const setLiquidityHeatmapShowPersistence = useChartStore(s => s.setLiquidityHeatmapShowPersistence);
+  const setLiquidityHistoryDepth = useChartStore(s => s.setLiquidityHistoryDepth);
+  const setLiquidityHeatmapShowCurrentLabel = useChartStore(s => s.setLiquidityHeatmapShowCurrentLabel);
+  const setLiquidityHeatmapProfileSync = useChartStore(s => s.setLiquidityHeatmapProfileSync);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const [activeTab, setActiveTab] = useState<'chart' | 'profiles' | 'signals' | 'sessions'>('chart');
@@ -308,6 +323,219 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                       {crosshairSyncEnabled ? 'Enabled' : 'Disabled'}
                     </span>
                   </div>
+                </div>
+
+                {/* Liquidity Map */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Liquidity Map</div>
+                    <button
+                      onClick={() => setLiquidityEnabled(panelId, !panel.liquidityEnabled)}
+                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.liquidityEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+                        }`}
+                    >
+                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.liquidityEnabled ? 'left-5' : 'left-1'
+                        }`} />
+                    </button>
+                  </div>
+
+                  {panel.liquidityEnabled && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityOpacity * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityOpacity * 100}
+                          onChange={(e) => setLiquidityOpacity(panelId, Number(e.target.value) / 100)}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="10" max="100" step="5"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bucket Size</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={panel.liquidityBucketSize}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              if (val >= 10) setLiquidityBucketSize(panelId, val);
+                            }}
+                            className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                            min="10" max="500" step="10"
+                          />
+                          <span className="text-[9px] text-text-dim font-black uppercase">$</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Size</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={panel.minimumLiquidityThreshold}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              if (val >= 0.5) setMinimumLiquidityThreshold(panelId, val);
+                            }}
+                            className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                            min="0.5" max="100" step="0.5"
+                          />
+                          <span className="text-[9px] text-text-dim font-black uppercase">BTC</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Range</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityRange}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityRange}
+                          onChange={(e) => setLiquidityRange(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="5" max="20" step="1"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Liquidity Heatmap */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Historical Heatmap</div>
+                    <button
+                      onClick={() => setLiquidityHeatmapEnabled(panelId, !panel.liquidityHeatmapEnabled)}
+                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.liquidityHeatmapEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+                        }`}
+                    >
+                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.liquidityHeatmapEnabled ? 'left-5' : 'left-1'
+                        }`} />
+                    </button>
+                  </div>
+
+                  {panel.liquidityHeatmapEnabled && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Base Opacity</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityHeatmapOpacity * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityHeatmapOpacity * 100}
+                          onChange={(e) => setLiquidityHeatmapOpacity(panelId, Number(e.target.value) / 100)}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="10" max="100" step="5"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Age Fade Factor</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityHeatmapAgeFade * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityHeatmapAgeFade * 100}
+                          onChange={(e) => setLiquidityHeatmapAgeFade(panelId, Number(e.target.value) / 100)}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="0" max="100" step="5"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Strip Width</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityHeatmapWidth}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityHeatmapWidth}
+                          onChange={(e) => setLiquidityHeatmapWidth(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="30" max="120" step="5"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">History Depth</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityHistoryDepth} candles</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityHistoryDepth}
+                          onChange={(e) => setLiquidityHistoryDepth(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="50" max="500" step="50"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          onClick={() => setLiquidityHeatmapShowPulled(panelId, !panel.liquidityHeatmapShowPulled)}
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapShowPulled
+                            ? 'bg-accent/5 border-accent text-accent'
+                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                            }`}
+                        >
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Show Pulled</span>
+                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowPulled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                        </button>
+
+                        <button
+                          onClick={() => setLiquidityHeatmapShowConsumed(panelId, !panel.liquidityHeatmapShowConsumed)}
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapShowConsumed
+                            ? 'bg-accent/5 border-accent text-accent'
+                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                            }`}
+                        >
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Show Consumed</span>
+                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowConsumed ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                        </button>
+
+                        <button
+                          onClick={() => setLiquidityHeatmapShowPersistence(panelId, !panel.liquidityHeatmapShowPersistence)}
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 col-span-2 ${panel.liquidityHeatmapShowPersistence
+                            ? 'bg-accent/5 border-accent text-accent'
+                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                            }`}
+                        >
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Show Persistence Bars</span>
+                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowPersistence ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                        </button>
+
+                        <button
+                          onClick={() => setLiquidityHeatmapShowCurrentLabel(panelId, !panel.liquidityHeatmapShowCurrentLabel)}
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapShowCurrentLabel
+                            ? 'bg-accent/5 border-accent text-accent'
+                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                            }`}
+                        >
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Show CURRENT</span>
+                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowCurrentLabel ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                        </button>
+
+                        <button
+                          onClick={() => setLiquidityHeatmapProfileSync(panelId, !panel.liquidityHeatmapProfileSync)}
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapProfileSync
+                            ? 'bg-accent/5 border-accent text-accent'
+                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                            }`}
+                        >
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Profile Sync</span>
+                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapProfileSync ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
