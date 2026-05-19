@@ -439,6 +439,32 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
   };
 }
 
+function mergeCandles(existing: Candle[], incoming: Candle[]) {
+  const byTime = new Map<number, Candle>();
+
+  for (const candle of existing) {
+    byTime.set(candle.time, candle);
+  }
+
+  for (const candle of incoming) {
+    const current = byTime.get(candle.time);
+    if (!current) {
+      byTime.set(candle.time, candle);
+      continue;
+    }
+
+    if (current.isClosed && !candle.isClosed) {
+      continue;
+    }
+
+    byTime.set(candle.time, candle);
+  }
+
+  return Array.from(byTime.values())
+    .sort((a, b) => a.time - b.time)
+    .slice(-500);
+}
+
 export const useChartStore = create<ChartState>()(
   persist(
     (set) => ({
@@ -783,21 +809,15 @@ export const useChartStore = create<ChartState>()(
         }),
 
       pushAllCandles: (panelId, candles) =>
-        set((state) => updatePanel(state, panelId, { candles: candles.slice(-500) })),
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, { candles: mergeCandles(panel.candles, candles) });
+        }),
 
       pushCandle: (panelId, candle) =>
         set((state) => {
           const panel = state.panels[panelId];
-          const newCandles = [...panel.candles];
-          if (newCandles.length > 0 && newCandles[newCandles.length - 1].time === candle.time) {
-            newCandles[newCandles.length - 1] = candle;
-          } else {
-            newCandles.push(candle);
-          }
-          if (newCandles.length > 500) {
-            newCandles.splice(0, newCandles.length - 500);
-          }
-          return updatePanel(state, panelId, { candles: newCandles });
+          return updatePanel(state, panelId, { candles: mergeCandles(panel.candles, [candle]) });
         }),
 
       pushTrade: (panelId, trade) =>

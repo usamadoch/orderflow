@@ -1,5 +1,17 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-19] - Fix: Live-First Candle Consistency and Footprint Persistence Guards
+- **What changed**:
+  - Changed panel startup to subscribe to Binance candle/trade streams before background history loading.
+  - Made Binance REST history secondary to live data by merging candles by open time and preserving closed candle state.
+  - Removed the blocking canvas "Loading history..." render path so live candles can draw immediately.
+  - Added aggregate-trade dedupe, cross-panel raw-trade storage dedupe, closed-candle storage dedupe, and a guard that skips storing footprint cells for the first partially observed realtime candle.
+  - Rebuilt available footprint/profile history from stored raw trades instead of hydrating many per-candle stored footprint snapshots.
+- **Why it changed**:
+  - Persisted candle/footprint restore could replace accurate Binance state, hydrate partial footprint cells as complete data, and delay live rendering until history requests finished.
+- **Impact summary**:
+  - Candles now remain aligned to Binance/TradingView open times across timeframes, live rendering starts immediately, and storage request pressure is reduced while avoiding new partial-footprint corruption.
+
 ## [2026-05-18] - Improvement: Volume Profile Resolution Controls and Readability
 - **What changed**:
   - Added persisted Volume Profile row-size settings in ticks, separate from chart candle/footprint bucket size.

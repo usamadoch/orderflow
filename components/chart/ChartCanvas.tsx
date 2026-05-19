@@ -377,15 +377,6 @@ export function ChartCanvas({
 
       ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-      if (isLoadingHistory) {
-        ctx.font = '500 14px "JetBrains Mono"';
-        ctx.fillStyle = '#4A4A4A';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('Loading history...', chartWidth / 2, chartHeight / 2);
-        return;
-      }
-
       if (candles.length === 0) return;
 
       const currentScrollOffset = scrollOffset.current;

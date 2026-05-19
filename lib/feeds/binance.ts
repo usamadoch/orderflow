@@ -32,6 +32,7 @@ export class BinanceAdapter implements FeedAdapter {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       
+      const now = Date.now();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return data.map((k: any) => ({
         time: Math.floor(k[0] / 1000), // openTime is index 0
@@ -40,7 +41,7 @@ export class BinanceAdapter implements FeedAdapter {
         low: parseFloat(k[3]),
         close: parseFloat(k[4]),
         volume: parseFloat(k[5]),
-        isClosed: true
+        isClosed: Number(k[6]) < now
       }));
     } catch (e) {
       console.error(`[BinanceAdapter] History fetch failed:`, e);

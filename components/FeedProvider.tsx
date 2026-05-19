@@ -11,7 +11,6 @@ import { getCandleTimeForTrade } from '../lib/utils/aggregation';
 import { ChartEngineContext } from './ChartEngineContext';
 import { RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
 import { Candle } from '../types/candle';
-import { FootprintCell } from '../types/footprint';
 import { Trade } from '../types/trade';
 import { AbsorptionResult } from '../types/absorption';
 import { ExhaustionResult } from '../types/exhaustion';
@@ -26,15 +25,47 @@ interface PanelFeedProviderProps {
   children: React.ReactNode;
 }
 
-interface StoredFootprintCell {
-  bucketPrice: number;
-  bidVol: number;
-  askVol: number;
-  delta: number;
-}
-
 const RAW_TRADE_FLUSH_MS = 2000;
 const RAW_TRADE_FLUSH_SIZE = 500;
+const MAX_DEDUPE_KEYS = 100000;
+
+const queuedRawTradeStorageKeys = new Set<string>();
+const closedCandleStorageKeys = new Set<string>();
+
+function getTimeframeSeconds(timeframe: string) {
+  if (timeframe.endsWith('m')) return parseInt(timeframe, 10) * 60;
+  if (timeframe.endsWith('h')) return parseInt(timeframe, 10) * 3600;
+  if (timeframe.endsWith('d')) return parseInt(timeframe, 10) * 86400;
+  return 60;
+}
+
+function rememberBounded(set: Set<string>, key: string) {
+  set.add(key);
+
+  while (set.size > MAX_DEDUPE_KEYS) {
+    const oldest = set.values().next().value;
+    if (oldest === undefined) break;
+    set.delete(oldest);
+  }
+}
+
+function claimRawTradeStorage(symbol: string, trade: Trade) {
+  if (!Number.isFinite(trade.id)) return false;
+
+  const key = `${symbol}:${trade.id}`;
+  if (queuedRawTradeStorageKeys.has(key)) return false;
+
+  rememberBounded(queuedRawTradeStorageKeys, key);
+  return true;
+}
+
+function claimClosedCandleStorage(symbol: string, timeframe: string, candleTime: number, bucketSize: number) {
+  const key = `${symbol}:${timeframe}:${candleTime}:${bucketSize}`;
+  if (closedCandleStorageKeys.has(key)) return false;
+
+  rememberBounded(closedCandleStorageKeys, key);
+  return true;
+}
 
 export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps) {
   const pair = useChartStore(s => s.panels[panelId].pair);
@@ -70,6 +101,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const pendingFootprintRedrawRef = useRef(false);
   const pendingProfileRedrawRef = useRef(false);
   const rawTradeQueueRef = useRef<Trade[]>([]);
+  const processedTradeIdsRef = useRef<Set<number>>(new Set());
+  const firstFullyCoveredCandleTimeRef = useRef<number | null>(null);
   const [volumeProfileRevision, setVolumeProfileRevision] = useState(0);
   const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
   const exhaustionMapRef = useRef<Map<number, ExhaustionResult>>(new Map());
@@ -198,6 +231,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     engineRef.current.reset();
     volumeProfileEngineRef.current.reset();
     rawTradeQueueRef.current = [];
+    processedTradeIdsRef.current = new Set();
+    firstFullyCoveredCandleTimeRef.current = null;
     pendingProfileRedrawRef.current = false;
     absorptionMapRef.current = new Map();
     exhaustionMapRef.current = new Map();
@@ -211,10 +246,47 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const adapter = adapterRef.current;
     adapter.disconnect();
 
+    const timeframeSeconds = getTimeframeSeconds(timeframe);
+
+    const markProcessedTrade = (trade: Trade) => {
+      if (!Number.isFinite(trade.id)) return true;
+
+      const id = trade.id!;
+      if (processedTradeIdsRef.current.has(id)) return false;
+
+      processedTradeIdsRef.current.add(id);
+      while (processedTradeIdsRef.current.size > MAX_DEDUPE_KEYS) {
+        const oldest = processedTradeIdsRef.current.values().next().value;
+        if (oldest === undefined) break;
+        processedTradeIdsRef.current.delete(oldest);
+      }
+
+      return true;
+    };
+
+    const recomputeSignalState = () => {
+      const currentCandles = useChartStore.getState().panels[panelId].candles || [];
+      const absMap = buildAbsorptionMap(currentCandles, engineRef.current);
+      absorptionMapRef.current = absMap;
+      setAbsorptionMap(panelId, absMap);
+
+      const exhMap = buildExhaustionMap(currentCandles, engineRef.current, absMap, exhaustionLookback);
+      exhaustionMapRef.current = exhMap;
+      setExhaustionMap(panelId, exhMap);
+
+      const icebergLevels = icebergEnabled
+        ? icebergEngineRef.current.update(currentCandles, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
+        : [];
+      icebergLevelsRef.current = icebergLevels;
+      setIcebergLevels(panelId, icebergLevels);
+    };
+
     const flushRawTrades = () => {
       if (rawTradeQueueRef.current.length === 0) return;
 
       const batch = rawTradeQueueRef.current.splice(0, RAW_TRADE_FLUSH_SIZE);
+      if (batch.length === 0) return;
+
       storeRawTradesAction(pair, batch).catch((err) => {
         console.error('[Storage] Raw trade batch save request failed:', err);
       });
@@ -230,7 +302,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
       if (candle.isClosed) {
         const footprint = engineRef.current.getFootprintCandle(candle.time);
-        const cells = footprint
+        const hasFullRealtimeFootprint = firstFullyCoveredCandleTimeRef.current !== null
+          && candle.time >= firstFullyCoveredCandleTimeRef.current;
+        const cells = footprint && hasFullRealtimeFootprint
           ? Array.from(footprint.cells.entries()).map(([bucketPrice, cell]) => ({
             bucketPrice,
             bidVol: cell.bidVol,
@@ -240,27 +314,31 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         let buyVol = 0;
         let sellVol = 0;
 
-        if (footprint) {
+        if (footprint && hasFullRealtimeFootprint) {
           footprint.cells.forEach((cell) => {
             buyVol += cell.askVol;
             sellVol += cell.bidVol;
           });
-        } else {
+        } else if (!footprint) {
           console.warn(`[Storage] Missing footprint for ${pair} ${timeframe} candle ${candle.time}`);
+        } else {
+          console.warn(`[Storage] Skipping partial realtime footprint for ${pair} ${timeframe} candle ${candle.time}`);
         }
 
-        storeClosedCandleAction(
-          pair,
-          timeframe,
-          candle,
-          cells,
-          footprint?.delta ?? 0,
-          buyVol,
-          sellVol,
-          bucketSize,
-        ).catch((err) => {
-          console.error('[Storage] Candle snapshot save request failed:', err);
-        });
+        if (claimClosedCandleStorage(pair, timeframe, candle.time, bucketSize)) {
+          storeClosedCandleAction(
+            pair,
+            timeframe,
+            candle,
+            cells,
+            hasFullRealtimeFootprint ? footprint?.delta ?? 0 : 0,
+            buyVol,
+            sellVol,
+            bucketSize,
+          ).catch((err) => {
+            console.error('[Storage] Candle snapshot save request failed:', err);
+          });
+        }
       }
 
       // Score closed candles incrementally
@@ -303,14 +381,20 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     };
 
     const handleTrade = (trade: Trade) => {
-      let timeframeSeconds = 60;
-      if (timeframe.endsWith('m')) timeframeSeconds = parseInt(timeframe) * 60;
-      else if (timeframe.endsWith('h')) timeframeSeconds = parseInt(timeframe) * 3600;
-      else if (timeframe.endsWith('d')) timeframeSeconds = parseInt(timeframe) * 86400;
+      if (!markProcessedTrade(trade)) return;
 
-      engineRef.current.ingestTrade(trade, getCandleTimeForTrade(trade.time, timeframeSeconds));
+      const candleTime = getCandleTimeForTrade(trade.time, timeframeSeconds);
+      if (firstFullyCoveredCandleTimeRef.current === null) {
+        firstFullyCoveredCandleTimeRef.current = candleTime + timeframeSeconds;
+      }
+
+      engineRef.current.ingestTrade(trade, candleTime);
       volumeProfileEngineRef.current.ingestTrade(trade);
-      rawTradeQueueRef.current.push(trade);
+
+      if (claimRawTradeStorage(pair, trade)) {
+        rawTradeQueueRef.current.push(trade);
+      }
+
       pendingProfileRedrawRef.current = true;
       pushTrade(panelId, trade);
       pendingFootprintRedrawRef.current = true;
@@ -337,38 +421,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       return await response.json() as Candle[];
     };
 
-    const hydrateStoredFootprints = async (candles: Candle[]) => {
-      await Promise.all(candles.map(async (candle) => {
-        const params = new URLSearchParams({
-          symbol: pair,
-          timeframe,
-          candleTime: String(candle.time),
-          bucketSize: String(bucketSize),
-        });
-        const response = await fetch(`/api/history/footprint?${params.toString()}`, {
-          cache: 'no-store',
-        });
-
-        if (!response.ok) return;
-
-        const rows = await response.json() as StoredFootprintCell[];
-        if (rows.length === 0) return;
-
-        const cells = new Map<number, FootprintCell>(
-          rows.map((row) => [
-            row.bucketPrice,
-            {
-              bidVol: row.bidVol,
-              askVol: row.askVol,
-            },
-          ]),
-        );
-        const delta = rows.reduce((total, row) => total + row.delta, 0);
-
-        engineRef.current.hydrateFootprintCandle(candle, cells, delta);
-      }));
-    };
-
     const hydrateStoredRawTrades = async (candles: Candle[]) => {
       if (candles.length === 0) return;
 
@@ -393,86 +445,73 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const trades = await response.json() as Trade[];
       if (trades.length === 0) return;
 
-      volumeProfileEngineRef.current.hydrateTrades(trades);
-      pendingProfileRedrawRef.current = true;
+      let hydratedCount = 0;
+      for (const trade of trades) {
+        if (!markProcessedTrade(trade)) continue;
+
+        engineRef.current.ingestTrade(trade, getCandleTimeForTrade(trade.time, timeframeSeconds));
+        volumeProfileEngineRef.current.ingestTrade(trade);
+        hydratedCount += 1;
+      }
+
+      if (hydratedCount > 0) {
+        pendingFootprintRedrawRef.current = true;
+        pendingProfileRedrawRef.current = true;
+      }
     };
 
     const init = async () => {
       try {
-        setLoadingHistory(panelId, true);
-        console.log(`[PanelFeed:${panelId}] Fetching stored history for ${pair} ${timeframe}...`);
-        let history: Candle[] = [];
-        let loadedFromDatabase = false;
-
-        try {
-          history = await fetchStoredHistory();
-          loadedFromDatabase = history.length > 0;
-        } catch (err) {
-          console.warn('[History] Could not load stored candles:', err);
-        }
-
-        if (!loadedFromDatabase) {
-          console.log(`[PanelFeed:${panelId}] No stored history. Fetching Binance history for ${pair} ${timeframe}...`);
-          history = await adapter.fetchHistory(pair, timeframe);
-        }
-
-        if (!active) return;
-
-        pushAllCandles(panelId, history);
-
-        // Auto Bucket Size Calculation
-        if (autoBucketSize && history.length > 0) {
-          const recentCandles = history.slice(-100); // use last 100 candles for avg
-          const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length;
-          const targetTicks = avgRange / tickSize;
-          // Aim for ~25 rows per footprint
-          const computedSize = Math.max(1, Math.round(targetTicks / 25));
-          setComputedBucketSize(panelId, computedSize);
-          engineRef.current.reset(computedSize);
-        }
-
-        history.forEach(c => engineRef.current.ingestCandle(c));
-        if (loadedFromDatabase) {
-          await hydrateStoredFootprints(history);
-          if (!active) return;
-        }
-        await hydrateStoredRawTrades(history);
-        if (!active) return;
-
-        console.log(`[PanelFeed:${panelId}] ${loadedFromDatabase ? 'Stored' : 'Binance'} history loaded (${history.length} candles). Connecting WS...`);
-        setLoadingHistory(panelId, false);
-
-        // Build initial absorption map from history
-        const absMap = buildAbsorptionMap(history, engineRef.current);
-        absorptionMapRef.current = absMap;
-        setAbsorptionMap(panelId, absMap);
-
-        const exhMap = buildExhaustionMap(history, engineRef.current, absMap, exhaustionLookback);
-        exhaustionMapRef.current = exhMap;
-        setExhaustionMap(panelId, exhMap);
-
-        const icebergLevels = icebergEnabled
-          ? icebergEngineRef.current.update(history, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
-          : [];
-        icebergLevelsRef.current = icebergLevels;
-        setIcebergLevels(panelId, icebergLevels);
-        console.log(`--- Initial Iceberg Levels (${panelId} panel) ---`);
-        if (icebergLevels.length === 0) {
-          console.log('No iceberg levels detected.');
-        } else {
-          console.table(icebergLevels.map(level => ({
-            price: level.price,
-            score: level.score,
-            rank: level.rank,
-            side: level.side,
-            totalVolume: level.totalVolume.toFixed(2),
-            candleCount: level.candleCount,
-            reasons: level.reasons.join('; '),
-          })));
-        }
-
+        console.log(`[PanelFeed:${panelId}] Connecting live streams for ${pair} ${timeframe}...`);
         adapter.subscribeCandles(pair, timeframe, handleCandle);
         adapter.subscribeTrades(pair, handleTrade);
+
+        setLoadingHistory(panelId, true);
+        console.log(`[PanelFeed:${panelId}] Fetching Binance history for ${pair} ${timeframe} in background...`);
+        let history: Candle[] = [];
+        let historySource: 'Binance' | 'stored' = 'Binance';
+
+        try {
+          history = await adapter.fetchHistory(pair, timeframe);
+        } catch (err) {
+          console.warn('[History] Could not load Binance candles:', err);
+        }
+
+        if (history.length === 0) {
+          console.log(`[PanelFeed:${panelId}] Binance history unavailable. Falling back to stored history for ${pair} ${timeframe}...`);
+          try {
+            history = await fetchStoredHistory();
+            historySource = 'stored';
+          } catch (err) {
+            console.warn('[History] Could not load stored candles:', err);
+          }
+        }
+
+        if (!active) return;
+
+        if (history.length > 0) {
+          pushAllCandles(panelId, history);
+
+          // Auto Bucket Size Calculation
+          if (autoBucketSize) {
+            const recentCandles = history.slice(-100); // use last 100 candles for avg
+            const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length;
+            const targetTicks = avgRange / tickSize;
+            // Aim for ~25 rows per footprint
+            const computedSize = Math.max(1, Math.round(targetTicks / 25));
+            setComputedBucketSize(panelId, computedSize);
+            engineRef.current.reset(computedSize);
+          }
+
+          history.forEach(c => engineRef.current.ingestCandle(c));
+          await hydrateStoredRawTrades(history);
+          if (!active) return;
+
+          recomputeSignalState();
+        }
+
+        console.log(`[PanelFeed:${panelId}] ${historySource} history merged (${history.length} candles). Live streams already running.`);
+        setLoadingHistory(panelId, false);
       } catch (err) {
         console.error(`[PanelFeed:${panelId}] Initialization failed:`, err);
         if (active) setLoadingHistory(panelId, false);

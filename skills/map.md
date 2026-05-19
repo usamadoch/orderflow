@@ -169,6 +169,11 @@ lib/store/chart.ts → Zustand panel state, persisted settings, drawing tool mod
 components/chart/drawLines.ts → Drawing overlay renderer with left-anchored price labels for rays and outside-edge box labels.
 components/chart/ChartCanvas.tsx → Canvas render orchestration passing drawing geometry into overlay label rendering.
 
+components/FeedProvider.tsx → Panel feed lifecycle with live-first Binance streaming, background history merge, trade dedupe, raw-trade hydration, and partial-footprint persistence guards.
+lib/store/chart.ts → Zustand panel state with time-keyed candle merging for live/history consistency.
+lib/feeds/binance.ts → Binance adapter for REST/WS market data with REST kline close-state detection.
+components/chart/ChartCanvas.tsx → Canvas render orchestration without blocking history-loading overlay.
+
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)
