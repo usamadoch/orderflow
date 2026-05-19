@@ -48,6 +48,11 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           absorptionSide={panel.absorptionSide}
           absorptionShowLabels={panel.absorptionShowLabels}
           absorptionMap={panel.absorptionMap}
+          auctionShiftEnabled={panel.auctionShiftEnabled}
+          auctionShiftMinConfidence={panel.auctionShiftMinConfidence}
+          auctionShiftShowLabels={panel.auctionShiftShowLabels}
+          auctionShiftShowBackground={panel.auctionShiftShowBackground}
+          auctionShiftMap={panel.auctionShiftMap}
           bubblesEnabled={panel.bubblesEnabled}
           bubbleThreshold={panel.bubbleThreshold}
           bubbleThresholdMode={panel.bubbleThresholdMode}

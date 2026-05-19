@@ -4,6 +4,7 @@ import { Candle } from '../../types/candle';
 import { Trade } from '../../types/trade';
 import { FootprintMode } from '../../types/footprint';
 import { AbsorptionResult } from '../../types/absorption';
+import { AuctionShiftResult } from '../../types/auctionShift';
 import { BubbleSide } from '../../components/chart/drawBubbles';
 import { ExhaustionResult } from '../../types/exhaustion';
 import { IcebergLevel } from '../../types/iceberg';
@@ -49,6 +50,9 @@ export interface TimeframeSettings {
   icebergShowSuspected: boolean;
   icebergShowLabels: boolean;
   icebergShowTint: boolean;
+  auctionShiftMinConfidence: number;
+  auctionShiftShowLabels: boolean;
+  auctionShiftShowBackground: boolean;
   profileWidthPct: number;
   profileResolutionTicks: number;
   profileMinRowHeight: number;
@@ -104,6 +108,11 @@ export interface PanelState {
   absorptionSide: AbsorptionSide;
   absorptionShowLabels: boolean;
   absorptionMap: Map<number, AbsorptionResult>;
+  auctionShiftEnabled: boolean;
+  auctionShiftMinConfidence: number;
+  auctionShiftShowLabels: boolean;
+  auctionShiftShowBackground: boolean;
+  auctionShiftMap: Map<number, AuctionShiftResult>;
   bubblesEnabled: boolean;
   bubbleThreshold: number;
   bubbleThresholdMode: BubbleThresholdMode;
@@ -211,6 +220,11 @@ interface ChartState {
   setAbsorptionSide: (panelId: PanelId, side: AbsorptionSide) => void;
   setAbsorptionShowLabels: (panelId: PanelId, show: boolean) => void;
   setAbsorptionMap: (panelId: PanelId, map: Map<number, AbsorptionResult>) => void;
+  setAuctionShiftEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setAuctionShiftMinConfidence: (panelId: PanelId, confidence: number) => void;
+  setAuctionShiftShowLabels: (panelId: PanelId, show: boolean) => void;
+  setAuctionShiftShowBackground: (panelId: PanelId, show: boolean) => void;
+  setAuctionShiftMap: (panelId: PanelId, map: Map<number, AuctionShiftResult>) => void;
   setBubblesEnabled: (panelId: PanelId, enabled: boolean) => void;
   setBubbleThreshold: (panelId: PanelId, threshold: number) => void;
   setBubbleThresholdMode: (panelId: PanelId, mode: BubbleThresholdMode) => void;
@@ -314,6 +328,11 @@ function createDefaultPanel(id: PanelId): PanelState {
     absorptionSide: 'both' as AbsorptionSide,
     absorptionShowLabels: true,
     absorptionMap: new Map(),
+    auctionShiftEnabled: true,
+    auctionShiftMinConfidence: 55,
+    auctionShiftShowLabels: true,
+    auctionShiftShowBackground: true,
+    auctionShiftMap: new Map(),
     bubblesEnabled: true,
     bubbleThreshold: 50,
     bubbleThresholdMode: 'absolute',
@@ -406,6 +425,7 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
     'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
     'icebergShowLabels', 'icebergShowTint',
+    'auctionShiftMinConfidence', 'auctionShiftShowLabels', 'auctionShiftShowBackground',
     'profileWidthPct', 'profileResolutionTicks', 'profileMinRowHeight',
     'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
     'profileShowPocHighlight', 'profileShowVaFill', 'profileShowPocLine',
@@ -483,7 +503,7 @@ export const useChartStore = create<ChartState>()(
 
       // Per-panel actions
       setPair: (panelId, pair) =>
-        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], icebergLevels: [] })),
+        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], auctionShiftMap: new Map(), icebergLevels: [] })),
 
       setTimeframe: (panelId, timeframe) =>
         set((state) => {
@@ -493,6 +513,7 @@ export const useChartStore = create<ChartState>()(
             timeframe, 
             candles: [], 
             trades: [],
+            auctionShiftMap: new Map(),
             icebergLevels: [],
             ...savedSettings
           });
@@ -542,6 +563,21 @@ export const useChartStore = create<ChartState>()(
 
       setAbsorptionMap: (panelId, absorptionMap) =>
         set((state) => updatePanel(state, panelId, { absorptionMap })),
+
+      setAuctionShiftEnabled: (panelId, auctionShiftEnabled) =>
+        set((state) => updatePanel(state, panelId, { auctionShiftEnabled })),
+
+      setAuctionShiftMinConfidence: (panelId, auctionShiftMinConfidence) =>
+        set((state) => updatePanel(state, panelId, { auctionShiftMinConfidence: Math.max(0, Math.min(100, auctionShiftMinConfidence)) })),
+
+      setAuctionShiftShowLabels: (panelId, auctionShiftShowLabels) =>
+        set((state) => updatePanel(state, panelId, { auctionShiftShowLabels })),
+
+      setAuctionShiftShowBackground: (panelId, auctionShiftShowBackground) =>
+        set((state) => updatePanel(state, panelId, { auctionShiftShowBackground })),
+
+      setAuctionShiftMap: (panelId, auctionShiftMap) =>
+        set((state) => updatePanel(state, panelId, { auctionShiftMap })),
 
       setBubblesEnabled: (panelId, bubblesEnabled) =>
         set((state) => updatePanel(state, panelId, { bubblesEnabled })),
@@ -857,7 +893,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 19,
+      version: 20,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -875,6 +911,11 @@ export const useChartStore = create<ChartState>()(
             absorptionMinScore: p.absorptionMinScore ?? 50,
             absorptionSide: p.absorptionSide || 'both',
             absorptionShowLabels: p.absorptionShowLabels ?? true,
+            auctionShiftEnabled: p.auctionShiftEnabled ?? true,
+            auctionShiftMinConfidence: p.auctionShiftMinConfidence ?? 55,
+            auctionShiftShowLabels: p.auctionShiftShowLabels ?? true,
+            auctionShiftShowBackground: p.auctionShiftShowBackground ?? true,
+            auctionShiftMap: new Map(),
             bubblesEnabled: p.bubblesEnabled ?? true,
             bubbleThreshold: p.bubbleThreshold ?? 50,
             bubbleThresholdMode: p.bubbleThresholdMode || 'absolute',
@@ -978,6 +1019,10 @@ export const useChartStore = create<ChartState>()(
             absorptionMinScore: state.panels.left.absorptionMinScore,
             absorptionSide: state.panels.left.absorptionSide,
             absorptionShowLabels: state.panels.left.absorptionShowLabels,
+            auctionShiftEnabled: state.panels.left.auctionShiftEnabled,
+            auctionShiftMinConfidence: state.panels.left.auctionShiftMinConfidence,
+            auctionShiftShowLabels: state.panels.left.auctionShiftShowLabels,
+            auctionShiftShowBackground: state.panels.left.auctionShiftShowBackground,
             bubblesEnabled: state.panels.left.bubblesEnabled,
             bubbleThreshold: state.panels.left.bubbleThreshold,
             bubbleThresholdMode: state.panels.left.bubbleThresholdMode,
@@ -1044,6 +1089,10 @@ export const useChartStore = create<ChartState>()(
             absorptionMinScore: state.panels.right.absorptionMinScore,
             absorptionSide: state.panels.right.absorptionSide,
             absorptionShowLabels: state.panels.right.absorptionShowLabels,
+            auctionShiftEnabled: state.panels.right.auctionShiftEnabled,
+            auctionShiftMinConfidence: state.panels.right.auctionShiftMinConfidence,
+            auctionShiftShowLabels: state.panels.right.auctionShiftShowLabels,
+            auctionShiftShowBackground: state.panels.right.auctionShiftShowBackground,
             bubblesEnabled: state.panels.right.bubblesEnabled,
             bubbleThreshold: state.panels.right.bubbleThreshold,
             bubbleThresholdMode: state.panels.right.bubbleThresholdMode,

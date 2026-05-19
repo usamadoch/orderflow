@@ -22,9 +22,12 @@ import { drawDrawingPriceLabels, drawLines } from './drawLines';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
+import { AuctionShiftResult } from '@/types/auctionShift';
 import { ExhaustionResult } from '@/types/exhaustion';
 import { IcebergLevel } from '@/types/iceberg';
 import { AbsorptionTooltip } from './AbsorptionTooltip';
+import { AuctionShiftTooltip } from './AuctionShiftTooltip';
+import { drawAuctionShift, getAuctionShiftHitPoint } from './drawAuctionShift';
 import { drawExhaustion } from './drawExhaustion';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
 import { drawDeltaProfile } from '@/lib/draw/drawDeltaProfile';
@@ -171,6 +174,11 @@ interface ChartCanvasProps {
   absorptionSide: AbsorptionSide;
   absorptionShowLabels: boolean;
   absorptionMap: Map<number, AbsorptionResult>;
+  auctionShiftEnabled: boolean;
+  auctionShiftMinConfidence: number;
+  auctionShiftShowLabels: boolean;
+  auctionShiftShowBackground: boolean;
+  auctionShiftMap: Map<number, AuctionShiftResult>;
   bubblesEnabled: boolean;
   bubbleThreshold: number;
   bubbleThresholdMode: 'absolute' | 'relative';
@@ -254,6 +262,11 @@ export function ChartCanvas({
   absorptionSide,
   absorptionShowLabels,
   absorptionMap,
+  auctionShiftEnabled,
+  auctionShiftMinConfidence,
+  auctionShiftShowLabels,
+  auctionShiftShowBackground,
+  auctionShiftMap,
   bubblesEnabled,
   bubbleThreshold,
   bubbleThresholdMode,
@@ -343,6 +356,7 @@ export function ChartCanvas({
   const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 });
 
   const [hoveredAbs, setHoveredAbs] = React.useState<{ result: AbsorptionResult, x: number, y: number } | null>(null);
+  const [hoveredAuctionShift, setHoveredAuctionShift] = React.useState<{ result: AuctionShiftResult, x: number, y: number } | null>(null);
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
   const [hoveredIceberg, setHoveredIceberg] = React.useState<{ level: IcebergLevel, x: number, y: number } | null>(null);
 
@@ -463,6 +477,16 @@ export function ChartCanvas({
         );
       }
 
+      if (auctionShiftEnabled && auctionShiftMap.size > 0) {
+        drawAuctionShift(ctx, candles, { firstIndex, lastIndex }, indexToX, currentBarWidth, chartHeight, auctionShiftMap, {
+          minConfidence: auctionShiftMinConfidence,
+          showLabels: false,
+          showBackground: auctionShiftShowBackground,
+          drawBackground: true,
+          drawTags: false,
+        });
+      }
+
       // Selection Rectangle (drawn below candles)
       drawSelectionRect(
         ctx,
@@ -510,6 +534,16 @@ export function ChartCanvas({
           icebergShowTint,
           icebergLookback,
           absorptionMap,
+        });
+      }
+
+      if (auctionShiftEnabled && auctionShiftMap.size > 0) {
+        drawAuctionShift(ctx, candles, { firstIndex, lastIndex }, indexToX, currentBarWidth, chartHeight, auctionShiftMap, {
+          minConfidence: auctionShiftMinConfidence,
+          showLabels: auctionShiftShowLabels,
+          showBackground: false,
+          drawBackground: false,
+          drawTags: true,
         });
       }
 
@@ -733,7 +767,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, auctionShiftEnabled, auctionShiftMinConfidence, auctionShiftShowLabels, auctionShiftShowBackground, auctionShiftMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1339,14 +1373,52 @@ export function ChartCanvas({
                 }
               }
             }
-            if (!foundIceberg) setHoveredIceberg(null);
+            if (!foundIceberg) {
+              setHoveredIceberg(null);
+
+              // Auction Shift Hover Detection
+              let foundAuctionShift = false;
+              if (!hoverZone.current && auctionShiftEnabled && auctionShiftMap.size > 0) {
+                const chartWidth = rect.width - priceAxisWidth;
+                const chartHeight = rect.height - timeAxisHeight;
+                const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+                const { firstIndex, lastIndex } = getVisibleRange(candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+
+                for (let i = firstIndex; i <= lastIndex && i < candles.length; i++) {
+                  const candle = candles[i];
+                  const result = auctionShiftMap.get(candle.time);
+                  if (!result || result.confidence < auctionShiftMinConfidence) continue;
+                  if (result.state === 'balanced' && !result.transition) continue;
+                  if (!result.transition && result.confidence < auctionShiftMinConfidence + 15) continue;
+
+                  const ax = indexToX(i);
+                  if (ax === null) continue;
+
+                  const point = getAuctionShiftHitPoint(result, ax, chartHeight);
+                  const dist = Math.sqrt((x - point.x) ** 2 + (y - point.y) ** 2);
+                  if (dist <= point.radius) {
+                    setHoveredAuctionShift({ result, x: point.x, y: point.y });
+                    cursor = 'help';
+                    foundAuctionShift = true;
+                    break;
+                  }
+                }
+              }
+              if (!foundAuctionShift) setHoveredAuctionShift(null);
+            } else {
+              setHoveredAuctionShift(null);
+            }
           } else {
             setHoveredIceberg(null);
+            setHoveredAuctionShift(null);
           }
         } else {
           setHoveredExhaustion(null);
           setHoveredIceberg(null);
+          setHoveredAuctionShift(null);
         }
+      } else {
+        setHoveredAuctionShift(null);
       }
 
       canvas.style.cursor = cursor;
@@ -1663,7 +1735,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe]);
+  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, auctionShiftEnabled, auctionShiftMap, auctionShiftMinConfidence, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe]);
 
 
   return (
@@ -1678,6 +1750,13 @@ export function ChartCanvas({
           result={hoveredAbs.result} 
           x={hoveredAbs.x} 
           y={hoveredAbs.y} 
+        />
+      )}
+      {hoveredAuctionShift && (
+        <AuctionShiftTooltip
+          result={hoveredAuctionShift.result}
+          x={hoveredAuctionShift.x}
+          y={hoveredAuctionShift.y}
         />
       )}
       {hoveredExhaustion && (

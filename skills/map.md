@@ -177,6 +177,18 @@ components/chart/ChartCanvas.tsx → Canvas render orchestration without blockin
 components/FeedProvider.tsx → Performance-aware feed lifecycle with chunked raw-trade hydration, throttled profile redraws, and reduced realtime store churn.
 lib/volumeProfile/profileEngine.ts → Raw-trade Volume Profile source with bounded trade retention, time-window lookup, and profile-result caching.
 
+types/auctionShift.ts → Auction shift context result/state types for balanced, initiative, absorption reversal, and exhaustion transition states.
+lib/auctionShift/engine.ts → Real-time auction shift classifier using candles, footprint delta, absorption/exhaustion maps, volume expansion, value context, and follow-through.
+components/chart/drawAuctionShift.ts → Canvas renderer and hit geometry for subtle auction shift transition tints and contextual tags.
+components/chart/AuctionShiftTooltip.tsx → Hover tooltip explaining auction shift context, confidence, reasons, and component scores.
+components/FeedProvider.tsx → Panel feed lifecycle, signal recomputation, and auction shift map updates beside absorption/exhaustion/iceberg state.
+lib/store/chart.ts → Zustand panel state, persisted auction shift display settings, and session-only auction shift maps.
+components/chart/ChartPanel.tsx → Panel state bridge from store/context into ChartCanvas, including auction shift context settings and map.
+components/chart/ChartCanvas.tsx → Canvas render orchestration and hover detection for subtle auction shift context overlays.
+components/ui/PanelToolbar.tsx → Per-panel toolbar controls including AUC, ABS, EX, and ICE signal/context toggles.
+components/ui/ChartSettingsDropdown.tsx → Draggable settings window with auction shift confidence, label, and transition tint controls.
+components/layout/Sidebar.tsx → Active panel settings and signal statistics, including current auction context and last auction shift.
+
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)

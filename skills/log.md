@@ -1,5 +1,15 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-19] - Feature: Real-Time Auction Shift Detection
+- **What changed**:
+  - Added auction shift types and a classifier for balanced auction context, initiative buying/selling, absorption-led reversal context, and exhaustion transitions.
+  - Wired auction shift maps through the panel feed lifecycle, Zustand panel state, chart panel props, and canvas rendering.
+  - Added subtle auction context tints/tags, hover explanations, an AUC toolbar toggle, settings controls, and sidebar context/last-shift summaries.
+- **Why it changed**:
+  - The chart needed a higher-level participation context layer that combines delta, volume expansion, absorption, exhaustion, value acceptance/rejection, and follow-through without becoming an automated trade signal.
+- **Impact summary**:
+  - Users can now interpret transitions from balance into initiative or reversal/exhaustion context directly on the chart while preserving the existing footprint, absorption, exhaustion, iceberg, and Volume Profile workflows.
+
 ## [2026-05-19] - Fix: Long-Running Realtime Performance
 - **What changed**:
   - Removed unused per-trade Zustand writes from the Binance aggTrade hot path.

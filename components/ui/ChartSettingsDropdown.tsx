@@ -32,6 +32,10 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setAbsorptionEnabled = useChartStore(s => s.setAbsorptionEnabled);
   const setAbsorptionMinScore = useChartStore(s => s.setAbsorptionMinScore);
   const setAbsorptionSide = useChartStore(s => s.setAbsorptionSide);
+  const setAuctionShiftEnabled = useChartStore(s => s.setAuctionShiftEnabled);
+  const setAuctionShiftMinConfidence = useChartStore(s => s.setAuctionShiftMinConfidence);
+  const setAuctionShiftShowLabels = useChartStore(s => s.setAuctionShiftShowLabels);
+  const setAuctionShiftShowBackground = useChartStore(s => s.setAuctionShiftShowBackground);
   const setProfileWidthPct = useChartStore(s => s.setProfileWidthPct);
   const setProfileResolutionTicks = useChartStore(s => s.setProfileResolutionTicks);
   const setProfileMinRowHeight = useChartStore(s => s.setProfileMinRowHeight);
@@ -861,6 +865,58 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
             {/* Tab: Signals */}
             {activeTab === 'signals' && (
               <>
+                {/* Auction Shift Settings */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Auction Shift Context</div>
+                    <button
+                      onClick={() => setAuctionShiftEnabled(panelId, !panel.auctionShiftEnabled)}
+                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.auctionShiftEnabled ? 'bg-[#3D7EFF]' : 'bg-[#1F1F1F]'
+                        }`}
+                    >
+                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.auctionShiftEnabled ? 'left-5' : 'left-1'
+                        }`} />
+                    </button>
+                  </div>
+
+                  {panel.auctionShiftEnabled && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Confidence</label>
+                          <span className="text-[12px] font-mono font-bold text-[#3D7EFF]">{panel.auctionShiftMinConfidence}</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.auctionShiftMinConfidence}
+                          onChange={(e) => setAuctionShiftMinConfidence(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
+                          min="35" max="85" step="5"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2">
+                        {[
+                          ['Show labels', panel.auctionShiftShowLabels, () => setAuctionShiftShowLabels(panelId, !panel.auctionShiftShowLabels)],
+                          ['Show transition tint', panel.auctionShiftShowBackground, () => setAuctionShiftShowBackground(panelId, !panel.auctionShiftShowBackground)],
+                        ].map(([label, enabled, onClick]) => (
+                          <button
+                            key={label as string}
+                            onClick={onClick as () => void}
+                            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${enabled
+                              ? 'bg-[#3D7EFF]/5 border-[#3D7EFF] text-[#3D7EFF]'
+                              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                              }`}
+                          >
+                            <span className="text-[10px] font-bold uppercase tracking-wider">{label as string}</span>
+                            <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-[#3D7EFF] shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Absorption Settings */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">

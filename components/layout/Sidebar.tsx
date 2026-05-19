@@ -2,6 +2,23 @@
 
 import { useChartStore } from '../../lib/store/chart';
 import { ChevronLeft, ChevronRight, Settings, Database, Activity, Zap } from 'lucide-react';
+import { AuctionShiftState } from '../../types/auctionShift';
+
+const AUCTION_STATE_LABELS: Record<AuctionShiftState, string> = {
+  balanced: 'Balanced',
+  initiative_buying: 'Initiative Buy',
+  initiative_selling: 'Initiative Sell',
+  absorption_reversal: 'Abs Reversal',
+  exhaustion_transition: 'Exh Shift',
+};
+
+const AUCTION_STATE_COLORS: Record<AuctionShiftState, string> = {
+  balanced: '#787B86',
+  initiative_buying: '#26A69A',
+  initiative_selling: '#EF5350',
+  absorption_reversal: '#3D7EFF',
+  exhaustion_transition: '#F0B90B',
+};
 
 export function Sidebar() {
   const sidebarCollapsed = useChartStore(s => s.sidebarCollapsed);
@@ -11,6 +28,11 @@ export function Sidebar() {
   const activePanel = useChartStore(s => s.activePanel);
   const layoutMode = useChartStore(s => s.layoutMode);
   const panel = useChartStore(s => s.panels[s.activePanel]);
+
+  const auctionContexts = Array.from(panel.auctionShiftMap.values()).filter(r => r.confidence >= panel.auctionShiftMinConfidence);
+  const currentAuctionContext = auctionContexts.length > 0 ? [...auctionContexts].sort((a, b) => b.candleTime - a.candleTime)[0] : null;
+  const lastAuctionTransition = auctionContexts.filter(r => r.transition).sort((a, b) => b.candleTime - a.candleTime)[0] ?? null;
+  const lastAuctionTimeStr = lastAuctionTransition ? new Date(lastAuctionTransition.candleTime * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
   
   // Absorption Stats
   const absSignals = Array.from(panel.absorptionMap.values()).filter(r => r.score >= panel.absorptionMinScore);
@@ -119,6 +141,50 @@ export function Sidebar() {
 
         {/* Section: Signals Statistics */}
         <div className="px-3 flex flex-col gap-6">
+          {/* Auction Shift Context */}
+          <div>
+            {!sidebarCollapsed ? (
+              <h2 className="text-text-muted text-[10px] uppercase font-extrabold tracking-widest mb-3 flex items-center gap-2">
+                <Activity size={12} strokeWidth={3} className="text-[#3D7EFF]" />
+                Auction
+              </h2>
+            ) : (
+              <div className="flex justify-center mb-3 text-[#3D7EFF]">
+                <Activity size={18} strokeWidth={2.5} />
+              </div>
+            )}
+
+            {!sidebarCollapsed && (
+              <div className="flex flex-col gap-2 px-1">
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Current context</span>
+                  <span
+                    className="font-mono font-bold text-right max-w-[86px] truncate"
+                    style={{ color: currentAuctionContext ? AUCTION_STATE_COLORS[currentAuctionContext.state] : '#787B86' }}
+                  >
+                    {currentAuctionContext ? AUCTION_STATE_LABELS[currentAuctionContext.state] : 'None'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Confidence</span>
+                  <span className="font-mono font-bold text-[#E8E8E8]">{currentAuctionContext?.confidence ?? '--'}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] mt-1 pt-2 border-t border-border/50">
+                  <span className="text-text-muted text-[9px] font-black uppercase">Last Shift</span>
+                  <div className="flex gap-1.5 items-center">
+                    <span className="font-mono font-bold text-main">{lastAuctionTimeStr}</span>
+                    <span
+                      className="text-[9px] font-black uppercase max-w-[72px] truncate"
+                      style={{ color: lastAuctionTransition ? AUCTION_STATE_COLORS[lastAuctionTransition.state] : '#787B86' }}
+                    >
+                      {lastAuctionTransition ? AUCTION_STATE_LABELS[lastAuctionTransition.state] : 'NONE'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Absorption Stats */}
           <div>
             {!sidebarCollapsed ? (

@@ -20,6 +20,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setChartMode = useChartStore(s => s.setChartMode);
   const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
   const setAbsorptionEnabled = useChartStore(s => s.setAbsorptionEnabled);
+  const setAuctionShiftEnabled = useChartStore(s => s.setAuctionShiftEnabled);
   const setExhaustionEnabled = useChartStore(s => s.setExhaustionEnabled);
   const setIcebergEnabled = useChartStore(s => s.setIcebergEnabled);
 
@@ -177,9 +178,19 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
 
       {/* Signal Toggles */}
       <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
-        <span className={`text-[9px] font-black tracking-widest ${panel.absorptionEnabled || panel.exhaustionEnabled || panel.icebergEnabled ? 'text-text-dim' : 'text-[#333]'}`}>
+        <span className={`text-[9px] font-black tracking-widest ${panel.absorptionEnabled || panel.auctionShiftEnabled || panel.exhaustionEnabled || panel.icebergEnabled ? 'text-text-dim' : 'text-[#333]'}`}>
           SIGNALS
         </span>
+        <button
+          onClick={() => setAuctionShiftEnabled(panelId, !panel.auctionShiftEnabled)}
+          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.auctionShiftEnabled
+            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
+            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
+            }`}
+          title="Toggle Auction Shift Context"
+        >
+          AUC
+        </button>
         <button
           onClick={() => setAbsorptionEnabled(panelId, !panel.absorptionEnabled)}
           className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.absorptionEnabled

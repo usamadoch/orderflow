@@ -6,6 +6,7 @@ import { feedAdapter } from '../lib/feeds';
 import { AggregationEngine } from '../lib/aggregation/engine';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
+import { buildAuctionShiftMap, scoreLatestAuctionShift } from '../lib/auctionShift/engine';
 import { IcebergEngine } from '../lib/iceberg/engine';
 import { getCandleTimeForTrade } from '../lib/utils/aggregation';
 import { ChartEngineContext } from './ChartEngineContext';
@@ -14,6 +15,7 @@ import { Candle } from '../types/candle';
 import { Trade } from '../types/trade';
 import { AbsorptionResult } from '../types/absorption';
 import { ExhaustionResult } from '../types/exhaustion';
+import { AuctionShiftResult } from '../types/auctionShift';
 import { IcebergLevel } from '../types/iceberg';
 import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
@@ -90,6 +92,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const setComputedBucketSize = useChartStore(s => s.setComputedBucketSize);
   const setAbsorptionMap = useChartStore(s => s.setAbsorptionMap);
   const setExhaustionMap = useChartStore(s => s.setExhaustionMap);
+  const setAuctionShiftMap = useChartStore(s => s.setAuctionShiftMap);
   const exhaustionLookback = useChartStore(s => s.panels[panelId].exhaustionLookback);
   const setIcebergLevels = useChartStore(s => s.setIcebergLevels);
   const icebergEnabled = useChartStore(s => s.panels[panelId].icebergEnabled);
@@ -114,6 +117,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const [volumeProfileRevision, setVolumeProfileRevision] = useState(0);
   const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
   const exhaustionMapRef = useRef<Map<number, ExhaustionResult>>(new Map());
+  const auctionShiftMapRef = useRef<Map<number, AuctionShiftResult>>(new Map());
   const icebergEngineRef = useRef<IcebergEngine>(new IcebergEngine(bucketSize, icebergLookback));
   const icebergLevelsRef = useRef<IcebergLevel[]>([]);
   const lastScoredCandleTimeRef = useRef<number | null>(null);
@@ -182,6 +186,19 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               exhaustionMapRef.current = newExhMap;
               setExhaustionMap(panelId, newExhMap);
             }
+
+            const newAuctionShiftMap = scoreLatestAuctionShift(
+              candles,
+              engineRef.current,
+              absorptionMapRef.current,
+              exhaustionMapRef.current,
+              auctionShiftMapRef.current,
+              bucketSize
+            );
+            if (newAuctionShiftMap !== auctionShiftMapRef.current) {
+              auctionShiftMapRef.current = newAuctionShiftMap;
+              setAuctionShiftMap(panelId, newAuctionShiftMap);
+            }
           }
         }
       }
@@ -192,7 +209,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     }, 100);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [triggerFootprintRedraw, chartMode, panelId, setAbsorptionMap]);
+  }, [triggerFootprintRedraw, chartMode, panelId, setAbsorptionMap, setExhaustionMap, setAuctionShiftMap, bucketSize, exhaustionLookback]);
 
   // Handle engine bucket size updates without reconnecting socket
   useEffect(() => {
@@ -209,6 +226,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     exhaustionMapRef.current = newExhMap;
     setExhaustionMap(panelId, newExhMap);
 
+    const newAuctionShiftMap = buildAuctionShiftMap(currentCandles, engineRef.current, newMap, newExhMap, bucketSize);
+    auctionShiftMapRef.current = newAuctionShiftMap;
+    setAuctionShiftMap(panelId, newAuctionShiftMap);
+
     const levels = icebergEnabled
       ? icebergEngineRef.current.update(currentCandles, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
       : [];
@@ -216,7 +237,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     setIcebergLevels(panelId, levels);
 
     triggerFootprintRedraw(panelId);
-  }, [bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap, setIcebergLevels]);
+  }, [bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap, setAuctionShiftMap, setIcebergLevels]);
 
   // Handle autoBucketSize toggle
   useEffect(() => {
@@ -249,8 +270,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     pendingProfileRedrawRef.current = false;
     absorptionMapRef.current = new Map();
     exhaustionMapRef.current = new Map();
+    auctionShiftMapRef.current = new Map();
     icebergEngineRef.current.reset();
     icebergLevelsRef.current = [];
+    setAuctionShiftMap(panelId, new Map());
     setIcebergLevels(panelId, []);
     lastScoredCandleTimeRef.current = null;
     useChartStore.getState().setActiveMeasurement(panelId, null);
@@ -286,6 +309,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const exhMap = buildExhaustionMap(currentCandles, engineRef.current, absMap, exhaustionLookback);
       exhaustionMapRef.current = exhMap;
       setExhaustionMap(panelId, exhMap);
+
+      const auctionShiftMap = buildAuctionShiftMap(currentCandles, engineRef.current, absMap, exhMap, bucketSize);
+      auctionShiftMapRef.current = auctionShiftMap;
+      setAuctionShiftMap(panelId, auctionShiftMap);
 
       const icebergLevels = icebergEnabled
         ? icebergEngineRef.current.update(currentCandles, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
@@ -365,6 +392,17 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         const newExhMap = scoreLatestExhaustion(currentCandles, engineRef.current, newMap, exhaustionMapRef.current, exhaustionLookback);
         exhaustionMapRef.current = newExhMap;
         setExhaustionMap(panelId, newExhMap);
+
+        const newAuctionShiftMap = scoreLatestAuctionShift(
+          currentCandles,
+          engineRef.current,
+          newMap,
+          newExhMap,
+          auctionShiftMapRef.current,
+          bucketSize
+        );
+        auctionShiftMapRef.current = newAuctionShiftMap;
+        setAuctionShiftMap(panelId, newAuctionShiftMap);
 
         const icebergLevels = icebergEnabled
           ? icebergEngineRef.current.update(currentCandles, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
@@ -605,7 +643,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange]);
+  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setAuctionShiftMap, setIcebergLevels, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange]);
 
   // Temporary Verification Hotkey
   useEffect(() => {
