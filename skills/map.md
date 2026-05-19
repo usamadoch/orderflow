@@ -174,6 +174,9 @@ lib/store/chart.ts → Zustand panel state with time-keyed candle merging for li
 lib/feeds/binance.ts → Binance adapter for REST/WS market data with REST kline close-state detection.
 components/chart/ChartCanvas.tsx → Canvas render orchestration without blocking history-loading overlay.
 
+components/FeedProvider.tsx → Performance-aware feed lifecycle with chunked raw-trade hydration, throttled profile redraws, and reduced realtime store churn.
+lib/volumeProfile/profileEngine.ts → Raw-trade Volume Profile source with bounded trade retention, time-window lookup, and profile-result caching.
+
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)

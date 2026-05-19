@@ -27,6 +27,8 @@ interface PanelFeedProviderProps {
 
 const RAW_TRADE_FLUSH_MS = 2000;
 const RAW_TRADE_FLUSH_SIZE = 500;
+const PROFILE_REDRAW_MS = 500;
+const HYDRATION_CHUNK_SIZE = 1000;
 const MAX_DEDUPE_KEYS = 100000;
 
 const queuedRawTradeStorageKeys = new Set<string>();
@@ -37,6 +39,12 @@ function getTimeframeSeconds(timeframe: string) {
   if (timeframe.endsWith('h')) return parseInt(timeframe, 10) * 3600;
   if (timeframe.endsWith('d')) return parseInt(timeframe, 10) * 86400;
   return 60;
+}
+
+function yieldToBrowser() {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
 }
 
 function rememberBounded(set: Set<string>, key: string) {
@@ -75,7 +83,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const chartMode = useChartStore(s => s.panels[panelId].chartMode);
   const tickSize = useChartStore(s => s.tickSize);
   const pushCandle = useChartStore(s => s.pushCandle);
-  const pushTrade = useChartStore(s => s.pushTrade);
   const setConnected = useChartStore(s => s.setConnected);
   const pushAllCandles = useChartStore(s => s.pushAllCandles);
   const setLoadingHistory = useChartStore(s => s.setLoadingHistory);
@@ -103,6 +110,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const rawTradeQueueRef = useRef<Trade[]>([]);
   const processedTradeIdsRef = useRef<Set<number>>(new Set());
   const firstFullyCoveredCandleTimeRef = useRef<number | null>(null);
+  const lastProfileRevisionAtRef = useRef(0);
   const [volumeProfileRevision, setVolumeProfileRevision] = useState(0);
   const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
   const exhaustionMapRef = useRef<Map<number, ExhaustionResult>>(new Map());
@@ -149,8 +157,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
 
       if (hadProfileUpdate) {
-        pendingProfileRedrawRef.current = false;
-        setVolumeProfileRevision(Date.now());
+        const now = Date.now();
+        if (now - lastProfileRevisionAtRef.current >= PROFILE_REDRAW_MS) {
+          pendingProfileRedrawRef.current = false;
+          lastProfileRevisionAtRef.current = now;
+          setVolumeProfileRevision(now);
+        }
       }
 
       // Re-score provisional (live) candle on footprint updates
@@ -233,6 +245,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     rawTradeQueueRef.current = [];
     processedTradeIdsRef.current = new Set();
     firstFullyCoveredCandleTimeRef.current = null;
+    lastProfileRevisionAtRef.current = 0;
     pendingProfileRedrawRef.current = false;
     absorptionMapRef.current = new Map();
     exhaustionMapRef.current = new Map();
@@ -396,7 +409,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
 
       pendingProfileRedrawRef.current = true;
-      pushTrade(panelId, trade);
       pendingFootprintRedrawRef.current = true;
 
       if (rawTradeQueueRef.current.length >= RAW_TRADE_FLUSH_SIZE) {
@@ -446,7 +458,13 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (trades.length === 0) return;
 
       let hydratedCount = 0;
-      for (const trade of trades) {
+      for (let i = 0; i < trades.length; i += 1) {
+        if (!active) return;
+        if (i > 0 && i % HYDRATION_CHUNK_SIZE === 0) {
+          await yieldToBrowser();
+        }
+
+        const trade = trades[i];
         if (!markProcessedTrade(trade)) continue;
 
         engineRef.current.ingestTrade(trade, getCandleTimeForTrade(trade.time, timeframeSeconds));
@@ -567,7 +585,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           );
 
           setLiquidityZones(panelId, zones);
-          console.log(`[PanelFeed:${panelId}] Liquidity zones updated: ${zones.length} zones`);
         }, 500);
       } catch (err) {
         console.error(`[PanelFeed:${panelId}] Orderbook init failed:`, err);
@@ -588,7 +605,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, pushTrade, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange]);
+  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange]);
 
   // Temporary Verification Hotkey
   useEffect(() => {

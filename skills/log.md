@@ -1,5 +1,17 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-19] - Fix: Long-Running Realtime Performance
+- **What changed**:
+  - Removed unused per-trade Zustand writes from the Binance aggTrade hot path.
+  - Chunked stored raw-trade hydration so large DB restores yield back to the browser between batches.
+  - Throttled raw-trade Volume Profile redraw revisions independently from footprint redraws.
+  - Optimized the raw-trade Volume Profile engine with batched retention pruning, binary-search time-window lookup, and profile result caching.
+  - Removed a high-frequency liquidity update console log.
+- **Why it changed**:
+  - Live trade handling and restored raw-trade hydration were doing too much synchronous React/store/profile work, which could block canvas interaction and grow CPU pressure during long sessions.
+- **Impact summary**:
+  - Persistence and realtime recovery remain intact, while long-running charts should stay more responsive during dragging, scrolling, hydration, and active Binance trade bursts.
+
 ## [2026-05-19] - Fix: Live-First Candle Consistency and Footprint Persistence Guards
 - **What changed**:
   - Changed panel startup to subscribe to Binance candle/trade streams before background history loading.

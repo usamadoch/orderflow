@@ -19,6 +19,7 @@ export interface VolumeProfileSource {
 }
 
 const DEFAULT_MAX_TRADES = 50000;
+const TRADE_PRUNE_BATCH = 5000;
 
 /**
  * Panel-local implementation today, but intentionally hidden behind
@@ -28,6 +29,12 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
   private trades: Trade[] = [];
   private seenKeys = new Set<string>();
   private maxTrades: number;
+  private version = 0;
+  private sorted = true;
+  private cachedProfile: {
+    key: string;
+    profile: VolumeProfile | null;
+  } | null = null;
 
   constructor(maxTrades: number = DEFAULT_MAX_TRADES) {
     this.maxTrades = maxTrades;
@@ -43,12 +50,16 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
       this.addTrade(trade);
     }
     this.trades.sort((a, b) => a.time - b.time);
+    this.sorted = true;
     this.enforceLimit();
   }
 
   reset() {
     this.trades = [];
     this.seenKeys.clear();
+    this.version += 1;
+    this.sorted = true;
+    this.cachedProfile = null;
   }
 
   pruneBefore(timeMs: number) {
@@ -59,30 +70,68 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
 
     this.trades = kept;
     this.rebuildSeenKeys();
+    this.version += 1;
+    this.cachedProfile = null;
   }
 
   buildProfile({ candles, profileBucketSize, priceHigh, priceLow }: VolumeProfileBuildRequest) {
     if (candles.length === 0 || profileBucketSize <= 0 || this.trades.length === 0) return null;
 
+    this.ensureSorted();
     const { startMs, endMs } = getCandleTimeWindow(candles);
-    const windowTrades = this.trades.filter((trade) => trade.time >= startMs && trade.time < endMs);
+    const cacheKey = [
+      this.version,
+      startMs,
+      endMs,
+      profileBucketSize,
+      priceHigh ?? '',
+      priceLow ?? '',
+    ].join(':');
 
-    return buildVolumeProfileFromTrades(windowTrades, profileBucketSize, priceHigh, priceLow);
+    if (this.cachedProfile?.key === cacheKey) {
+      return this.cachedProfile.profile;
+    }
+
+    const startIndex = lowerBoundTradeTime(this.trades, startMs);
+    const endIndex = lowerBoundTradeTime(this.trades, endMs);
+    const windowTrades = this.trades.slice(startIndex, endIndex);
+    const profile = buildVolumeProfileFromTrades(windowTrades, profileBucketSize, priceHigh, priceLow);
+    this.cachedProfile = { key: cacheKey, profile };
+
+    return profile;
   }
 
   private addTrade(trade: Trade) {
     const key = getTradeKey(trade);
     if (this.seenKeys.has(key)) return;
 
+    const last = this.trades[this.trades.length - 1];
+    if (last && trade.time < last.time) {
+      this.sorted = false;
+    }
+
     this.seenKeys.add(key);
     this.trades.push(trade);
+    this.version += 1;
+    this.cachedProfile = null;
   }
 
   private enforceLimit() {
-    if (this.trades.length <= this.maxTrades) return;
+    if (this.trades.length <= this.maxTrades + TRADE_PRUNE_BATCH) return;
 
     this.trades = this.trades.slice(this.trades.length - this.maxTrades);
     this.rebuildSeenKeys();
+    this.version += 1;
+    this.cachedProfile = null;
+  }
+
+  private ensureSorted() {
+    if (this.sorted) return;
+
+    this.trades.sort((a, b) => a.time - b.time);
+    this.sorted = true;
+    this.version += 1;
+    this.cachedProfile = null;
   }
 
   private rebuildSeenKeys() {
@@ -162,4 +211,20 @@ function getTradeKey(trade: Trade) {
   return trade.id == null
     ? `${trade.time}:${trade.price}:${trade.quantity}:${trade.isBuyerMaker ? 1 : 0}`
     : `id:${trade.id}`;
+}
+
+function lowerBoundTradeTime(trades: Trade[], timeMs: number) {
+  let low = 0;
+  let high = trades.length;
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (trades[mid].time < timeMs) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
 }
