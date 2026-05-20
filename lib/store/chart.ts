@@ -7,6 +7,7 @@ import { AbsorptionResult } from '../../types/absorption';
 import { BubbleSide } from '../../components/chart/drawBubbles';
 import { ExhaustionResult } from '../../types/exhaustion';
 import { IcebergLevel } from '../../types/iceberg';
+import { LiquidityVacuumZone } from '../../types/liquidityVacuum';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
 import { LiquidityZone } from '../../types/liquidity';
 
@@ -18,6 +19,9 @@ export type { BubbleSide };
 export type ExhaustionSide = 'both' | 'buyer' | 'seller';
 export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box';
 export type SessionId = 'tokyo' | 'london' | 'newYork';
+export type CvdMode = 'candles' | 'bars' | 'line' | 'histogram';
+export type CvdResetMode = 'none' | 'daily' | 'session';
+export type CvdScaleMode = 'auto' | 'fixed';
 
 export interface SessionConfig {
   enabled: boolean;
@@ -49,6 +53,10 @@ export interface TimeframeSettings {
   icebergShowSuspected: boolean;
   icebergShowLabels: boolean;
   icebergShowTint: boolean;
+  liquidityVacuumMinScore: number;
+  liquidityVacuumShowLabels: boolean;
+  liquidityVacuumOpacity: number;
+  liquidityVacuumMaxZones: number;
   profileWidthPct: number;
   profileResolutionTicks: number;
   profileMinRowHeight: number;
@@ -61,6 +69,16 @@ export interface TimeframeSettings {
   profileShowVaLines: boolean;
   profileShowDelta: boolean;
   deltaProfileWidth: number;
+  cvdEnabled: boolean;
+  cvdPanelHeightPct: number;
+  cvdMode: CvdMode;
+  cvdSmoothing: number;
+  cvdResetMode: CvdResetMode;
+  cvdPositiveColor: string;
+  cvdNegativeColor: string;
+  cvdScaleMode: CvdScaleMode;
+  cvdFixedRange: number;
+  cvdShowDivergence: boolean;
 }
 
 export interface Measurement {
@@ -134,6 +152,12 @@ export interface PanelState {
   icebergShowLabels: boolean;
   icebergShowTint: boolean;
   icebergLevels: IcebergLevel[];
+  liquidityVacuumEnabled: boolean;
+  liquidityVacuumMinScore: number;
+  liquidityVacuumShowLabels: boolean;
+  liquidityVacuumOpacity: number;
+  liquidityVacuumMaxZones: number;
+  liquidityVacuumZones: LiquidityVacuumZone[];
   // Volume Profile Visuals
   profileWidthPct: number;
   profileResolutionTicks: number;
@@ -147,6 +171,17 @@ export interface PanelState {
   profileShowVaLines: boolean;
   profileShowDelta: boolean;
   deltaProfileWidth: number;
+  // CVD Panel
+  cvdEnabled: boolean;
+  cvdPanelHeightPct: number;
+  cvdMode: CvdMode;
+  cvdSmoothing: number;
+  cvdResetMode: CvdResetMode;
+  cvdPositiveColor: string;
+  cvdNegativeColor: string;
+  cvdScaleMode: CvdScaleMode;
+  cvdFixedRange: number;
+  cvdShowDivergence: boolean;
   measureToolActive: boolean;
   activeMeasurement: Measurement | null;
   // Session Visualization
@@ -240,6 +275,12 @@ interface ChartState {
   setIcebergShowLabels: (panelId: PanelId, show: boolean) => void;
   setIcebergShowTint: (panelId: PanelId, show: boolean) => void;
   setIcebergLevels: (panelId: PanelId, levels: IcebergLevel[]) => void;
+  setLiquidityVacuumEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setLiquidityVacuumMinScore: (panelId: PanelId, score: number) => void;
+  setLiquidityVacuumShowLabels: (panelId: PanelId, show: boolean) => void;
+  setLiquidityVacuumOpacity: (panelId: PanelId, opacity: number) => void;
+  setLiquidityVacuumMaxZones: (panelId: PanelId, maxZones: number) => void;
+  setLiquidityVacuumZones: (panelId: PanelId, zones: LiquidityVacuumZone[]) => void;
   setProfileWidthPct: (panelId: PanelId, pct: number) => void;
   setProfileResolutionTicks: (panelId: PanelId, ticks: number) => void;
   setProfileMinRowHeight: (panelId: PanelId, height: number) => void;
@@ -252,6 +293,16 @@ interface ChartState {
   setProfileShowVaLines: (panelId: PanelId, show: boolean) => void;
   setProfileShowDelta: (panelId: PanelId, show: boolean) => void;
   setDeltaProfileWidth: (panelId: PanelId, width: number) => void;
+  setCvdEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setCvdPanelHeightPct: (panelId: PanelId, pct: number) => void;
+  setCvdMode: (panelId: PanelId, mode: CvdMode) => void;
+  setCvdSmoothing: (panelId: PanelId, smoothing: number) => void;
+  setCvdResetMode: (panelId: PanelId, mode: CvdResetMode) => void;
+  setCvdPositiveColor: (panelId: PanelId, color: string) => void;
+  setCvdNegativeColor: (panelId: PanelId, color: string) => void;
+  setCvdScaleMode: (panelId: PanelId, mode: CvdScaleMode) => void;
+  setCvdFixedRange: (panelId: PanelId, range: number) => void;
+  setCvdShowDivergence: (panelId: PanelId, show: boolean) => void;
   setMeasureToolActive: (panelId: PanelId, active: boolean) => void;
   setActiveMeasurement: (panelId: PanelId, measurement: Measurement | null) => void;
   setSessionsEnabled: (panelId: PanelId, enabled: boolean) => void;
@@ -339,6 +390,12 @@ function createDefaultPanel(id: PanelId): PanelState {
     icebergShowLabels: true,
     icebergShowTint: true,
     icebergLevels: [],
+    liquidityVacuumEnabled: true,
+    liquidityVacuumMinScore: 55,
+    liquidityVacuumShowLabels: false,
+    liquidityVacuumOpacity: 0.18,
+    liquidityVacuumMaxZones: 6,
+    liquidityVacuumZones: [],
     profileWidthPct: 70,
     profileResolutionTicks: 1,
     profileMinRowHeight: 1,
@@ -351,6 +408,16 @@ function createDefaultPanel(id: PanelId): PanelState {
     profileShowVaLines: true,
     profileShowDelta: true,
     deltaProfileWidth: 80,
+    cvdEnabled: true,
+    cvdPanelHeightPct: 24,
+    cvdMode: 'candles',
+    cvdSmoothing: 1,
+    cvdResetMode: 'daily',
+    cvdPositiveColor: '#26A69A',
+    cvdNegativeColor: '#EF5350',
+    cvdScaleMode: 'auto',
+    cvdFixedRange: 1000,
+    cvdShowDivergence: false,
     measureToolActive: false,
     activeMeasurement: null,
     sessionsEnabled: true,
@@ -405,11 +472,15 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'bucketSize', 'autoBucketSize', 'bubbleThreshold', 'bubbleThresholdMode',
     'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
     'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
-    'icebergShowLabels', 'icebergShowTint',
+    'icebergShowLabels', 'icebergShowTint', 'liquidityVacuumMinScore',
+    'liquidityVacuumShowLabels', 'liquidityVacuumOpacity', 'liquidityVacuumMaxZones',
     'profileWidthPct', 'profileResolutionTicks', 'profileMinRowHeight',
     'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
     'profileShowPocHighlight', 'profileShowVaFill', 'profileShowPocLine',
-    'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth'
+    'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth',
+    'cvdEnabled', 'cvdPanelHeightPct', 'cvdMode', 'cvdSmoothing',
+    'cvdResetMode', 'cvdPositiveColor', 'cvdNegativeColor',
+    'cvdScaleMode', 'cvdFixedRange', 'cvdShowDivergence'
   ];
   
   let settingsChanged = false;
@@ -483,7 +554,7 @@ export const useChartStore = create<ChartState>()(
 
       // Per-panel actions
       setPair: (panelId, pair) =>
-        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], icebergLevels: [] })),
+        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], icebergLevels: [], liquidityVacuumZones: [] })),
 
       setTimeframe: (panelId, timeframe) =>
         set((state) => {
@@ -494,6 +565,7 @@ export const useChartStore = create<ChartState>()(
             candles: [], 
             trades: [],
             icebergLevels: [],
+            liquidityVacuumZones: [],
             ...savedSettings
           });
         }),
@@ -657,6 +729,24 @@ export const useChartStore = create<ChartState>()(
       setIcebergLevels: (panelId, icebergLevels) =>
         set((state) => updatePanel(state, panelId, { icebergLevels })),
 
+      setLiquidityVacuumEnabled: (panelId, liquidityVacuumEnabled) =>
+        set((state) => updatePanel(state, panelId, { liquidityVacuumEnabled })),
+
+      setLiquidityVacuumMinScore: (panelId, liquidityVacuumMinScore) =>
+        set((state) => updatePanel(state, panelId, { liquidityVacuumMinScore: Math.max(30, Math.min(90, liquidityVacuumMinScore)) })),
+
+      setLiquidityVacuumShowLabels: (panelId, liquidityVacuumShowLabels) =>
+        set((state) => updatePanel(state, panelId, { liquidityVacuumShowLabels })),
+
+      setLiquidityVacuumOpacity: (panelId, liquidityVacuumOpacity) =>
+        set((state) => updatePanel(state, panelId, { liquidityVacuumOpacity: Math.max(0.05, Math.min(0.5, liquidityVacuumOpacity)) })),
+
+      setLiquidityVacuumMaxZones: (panelId, liquidityVacuumMaxZones) =>
+        set((state) => updatePanel(state, panelId, { liquidityVacuumMaxZones: Math.max(1, Math.min(20, Math.round(liquidityVacuumMaxZones))) })),
+
+      setLiquidityVacuumZones: (panelId, liquidityVacuumZones) =>
+        set((state) => updatePanel(state, panelId, { liquidityVacuumZones })),
+
       setProfileWidthPct: (panelId, profileWidthPct) =>
         set((state) => updatePanel(state, panelId, { profileWidthPct: Math.max(10, Math.min(100, profileWidthPct)) })),
 
@@ -692,6 +782,36 @@ export const useChartStore = create<ChartState>()(
 
       setDeltaProfileWidth: (panelId, deltaProfileWidth) =>
         set((state) => updatePanel(state, panelId, { deltaProfileWidth })),
+
+      setCvdEnabled: (panelId, cvdEnabled) =>
+        set((state) => updatePanel(state, panelId, { cvdEnabled })),
+
+      setCvdPanelHeightPct: (panelId, cvdPanelHeightPct) =>
+        set((state) => updatePanel(state, panelId, { cvdPanelHeightPct: Math.max(12, Math.min(45, cvdPanelHeightPct)) })),
+
+      setCvdMode: (panelId, cvdMode) =>
+        set((state) => updatePanel(state, panelId, { cvdMode })),
+
+      setCvdSmoothing: (panelId, cvdSmoothing) =>
+        set((state) => updatePanel(state, panelId, { cvdSmoothing: Math.max(1, Math.min(50, Math.round(cvdSmoothing))) })),
+
+      setCvdResetMode: (panelId, cvdResetMode) =>
+        set((state) => updatePanel(state, panelId, { cvdResetMode })),
+
+      setCvdPositiveColor: (panelId, cvdPositiveColor) =>
+        set((state) => updatePanel(state, panelId, { cvdPositiveColor })),
+
+      setCvdNegativeColor: (panelId, cvdNegativeColor) =>
+        set((state) => updatePanel(state, panelId, { cvdNegativeColor })),
+
+      setCvdScaleMode: (panelId, cvdScaleMode) =>
+        set((state) => updatePanel(state, panelId, { cvdScaleMode })),
+
+      setCvdFixedRange: (panelId, cvdFixedRange) =>
+        set((state) => updatePanel(state, panelId, { cvdFixedRange: Math.max(1, cvdFixedRange) })),
+
+      setCvdShowDivergence: (panelId, cvdShowDivergence) =>
+        set((state) => updatePanel(state, panelId, { cvdShowDivergence })),
 
       setMeasureToolActive: (panelId, measureToolActive) =>
         set((state) => {
@@ -857,7 +977,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 19,
+      version: 21,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -899,6 +1019,12 @@ export const useChartStore = create<ChartState>()(
             icebergShowLabels: p.icebergShowLabels ?? true,
             icebergShowTint: p.icebergShowTint ?? true,
             icebergLevels: [],
+            liquidityVacuumEnabled: p.liquidityVacuumEnabled ?? true,
+            liquidityVacuumMinScore: Math.max(30, Math.min(90, p.liquidityVacuumMinScore ?? 55)),
+            liquidityVacuumShowLabels: p.liquidityVacuumShowLabels ?? false,
+            liquidityVacuumOpacity: Math.max(0.05, Math.min(0.5, p.liquidityVacuumOpacity ?? 0.18)),
+            liquidityVacuumMaxZones: Math.max(1, Math.min(20, p.liquidityVacuumMaxZones ?? 6)),
+            liquidityVacuumZones: [],
             profileWidthPct: p.profileWidthPct ?? 70,
             profileResolutionTicks: p.profileResolutionTicks ?? 1,
             profileMinRowHeight: p.profileMinRowHeight ?? 1,
@@ -911,6 +1037,16 @@ export const useChartStore = create<ChartState>()(
             profileShowVaLines: p.profileShowVaLines ?? true,
             profileShowDelta: p.profileShowDelta ?? true,
             deltaProfileWidth: p.deltaProfileWidth ?? 80,
+            cvdEnabled: p.cvdEnabled ?? true,
+            cvdPanelHeightPct: Math.max(12, Math.min(45, p.cvdPanelHeightPct ?? 24)),
+            cvdMode: p.cvdMode || 'candles',
+            cvdSmoothing: Math.max(1, Math.min(50, p.cvdSmoothing ?? 1)),
+            cvdResetMode: p.cvdResetMode || 'daily',
+            cvdPositiveColor: p.cvdPositiveColor || '#26A69A',
+            cvdNegativeColor: p.cvdNegativeColor || '#EF5350',
+            cvdScaleMode: p.cvdScaleMode || 'auto',
+            cvdFixedRange: Math.max(1, p.cvdFixedRange ?? 1000),
+            cvdShowDivergence: p.cvdShowDivergence ?? false,
             sessionsEnabled: p.sessionsEnabled ?? true,
             sessions: p.sessions ?? {
               tokyo: { enabled: true, startHour: 0, startMin: 0, endHour: 6, endMin: 0, color: '#B39DDB' },
@@ -1000,6 +1136,11 @@ export const useChartStore = create<ChartState>()(
             icebergShowSuspected: state.panels.left.icebergShowSuspected,
             icebergShowLabels: state.panels.left.icebergShowLabels,
             icebergShowTint: state.panels.left.icebergShowTint,
+            liquidityVacuumEnabled: state.panels.left.liquidityVacuumEnabled,
+            liquidityVacuumMinScore: state.panels.left.liquidityVacuumMinScore,
+            liquidityVacuumShowLabels: state.panels.left.liquidityVacuumShowLabels,
+            liquidityVacuumOpacity: state.panels.left.liquidityVacuumOpacity,
+            liquidityVacuumMaxZones: state.panels.left.liquidityVacuumMaxZones,
             profileWidthPct: state.panels.left.profileWidthPct,
             profileResolutionTicks: state.panels.left.profileResolutionTicks,
             profileMinRowHeight: state.panels.left.profileMinRowHeight,
@@ -1012,6 +1153,16 @@ export const useChartStore = create<ChartState>()(
             profileShowVaLines: state.panels.left.profileShowVaLines,
             profileShowDelta: state.panels.left.profileShowDelta,
             deltaProfileWidth: state.panels.left.deltaProfileWidth,
+            cvdEnabled: state.panels.left.cvdEnabled,
+            cvdPanelHeightPct: state.panels.left.cvdPanelHeightPct,
+            cvdMode: state.panels.left.cvdMode,
+            cvdSmoothing: state.panels.left.cvdSmoothing,
+            cvdResetMode: state.panels.left.cvdResetMode,
+            cvdPositiveColor: state.panels.left.cvdPositiveColor,
+            cvdNegativeColor: state.panels.left.cvdNegativeColor,
+            cvdScaleMode: state.panels.left.cvdScaleMode,
+            cvdFixedRange: state.panels.left.cvdFixedRange,
+            cvdShowDivergence: state.panels.left.cvdShowDivergence,
             sessionsEnabled: state.panels.left.sessionsEnabled,
             sessions: state.panels.left.sessions,
             liquidityEnabled: state.panels.left.liquidityEnabled,
@@ -1066,6 +1217,11 @@ export const useChartStore = create<ChartState>()(
             icebergShowSuspected: state.panels.right.icebergShowSuspected,
             icebergShowLabels: state.panels.right.icebergShowLabels,
             icebergShowTint: state.panels.right.icebergShowTint,
+            liquidityVacuumEnabled: state.panels.right.liquidityVacuumEnabled,
+            liquidityVacuumMinScore: state.panels.right.liquidityVacuumMinScore,
+            liquidityVacuumShowLabels: state.panels.right.liquidityVacuumShowLabels,
+            liquidityVacuumOpacity: state.panels.right.liquidityVacuumOpacity,
+            liquidityVacuumMaxZones: state.panels.right.liquidityVacuumMaxZones,
             profileWidthPct: state.panels.right.profileWidthPct,
             profileResolutionTicks: state.panels.right.profileResolutionTicks,
             profileMinRowHeight: state.panels.right.profileMinRowHeight,
@@ -1078,6 +1234,16 @@ export const useChartStore = create<ChartState>()(
             profileShowVaLines: state.panels.right.profileShowVaLines,
             profileShowDelta: state.panels.right.profileShowDelta,
             deltaProfileWidth: state.panels.right.deltaProfileWidth,
+            cvdEnabled: state.panels.right.cvdEnabled,
+            cvdPanelHeightPct: state.panels.right.cvdPanelHeightPct,
+            cvdMode: state.panels.right.cvdMode,
+            cvdSmoothing: state.panels.right.cvdSmoothing,
+            cvdResetMode: state.panels.right.cvdResetMode,
+            cvdPositiveColor: state.panels.right.cvdPositiveColor,
+            cvdNegativeColor: state.panels.right.cvdNegativeColor,
+            cvdScaleMode: state.panels.right.cvdScaleMode,
+            cvdFixedRange: state.panels.right.cvdFixedRange,
+            cvdShowDivergence: state.panels.right.cvdShowDivergence,
             sessionsEnabled: state.panels.right.sessionsEnabled,
             sessions: state.panels.right.sessions,
             liquidityEnabled: state.panels.right.liquidityEnabled,

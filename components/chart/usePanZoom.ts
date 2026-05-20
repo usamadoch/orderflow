@@ -43,14 +43,21 @@ export function usePanZoom(
   const mouseY = useRef<number | null>(null);
   const isMouseOver = useRef(false);
 
-  // Sync from props on initial mount (don't overwrite during interaction)
+  // Sync from persisted panel geometry so sibling canvases stay horizontally aligned.
   const initializedRef = useRef(false);
   useEffect(() => {
     if (!initializedRef.current) {
       scrollOffset.current = initialScrollOffset;
       barWidth.current = initialBarWidth;
       initializedRef.current = true;
+      return;
     }
+
+    if (!isDragging.current) {
+      scrollOffset.current = initialScrollOffset;
+      barWidth.current = initialBarWidth;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialBarWidth, initialScrollOffset]);
 
   useEffect(() => {
@@ -203,6 +210,7 @@ export function usePanZoom(
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange, isDrawMode, measureToolActive, canStartDrag, onCrosshairChange]);
 
   return { 

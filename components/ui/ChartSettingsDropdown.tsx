@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Layers, Zap, X, Clock } from 'lucide-react';
-import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId } from '../../lib/store/chart';
+import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode } from '../../lib/store/chart';
 
 interface ChartSettingsDropdownProps {
   panelId: PanelId;
@@ -29,6 +29,11 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setIcebergShowSuspected = useChartStore(s => s.setIcebergShowSuspected);
   const setIcebergShowLabels = useChartStore(s => s.setIcebergShowLabels);
   const setIcebergShowTint = useChartStore(s => s.setIcebergShowTint);
+  const setLiquidityVacuumEnabled = useChartStore(s => s.setLiquidityVacuumEnabled);
+  const setLiquidityVacuumMinScore = useChartStore(s => s.setLiquidityVacuumMinScore);
+  const setLiquidityVacuumShowLabels = useChartStore(s => s.setLiquidityVacuumShowLabels);
+  const setLiquidityVacuumOpacity = useChartStore(s => s.setLiquidityVacuumOpacity);
+  const setLiquidityVacuumMaxZones = useChartStore(s => s.setLiquidityVacuumMaxZones);
   const setAbsorptionEnabled = useChartStore(s => s.setAbsorptionEnabled);
   const setAbsorptionMinScore = useChartStore(s => s.setAbsorptionMinScore);
   const setAbsorptionSide = useChartStore(s => s.setAbsorptionSide);
@@ -44,6 +49,16 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setProfileShowVaLines = useChartStore(s => s.setProfileShowVaLines);
   const setProfileShowDelta = useChartStore(s => s.setProfileShowDelta);
   const setDeltaProfileWidth = useChartStore(s => s.setDeltaProfileWidth);
+  const setCvdEnabled = useChartStore(s => s.setCvdEnabled);
+  const setCvdPanelHeightPct = useChartStore(s => s.setCvdPanelHeightPct);
+  const setCvdMode = useChartStore(s => s.setCvdMode);
+  const setCvdSmoothing = useChartStore(s => s.setCvdSmoothing);
+  const setCvdResetMode = useChartStore(s => s.setCvdResetMode);
+  const setCvdPositiveColor = useChartStore(s => s.setCvdPositiveColor);
+  const setCvdNegativeColor = useChartStore(s => s.setCvdNegativeColor);
+  const setCvdScaleMode = useChartStore(s => s.setCvdScaleMode);
+  const setCvdFixedRange = useChartStore(s => s.setCvdFixedRange);
+  const setCvdShowDivergence = useChartStore(s => s.setCvdShowDivergence);
   const setAutoBucketSize = useChartStore(s => s.setAutoBucketSize);
   const setSessionsEnabled = useChartStore(s => s.setSessionsEnabled);
   const setSessionEnabled = useChartStore(s => s.setSessionEnabled);
@@ -86,7 +101,7 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
 
   const handleMouseDown = (e: React.MouseEvent) => {
     // Only drag from header, not buttons/inputs
-    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input')) return;
+    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input') || (e.target as HTMLElement).closest('select')) return;
     
     setIsDragging(true);
     setDragStart({
@@ -147,6 +162,21 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
     { label: 'Buy', value: 'buy' },
     { label: 'Sell', value: 'sell' },
     { label: 'Both', value: 'both' },
+  ];
+  const cvdModes: { label: string; value: CvdMode }[] = [
+    { label: 'Candles', value: 'candles' },
+    { label: 'Bars', value: 'bars' },
+    { label: 'Line', value: 'line' },
+    { label: 'Hist', value: 'histogram' },
+  ];
+  const cvdResetModes: { label: string; value: CvdResetMode }[] = [
+    { label: 'Daily', value: 'daily' },
+    { label: 'Session', value: 'session' },
+    { label: 'None', value: 'none' },
+  ];
+  const cvdScaleModes: { label: string; value: CvdScaleMode }[] = [
+    { label: 'Auto', value: 'auto' },
+    { label: 'Fixed', value: 'fixed' },
   ];
 
   const tabs = [
@@ -855,6 +885,144 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                     )}
                   </div>
                 </div>
+
+                {/* CVD Settings */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">CVD Panel</div>
+                    <button
+                      onClick={() => setCvdEnabled(panelId, !panel.cvdEnabled)}
+                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.cvdEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'}`}
+                    >
+                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.cvdEnabled ? 'left-5' : 'left-1'}`} />
+                    </button>
+                  </div>
+
+                  {panel.cvdEnabled && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {cvdModes.map((mode) => (
+                          <button
+                            key={mode.value}
+                            onClick={() => setCvdMode(panelId, mode.value)}
+                            className={`py-2 rounded-lg border text-[9px] font-black uppercase transition-all duration-200 ${panel.cvdMode === mode.value
+                              ? 'bg-accent/10 border-accent text-accent'
+                              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                              }`}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Reset</label>
+                          <select
+                            value={panel.cvdResetMode}
+                            onChange={(e) => setCvdResetMode(panelId, e.target.value as CvdResetMode)}
+                            className="bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-bold text-main focus:border-accent focus:outline-none"
+                          >
+                            {cvdResetModes.map((mode) => (
+                              <option key={mode.value} value={mode.value}>{mode.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scale</label>
+                          <div className="flex gap-1">
+                            {cvdScaleModes.map((mode) => (
+                              <button
+                                key={mode.value}
+                                onClick={() => setCvdScaleMode(panelId, mode.value)}
+                                className={`flex-1 py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.cvdScaleMode === mode.value
+                                  ? 'bg-[#1A1A1A] border-accent text-accent'
+                                  : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                                  }`}
+                              >
+                                {mode.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Height</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdPanelHeightPct}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.cvdPanelHeightPct}
+                          onChange={(e) => setCvdPanelHeightPct(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="12" max="45" step="1"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Smoothing</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdSmoothing <= 1 ? 'OFF' : `${panel.cvdSmoothing}`}</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.cvdSmoothing}
+                          onChange={(e) => setCvdSmoothing(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="1" max="50" step="1"
+                        />
+                      </div>
+
+                      {panel.cvdScaleMode === 'fixed' && (
+                        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Fixed Range</label>
+                          <input
+                            type="number"
+                            value={panel.cvdFixedRange}
+                            onChange={(e) => setCvdFixedRange(panelId, Number(e.target.value) || 1)}
+                            className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-mono font-bold text-main focus:border-accent focus:outline-none"
+                            min="1"
+                          />
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Positive</span>
+                          <input
+                            type="color"
+                            value={panel.cvdPositiveColor}
+                            onChange={(e) => setCvdPositiveColor(panelId, e.target.value)}
+                            className="w-8 h-6 bg-transparent border-0 p-0 cursor-pointer"
+                          />
+                        </label>
+                        <label className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Negative</span>
+                          <input
+                            type="color"
+                            value={panel.cvdNegativeColor}
+                            onChange={(e) => setCvdNegativeColor(panelId, e.target.value)}
+                            className="w-8 h-6 bg-transparent border-0 p-0 cursor-pointer"
+                          />
+                        </label>
+                      </div>
+
+                      <button
+                        onClick={() => setCvdShowDivergence(panelId, !panel.cvdShowDivergence)}
+                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdShowDivergence
+                          ? 'bg-accent/5 border-accent text-accent'
+                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          }`}
+                      >
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Divergence Markers</span>
+                        <div className={`w-1.5 h-1.5 rounded-full ${panel.cvdShowDivergence ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -1052,6 +1220,78 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Liquidity Vacuum Settings */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Liquidity Vacuum</div>
+                    <button
+                      onClick={() => setLiquidityVacuumEnabled(panelId, !panel.liquidityVacuumEnabled)}
+                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.liquidityVacuumEnabled ? 'bg-[#3D7EFF]' : 'bg-[#1F1F1F]'
+                        }`}
+                    >
+                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.liquidityVacuumEnabled ? 'left-5' : 'left-1'
+                        }`} />
+                    </button>
+                  </div>
+
+                  {panel.liquidityVacuumEnabled && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Minimum score</label>
+                          <span className="text-[12px] font-mono font-bold text-[#3D7EFF]">{panel.liquidityVacuumMinScore}</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityVacuumMinScore}
+                          onChange={(e) => setLiquidityVacuumMinScore(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
+                          min="30" max="90" step="5"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Zone opacity</label>
+                          <span className="text-[12px] font-mono font-bold text-[#3D7EFF]">{Math.round(panel.liquidityVacuumOpacity * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityVacuumOpacity * 100}
+                          onChange={(e) => setLiquidityVacuumOpacity(panelId, Number(e.target.value) / 100)}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
+                          min="5" max="50" step="1"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Max zones</label>
+                          <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityVacuumMaxZones}</span>
+                        </div>
+                        <input
+                          type="range"
+                          value={panel.liquidityVacuumMaxZones}
+                          onChange={(e) => setLiquidityVacuumMaxZones(panelId, Number(e.target.value))}
+                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          min="1" max="20" step="1"
+                        />
+                      </div>
+
+                      <button
+                        onClick={() => setLiquidityVacuumShowLabels(panelId, !panel.liquidityVacuumShowLabels)}
+                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.liquidityVacuumShowLabels
+                          ? 'bg-[#3D7EFF]/5 border-[#3D7EFF] text-[#3D7EFF]'
+                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          }`}
+                      >
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Show labels</span>
+                        <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityVacuumShowLabels ? 'bg-[#3D7EFF] shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                      </button>
                     </div>
                   )}
                 </div>

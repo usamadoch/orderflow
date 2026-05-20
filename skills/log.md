@@ -1,5 +1,39 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-20] - Improvement: CVD Panel Interactions
+- **What changed**:
+  - Added a draggable top-edge resize handle for the attached CVD panel height.
+  - Added CVD-only vertical scale zooming from the delta axis and mouse wheel.
+  - Added CVD-only vertical drag/pan inside the panel while leaving horizontal position controlled by the main chart sync.
+  - Added double-click scale reset for returning the CVD viewport to automatic scaling.
+- **Why it changed**:
+  - Cumulative delta can expand beyond a comfortable visible range, so the lower indicator needs professional-style local scaling without breaking horizontal chart alignment.
+- **Impact summary**:
+  - The CVD panel can now be resized and navigated vertically for readability while candles, footprint rendering, main chart pan/zoom, and cross-panel time synchronization remain unchanged.
+
+## [2026-05-20] - Feature: Dedicated CVD Panel
+- **What changed**:
+  - Added a lower CVD canvas panel under each chart panel with shared horizontal pan/zoom, crosshair sync, and bottom time axis rendering.
+  - Added CVD series construction from existing footprint/order-flow delta with daily, session, or no reset plus optional smoothing.
+  - Added CVD candle, bar, line, and histogram rendering modes with configurable positive/negative colors and auto/fixed scale controls.
+  - Wired persisted CVD settings through Zustand, the panel toolbar quick toggle, and the chart settings window.
+  - Hid the main chart time axis while the attached CVD panel is visible so both panels share one aligned bottom time axis.
+- **Why it changed**:
+  - Cumulative Volume Delta needed its own professional-style lower indicator panel instead of being mixed into the main chart overlays.
+- **Impact summary**:
+  - Each chart panel now shows realtime cumulative buying/selling pressure from the existing trade/footprint pipeline without adding per-trade React state churn or interfering with existing candles, footprint rendering, profiles, or signal overlays.
+
+## [2026-05-19] - Feature: Liquidity Vacuum Detection
+- **What changed**:
+  - Added a dedicated Liquidity Vacuum result type and detector that scores fast, directional, low-participation movement between active volume anchors.
+  - Added a lightweight canvas renderer for vacuum zones with subtle fill, directional edges, optional labels, revisit fading, and score/rank filtering.
+  - Wired vacuum zones through panel state, feed recomputation, chart props, toolbar quick toggle, settings controls, sidebar stats, and the `V` keyboard toggle.
+  - Kept the detector separate from Volume Profile LVN detection and existing LVN markers.
+- **Why it changed**:
+  - Auction inefficiency needs a zone-based signal that accounts for movement speed, footprint thinness, participation quality, delta behavior, and active anchors instead of only low-volume totals.
+- **Impact summary**:
+  - Charts can now highlight likely rejection/revisit areas created by fast, inefficient movement while preserving existing footprint, Volume Profile, LVN, absorption, exhaustion, iceberg, and liquidity-map behavior.
+
 ## [2026-05-19] - Fix: Long-Running Realtime Performance
 - **What changed**:
   - Removed unused per-trade Zustand writes from the Binance aggTrade hot path.

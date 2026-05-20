@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChartStore, PanelId } from '../lib/store/chart';
 import { feedAdapter } from '../lib/feeds';
 import { AggregationEngine } from '../lib/aggregation/engine';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
 import { IcebergEngine } from '../lib/iceberg/engine';
+import { buildLiquidityVacuumZones } from '../lib/liquidityVacuum/engine';
 import { getCandleTimeForTrade } from '../lib/utils/aggregation';
 import { ChartEngineContext } from './ChartEngineContext';
 import { RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
@@ -15,6 +16,7 @@ import { Trade } from '../types/trade';
 import { AbsorptionResult } from '../types/absorption';
 import { ExhaustionResult } from '../types/exhaustion';
 import { IcebergLevel } from '../types/iceberg';
+import { LiquidityVacuumZone } from '../types/liquidityVacuum';
 import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
@@ -95,6 +97,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const icebergEnabled = useChartStore(s => s.panels[panelId].icebergEnabled);
   const icebergMinScore = useChartStore(s => s.panels[panelId].icebergMinScore);
   const icebergLookback = useChartStore(s => s.panels[panelId].icebergLookback);
+  const setLiquidityVacuumZones = useChartStore(s => s.setLiquidityVacuumZones);
+  const liquidityVacuumEnabled = useChartStore(s => s.panels[panelId].liquidityVacuumEnabled);
+  const liquidityVacuumMinScore = useChartStore(s => s.panels[panelId].liquidityVacuumMinScore);
+  const liquidityVacuumMaxZones = useChartStore(s => s.panels[panelId].liquidityVacuumMaxZones);
   const setLiquidityZones = useChartStore(s => s.setLiquidityZones);
   const liquidityEnabled = useChartStore(s => s.panels[panelId].liquidityEnabled);
   const liquidityBucketSize = useChartStore(s => s.panels[panelId].liquidityBucketSize);
@@ -116,6 +122,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const exhaustionMapRef = useRef<Map<number, ExhaustionResult>>(new Map());
   const icebergEngineRef = useRef<IcebergEngine>(new IcebergEngine(bucketSize, icebergLookback));
   const icebergLevelsRef = useRef<IcebergLevel[]>([]);
+  const liquidityVacuumZonesRef = useRef<LiquidityVacuumZone[]>([]);
   const lastScoredCandleTimeRef = useRef<number | null>(null);
   // Each panel needs its own adapter instance for independent connections
   const adapterRef = useRef(feedAdapter.clone());
@@ -123,6 +130,23 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const orderbookRef = useRef<OrderbookManager>(new OrderbookManager());
   const pendingAggregationRef = useRef(false);
   const liquidityHistoryRef = useRef<LiquidityHistoryManager>(new LiquidityHistoryManager(liquidityBucketSize, liquidityHistoryDepth));
+
+  const rebuildLiquidityVacuumZones = useCallback((candles = useChartStore.getState().panels[panelId].candles || []) => {
+    const zones = liquidityVacuumEnabled
+      ? buildLiquidityVacuumZones(candles, engineRef.current, bucketSize, {
+        minScore: liquidityVacuumMinScore,
+        maxZones: liquidityVacuumMaxZones,
+      })
+      : [];
+
+    liquidityVacuumZonesRef.current = zones;
+    setLiquidityVacuumZones(panelId, zones);
+    return zones;
+  }, [bucketSize, liquidityVacuumEnabled, liquidityVacuumMaxZones, liquidityVacuumMinScore, panelId, setLiquidityVacuumZones]);
+
+  useEffect(() => {
+    rebuildLiquidityVacuumZones();
+  }, [rebuildLiquidityVacuumZones]);
 
   // Update history bucket size
   useEffect(() => {
@@ -182,6 +206,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               exhaustionMapRef.current = newExhMap;
               setExhaustionMap(panelId, newExhMap);
             }
+
+            rebuildLiquidityVacuumZones(candles);
           }
         }
       }
@@ -192,7 +218,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     }, 100);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [triggerFootprintRedraw, chartMode, panelId, setAbsorptionMap]);
+  }, [triggerFootprintRedraw, chartMode, panelId, setAbsorptionMap, rebuildLiquidityVacuumZones]);
 
   // Handle engine bucket size updates without reconnecting socket
   useEffect(() => {
@@ -214,9 +240,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       : [];
     icebergLevelsRef.current = levels;
     setIcebergLevels(panelId, levels);
+    rebuildLiquidityVacuumZones(currentCandles);
 
     triggerFootprintRedraw(panelId);
-  }, [bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap, setIcebergLevels]);
+  }, [bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap, setIcebergLevels, rebuildLiquidityVacuumZones]);
 
   // Handle autoBucketSize toggle
   useEffect(() => {
@@ -252,6 +279,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     icebergEngineRef.current.reset();
     icebergLevelsRef.current = [];
     setIcebergLevels(panelId, []);
+    liquidityVacuumZonesRef.current = [];
+    setLiquidityVacuumZones(panelId, []);
     lastScoredCandleTimeRef.current = null;
     useChartStore.getState().setActiveMeasurement(panelId, null);
     liquidityHistoryRef.current.reset();
@@ -292,6 +321,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         : [];
       icebergLevelsRef.current = icebergLevels;
       setIcebergLevels(panelId, icebergLevels);
+      rebuildLiquidityVacuumZones(currentCandles);
     };
 
     const flushRawTrades = () => {
@@ -371,6 +401,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           : [];
         icebergLevelsRef.current = icebergLevels;
         setIcebergLevels(panelId, icebergLevels);
+        rebuildLiquidityVacuumZones(currentCandles);
         console.log(`--- Iceberg Levels (${panelId} panel) ---`);
         if (icebergLevels.length === 0) {
           console.log('No iceberg levels detected.');
@@ -605,7 +636,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange]);
+  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, rebuildLiquidityVacuumZones]);
 
   // Temporary Verification Hotkey
   useEffect(() => {

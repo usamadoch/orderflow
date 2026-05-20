@@ -32,6 +32,14 @@ export function Sidebar() {
   const lastIceberg = icebergLevels.length > 0 ? [...icebergLevels].sort((a, b) => b.detectedAt - a.detectedAt)[0] : null;
   const lastIcebergTimeStr = lastIceberg ? new Date(lastIceberg.detectedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
 
+  // Liquidity Vacuum Stats
+  const vacuumZones = panel.liquidityVacuumZones.filter(zone => zone.score >= panel.liquidityVacuumMinScore);
+  const activeVacuums = vacuumZones.filter(zone => zone.isActive).length;
+  const strongVacuums = vacuumZones.filter(zone => zone.rank === 'strong').length;
+  const revisitedVacuums = vacuumZones.filter(zone => zone.revisited).length;
+  const lastVacuum = vacuumZones.length > 0 ? [...vacuumZones].sort((a, b) => b.detectedAt - a.detectedAt)[0] : null;
+  const lastVacuumTimeStr = lastVacuum ? new Date(lastVacuum.detectedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
+
   return (
     <aside
       className={`font-sans border-r border-border bg-surface flex flex-col shrink-0 transition-all duration-300 ease-in-out z-10 shadow-lg ${sidebarCollapsed ? 'w-12' : 'w-52'
@@ -212,6 +220,41 @@ export function Sidebar() {
                 <div className="flex justify-between items-center text-[11px] mt-1 pt-2 border-t border-border/50">
                   <span className="text-text-muted text-[9px] font-black uppercase">Last Detected</span>
                   <span className="font-mono font-bold text-main">{lastIcebergTimeStr}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Liquidity Vacuum Stats */}
+          <div>
+            {!sidebarCollapsed ? (
+              <h2 className="text-text-muted text-[10px] uppercase font-extrabold tracking-widest mb-3 flex items-center gap-2">
+                <Zap size={12} strokeWidth={3} className="text-[#3D7EFF]" />
+                Vacuum
+              </h2>
+            ) : (
+              <div className="flex justify-center mb-3 text-[#3D7EFF]">
+                <Zap size={18} strokeWidth={2.5} />
+              </div>
+            )}
+
+            {!sidebarCollapsed && (
+              <div className="flex flex-col gap-2 px-1">
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Active zones</span>
+                  <span className="font-mono font-bold text-[#3D7EFF]">{activeVacuums}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Strong</span>
+                  <span className="font-mono font-bold text-[#3D7EFF]">{strongVacuums}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-text-dim font-bold">Revisited</span>
+                  <span className="font-mono font-bold text-[#F0B90B]">{revisitedVacuums}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] mt-1 pt-2 border-t border-border/50">
+                  <span className="text-text-muted text-[9px] font-black uppercase">Last Zone</span>
+                  <span className="font-mono font-bold text-main">{lastVacuumTimeStr}</span>
                 </div>
               </div>
             )}

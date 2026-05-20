@@ -18,9 +18,11 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── chart/                # Chart-specific components
 │   │   ├── ChartPanel.tsx    # Panel wrapper — reads panel state, ensures proper layout container
 │   │   ├── ChartCanvas.tsx   # Pure rendering canvas, HiDPI scaling, overlays, liquidity heatmap/profile wiring
+│   │   ├── CvdPanel.tsx      # Attached lower CVD panel with synced time axis and vertical scale interactions
 │   │   ├── useCoordinates.ts # Coordinate math (price-to-pixel, index-to-pixel, time-to-index)
 │   │   ├── usePanZoom.ts     # Anchored pan/zoom with optimized window-level interaction tracking
 │   │   ├── drawCandles.ts    # Candlestick draw function
+│   │   ├── drawCvd.ts        # CVD panel renderer for candles, bars, line, histogram, axis, and labels
 │   │   ├── drawFootprint.ts  # Footprint cell draw function (w/ left-aligned candle)
 │   │   ├── drawAxes.ts       # Polished axes (12h time, formatted price, 12px font)
 │   │   ├── drawPriceLine.ts  # Live price badge with countdown and direction-color
@@ -81,7 +83,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │       ├── canvas.ts         # HTML5 canvas rendering functions
 │       ├── volumeProfile.ts  # Volume profile aggregation, POC, and VA math
 │       ├── chartUtils.ts     # Shared chart utilities (rolling averages, opacity, etc.)
-│       ├── delta.ts          # Delta calculation helpers (Planned)
+│       ├── delta.ts          # CVD series, reset, and smoothing helpers
 │       ├── format.ts         # Price, volume, delta, and timeframe formatting
 │       ├── sessions.ts       # Session occurrence calculation logic
 │       └── measurement.ts    # Measurement metric calculation logic
@@ -176,6 +178,31 @@ components/chart/ChartCanvas.tsx → Canvas render orchestration without blockin
 
 components/FeedProvider.tsx → Performance-aware feed lifecycle with chunked raw-trade hydration, throttled profile redraws, and reduced realtime store churn.
 lib/volumeProfile/profileEngine.ts → Raw-trade Volume Profile source with bounded trade retention, time-window lookup, and profile-result caching.
+
+types/liquidityVacuum.ts → Liquidity Vacuum zone, anchor, rank, direction, and scoring output types.
+lib/liquidityVacuum/engine.ts → Liquidity Vacuum detector scoring fast, low-participation movement between active volume anchors.
+lib/draw/drawLiquidityVacuum.ts → Canvas renderer for lightweight Liquidity Vacuum chart zones.
+lib/store/chart.ts → Zustand panel state, persisted Liquidity Vacuum settings, and session-only vacuum zones.
+components/FeedProvider.tsx → Panel feed lifecycle with Liquidity Vacuum zone recomputation after history, live footprint, bucket, and closed-candle updates.
+components/chart/ChartPanel.tsx → Panel state bridge into ChartCanvas, including Liquidity Vacuum settings and zones.
+components/chart/ChartCanvas.tsx → Canvas render orchestration including Liquidity Vacuum zone drawing behind candles.
+components/ui/PanelToolbar.tsx → Per-panel toolbar controls including VAC signal toggle.
+components/ui/ChartSettingsDropdown.tsx → Settings window with Liquidity Vacuum score, opacity, label, and max-zone controls.
+components/layout/Sidebar.tsx → Active panel signal statistics, including Liquidity Vacuum zone summary.
+hooks/useKeyboardShortcuts.ts → Keyboard shortcuts for chart mode, tools, sessions, liquidity, iceberg, and Liquidity Vacuum toggles/logging.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+components/chart/CvdPanel.tsx → Attached lower CVD canvas with synced horizontal geometry, time axis, crosshair sync, vertical zoom, and vertical pan.
+components/chart/drawCvd.ts → Pure CVD renderer for candle, bar, line, and histogram modes with CVD axis/labels.
+lib/utils/delta.ts → Builds CVD series from footprint deltas with daily/session/no reset and optional smoothing.
+components/chart/ChartPanel.tsx → Panel state bridge and vertical chart/CVD layout attachment with draggable CVD height resizing.
+components/chart/ChartCanvas.tsx → Main chart canvas orchestration with optional hidden time axis for attached indicator panels.
+components/chart/usePanZoom.ts → Shared pan/zoom hook syncing persisted horizontal geometry across sibling canvases.
+components/chart/drawAxes.ts → Chart axis renderers with configurable price-axis height alignment.
+components/ui/PanelToolbar.tsx → Per-panel toolbar controls including CVD quick toggle.
+components/ui/ChartSettingsDropdown.tsx → Settings window including CVD panel mode, reset, smoothing, scale, height, color, and marker controls.
+lib/store/chart.ts → Zustand panel state, persisted settings, drawing overlays, signals, profiles, and CVD panel settings.
 
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)

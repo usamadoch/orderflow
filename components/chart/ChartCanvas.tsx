@@ -24,6 +24,7 @@ import { Candle } from '@/types/candle';
 import { AbsorptionResult } from '@/types/absorption';
 import { ExhaustionResult } from '@/types/exhaustion';
 import { IcebergLevel } from '@/types/iceberg';
+import { LiquidityVacuumZone } from '@/types/liquidityVacuum';
 import { AbsorptionTooltip } from './AbsorptionTooltip';
 import { drawExhaustion } from './drawExhaustion';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
@@ -33,6 +34,7 @@ import { drawSessions } from '@/lib/draw/drawSessions';
 import { drawLiquidity } from '@/lib/draw/drawLiquidity';
 import { drawLiquidityHeatmap } from '@/lib/draw/drawLiquidityHeatmap';
 import { drawIceberg } from '@/lib/draw/drawIceberg';
+import { drawLiquidityVacuum } from '@/lib/draw/drawLiquidityVacuum';
 import { buildHeatmapRows } from '@/lib/liquidity/heatmap';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
@@ -200,6 +202,11 @@ interface ChartCanvasProps {
   icebergShowLabels: boolean;
   icebergShowTint: boolean;
   icebergLevels: IcebergLevel[];
+  liquidityVacuumEnabled: boolean;
+  liquidityVacuumMinScore: number;
+  liquidityVacuumShowLabels: boolean;
+  liquidityVacuumOpacity: number;
+  liquidityVacuumZones: LiquidityVacuumZone[];
   profileWidthPct: number;
   profileResolutionTicks: number;
   profileMinRowHeight: number;
@@ -230,6 +237,7 @@ interface ChartCanvasProps {
   liquidityHeatmapShowPersistence: boolean;
   liquidityHeatmapShowCurrentLabel: boolean;
   liquidityHeatmapProfileSync: boolean;
+  showTimeAxis?: boolean;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -278,6 +286,11 @@ export function ChartCanvas({
   icebergShowLabels,
   icebergShowTint,
   icebergLevels,
+  liquidityVacuumEnabled,
+  liquidityVacuumMinScore,
+  liquidityVacuumShowLabels,
+  liquidityVacuumOpacity,
+  liquidityVacuumZones,
   profileWidthPct,
   profileResolutionTicks,
   profileMinRowHeight,
@@ -308,6 +321,7 @@ export function ChartCanvas({
   liquidityHeatmapShowPersistence,
   liquidityHeatmapShowCurrentLabel,
   liquidityHeatmapProfileSync,
+  showTimeAxis = true,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -349,7 +363,7 @@ export function ChartCanvas({
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
   const priceAxisWidth = 85;
-  const timeAxisHeight = 24;
+  const timeAxisHeight = showTimeAxis ? 24 : 0;
   const baseProfileWidth = 120;
   
   let profileWidth = baseProfileWidth;
@@ -460,6 +474,27 @@ export function ChartCanvas({
           priceMin,
           priceMax,
           lastCandlePrice
+        );
+      }
+
+      if (liquidityVacuumEnabled && liquidityVacuumZones.length > 0) {
+        drawLiquidityVacuum(
+          ctx,
+          liquidityVacuumZones,
+          candles,
+          indexToX,
+          priceToY,
+          currentBarWidth,
+          logicalWidth,
+          logicalHeight,
+          {
+            minScore: liquidityVacuumMinScore,
+            opacity: liquidityVacuumOpacity,
+            showLabels: liquidityVacuumShowLabels,
+            profileWidth,
+            priceAxisWidth,
+            timeAxisHeight,
+          }
         );
       }
 
@@ -661,9 +696,11 @@ export function ChartCanvas({
         );
       }
 
-      drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth);
+      drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight);
       drawDrawingPriceLabels(ctx, drawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth);
-      drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
+      if (showTimeAxis) {
+        drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
+      }
 
       if (heatmapRows && liquidityHistory) {
         // The heatmap strip is drawn right before the volume profile
@@ -695,7 +732,7 @@ export function ChartCanvas({
       if (isMouseOver.current && mouseX.current !== null && mouseY.current !== null && !localProfileHitZone) {
         mx = mouseX.current;
         my = mouseY.current;
-      } else if (crosshairSyncEnabled && crosshair.activePanel && crosshair.activePanel !== panelId) {
+      } else if (crosshairSyncEnabled && crosshair.activePanel && (crosshair.activePanel !== panelId || !isMouseOver.current)) {
         if (crosshair.time !== null) {
           const syncedIndex = timeToIndex(crosshair.time, candles);
           mx = indexToX(syncedIndex);
@@ -728,12 +765,14 @@ export function ChartCanvas({
             const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
             time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
           }
-          drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
+          if (showTimeAxis) {
+            drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
+          }
         }
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, showTimeAxis]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -859,7 +898,6 @@ export function ChartCanvas({
 
   // Subscribe to crosshair changes for sync rendering
   useEffect(() => {
-    // Only subscribe if we are not the active panel (active panel redraws via mousemove)
     return useChartStore.subscribe((state, prevState) => {
       if (!state.crosshairSyncEnabled) {
         // If sync was just disabled, trigger a final redraw to clear synced lines
@@ -869,7 +907,7 @@ export function ChartCanvas({
         return;
       }
 
-      if (state.crosshair.activePanel === panelId) return;
+      if (state.crosshair.activePanel === panelId && isMouseOver.current) return;
 
       if (
         state.crosshair.time !== prevState.crosshair.time ||
@@ -880,7 +918,7 @@ export function ChartCanvas({
         redrawRef.current();
       }
     });
-  }, [panelId]);
+  }, [panelId, isMouseOver]);
 
   // Initial setup and resize handler
   useEffect(() => {
@@ -936,7 +974,7 @@ export function ChartCanvas({
   // Redraw when data changes
   useEffect(() => {
     redraw();
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, volumeProfileRevision, redraw, isLoadingHistory, drawnLines, lineDrawMode]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, volumeProfileRevision, redraw, isLoadingHistory, drawnLines, lineDrawMode, showTimeAxis]);
 
   // Real-time countdown timer
   useEffect(() => {

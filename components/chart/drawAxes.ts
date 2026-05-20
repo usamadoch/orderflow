@@ -75,7 +75,8 @@ export function drawPriceAxis(
   priceToY: (price: number) => number,
   canvasWidth: number,
   canvasHeight: number,
-  priceAxisWidth: number
+  priceAxisWidth: number,
+  timeAxisHeight: number = 24
 ) {
   const chartWidth = canvasWidth - priceAxisWidth;
 
@@ -90,7 +91,7 @@ export function drawPriceAxis(
   const priceRange = priceMax - priceMin;
   if (priceRange <= 0) return;
 
-  const chartHeight = canvasHeight - 24; // Align with timeAxisHeight
+  const chartHeight = canvasHeight - timeAxisHeight;
   const step = calculatePriceStep(priceRange, chartHeight);
   const startPrice = Math.floor(priceMin / step) * step;
 
@@ -177,4 +178,3 @@ export function drawTimeAxis(
     }
   }
 }
-

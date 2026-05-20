@@ -134,6 +134,13 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // V: Toggle liquidity vacuum zones
+      if (key === 'v') {
+        e.preventDefault();
+        useChartStore.getState().setLiquidityVacuumEnabled(activePanel, !panel.liquidityVacuumEnabled);
+        return;
+      }
+
       // L: Log liquidity zones (verification)
       if (key === 'l') {
         e.preventDefault();
