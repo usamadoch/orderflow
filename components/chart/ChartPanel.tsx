@@ -1,10 +1,13 @@
 'use client';
 
 import React from 'react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useChartStore, PanelId } from '@/lib/store/chart';
+import { buildCvdSeries } from '@/lib/utils/delta';
 import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine } from '../ChartEngineContext';
 import { ChartCanvas } from './ChartCanvas';
 import { CvdPanel } from './CvdPanel';
+import { formatCvdValue } from './drawCvd';
 import { PanelToolbar } from '../ui/PanelToolbar';
 // import { PanelToolbar } from '../ui/PanelToolbar';
 
@@ -18,12 +21,23 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const setBarWidth = useChartStore(s => s.setBarWidth);
   const setScrollOffset = useChartStore(s => s.setScrollOffset);
   const setCvdPanelHeightPct = useChartStore(s => s.setCvdPanelHeightPct);
+  const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
   const tickSize = useChartStore(s => s.tickSize);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
   const { volumeProfileEngine, volumeProfileRevision } = useVolumeProfileEngine();
   const chartProfileWidth = (panel.defaultProfileEnabled ? 120 : 0) + (panel.liquidityHeatmapEnabled ? panel.liquidityHeatmapWidth : 0);
   const chartAreaRef = React.useRef<HTMLDivElement>(null);
+  const isCvdExpanded = panel.cvdEnabled && !panel.cvdMinimized;
+  const isCvdCompact = panel.cvdEnabled && panel.cvdMinimized;
+  const compactCvdPoints = isCvdCompact
+    ? buildCvdSeries(panel.candles, engine, {
+      resetMode: panel.cvdResetMode,
+      smoothing: panel.cvdSmoothing,
+      sessions: panel.sessions,
+    })
+    : [];
+  const latestCvdValue = compactCvdPoints[compactCvdPoints.length - 1]?.close ?? 0;
 
   const startCvdResize = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -59,8 +73,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
       <PanelToolbar panelId={panelId} />
       <div ref={chartAreaRef} className="flex-1 relative min-h-0 flex flex-col">
         <div
-          className="relative min-h-0"
-          style={{ height: panel.cvdEnabled ? `${100 - panel.cvdPanelHeightPct}%` : '100%' }}
+          className={`relative min-h-0 ${isCvdCompact ? 'flex-1' : ''}`}
+          style={{ height: isCvdExpanded ? `${100 - panel.cvdPanelHeightPct}%` : panel.cvdEnabled ? undefined : '100%' }}
         >
           <ChartCanvas
             panelId={panelId}
@@ -142,16 +156,43 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             liquidityHeatmapShowPersistence={panel.liquidityHeatmapShowPersistence}
             liquidityHeatmapShowCurrentLabel={panel.liquidityHeatmapShowCurrentLabel}
             liquidityHeatmapProfileSync={panel.liquidityHeatmapProfileSync}
-            showTimeAxis={!panel.cvdEnabled}
+            showTimeAxis={!panel.cvdEnabled || panel.cvdMinimized}
             onBarWidthChange={(v) => setBarWidth(panelId, v)}
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
           />
+          {isCvdCompact && (
+            <button
+              onClick={() => setCvdMinimized(panelId, false)}
+              className="absolute left-0 right-0 bottom-6 z-30 h-7 border-y border-[#1F1F1F] bg-[#0D0D0D]/95 hover:bg-[#121212] transition-colors flex items-center justify-between px-3 group"
+              title="Maximize CVD panel"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black tracking-[0.18em] text-text-dim">CVD</span>
+                <span
+                  className="text-[11px] font-mono font-bold"
+                  style={{ color: latestCvdValue >= 0 ? panel.cvdPositiveColor : panel.cvdNegativeColor }}
+                >
+                  {formatCvdValue(latestCvdValue)}
+                </span>
+              </div>
+              <div className="h-5 w-5 rounded border border-[#262626] text-[#787B86] group-hover:border-accent/60 group-hover:text-[#E8E8E8] transition-colors flex items-center justify-center">
+                <Maximize2 size={11} strokeWidth={2.5} />
+              </div>
+            </button>
+          )}
         </div>
-        {panel.cvdEnabled && (
+        {isCvdExpanded && (
           <div
             className="relative min-h-[88px] border-t border-[#1F1F1F]"
             style={{ height: `${panel.cvdPanelHeightPct}%` }}
           >
+            <button
+              onClick={() => setCvdMinimized(panelId, true)}
+              className="absolute top-2 right-[92px] z-30 h-6 w-6 rounded border border-[#262626] bg-[#0D0D0D]/80 text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8] transition-colors flex items-center justify-center"
+              title="Minimize CVD panel"
+            >
+              <Minimize2 size={12} strokeWidth={2.4} />
+            </button>
             <div
               onMouseDown={startCvdResize}
               className="absolute -top-1 left-0 right-0 h-2 cursor-row-resize z-20 group"
@@ -177,6 +218,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
               cvdScaleMode={panel.cvdScaleMode}
               cvdFixedRange={panel.cvdFixedRange}
               cvdShowDivergence={panel.cvdShowDivergence}
+              cvdDivergenceLookback={panel.cvdDivergenceLookback}
             />
           </div>
         )}

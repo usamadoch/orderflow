@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef } from 'react';
 import { AggregationEngine } from '@/lib/aggregation/engine';
-import { buildCvdSeries } from '@/lib/utils/delta';
+import { buildCvdSeries, detectLocalCvdDivergences } from '@/lib/utils/delta';
 import { initCanvas } from '@/lib/utils/canvas';
 import { useChartStore, PanelId, PanelState } from '@/lib/store/chart';
 import { Candle } from '@/types/candle';
@@ -29,6 +29,7 @@ interface CvdPanelProps {
   cvdScaleMode: PanelState['cvdScaleMode'];
   cvdFixedRange: number;
   cvdShowDivergence: boolean;
+  cvdDivergenceLookback: number;
 }
 
 type CvdDragMode = 'pan' | 'scale';
@@ -51,6 +52,7 @@ export function CvdPanel({
   cvdScaleMode,
   cvdFixedRange,
   cvdShowDivergence,
+  cvdDivergenceLookback,
 }: CvdPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -150,6 +152,9 @@ export function CvdPanel({
       });
       const autoScale = getCvdScale(points, firstIndex, lastIndex, cvdMode, cvdScaleMode, cvdFixedRange, chartHeight);
       const scale = getViewportScale(chartHeight, autoScale);
+      const divergenceMarkers = cvdShowDivergence
+        ? detectLocalCvdDivergences(candles, points, cvdDivergenceLookback)
+        : [];
 
       ctx.clearRect(0, 0, logicalWidth, logicalHeight);
       drawCvd(ctx, points, firstIndex, lastIndex, indexToX, scale, {
@@ -159,6 +164,7 @@ export function CvdPanel({
         positiveColor: cvdPositiveColor,
         negativeColor: cvdNegativeColor,
         showDivergenceMarkers: cvdShowDivergence,
+        divergenceMarkers,
         chartWidth,
         chartHeight,
         canvasWidth: logicalWidth,
@@ -222,6 +228,7 @@ export function CvdPanel({
     cvdScaleMode,
     cvdFixedRange,
     cvdShowDivergence,
+    cvdDivergenceLookback,
     getViewportScale,
   ]);
 
@@ -465,6 +472,7 @@ export function CvdPanel({
     cvdScaleMode,
     cvdFixedRange,
     cvdShowDivergence,
+    cvdDivergenceLookback,
     redraw,
   ]);
 

@@ -80,6 +80,8 @@ export interface TimeframeSettings {
   cvdScaleMode: CvdScaleMode;
   cvdFixedRange: number;
   cvdShowDivergence: boolean;
+  cvdDivergenceLookback: number;
+  cvdMinimized: boolean;
 }
 
 export interface Measurement {
@@ -184,6 +186,8 @@ export interface PanelState {
   cvdScaleMode: CvdScaleMode;
   cvdFixedRange: number;
   cvdShowDivergence: boolean;
+  cvdDivergenceLookback: number;
+  cvdMinimized: boolean;
   measureToolActive: boolean;
   activeMeasurement: Measurement | null;
   // Session Visualization
@@ -306,6 +310,8 @@ interface ChartState {
   setCvdScaleMode: (panelId: PanelId, mode: CvdScaleMode) => void;
   setCvdFixedRange: (panelId: PanelId, range: number) => void;
   setCvdShowDivergence: (panelId: PanelId, show: boolean) => void;
+  setCvdDivergenceLookback: (panelId: PanelId, lookback: number) => void;
+  setCvdMinimized: (panelId: PanelId, minimized: boolean) => void;
   setMeasureToolActive: (panelId: PanelId, active: boolean) => void;
   setActiveMeasurement: (panelId: PanelId, measurement: Measurement | null) => void;
   setSessionsEnabled: (panelId: PanelId, enabled: boolean) => void;
@@ -422,6 +428,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     cvdScaleMode: 'auto',
     cvdFixedRange: 1000,
     cvdShowDivergence: false,
+    cvdDivergenceLookback: 8,
+    cvdMinimized: false,
     measureToolActive: false,
     activeMeasurement: null,
     sessionsEnabled: true,
@@ -484,7 +492,8 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth',
     'cvdEnabled', 'cvdPanelHeightPct', 'cvdMode', 'cvdSmoothing',
     'cvdResetMode', 'cvdPositiveColor', 'cvdNegativeColor',
-    'cvdScaleMode', 'cvdFixedRange', 'cvdShowDivergence'
+    'cvdScaleMode', 'cvdFixedRange', 'cvdShowDivergence',
+    'cvdDivergenceLookback', 'cvdMinimized'
   ];
   
   let settingsChanged = false;
@@ -820,6 +829,12 @@ export const useChartStore = create<ChartState>()(
       setCvdShowDivergence: (panelId, cvdShowDivergence) =>
         set((state) => updatePanel(state, panelId, { cvdShowDivergence })),
 
+      setCvdDivergenceLookback: (panelId, cvdDivergenceLookback) =>
+        set((state) => updatePanel(state, panelId, { cvdDivergenceLookback: Math.max(3, Math.min(30, Math.round(cvdDivergenceLookback))) })),
+
+      setCvdMinimized: (panelId, cvdMinimized) =>
+        set((state) => updatePanel(state, panelId, { cvdMinimized })),
+
       setMeasureToolActive: (panelId, measureToolActive) =>
         set((state) => {
           const updates: Partial<PanelState> = { measureToolActive };
@@ -1055,6 +1070,8 @@ export const useChartStore = create<ChartState>()(
             cvdScaleMode: p.cvdScaleMode || 'auto',
             cvdFixedRange: Math.max(1, p.cvdFixedRange ?? 1000),
             cvdShowDivergence: p.cvdShowDivergence ?? false,
+            cvdDivergenceLookback: Math.max(3, Math.min(30, p.cvdDivergenceLookback ?? 8)),
+            cvdMinimized: p.cvdMinimized ?? false,
             sessionsEnabled: p.sessionsEnabled ?? true,
             sessions: p.sessions ?? {
               tokyo: { enabled: true, startHour: 0, startMin: 0, endHour: 6, endMin: 0, color: '#B39DDB' },
@@ -1172,6 +1189,8 @@ export const useChartStore = create<ChartState>()(
             cvdScaleMode: state.panels.left.cvdScaleMode,
             cvdFixedRange: state.panels.left.cvdFixedRange,
             cvdShowDivergence: state.panels.left.cvdShowDivergence,
+            cvdDivergenceLookback: state.panels.left.cvdDivergenceLookback,
+            cvdMinimized: state.panels.left.cvdMinimized,
             sessionsEnabled: state.panels.left.sessionsEnabled,
             sessions: state.panels.left.sessions,
             liquidityEnabled: state.panels.left.liquidityEnabled,
@@ -1254,6 +1273,8 @@ export const useChartStore = create<ChartState>()(
             cvdScaleMode: state.panels.right.cvdScaleMode,
             cvdFixedRange: state.panels.right.cvdFixedRange,
             cvdShowDivergence: state.panels.right.cvdShowDivergence,
+            cvdDivergenceLookback: state.panels.right.cvdDivergenceLookback,
+            cvdMinimized: state.panels.right.cvdMinimized,
             sessionsEnabled: state.panels.right.sessionsEnabled,
             sessions: state.panels.right.sessions,
             liquidityEnabled: state.panels.right.liquidityEnabled,

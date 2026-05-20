@@ -18,6 +18,16 @@ export interface CvdPoint {
   reset: boolean;
 }
 
+export type CvdDivergenceDirection = 'bullish' | 'bearish';
+
+export interface CvdDivergenceMarker {
+  index: number;
+  time: number;
+  direction: CvdDivergenceDirection;
+  priceValue: number;
+  cvdValue: number;
+}
+
 interface BuildCvdSeriesOptions {
   resetMode: CvdResetMode;
   smoothing: number;
@@ -105,6 +115,80 @@ export function buildCvdSeries(
   }
 
   return smoothed;
+}
+
+export function detectLocalCvdDivergences(
+  candles: Candle[],
+  points: CvdPoint[],
+  lookback: number
+): CvdDivergenceMarker[] {
+  const windowSize = Math.max(3, Math.min(30, Math.round(lookback || 8)));
+  const markers: CvdDivergenceMarker[] = [];
+  const epsilon = 0.0000001;
+  let lastBullishIndex = -Infinity;
+  let lastBearishIndex = -Infinity;
+
+  for (let index = windowSize; index < candles.length && index < points.length; index += 1) {
+    const candle = candles[index];
+    const point = points[index];
+    if (!candle || !point || windowCrossesReset(points, index - windowSize, index)) continue;
+
+    let previousHigh = -Infinity;
+    let previousLow = Infinity;
+    let previousCvdHigh = -Infinity;
+    let previousCvdLow = Infinity;
+
+    for (let i = index - windowSize; i < index; i += 1) {
+      const previousCandle = candles[i];
+      const previousPoint = points[i];
+      if (!previousCandle || !previousPoint) continue;
+
+      previousHigh = Math.max(previousHigh, previousCandle.high);
+      previousLow = Math.min(previousLow, previousCandle.low);
+      previousCvdHigh = Math.max(previousCvdHigh, previousPoint.high);
+      previousCvdLow = Math.min(previousCvdLow, previousPoint.low);
+    }
+
+    if (!Number.isFinite(previousHigh) || !Number.isFinite(previousLow) || !Number.isFinite(previousCvdHigh) || !Number.isFinite(previousCvdLow)) {
+      continue;
+    }
+
+    const priceBreaksHigher = candle.high > previousHigh + epsilon;
+    const cvdFailsHigh = point.high <= previousCvdHigh + epsilon;
+    if (priceBreaksHigher && cvdFailsHigh && index - lastBearishIndex >= Math.max(2, Math.floor(windowSize / 2))) {
+      markers.push({
+        index,
+        time: candle.time,
+        direction: 'bearish',
+        priceValue: candle.high,
+        cvdValue: point.high,
+      });
+      lastBearishIndex = index;
+      continue;
+    }
+
+    const priceBreaksLower = candle.low < previousLow - epsilon;
+    const cvdFailsLow = point.low >= previousCvdLow - epsilon;
+    if (priceBreaksLower && cvdFailsLow && index - lastBullishIndex >= Math.max(2, Math.floor(windowSize / 2))) {
+      markers.push({
+        index,
+        time: candle.time,
+        direction: 'bullish',
+        priceValue: candle.low,
+        cvdValue: point.low,
+      });
+      lastBullishIndex = index;
+    }
+  }
+
+  return markers;
+}
+
+function windowCrossesReset(points: CvdPoint[], startIndex: number, endIndex: number) {
+  for (let i = Math.max(1, startIndex + 1); i <= endIndex; i += 1) {
+    if (points[i]?.reset) return true;
+  }
+  return false;
 }
 
 function getUtcDayKey(timeSeconds: number) {

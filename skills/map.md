@@ -235,6 +235,15 @@ lib/utils/canvas.ts → Canvas primitives for footprint bid/ask and delta cells 
 skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
 skills/log.md → Change history for feature/fix context and impact summaries.
 
+components/chart/ChartPanel.tsx → Panel state bridge and vertical chart/CVD layout attachment, including CVD compact bar positioning above the time axis.
+components/chart/CvdPanel.tsx → Attached lower CVD canvas with synced geometry, interactions, and local divergence marker computation.
+components/chart/drawCvd.ts → Pure CVD renderer for modes, axes, labels, compact value formatting, and subtle divergence markers.
+components/ui/ChartSettingsDropdown.tsx → Settings window including CVD display, compact mode, divergence toggle, and divergence lookback controls.
+lib/store/chart.ts → Zustand panel state, persisted settings, drawing overlays, signals, profiles, and CVD compact/divergence settings.
+lib/utils/delta.ts → Builds CVD series and detects lightweight local price/CVD divergence windows.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)

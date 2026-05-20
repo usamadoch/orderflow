@@ -1,5 +1,24 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-20] - Fix: CVD Compact Bar Time-Axis Position
+- **What changed**:
+  - Moved the minimized CVD compact bar from a bottom flex row to an absolute overlay directly above the chart time axis.
+- **Why it changed**:
+  - The compact bar was rendering underneath the horizontal timestamp axis instead of collapsing above it.
+- **Impact summary**:
+  - Minimized CVD now preserves the time axis at the absolute bottom while keeping minimize/expand behavior lightweight and isolated to layout positioning.
+
+## [2026-05-20] - Improvement: CVD Compact Mode and Local Divergence Markers
+- **What changed**:
+  - Added persisted CVD compact/minimized mode with a small bottom bar showing `CVD`, the latest cumulative delta value, and a maximize control.
+  - Added a minimize control to the expanded CVD panel while preserving existing resize, crosshair, and vertical scale interactions.
+  - Added configurable local CVD divergence lookback and subtle CVD-panel-only bullish/bearish markers for short-window price/CVD disagreement.
+  - Wired compact mode and divergence lookback through Zustand persistence and the chart settings window.
+- **Why it changed**:
+  - The CVD panel needed a space-saving view for chart-heavy layouts, plus lightweight contextual divergence hints without creating a large swing/trend signal system.
+- **Impact summary**:
+  - Users can reclaim chart space while keeping current CVD context visible. Divergence markers remain subtle, local, and isolated to the CVD panel, with no feed, storage, aggregation, or chart synchronization changes.
+
 ## [2026-05-20] - Refinement: Softer Footprint Visual Strength Scaling
 - **What changed**:
   - Replaced hard per-candle max stretching with soft candle scales blended against visible-range percentiles.

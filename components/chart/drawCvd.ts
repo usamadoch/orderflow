@@ -1,5 +1,5 @@
 import type { CvdMode, CvdScaleMode } from '@/lib/store/chart';
-import type { CvdPoint } from '@/lib/utils/delta';
+import type { CvdDivergenceMarker, CvdPoint } from '@/lib/utils/delta';
 
 const AXIS_FONT = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
 const MONO_FONT = '11px "JetBrains Mono", monospace';
@@ -23,6 +23,7 @@ interface DrawCvdOptions {
   positiveColor: string;
   negativeColor: string;
   showDivergenceMarkers: boolean;
+  divergenceMarkers?: CvdDivergenceMarker[];
   chartWidth: number;
   chartHeight: number;
   canvasWidth: number;
@@ -112,6 +113,8 @@ export function drawCvd(
     mode,
     positiveColor,
     negativeColor,
+    showDivergenceMarkers,
+    divergenceMarkers,
     chartWidth,
     chartHeight,
     canvasWidth,
@@ -140,6 +143,10 @@ export function drawCvd(
     drawCvdBars(ctx, points, firstIndex, lastIndex, indexToX, scale, barWidth, positiveColor, negativeColor);
   } else {
     drawCvdCandles(ctx, points, firstIndex, lastIndex, indexToX, scale, barWidth, positiveColor, negativeColor);
+  }
+
+  if (showDivergenceMarkers && divergenceMarkers?.length) {
+    drawDivergenceMarkers(ctx, divergenceMarkers, firstIndex, lastIndex, indexToX, scale, chartHeight, positiveColor, negativeColor);
   }
 
   ctx.restore();
@@ -344,6 +351,51 @@ function drawCvdLine(
   }
 }
 
+function drawDivergenceMarkers(
+  ctx: CanvasRenderingContext2D,
+  markers: CvdDivergenceMarker[],
+  firstIndex: number,
+  lastIndex: number,
+  indexToX: (index: number) => number,
+  scale: CvdScale,
+  chartHeight: number,
+  positiveColor: string,
+  negativeColor: string
+) {
+  ctx.save();
+
+  for (const marker of markers) {
+    if (marker.index < firstIndex || marker.index > lastIndex) continue;
+
+    const x = indexToX(marker.index);
+    const baseY = scale.valueToY(marker.cvdValue);
+    const isBullish = marker.direction === 'bullish';
+    const y = Math.max(8, Math.min(chartHeight - 8, baseY + (isBullish ? 8 : -8)));
+    const color = withAlpha(isBullish ? positiveColor : negativeColor, 0.58);
+
+    ctx.fillStyle = color;
+    ctx.strokeStyle = withAlpha(isBullish ? positiveColor : negativeColor, 0.82);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+
+    if (isBullish) {
+      ctx.moveTo(x, y - 4);
+      ctx.lineTo(x - 4, y + 4);
+      ctx.lineTo(x + 4, y + 4);
+    } else {
+      ctx.moveTo(x, y + 4);
+      ctx.lineTo(x - 4, y - 4);
+      ctx.lineTo(x + 4, y - 4);
+    }
+
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 function drawCvdAxis(
   ctx: CanvasRenderingContext2D,
   scale: CvdScale,
@@ -410,7 +462,7 @@ function calculateValueStep(range: number, chartHeight: number, minSpacing: numb
   return magnitude * 10;
 }
 
-function formatCvdValue(value: number) {
+export function formatCvdValue(value: number) {
   const sign = value > 0 ? '+' : value < 0 ? '-' : '';
   const abs = Math.abs(value);
 
