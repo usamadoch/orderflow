@@ -10,9 +10,20 @@ export interface VolumeProfileBuildRequest {
   priceLow?: number;
 }
 
+export interface FineProfileRow {
+  candleTime: number;
+  baseBucketSize: number;
+  bucketPrice: number;
+  bidVol: number;
+  askVol: number;
+  totalVol: number;
+  tradeCount: number;
+}
+
 export interface VolumeProfileSource {
   ingestTrade(trade: Trade): void;
   hydrateTrades(trades: Trade[]): void;
+  hydrateProfileRows(rows: FineProfileRow[]): void;
   reset(): void;
   pruneBefore(timeMs: number): void;
   buildProfile(request: VolumeProfileBuildRequest): VolumeProfile | null;
@@ -28,6 +39,7 @@ const TRADE_PRUNE_BATCH = 5000;
 export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
   private trades: Trade[] = [];
   private seenKeys = new Set<string>();
+  private fineRowsByCandle = new Map<number, Map<string, FineProfileRow>>();
   private maxTrades: number;
   private version = 0;
   private sorted = true;
@@ -54,28 +66,45 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
     this.enforceLimit();
   }
 
+  hydrateProfileRows(rows: FineProfileRow[]) {
+    if (rows.length === 0) return;
+
+    for (const row of rows) {
+      this.setFineRow(row);
+    }
+
+    this.version += 1;
+    this.cachedProfile = null;
+  }
+
   reset() {
     this.trades = [];
     this.seenKeys.clear();
+    this.fineRowsByCandle.clear();
     this.version += 1;
     this.sorted = true;
     this.cachedProfile = null;
   }
 
   pruneBefore(timeMs: number) {
-    if (this.trades.length === 0) return;
+    const beforeTradeCount = this.trades.length;
+    const beforeRowCount = this.fineRowsByCandle.size;
 
-    const kept = this.trades.filter((trade) => trade.time >= timeMs);
-    if (kept.length === this.trades.length) return;
+    this.trades = this.trades.filter((trade) => trade.time >= timeMs);
+    this.pruneRowsBefore(Math.floor(timeMs / 1000));
 
-    this.trades = kept;
-    this.rebuildSeenKeys();
-    this.version += 1;
-    this.cachedProfile = null;
+    if (this.trades.length !== beforeTradeCount) {
+      this.rebuildSeenKeys();
+    }
+
+    if (this.trades.length !== beforeTradeCount || this.fineRowsByCandle.size !== beforeRowCount) {
+      this.version += 1;
+      this.cachedProfile = null;
+    }
   }
 
   buildProfile({ candles, profileBucketSize, priceHigh, priceLow }: VolumeProfileBuildRequest) {
-    if (candles.length === 0 || profileBucketSize <= 0 || this.trades.length === 0) return null;
+    if (candles.length === 0 || profileBucketSize <= 0) return null;
 
     this.ensureSorted();
     const { startMs, endMs } = getCandleTimeWindow(candles);
@@ -92,10 +121,8 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
       return this.cachedProfile.profile;
     }
 
-    const startIndex = lowerBoundTradeTime(this.trades, startMs);
-    const endIndex = lowerBoundTradeTime(this.trades, endMs);
-    const windowTrades = this.trades.slice(startIndex, endIndex);
-    const profile = buildVolumeProfileFromTrades(windowTrades, profileBucketSize, priceHigh, priceLow);
+    const profile = this.buildProfileFromFineRows(candles, profileBucketSize, priceHigh, priceLow)
+      ?? this.buildLiveProfileFromTrades(candles, startMs, endMs, profileBucketSize, priceHigh, priceLow);
     this.cachedProfile = { key: cacheKey, profile };
 
     return profile;
@@ -123,6 +150,79 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
     this.rebuildSeenKeys();
     this.version += 1;
     this.cachedProfile = null;
+  }
+
+  private setFineRow(row: FineProfileRow) {
+    if (row.baseBucketSize <= 0 || row.totalVol <= 0) return;
+
+    const candleRows = this.fineRowsByCandle.get(row.candleTime) ?? new Map<string, FineProfileRow>();
+    candleRows.set(getFineRowKey(row), { ...row });
+    this.fineRowsByCandle.set(row.candleTime, candleRows);
+  }
+
+  private pruneRowsBefore(timeSeconds: number) {
+    for (const candleTime of this.fineRowsByCandle.keys()) {
+      if (candleTime < timeSeconds) {
+        this.fineRowsByCandle.delete(candleTime);
+      }
+    }
+  }
+
+  private buildProfileFromFineRows(
+    candles: Candle[],
+    profileBucketSize: number,
+    priceHigh?: number,
+    priceLow?: number,
+  ) {
+    const map = new Map<number, ProfileRow>();
+    let foundRows = false;
+
+    for (const candle of candles) {
+      const candleRows = this.fineRowsByCandle.get(candle.time);
+      if (!candleRows || candleRows.size === 0) continue;
+
+      for (const row of candleRows.values()) {
+        if (!isCompatibleProfileBucket(row.baseBucketSize, profileBucketSize)) continue;
+
+        const price = normalizePriceToBucket(row.bucketPrice, profileBucketSize);
+        if (priceHigh !== undefined && price > priceHigh) continue;
+        if (priceLow !== undefined && price < priceLow) continue;
+
+        const profileRow = getOrCreateProfileRow(map, price);
+        profileRow.bidVol += row.bidVol;
+        profileRow.askVol += row.askVol;
+        profileRow.totalVol += row.totalVol;
+        foundRows = true;
+      }
+    }
+
+    return foundRows ? buildVolumeProfileFromRowMap(map) : null;
+  }
+
+  private buildLiveProfileFromTrades(
+    candles: Candle[],
+    startMs: number,
+    endMs: number,
+    profileBucketSize: number,
+    priceHigh?: number,
+    priceLow?: number,
+  ) {
+    if (this.trades.length === 0) return null;
+
+    const liveCandleTimes = new Set(
+      candles
+        .filter((candle) => !candle.isClosed && !this.fineRowsByCandle.has(candle.time))
+        .map((candle) => candle.time),
+    );
+    if (liveCandleTimes.size === 0) return null;
+
+    const startIndex = lowerBoundTradeTime(this.trades, startMs);
+    const endIndex = lowerBoundTradeTime(this.trades, endMs);
+    const windowTrades = this.trades
+      .slice(startIndex, endIndex)
+      .filter((trade) => liveCandleTimes.has(getCandleTimeForTradeMs(trade.time, candles)));
+
+    return buildVolumeProfileFromTrades(windowTrades, profileBucketSize, priceHigh, priceLow);
   }
 
   private ensureSorted() {
@@ -158,11 +258,7 @@ export function buildVolumeProfileFromTrades(
     if (priceHigh !== undefined && price > priceHigh) continue;
     if (priceLow !== undefined && price < priceLow) continue;
 
-    let row = map.get(price);
-    if (!row) {
-      row = { price, totalVol: 0, bidVol: 0, askVol: 0, hasFP: true };
-      map.set(price, row);
-    }
+    const row = getOrCreateProfileRow(map, price);
 
     if (trade.isBuyerMaker) {
       row.bidVol += trade.quantity;
@@ -172,6 +268,10 @@ export function buildVolumeProfileFromTrades(
     row.totalVol += trade.quantity;
   }
 
+  return buildVolumeProfileFromRowMap(map);
+}
+
+function buildVolumeProfileFromRowMap(map: Map<number, ProfileRow>): VolumeProfile | null {
   if (map.size === 0) return null;
 
   const rows = Array.from(map.values()).sort((a, b) => a.price - b.price);
@@ -194,6 +294,16 @@ export function buildVolumeProfileFromTrades(
   };
 }
 
+function getOrCreateProfileRow(map: Map<number, ProfileRow>, price: number) {
+  let row = map.get(price);
+  if (!row) {
+    row = { price, totalVol: 0, bidVol: 0, askVol: 0, hasFP: true };
+    map.set(price, row);
+  }
+
+  return row;
+}
+
 function getCandleTimeWindow(candles: Candle[]) {
   const first = candles[0];
   const last = candles[candles.length - 1];
@@ -211,6 +321,25 @@ function getTradeKey(trade: Trade) {
   return trade.id == null
     ? `${trade.time}:${trade.price}:${trade.quantity}:${trade.isBuyerMaker ? 1 : 0}`
     : `id:${trade.id}`;
+}
+
+function getFineRowKey(row: FineProfileRow) {
+  return `${row.baseBucketSize}:${row.bucketPrice}`;
+}
+
+function isCompatibleProfileBucket(baseBucketSize: number, profileBucketSize: number) {
+  if (baseBucketSize <= 0 || profileBucketSize <= 0) return false;
+  if (baseBucketSize > profileBucketSize) return false;
+
+  const ratio = profileBucketSize / baseBucketSize;
+  return Math.abs(ratio - Math.round(ratio)) < 1e-6;
+}
+
+function getCandleTimeForTradeMs(tradeTimeMs: number, candles: Candle[]) {
+  if (candles.length < 2) return candles[0]?.time ?? Math.floor(tradeTimeMs / 1000);
+
+  const timeframeSeconds = Math.max(1, candles[candles.length - 1].time - candles[candles.length - 2].time);
+  return Math.floor((tradeTimeMs / 1000) / timeframeSeconds) * timeframeSeconds;
 }
 
 function lowerBoundTradeTime(trades: Trade[], timeMs: number) {

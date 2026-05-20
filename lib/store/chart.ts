@@ -58,6 +58,7 @@ export interface TimeframeSettings {
   liquidityVacuumOpacity: number;
   liquidityVacuumMaxZones: number;
   profileWidthPct: number;
+  defaultProfileEnabled: boolean;
   profileResolutionTicks: number;
   profileMinRowHeight: number;
   profileOpacity: number;
@@ -160,6 +161,7 @@ export interface PanelState {
   liquidityVacuumZones: LiquidityVacuumZone[];
   // Volume Profile Visuals
   profileWidthPct: number;
+  defaultProfileEnabled: boolean;
   profileResolutionTicks: number;
   profileMinRowHeight: number;
   profileOpacity: number;
@@ -282,6 +284,7 @@ interface ChartState {
   setLiquidityVacuumMaxZones: (panelId: PanelId, maxZones: number) => void;
   setLiquidityVacuumZones: (panelId: PanelId, zones: LiquidityVacuumZone[]) => void;
   setProfileWidthPct: (panelId: PanelId, pct: number) => void;
+  setDefaultProfileEnabled: (panelId: PanelId, enabled: boolean) => void;
   setProfileResolutionTicks: (panelId: PanelId, ticks: number) => void;
   setProfileMinRowHeight: (panelId: PanelId, height: number) => void;
   setProfileOpacity: (panelId: PanelId, opacity: number) => void;
@@ -397,6 +400,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     liquidityVacuumMaxZones: 6,
     liquidityVacuumZones: [],
     profileWidthPct: 70,
+    defaultProfileEnabled: true,
     profileResolutionTicks: 1,
     profileMinRowHeight: 1,
     profileOpacity: 0.4,
@@ -474,7 +478,7 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
     'icebergShowLabels', 'icebergShowTint', 'liquidityVacuumMinScore',
     'liquidityVacuumShowLabels', 'liquidityVacuumOpacity', 'liquidityVacuumMaxZones',
-    'profileWidthPct', 'profileResolutionTicks', 'profileMinRowHeight',
+    'profileWidthPct', 'defaultProfileEnabled', 'profileResolutionTicks', 'profileMinRowHeight',
     'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
     'profileShowPocHighlight', 'profileShowVaFill', 'profileShowPocLine',
     'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth',
@@ -750,6 +754,9 @@ export const useChartStore = create<ChartState>()(
       setProfileWidthPct: (panelId, profileWidthPct) =>
         set((state) => updatePanel(state, panelId, { profileWidthPct: Math.max(10, Math.min(100, profileWidthPct)) })),
 
+      setDefaultProfileEnabled: (panelId, defaultProfileEnabled) =>
+        set((state) => updatePanel(state, panelId, { defaultProfileEnabled })),
+
       setProfileResolutionTicks: (panelId, profileResolutionTicks) =>
         set((state) => updatePanel(state, panelId, { profileResolutionTicks: Math.max(1, Math.min(100, Math.round(profileResolutionTicks))) })),
 
@@ -977,7 +984,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 21,
+      version: 22,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -1026,6 +1033,7 @@ export const useChartStore = create<ChartState>()(
             liquidityVacuumMaxZones: Math.max(1, Math.min(20, p.liquidityVacuumMaxZones ?? 6)),
             liquidityVacuumZones: [],
             profileWidthPct: p.profileWidthPct ?? 70,
+            defaultProfileEnabled: p.defaultProfileEnabled ?? true,
             profileResolutionTicks: p.profileResolutionTicks ?? 1,
             profileMinRowHeight: p.profileMinRowHeight ?? 1,
             profileOpacity: p.profileOpacity ?? 0.4,
@@ -1142,6 +1150,7 @@ export const useChartStore = create<ChartState>()(
             liquidityVacuumOpacity: state.panels.left.liquidityVacuumOpacity,
             liquidityVacuumMaxZones: state.panels.left.liquidityVacuumMaxZones,
             profileWidthPct: state.panels.left.profileWidthPct,
+            defaultProfileEnabled: state.panels.left.defaultProfileEnabled,
             profileResolutionTicks: state.panels.left.profileResolutionTicks,
             profileMinRowHeight: state.panels.left.profileMinRowHeight,
             profileOpacity: state.panels.left.profileOpacity,
@@ -1223,6 +1232,7 @@ export const useChartStore = create<ChartState>()(
             liquidityVacuumOpacity: state.panels.right.liquidityVacuumOpacity,
             liquidityVacuumMaxZones: state.panels.right.liquidityVacuumMaxZones,
             profileWidthPct: state.panels.right.profileWidthPct,
+            defaultProfileEnabled: state.panels.right.defaultProfileEnabled,
             profileResolutionTicks: state.panels.right.profileResolutionTicks,
             profileMinRowHeight: state.panels.right.profileMinRowHeight,
             profileOpacity: state.panels.right.profileOpacity,

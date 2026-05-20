@@ -38,6 +38,7 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setAbsorptionMinScore = useChartStore(s => s.setAbsorptionMinScore);
   const setAbsorptionSide = useChartStore(s => s.setAbsorptionSide);
   const setProfileWidthPct = useChartStore(s => s.setProfileWidthPct);
+  const setDefaultProfileEnabled = useChartStore(s => s.setDefaultProfileEnabled);
   const setProfileResolutionTicks = useChartStore(s => s.setProfileResolutionTicks);
   const setProfileMinRowHeight = useChartStore(s => s.setProfileMinRowHeight);
   const setProfileOpacity = useChartStore(s => s.setProfileOpacity);
@@ -715,6 +716,17 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                   <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Volume Profile</div>
 
                   <div className="space-y-3">
+                    <button
+                      onClick={() => setDefaultProfileEnabled(panelId, !panel.defaultProfileEnabled)}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.defaultProfileEnabled
+                        ? 'bg-accent/5 border-accent text-accent'
+                        : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                        }`}
+                    >
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Default Profile</span>
+                      <div className={`w-1.5 h-1.5 rounded-full ${panel.defaultProfileEnabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                    </button>
+
                     <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scaling</label>

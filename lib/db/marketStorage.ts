@@ -1,6 +1,11 @@
 import type { Candle } from '../../types/candle'
 import type { Trade } from '../../types/trade'
-import { insertRawTradeBatch, persistClosedCandleSnapshot } from './database'
+import {
+  insertFineProfileRows,
+  insertRawTradeBatch,
+  persistClosedCandleSnapshot,
+  type FineProfileRowWriteInput,
+} from './database'
 
 export interface SerializedFootprintCell {
   bucketPrice: number
@@ -56,6 +61,20 @@ export async function storeRawTrades(symbol: string, trades: Trade[]) {
     await insertRawTradeBatch(symbol, storableTrades)
   } catch (error) {
     console.error(`[Storage] Failed to store raw trades for ${symbol}:`, error)
+  }
+}
+
+export async function storeFineProfileRows(
+  symbol: string,
+  timeframe: string,
+  rows: FineProfileRowWriteInput[],
+) {
+  try {
+    if (rows.length === 0) return
+
+    await insertFineProfileRows(symbol, timeframe, rows)
+  } catch (error) {
+    console.error(`[Storage] Failed to store fine profile rows for ${symbol} ${timeframe}:`, error)
   }
 }
 

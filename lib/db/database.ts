@@ -79,10 +79,34 @@ export interface RawTradeRow {
   stored_at: number
 }
 
+export interface FineProfileRow {
+  id: number
+  symbol: string
+  timeframe: string
+  candle_time: number
+  base_bucket_size: number
+  bucket_price: number
+  bid_vol: number
+  ask_vol: number
+  total_vol: number
+  trade_count: number
+  stored_at: number
+}
+
 export interface FootprintCellWriteInput {
   bucketPrice: number
   bidVol: number
   askVol: number
+}
+
+export interface FineProfileRowWriteInput {
+  candleTime: number
+  baseBucketSize: number
+  bucketPrice: number
+  bidVol: number
+  askVol: number
+  totalVol: number
+  tradeCount: number
 }
 
 export type RawTradeWriteInput = Trade
@@ -97,6 +121,15 @@ export interface ClosedCandleSnapshotInput {
   sellVol: number
   bucketSize: number
   storedAtIso?: string
+}
+
+export type RawTradeOrder = 'asc' | 'desc'
+
+export interface RawTradeQueryOptions {
+  limit?: number
+  order?: RawTradeOrder
+  cursorTimeMs?: number
+  cursorTradeId?: number
 }
 
 const TRANSIENT_DB_ERROR_CODES = new Set([
@@ -267,6 +300,33 @@ export async function initDatabase() {
         sql: `
           CREATE INDEX IF NOT EXISTS idx_raw_trades_query
             ON raw_trades(symbol, trade_time ASC)
+        `,
+        args: [],
+      },
+      {
+        sql: `
+          CREATE TABLE IF NOT EXISTS fine_profile_rows (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol           TEXT    NOT NULL,
+            timeframe        TEXT    NOT NULL,
+            candle_time      INTEGER NOT NULL,
+            base_bucket_size REAL    NOT NULL,
+            bucket_price     REAL    NOT NULL,
+            bid_vol          REAL    NOT NULL DEFAULT 0,
+            ask_vol          REAL    NOT NULL DEFAULT 0,
+            total_vol        REAL    NOT NULL DEFAULT 0,
+            trade_count      INTEGER NOT NULL DEFAULT 0,
+            stored_at        INTEGER NOT NULL DEFAULT (unixepoch()),
+
+            UNIQUE(symbol, timeframe, candle_time, base_bucket_size, bucket_price)
+          )
+        `,
+        args: [],
+      },
+      {
+        sql: `
+          CREATE INDEX IF NOT EXISTS idx_fine_profile_rows_query
+            ON fine_profile_rows(symbol, timeframe, base_bucket_size, candle_time ASC)
         `,
         args: [],
       },
@@ -491,6 +551,47 @@ export async function insertRawTradeBatch(symbol: string, trades: RawTradeWriteI
   })
 }
 
+export async function insertFineProfileRows(
+  symbol: string,
+  timeframe: string,
+  rows: FineProfileRowWriteInput[],
+) {
+  const storableRows = rows.filter((row) =>
+    Number.isFinite(row.candleTime)
+    && row.baseBucketSize > 0
+    && Number.isFinite(row.bucketPrice)
+    && row.totalVol > 0
+    && row.tradeCount > 0,
+  )
+  if (storableRows.length === 0) return
+
+  await withDbWriteRetry('Fine profile row batch write', async () => {
+    await db.batch(
+      storableRows.map((row) => ({
+        sql: `
+          INSERT OR REPLACE INTO fine_profile_rows (
+            symbol, timeframe, candle_time, base_bucket_size, bucket_price,
+            bid_vol, ask_vol, total_vol, trade_count
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          symbol,
+          timeframe,
+          row.candleTime,
+          row.baseBucketSize,
+          row.bucketPrice,
+          row.bidVol,
+          row.askVol,
+          row.totalVol,
+          row.tradeCount,
+        ],
+      })),
+      'write',
+    )
+  })
+}
+
 export async function insertCandleDelta(
   symbol: string,
   timeframe: string,
@@ -531,6 +632,10 @@ export async function deleteOldData(retentionHours = DB_CONFIG.retentionHours) {
         sql: 'DELETE FROM raw_trades WHERE trade_time < ?',
         args: [cutoff * 1000],
       },
+      {
+        sql: 'DELETE FROM fine_profile_rows WHERE candle_time < ?',
+        args: [cutoff],
+      },
     ],
     'write',
   )
@@ -542,22 +647,88 @@ export async function getRawTrades(
   symbol: string,
   startTimeMs: number,
   endTimeMs: number,
-  limit = DB_CONFIG.maxTradesPerQuery,
+  options: number | RawTradeQueryOptions = DB_CONFIG.maxTradesPerQuery,
 ) {
+  const queryOptions: RawTradeQueryOptions = typeof options === 'number'
+    ? { limit: options }
+    : options
+  const limit = queryOptions.limit ?? DB_CONFIG.maxTradesPerQuery
+  const order: RawTradeOrder = queryOptions.order === 'desc' ? 'desc' : 'asc'
   const boundedLimit = Math.max(1, Math.min(limit, DB_CONFIG.maxTradesPerQuery))
+  const direction = order === 'desc' ? 'DESC' : 'ASC'
+  const cursorTimeMs = queryOptions.cursorTimeMs
+  const cursorTradeId = queryOptions.cursorTradeId
+  const hasCursor = Number.isFinite(cursorTimeMs) && Number.isFinite(cursorTradeId)
+  const cursorFilter = hasCursor
+    ? order === 'desc'
+      ? 'AND (trade_time < ? OR (trade_time = ? AND aggregate_trade_id < ?))'
+      : 'AND (trade_time > ? OR (trade_time = ? AND aggregate_trade_id > ?))'
+    : ''
+  const args: Array<string | number> = [symbol, startTimeMs, endTimeMs]
+
+  if (hasCursor) {
+    args.push(cursorTimeMs!, cursorTimeMs!, cursorTradeId!)
+  }
+
+  args.push(boundedLimit)
 
   const result = await db.execute({
     sql: `
       SELECT *
       FROM raw_trades
       WHERE symbol = ? AND trade_time >= ? AND trade_time < ?
-      ORDER BY trade_time ASC
+      ${cursorFilter}
+      ORDER BY trade_time ${direction}, aggregate_trade_id ${direction}
       LIMIT ?
     `,
-    args: [symbol, startTimeMs, endTimeMs, boundedLimit],
+    args,
   })
 
   return result.rows as unknown as RawTradeRow[]
+}
+
+export async function getFootprintCellsForRange(
+  symbol: string,
+  timeframe: string,
+  startTime: number,
+  endTime: number,
+  bucketSize: number,
+) {
+  const result = await db.execute({
+    sql: `
+      SELECT *
+      FROM footprint_cells
+      WHERE symbol = ? AND timeframe = ? AND candle_time >= ? AND candle_time < ? AND bucket_size = ?
+      ORDER BY candle_time ASC, bucket_price ASC
+    `,
+    args: [symbol, timeframe, startTime, endTime, bucketSize],
+  })
+
+  return result.rows as unknown as FootprintCellRow[]
+}
+
+export async function getFineProfileRows(
+  symbol: string,
+  timeframe: string,
+  startTime: number,
+  endTime: number,
+  baseBucketSize: number,
+) {
+  const result = await db.execute({
+    sql: `
+      SELECT *
+      FROM fine_profile_rows
+      WHERE symbol = ?
+        AND timeframe = ?
+        AND candle_time >= ?
+        AND candle_time < ?
+        AND base_bucket_size = ?
+      ORDER BY candle_time ASC, bucket_price ASC
+    `,
+    args: [symbol, timeframe, startTime, endTime, baseBucketSize],
+  })
+
+  return result.rows as unknown as FineProfileRow[]
 }
 
 export async function getCandles(

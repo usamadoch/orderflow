@@ -31,7 +31,7 @@ export function drawBubbles(
 ) {
   const { bubbleThreshold, bubbleThresholdMode = 'absolute', bubbleMinRadius, bubbleMaxRadius, bubbleSide } = settings;
 
-  // Performance guard — bars too small, bubbles would overlap and be unreadable
+  // Performance guard - bars too small, bubbles would overlap and be unreadable
   if (barWidth < 4) return;
 
   // Compute adaptive threshold if relative
@@ -50,31 +50,36 @@ export function drawBubbles(
     actualThreshold = bubbleThreshold * avgCellVol;
   }
 
-  // Step 1 — Find maxVol across all visible cells (single-side)
-  let maxVol = 0;
+  // Use a high-percentile scale so one outlier or edge-culling change does not
+  // make all bubbles shrink or lose labels while panning.
+  const scaleVolumes: number[] = [];
   for (let i = firstIndex; i <= lastIndex; i++) {
     const c = candles[i];
     if (!c) continue;
     const fp = engine.getFootprintCandle(c.time);
     if (!fp) continue;
-    fp.cells.forEach(cell => {
-      if (bubbleSide !== 'sell' && cell.askVol > maxVol) maxVol = cell.askVol;
-      if (bubbleSide !== 'buy' && cell.bidVol > maxVol) maxVol = cell.bidVol;
+
+    fp.cells.forEach((cell) => {
+      if (bubbleSide !== 'sell' && cell.askVol >= actualThreshold) scaleVolumes.push(cell.askVol);
+      if (bubbleSide !== 'buy' && cell.bidVol >= actualThreshold) scaleVolumes.push(cell.bidVol);
     });
   }
 
-  if (maxVol === 0) return;
+  if (scaleVolumes.length === 0) return;
 
-  // Step 2 — Iterate visible candles and draw bubbles
+  scaleVolumes.sort((a, b) => a - b);
+  const percentileIndex = Math.min(scaleVolumes.length - 1, Math.floor((scaleVolumes.length - 1) * 0.95));
+  const maxVol = Math.max(1, scaleVolumes[percentileIndex]);
+
+  // Step 2 - Iterate visible candles and draw bubbles
   for (let i = firstIndex; i <= lastIndex; i++) {
     const c = candles[i];
     if (!c) continue;
     const fp = engine.getFootprintCandle(c.time);
     if (!fp) continue;
     const x = indexToX(i);
-    if (x === null || x === undefined) continue;
+    if (x === null || x === undefined || !Number.isFinite(x)) continue;
 
-    // Collect all qualifying cells for this candle
     const qualifiedCells: { price: number; vol: number; side: 'buy' | 'sell' }[] = [];
 
     fp.cells.forEach((cell, priceBucket) => {
@@ -86,16 +91,17 @@ export function drawBubbles(
       }
     });
 
-    // Cap at 20 bubbles per candle — keep highest volume ones
+    // Cap at 20 bubbles per candle - keep highest volume ones
     if (qualifiedCells.length > 20) {
       qualifiedCells.sort((a, b) => b.vol - a.vol);
       qualifiedCells.length = 20;
     }
 
-    // Render each bubble
     for (const { price, vol, side } of qualifiedCells) {
       const y = priceToY(price + bucketSize / 2);
-      const t = vol / maxVol; // 0..1
+      if (!Number.isFinite(y)) continue;
+
+      const t = Math.max(0, Math.min(1, vol / maxVol));
       const radius = bubbleMinRadius + t * (bubbleMaxRadius - bubbleMinRadius);
       const opacity = 0.4 + t * 0.5;
 
@@ -104,18 +110,15 @@ export function drawBubbles(
       const g = isBuy ? 166 : 83;
       const b = isBuy ? 154 : 80;
 
-      // Fill
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
       ctx.fill();
 
-      // Stroke
       ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 1)`;
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Volume label inside large bubbles
       if (radius >= 12) {
         const label = abbreviateVol(vol);
         ctx.font = '500 9px "JetBrains Mono"';

@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { getDrawableChartWidth } from './useCoordinates';
 
 export interface PanZoomRefs {
   scrollOffset: React.MutableRefObject<number>;
@@ -123,7 +124,7 @@ export function usePanZoom(
         
         // Panning in price
         if (priceCenter.current !== null && priceRange.current !== null) {
-          const pricePerPixel = priceRange.current / (rect.height - timeAxisHeight);
+          const pricePerPixel = priceRange.current / Math.max(1, rect.height - timeAxisHeight);
           priceCenter.current += deltaY * pricePerPixel;
         }
       } else if (dragMode.current === 'price') {
@@ -140,7 +141,7 @@ export function usePanZoom(
         
         if (oldBarWidth !== newBarWidth) {
           const chartWidth = rect.width - priceAxisWidth;
-          const drawableWidth = chartWidth - profileWidth;
+          const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
           scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
           barWidth.current = newBarWidth;
           onBarWidthChange?.(newBarWidth);
@@ -173,7 +174,7 @@ export function usePanZoom(
       const x = e.clientX - rect.left;
       
       const chartWidth = rect.width - priceAxisWidth;
-      const drawableWidth = chartWidth - profileWidth;
+      const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
 
       // Only zoom if mouse is within the chart area (including profile but excluding price axis)
       if (x < 0 || x > chartWidth) return;

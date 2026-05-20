@@ -13,7 +13,6 @@ import { drawFootprint } from './drawFootprint';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
 import { drawPriceLine } from './drawPriceLine';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
-import { buildProfile } from '@/lib/utils/volumeProfile';
 import { drawVolumeProfile } from './drawVolumeProfile';
 import { drawAbsorption } from './drawAbsorption';
 import { drawBubbles } from './drawBubbles';
@@ -208,6 +207,7 @@ interface ChartCanvasProps {
   liquidityVacuumOpacity: number;
   liquidityVacuumZones: LiquidityVacuumZone[];
   profileWidthPct: number;
+  defaultProfileEnabled: boolean;
   profileResolutionTicks: number;
   profileMinRowHeight: number;
   profileOpacity: number;
@@ -292,6 +292,7 @@ export function ChartCanvas({
   liquidityVacuumOpacity,
   liquidityVacuumZones,
   profileWidthPct,
+  defaultProfileEnabled,
   profileResolutionTicks,
   profileMinRowHeight,
   profileOpacity,
@@ -366,7 +367,7 @@ export function ChartCanvas({
   const timeAxisHeight = showTimeAxis ? 24 : 0;
   const baseProfileWidth = 120;
   
-  let profileWidth = baseProfileWidth;
+  let profileWidth = defaultProfileEnabled ? baseProfileWidth : 0;
   if (liquidityHeatmapEnabled) {
     profileWidth += liquidityHeatmapWidth;
   }
@@ -512,7 +513,7 @@ export function ChartCanvas({
       if (chartMode === 'candle') {
         drawCandles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
       } else {
-        drawFootprint(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, logicalHeight, footprintMode);
+        drawFootprint(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, chartHeight, footprintMode);
       }
 
       // Volume bubbles — drawn above candles/footprint, below volume profile
@@ -558,14 +559,7 @@ export function ChartCanvas({
           profileBucketSize,
           priceHigh: customProfileRange.priceHigh,
           priceLow: customProfileRange.priceLow,
-        }) ?? buildProfile(
-          customCandles, 
-          engine, 
-          bucketSize, 
-          profileBucketSize, 
-          customProfileRange.priceHigh, 
-          customProfileRange.priceLow
-        );
+        });
         drawCustomProfile(
           ctx,
           customProfileRange,
@@ -622,8 +616,8 @@ export function ChartCanvas({
       const profile = volumeProfileEngine.buildProfile({
         candles: visibleCandles,
         profileBucketSize,
-      }) ?? buildProfile(visibleCandles, engine, bucketSize, profileBucketSize);
-      if (profile) {
+      });
+      if (defaultProfileEnabled && profile) {
         drawVolumeProfile(
           ctx, 
           profile, 
@@ -772,7 +766,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, showTimeAxis]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, showTimeAxis]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);

@@ -8,11 +8,12 @@ import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine'
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
 import { IcebergEngine } from '../lib/iceberg/engine';
 import { buildLiquidityVacuumZones } from '../lib/liquidityVacuum/engine';
-import { getCandleTimeForTrade } from '../lib/utils/aggregation';
+import { getCandleTimeForTrade, normalizePriceToBucket } from '../lib/utils/aggregation';
 import { ChartEngineContext } from './ChartEngineContext';
-import { RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
+import { FineProfileRow, RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
 import { Candle } from '../types/candle';
 import { Trade } from '../types/trade';
+import { FootprintCell } from '../types/footprint';
 import { AbsorptionResult } from '../types/absorption';
 import { ExhaustionResult } from '../types/exhaustion';
 import { IcebergLevel } from '../types/iceberg';
@@ -20,7 +21,7 @@ import { LiquidityVacuumZone } from '../types/liquidityVacuum';
 import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
-import { storeClosedCandleAction, storeRawTradesAction } from '../lib/actions/storageActions';
+import { storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -31,10 +32,14 @@ const RAW_TRADE_FLUSH_MS = 2000;
 const RAW_TRADE_FLUSH_SIZE = 500;
 const PROFILE_REDRAW_MS = 500;
 const HYDRATION_CHUNK_SIZE = 1000;
+const RAW_TRADE_HISTORY_PAGE_SIZE = 50000;
+const RAW_TRADE_HISTORY_MAX_PAGES = 10;
+const FINE_PROFILE_FLUSH_SIZE = 1000;
 const MAX_DEDUPE_KEYS = 100000;
 
 const queuedRawTradeStorageKeys = new Set<string>();
 const closedCandleStorageKeys = new Set<string>();
+const queuedFineProfileCandleKeys = new Set<string>();
 
 function getTimeframeSeconds(timeframe: string) {
   if (timeframe.endsWith('m')) return parseInt(timeframe, 10) * 60;
@@ -77,6 +82,109 @@ function claimClosedCandleStorage(symbol: string, timeframe: string, candleTime:
   return true;
 }
 
+function claimFineProfileStorage(symbol: string, timeframe: string, candleTime: number, baseBucketSize: number) {
+  const key = `${symbol}:${timeframe}:${candleTime}:${baseBucketSize}`;
+  if (queuedFineProfileCandleKeys.has(key)) return false;
+
+  rememberBounded(queuedFineProfileCandleKeys, key);
+  return true;
+}
+
+interface RawTradeHydrationStats {
+  pages: number;
+  fetched: number;
+  hydrated: number;
+  oldestTime: number | null;
+  newestTime: number | null;
+  reachedStart: boolean;
+  hydratedCandleTimes: Set<number>;
+}
+
+interface FootprintHistoryRow {
+  candleTime: number;
+  bucketPrice: number;
+  bidVol: number;
+  askVol: number;
+  delta?: number;
+}
+
+interface FootprintHydrationStats {
+  rowsFetched: number;
+  candlesHydrated: number;
+  cellsHydrated: number;
+  bucketMatches: number;
+  bucketMisses: number;
+}
+
+interface FineProfileHydrationStats {
+  rowsFetched: number;
+  candlesHydrated: number;
+}
+
+function cloneFineProfileRows(rows: Iterable<FineProfileRow>) {
+  return Array.from(rows, (row) => ({ ...row }));
+}
+
+function mergeHistoryCandles(existing: Candle[], incoming: Candle[]) {
+  const byTime = new Map<number, Candle>();
+
+  for (const candle of existing) {
+    byTime.set(candle.time, candle);
+  }
+
+  for (const candle of incoming) {
+    const current = byTime.get(candle.time);
+    if (current?.isClosed && !candle.isClosed) continue;
+    byTime.set(candle.time, candle);
+  }
+
+  return Array.from(byTime.values())
+    .sort((a, b) => a.time - b.time)
+    .slice(-500);
+}
+
+function getHistoryWindow(candles: Candle[], timeframeSeconds: number) {
+  if (candles.length === 0) return null;
+
+  const startSeconds = candles[0].time;
+  const inferredSeconds = candles.length >= 2
+    ? Math.max(1, candles[candles.length - 1].time - candles[candles.length - 2].time)
+    : timeframeSeconds;
+  const endSeconds = candles[candles.length - 1].time + inferredSeconds;
+
+  return {
+    startSeconds,
+    endSeconds,
+    startMs: startSeconds * 1000,
+    endMs: endSeconds * 1000,
+  };
+}
+
+function getFootprintCoverage(candles: Candle[], engine: AggregationEngine) {
+  let footprintCandles = 0;
+  let footprintCandlesWithCells = 0;
+
+  for (const candle of candles) {
+    const footprint = engine.getFootprintCandle(candle.time);
+    if (!footprint) continue;
+
+    footprintCandles += 1;
+    if (footprint.cells.size > 0) {
+      footprintCandlesWithCells += 1;
+    }
+  }
+
+  return { footprintCandles, footprintCandlesWithCells };
+}
+
+function formatSeconds(seconds: number | null) {
+  return seconds == null ? 'n/a' : new Date(seconds * 1000).toISOString();
+}
+
+function formatMilliseconds(milliseconds: number | null) {
+  return milliseconds == null ? 'n/a' : new Date(milliseconds).toISOString();
+}
+
 export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps) {
   const pair = useChartStore(s => s.panels[panelId].pair);
   const timeframe = useChartStore(s => s.panels[panelId].timeframe);
@@ -114,6 +222,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const pendingFootprintRedrawRef = useRef(false);
   const pendingProfileRedrawRef = useRef(false);
   const rawTradeQueueRef = useRef<Trade[]>([]);
+  const fineProfileQueueRef = useRef<FineProfileRow[]>([]);
+  const liveFineProfileRowsRef = useRef<Map<number, Map<number, FineProfileRow>>>(new Map());
   const processedTradeIdsRef = useRef<Set<number>>(new Set());
   const firstFullyCoveredCandleTimeRef = useRef<number | null>(null);
   const lastProfileRevisionAtRef = useRef(0);
@@ -270,6 +380,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     engineRef.current.reset();
     volumeProfileEngineRef.current.reset();
     rawTradeQueueRef.current = [];
+    fineProfileQueueRef.current = [];
+    liveFineProfileRowsRef.current = new Map();
     processedTradeIdsRef.current = new Set();
     firstFullyCoveredCandleTimeRef.current = null;
     lastProfileRevisionAtRef.current = 0;
@@ -335,6 +447,48 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       });
     };
 
+    const flushFineProfileRows = () => {
+      if (fineProfileQueueRef.current.length === 0) return;
+
+      const batch = fineProfileQueueRef.current.splice(0, FINE_PROFILE_FLUSH_SIZE);
+      if (batch.length === 0) return;
+
+      storeFineProfileRowsAction(pair, timeframe, batch).catch((err) => {
+        console.error('[Storage] Fine profile row batch save request failed:', err);
+      });
+    };
+
+    const aggregateFineProfileTrade = (trade: Trade, candleTime: number) => {
+      if (tickSize <= 0) return;
+
+      const bucketPrice = normalizePriceToBucket(trade.price, tickSize);
+      const candleRows = liveFineProfileRowsRef.current.get(candleTime) ?? new Map<number, FineProfileRow>();
+      let row = candleRows.get(bucketPrice);
+
+      if (!row) {
+        row = {
+          candleTime,
+          baseBucketSize: tickSize,
+          bucketPrice,
+          bidVol: 0,
+          askVol: 0,
+          totalVol: 0,
+          tradeCount: 0,
+        };
+        candleRows.set(bucketPrice, row);
+        liveFineProfileRowsRef.current.set(candleTime, candleRows);
+      }
+
+      if (trade.isBuyerMaker) {
+        row.bidVol += trade.quantity;
+      } else {
+        row.askVol += trade.quantity;
+      }
+
+      row.totalVol += trade.quantity;
+      row.tradeCount += 1;
+    };
+
     const handleCandle = (candle: Candle) => {
       if (!connectedRef.current) {
         connectedRef.current = true;
@@ -381,6 +535,21 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           ).catch((err) => {
             console.error('[Storage] Candle snapshot save request failed:', err);
           });
+        }
+
+        const fineRows = liveFineProfileRowsRef.current.get(candle.time);
+        if (hasFullRealtimeFootprint && fineRows && fineRows.size > 0 && claimFineProfileStorage(pair, timeframe, candle.time, tickSize)) {
+          const rows = cloneFineProfileRows(fineRows.values());
+          volumeProfileEngineRef.current.hydrateProfileRows(rows);
+          fineProfileQueueRef.current.push(...rows);
+          liveFineProfileRowsRef.current.delete(candle.time);
+          pendingProfileRedrawRef.current = true;
+
+          if (fineProfileQueueRef.current.length >= FINE_PROFILE_FLUSH_SIZE) {
+            flushFineProfileRows();
+          }
+        } else if (!hasFullRealtimeFootprint) {
+          liveFineProfileRowsRef.current.delete(candle.time);
         }
       }
 
@@ -434,6 +603,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
       engineRef.current.ingestTrade(trade, candleTime);
       volumeProfileEngineRef.current.ingestTrade(trade);
+      aggregateFineProfileTrade(trade, candleTime);
 
       if (claimRawTradeStorage(pair, trade)) {
         rawTradeQueueRef.current.push(trade);
@@ -464,49 +634,219 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       return await response.json() as Candle[];
     };
 
-    const hydrateStoredRawTrades = async (candles: Candle[]) => {
-      if (candles.length === 0) return;
+    const hydrateStoredRawTrades = async (candles: Candle[]): Promise<RawTradeHydrationStats> => {
+      const stats: RawTradeHydrationStats = {
+        pages: 0,
+        fetched: 0,
+        hydrated: 0,
+        oldestTime: null,
+        newestTime: null,
+        reachedStart: false,
+        hydratedCandleTimes: new Set(),
+      };
+      const window = getHistoryWindow(candles, timeframeSeconds);
+      if (!window) return stats;
 
-      const start = candles[0].time * 1000;
-      const inferredSeconds = candles.length >= 2
-        ? Math.max(1, candles[candles.length - 1].time - candles[candles.length - 2].time)
-        : 60;
-      const end = (candles[candles.length - 1].time + inferredSeconds) * 1000;
-      const params = new URLSearchParams({
-        symbol: pair,
-        start: String(start),
-        end: String(end),
-        limit: '50000',
-      });
+      let cursorTime: number | null = null;
+      let cursorId: number | null = null;
 
-      const response = await fetch(`/api/history/trades?${params.toString()}`, {
-        cache: 'no-store',
-      });
+      while (active && stats.pages < RAW_TRADE_HISTORY_MAX_PAGES) {
+        const params = new URLSearchParams({
+          symbol: pair,
+          start: String(window.startMs),
+          end: String(window.endMs),
+          limit: String(RAW_TRADE_HISTORY_PAGE_SIZE),
+          order: 'desc',
+        });
 
-      if (!response.ok) return;
-
-      const trades = await response.json() as Trade[];
-      if (trades.length === 0) return;
-
-      let hydratedCount = 0;
-      for (let i = 0; i < trades.length; i += 1) {
-        if (!active) return;
-        if (i > 0 && i % HYDRATION_CHUNK_SIZE === 0) {
-          await yieldToBrowser();
+        if (cursorTime !== null && cursorId !== null) {
+          params.set('cursorTime', String(cursorTime));
+          params.set('cursorId', String(cursorId));
         }
 
-        const trade = trades[i];
-        if (!markProcessedTrade(trade)) continue;
+        const response = await fetch(`/api/history/trades?${params.toString()}`, {
+          cache: 'no-store',
+        });
 
-        engineRef.current.ingestTrade(trade, getCandleTimeForTrade(trade.time, timeframeSeconds));
-        volumeProfileEngineRef.current.ingestTrade(trade);
-        hydratedCount += 1;
+        if (!response.ok) {
+          console.warn(`[HistoryRestore:${panelId}] Raw trade page failed with ${response.status}`);
+          return stats;
+        }
+
+        const trades = await response.json() as Trade[];
+        if (trades.length === 0) {
+          stats.reachedStart = true;
+          return stats;
+        }
+
+        stats.pages += 1;
+        stats.fetched += trades.length;
+
+        for (let i = 0; i < trades.length; i += 1) {
+          if (!active) return stats;
+          if (i > 0 && i % HYDRATION_CHUNK_SIZE === 0) {
+            await yieldToBrowser();
+          }
+
+          const trade = trades[i];
+          const candleTime = getCandleTimeForTrade(trade.time, timeframeSeconds);
+          stats.oldestTime = stats.oldestTime === null ? trade.time : Math.min(stats.oldestTime, trade.time);
+          stats.newestTime = stats.newestTime === null ? trade.time : Math.max(stats.newestTime, trade.time);
+
+          if (!markProcessedTrade(trade)) continue;
+
+          engineRef.current.ingestTrade(trade, candleTime);
+          stats.hydrated += 1;
+          stats.hydratedCandleTimes.add(candleTime);
+        }
+
+        const lastTrade = trades[trades.length - 1];
+        if (trades.length < RAW_TRADE_HISTORY_PAGE_SIZE || lastTrade.time <= window.startMs) {
+          stats.reachedStart = true;
+          break;
+        }
+
+        if (!Number.isFinite(lastTrade.id)) {
+          console.warn(`[HistoryRestore:${panelId}] Raw trade pagination stopped because a cursor id was missing`);
+          break;
+        }
+
+        cursorTime = lastTrade.time;
+        cursorId = lastTrade.id!;
       }
 
-      if (hydratedCount > 0) {
+      if (stats.hydrated > 0) {
         pendingFootprintRedrawRef.current = true;
         pendingProfileRedrawRef.current = true;
       }
+
+      if (!stats.reachedStart && stats.pages >= RAW_TRADE_HISTORY_MAX_PAGES) {
+        console.warn(
+          `[HistoryRestore:${panelId}] Raw trade hydration hit ${RAW_TRADE_HISTORY_MAX_PAGES} pages before covering the full candle window`,
+        );
+      }
+
+      return stats;
+    };
+
+    const hydrateStoredFootprints = async (
+      candles: Candle[],
+      restoreBucketSize: number,
+    ): Promise<FootprintHydrationStats> => {
+      const stats: FootprintHydrationStats = {
+        rowsFetched: 0,
+        candlesHydrated: 0,
+        cellsHydrated: 0,
+        bucketMatches: 0,
+        bucketMisses: 0,
+      };
+      const window = getHistoryWindow(candles, timeframeSeconds);
+      if (!window) return stats;
+
+      const candidateCandles = candles.filter((candle) => {
+        const footprint = engineRef.current.getFootprintCandle(candle.time);
+        return !footprint || footprint.cells.size === 0;
+      });
+      if (candidateCandles.length === 0) return stats;
+
+      const params = new URLSearchParams({
+        symbol: pair,
+        timeframe,
+        start: String(window.startSeconds),
+        end: String(window.endSeconds),
+        bucketSize: String(restoreBucketSize),
+      });
+      const response = await fetch(`/api/history/footprint?${params.toString()}`, {
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        console.warn(`[HistoryRestore:${panelId}] Stored footprint fallback failed with ${response.status}`);
+        return stats;
+      }
+
+      const rows = await response.json() as FootprintHistoryRow[];
+      stats.rowsFetched = rows.length;
+
+      const rowsByCandle = new Map<number, FootprintHistoryRow[]>();
+      for (const row of rows) {
+        const current = rowsByCandle.get(row.candleTime) ?? [];
+        current.push(row);
+        rowsByCandle.set(row.candleTime, current);
+      }
+
+      const candidateTimes = new Set(candidateCandles.map((candle) => candle.time));
+      stats.bucketMatches = Array.from(candidateTimes).filter((time) => rowsByCandle.has(time)).length;
+      stats.bucketMisses = Math.max(0, candidateTimes.size - stats.bucketMatches);
+
+      for (const candle of candidateCandles) {
+        if (!active) return stats;
+
+        const candleRows = rowsByCandle.get(candle.time);
+        if (!candleRows || candleRows.length === 0) continue;
+
+        const cells = new Map<number, FootprintCell>();
+        let delta = 0;
+
+        for (const row of candleRows) {
+          cells.set(row.bucketPrice, {
+            bidVol: row.bidVol,
+            askVol: row.askVol,
+          });
+          delta += row.delta ?? row.askVol - row.bidVol;
+        }
+
+        engineRef.current.hydrateFootprintCandle(candle, cells, delta);
+        stats.candlesHydrated += 1;
+        stats.cellsHydrated += cells.size;
+
+        if (stats.candlesHydrated % HYDRATION_CHUNK_SIZE === 0) {
+          await yieldToBrowser();
+        }
+      }
+
+      if (stats.candlesHydrated > 0) {
+        pendingFootprintRedrawRef.current = true;
+        pendingProfileRedrawRef.current = true;
+      }
+
+      return stats;
+    };
+
+    const hydrateStoredFineProfileRows = async (candles: Candle[]): Promise<FineProfileHydrationStats> => {
+      const stats: FineProfileHydrationStats = {
+        rowsFetched: 0,
+        candlesHydrated: 0,
+      };
+      const window = getHistoryWindow(candles, timeframeSeconds);
+      if (!window || tickSize <= 0) return stats;
+
+      const params = new URLSearchParams({
+        symbol: pair,
+        timeframe,
+        start: String(window.startSeconds),
+        end: String(window.endSeconds),
+        baseBucketSize: String(tickSize),
+      });
+      const response = await fetch(`/api/history/profile?${params.toString()}`, {
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        console.warn(`[HistoryRestore:${panelId}] Fine profile row restore failed with ${response.status}`);
+        return stats;
+      }
+
+      const rows = await response.json() as FineProfileRow[];
+      stats.rowsFetched = rows.length;
+
+      if (rows.length > 0) {
+        volumeProfileEngineRef.current.hydrateProfileRows(rows);
+        stats.candlesHydrated = new Set(rows.map((row) => row.candleTime)).size;
+        pendingProfileRedrawRef.current = true;
+      }
+
+      return stats;
     };
 
     const init = async () => {
@@ -516,30 +856,42 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         adapter.subscribeTrades(pair, handleTrade);
 
         setLoadingHistory(panelId, true);
-        console.log(`[PanelFeed:${panelId}] Fetching Binance history for ${pair} ${timeframe} in background...`);
+        console.log(`[PanelFeed:${panelId}] Restoring stored history for ${pair} ${timeframe} in background...`);
         let history: Candle[] = [];
-        let historySource: 'Binance' | 'stored' = 'Binance';
+        let storedHistory: Candle[] = [];
+        let binanceHistory: Candle[] = [];
+        let historySource: 'Binance' | 'stored' | 'stored+Binance' | 'none' = 'none';
 
         try {
-          history = await adapter.fetchHistory(pair, timeframe);
+          storedHistory = await fetchStoredHistory();
+          if (storedHistory.length > 0 && active) {
+            history = storedHistory;
+            historySource = 'stored';
+            pushAllCandles(panelId, storedHistory);
+            storedHistory.forEach(c => engineRef.current.ingestCandle(c));
+          }
+        } catch (err) {
+          console.warn('[History] Could not load stored candles:', err);
+        }
+
+        console.log(`[PanelFeed:${panelId}] Fetching Binance history for ${pair} ${timeframe} in background...`);
+        try {
+          binanceHistory = await adapter.fetchHistory(pair, timeframe);
         } catch (err) {
           console.warn('[History] Could not load Binance candles:', err);
         }
 
-        if (history.length === 0) {
-          console.log(`[PanelFeed:${panelId}] Binance history unavailable. Falling back to stored history for ${pair} ${timeframe}...`);
-          try {
-            history = await fetchStoredHistory();
-            historySource = 'stored';
-          } catch (err) {
-            console.warn('[History] Could not load stored candles:', err);
-          }
+        if (binanceHistory.length > 0) {
+          history = mergeHistoryCandles(history, binanceHistory);
+          historySource = storedHistory.length > 0 ? 'stored+Binance' : 'Binance';
         }
 
         if (!active) return;
 
         if (history.length > 0) {
           pushAllCandles(panelId, history);
+          const restoreWindow = getHistoryWindow(history, timeframeSeconds);
+          let restoreBucketSize = bucketSize;
 
           // Auto Bucket Size Calculation
           if (autoBucketSize) {
@@ -548,15 +900,48 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             const targetTicks = avgRange / tickSize;
             // Aim for ~25 rows per footprint
             const computedSize = Math.max(1, Math.round(targetTicks / 25));
+            restoreBucketSize = computedSize;
             setComputedBucketSize(panelId, computedSize);
-            engineRef.current.reset(computedSize);
+            if (computedSize !== bucketSize) {
+              engineRef.current.reset(computedSize);
+            }
           }
 
           history.forEach(c => engineRef.current.ingestCandle(c));
-          await hydrateStoredRawTrades(history);
+          const fineProfileStats = await hydrateStoredFineProfileRows(history);
+          const rawStats = await hydrateStoredRawTrades(history);
+          const footprintStats = await hydrateStoredFootprints(history, restoreBucketSize);
           if (!active) return;
 
           recomputeSignalState();
+          const coverage = getFootprintCoverage(history, engineRef.current);
+          console.log(`[HistoryRestore:${panelId}] Restore diagnostics`, {
+            pair,
+            timeframe,
+            source: historySource,
+            storedCandles: storedHistory.length,
+            binanceCandles: binanceHistory.length,
+            mergedCandles: history.length,
+            rangeStart: restoreWindow ? formatSeconds(restoreWindow.startSeconds) : 'n/a',
+            rangeEnd: restoreWindow ? formatSeconds(restoreWindow.endSeconds) : 'n/a',
+            bucketSize: restoreBucketSize,
+            rawTradePages: rawStats.pages,
+            rawTradesFetched: rawStats.fetched,
+            rawTradesHydrated: rawStats.hydrated,
+            rawTradeCandlesHydrated: rawStats.hydratedCandleTimes.size,
+            rawTradeRangeStart: formatMilliseconds(rawStats.oldestTime),
+            rawTradeRangeEnd: formatMilliseconds(rawStats.newestTime),
+            rawTradeReachedStart: rawStats.reachedStart,
+            fineProfileRowsFetched: fineProfileStats.rowsFetched,
+            fineProfileCandlesHydrated: fineProfileStats.candlesHydrated,
+            footprintRowsFetched: footprintStats.rowsFetched,
+            footprintCellsHydrated: footprintStats.cellsHydrated,
+            footprintCandlesHydrated: footprintStats.candlesHydrated,
+            footprintBucketMatches: footprintStats.bucketMatches,
+            footprintBucketMisses: footprintStats.bucketMisses,
+            finalFootprintCandles: coverage.footprintCandles,
+            finalFootprintCandlesWithCells: coverage.footprintCandlesWithCells,
+          });
         }
 
         console.log(`[PanelFeed:${panelId}] ${historySource} history merged (${history.length} candles). Live streams already running.`);
@@ -571,7 +956,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     // --- Orderbook lifecycle ---
     let aggregationInterval: NodeJS.Timeout | null = null;
-    const rawTradeFlushInterval = setInterval(flushRawTrades, RAW_TRADE_FLUSH_MS);
+    const rawTradeFlushInterval = setInterval(() => {
+      flushRawTrades();
+      flushFineProfileRows();
+    }, RAW_TRADE_FLUSH_MS);
     const obManager = orderbookRef.current;
 
     const initOrderbook = async () => {
@@ -628,6 +1016,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       active = false;
       adapter.disconnect();
       flushRawTrades();
+      flushFineProfileRows();
       clearInterval(rawTradeFlushInterval);
       if (adapter.disconnectOrderbook) adapter.disconnectOrderbook();
       if (aggregationInterval) clearInterval(aggregationInterval);

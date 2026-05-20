@@ -1,5 +1,52 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-20] - Refinement: Softer Footprint Visual Strength Scaling
+- **What changed**:
+  - Replaced hard per-candle max stretching with soft candle scales blended against visible-range percentiles.
+  - Added smooth opacity curves for bid/ask footprint cells so small values stay light and larger values brighten gradually.
+  - Changed delta-bar width and opacity curves so local candle maxima no longer automatically fill the whole cell when absolute delta is small.
+- **Why it changed**:
+  - The prior stability fix stopped movement-related instability, but the per-candle max made colors too flat and exaggerated weak local maxima.
+- **Impact summary**:
+  - Footprint cells should keep the improved pan/resize stability while reading more like professional orderflow displays: weak values are subtle, medium values are proportional, and true stronger values stand out without visual overreach.
+
+## [2026-05-20] - Fix: Stable Volume Bubble and Footprint Cell Rendering
+- **What changed**:
+  - Clamped drawable-width calculations when profile/heatmap space is reserved and added small render overscan around the visible candle range.
+  - Changed footprint cell visuals to normalize bid/ask opacity and delta-bar width per candle instead of by the currently culled viewport.
+  - Preserved fractional footprint cell geometry and switched cell labels to fit-based rendering so values do not disappear at arbitrary rounded thresholds.
+  - Stabilized volume bubble sizing with high-percentile scaling and finite coordinate guards.
+  - Placed footprint bottom delta labels against the chart height instead of the full canvas height.
+- **Why it changed**:
+  - Visuals were depending too heavily on viewport edge culling, rounded cell widths, and reserved profile width math, so panning or slight panel resizing could make bubbles, labels, and delta bars abruptly resize or disappear even when the underlying data was present.
+- **Impact summary**:
+  - Volume bubbles and footprint cells should render more consistently while dragging, scrolling, resizing, and zooming. The change is isolated to canvas coordinate/drawing behavior and does not alter aggregation, feed, persistence, or stored data.
+
+## [2026-05-20] - Feature: Fine Volume Profile Persistence
+- **What changed**:
+  - Added persisted `fine_profile_rows` storage keyed by symbol, timeframe, candle time, base bucket size, and bucket price.
+  - Added a fine-profile history API plus server action/storage helpers for batched row writes and range hydration.
+  - Updated `FeedProvider` to aggregate live trades into tick-size per-candle profile rows, persist closed fully-covered candles in batches, and hydrate stored fine rows on refresh.
+  - Updated the Volume Profile engine to build profiles from hydrated fine rows and only use live raw trades for current unpersisted candles.
+  - Removed coarse footprint/candle Volume Profile fallback from default and custom profiles so missing fine data renders no misleading profile body.
+  - Added a persisted default attached Volume Profile visibility toggle that does not affect custom/drawn profiles.
+- **Why it changed**:
+  - Fine-grain Volume Profile rendering had been decoupled from chart bucket size, but the fine source was not persisted as aggregated rows, so refreshes fell back to coarse profile structures.
+- **Impact summary**:
+  - New closed candles can restore fine Volume Profile history after refresh without replaying large raw-trade windows in the browser. Default/custom profiles now avoid inaccurate coarse fallback, and users can hide the default right-side profile while keeping custom profiles available.
+
+## [2026-05-20] - Fix: Stored History Restore Hydration
+- **What changed**:
+  - Changed panel startup to restore stored DB candles first, then merge Binance history on top for freshness while live streams stay connected.
+  - Added cursor-paged, newest-first raw-trade history hydration so large stored windows are not truncated at the oldest `50000` trades.
+  - Added range-based stored footprint fallback hydration for candles that still have no raw-trade footprint cells at the active bucket size.
+  - Added restore diagnostics for candle sources, raw-trade pages/counts/ranges, footprint bucket matches/misses, and final footprint coverage.
+  - Extended history APIs/database helpers with raw-trade order/cursor pagination and range footprint-cell queries.
+- **Why it changed**:
+  - Stored rows existed, but refresh restore preferred Binance candles, ignored stored footprint cells, and capped raw-trade hydration to the oldest single page, leaving recent chart history without footprint/profile detail.
+- **Impact summary**:
+  - Refreshes should hydrate recent stored candles, footprints, CVD, and fine Volume Profile history from the database before relying on new realtime data, without rewriting the rendering architecture.
+
 ## [2026-05-20] - Improvement: CVD Panel Interactions
 - **What changed**:
   - Added a draggable top-edge resize handle for the attached CVD panel height.

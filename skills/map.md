@@ -114,6 +114,7 @@ next.config.mjs → Next.js configuration, including the instrumentation hook fl
 instrumentation.ts → Next.js server startup hook that initializes the database schema in the Node runtime.
 app/api/history/candles/route.ts → API route returning stored candles in frontend Candle shape.
 app/api/history/footprint/route.ts → API route returning stored footprint cells for one candle and bucket size.
+app/api/history/profile/route.ts → API route returning stored fine-grain Volume Profile rows for a candle window and base bucket size.
 app/api/history/status/route.ts → API route returning collector metadata, candle counts, retention, and DB size.
 components/FeedProvider.tsx → Panel feed lifecycle, DB-backed startup history restore, and closed-candle storage serialization.
 lib/config/markets.ts → Shared allowed symbols and timeframes for history API validation.
@@ -203,6 +204,36 @@ components/chart/drawAxes.ts → Chart axis renderers with configurable price-ax
 components/ui/PanelToolbar.tsx → Per-panel toolbar controls including CVD quick toggle.
 components/ui/ChartSettingsDropdown.tsx → Settings window including CVD panel mode, reset, smoothing, scale, height, color, and marker controls.
 lib/store/chart.ts → Zustand panel state, persisted settings, drawing overlays, signals, profiles, and CVD panel settings.
+
+components/FeedProvider.tsx → Panel feed lifecycle with stored-first history restore, cursor-paged raw-trade hydration, footprint fallback hydration, and restore diagnostics.
+app/api/history/trades/route.ts → API route returning stored raw trades with optional order and cursor pagination for history hydration.
+app/api/history/footprint/route.ts → API route returning single-candle or range-based stored footprint cells for bucket-matched hydration.
+lib/db/database.ts → Turso/libSQL helpers for cursor-paged raw-trade history and range footprint-cell history queries.
+
+app/api/history/profile/route.ts → API route returning stored fine-grain Volume Profile rows for symbol/timeframe/range/base-bucket restore.
+components/FeedProvider.tsx → Panel feed lifecycle with stored-first history restore, fine-profile row hydration, live fine-row aggregation, and batched profile persistence.
+components/chart/ChartCanvas.tsx → Canvas render orchestration using fine-profile data only for default/custom Volume Profiles, with no coarse fallback.
+components/chart/ChartPanel.tsx → Panel state bridge into ChartCanvas, including default Volume Profile visibility and attached profile width reservation.
+components/ui/ChartSettingsDropdown.tsx → Settings window including default attached Volume Profile visibility toggle.
+lib/actions/storageActions.ts → Server Action bridge for closed candles, raw trades, and batched fine-profile row persistence.
+lib/db/database.ts → Turso/libSQL schema and helpers for candles, footprints, deltas, raw trades, and fine-profile row storage/history/retention.
+lib/db/marketStorage.ts → Best-effort closed-candle, raw-trade, and fine-profile row storage orchestration.
+lib/store/chart.ts → Zustand panel state, persisted settings, drawing overlays, signals, CVD, profiles, and default attached profile visibility.
+lib/volumeProfile/profileEngine.ts → Fine Volume Profile source using persisted row hydration plus live unclosed-candle trades without coarse fallback.
+
+components/chart/ChartCanvas.tsx → Canvas render orchestration with chart-height footprint delta placement and stable profile-reserved viewport wiring.
+components/chart/useCoordinates.ts → Coordinate math with clamped drawable width and overscanned visible render range for stable canvas culling.
+components/chart/usePanZoom.ts → Shared pan/zoom hook using clamped drawable width for consistent zoom anchoring with reserved profile space.
+components/chart/drawFootprint.ts → Footprint renderer with per-candle visual normalization and float-preserving cell geometry.
+components/chart/drawBubbles.ts → Volume bubble renderer with robust percentile scaling and finite coordinate guards.
+lib/utils/canvas.ts → Canvas primitives for footprint bid/ask and delta cells with fit-based labels and stable minimum delta bars.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+components/chart/drawFootprint.ts → Footprint renderer with soft candle/visible-percentile visual scales for stable, non-exaggerated strength rendering.
+lib/utils/canvas.ts → Canvas primitives for footprint bid/ask and delta cells with smooth opacity and width-strength curves.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
 
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)

@@ -22,7 +22,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
   const { volumeProfileEngine, volumeProfileRevision } = useVolumeProfileEngine();
-  const chartProfileWidth = 120 + (panel.liquidityHeatmapEnabled ? panel.liquidityHeatmapWidth : 0);
+  const chartProfileWidth = (panel.defaultProfileEnabled ? 120 : 0) + (panel.liquidityHeatmapEnabled ? panel.liquidityHeatmapWidth : 0);
   const chartAreaRef = React.useRef<HTMLDivElement>(null);
 
   const startCvdResize = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -112,6 +112,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             liquidityVacuumOpacity={panel.liquidityVacuumOpacity}
             liquidityVacuumZones={panel.liquidityVacuumZones}
             profileWidthPct={panel.profileWidthPct}
+            defaultProfileEnabled={panel.defaultProfileEnabled}
             profileResolutionTicks={panel.profileResolutionTicks}
             profileMinRowHeight={panel.profileMinRowHeight}
             profileOpacity={panel.profileOpacity}

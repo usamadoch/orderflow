@@ -1,5 +1,11 @@
 import { Candle } from "@/types/candle";
 
+export function getDrawableChartWidth(chartWidth: number, profileWidth: number = 0) {
+  const safeChartWidth = Math.max(1, Number.isFinite(chartWidth) ? chartWidth : 1);
+  const safeProfileWidth = Math.max(0, Number.isFinite(profileWidth) ? profileWidth : 0);
+  return Math.max(1, safeChartWidth - Math.min(safeProfileWidth, safeChartWidth - 1));
+}
+
 export function getVisibleRange(
   candles: Candle[],
   scrollOffset: number,
@@ -9,12 +15,14 @@ export function getVisibleRange(
 ) {
   if (candles.length === 0) return { firstIndex: 0, lastIndex: 0, rawFirstIndex: 0, rawLastIndex: 0 };
   
-  const drawableWidth = chartWidth - profileWidth;
-  const lastIndexRaw = candles.length - 1 - Math.floor(scrollOffset / barWidth);
-  const firstIndexRaw = lastIndexRaw - Math.ceil(drawableWidth / barWidth) - 1;
+  const safeBarWidth = Math.max(1, Number.isFinite(barWidth) ? barWidth : 1);
+  const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
+  const lastIndexRaw = candles.length - 1 - Math.floor(scrollOffset / safeBarWidth);
+  const firstIndexRaw = lastIndexRaw - Math.ceil(drawableWidth / safeBarWidth) - 1;
+  const overscanBars = Math.max(2, Math.ceil(32 / safeBarWidth));
   
-  const lastIndex = Math.max(0, Math.min(candles.length - 1, lastIndexRaw));
-  const firstIndex = Math.max(0, Math.min(candles.length - 1, firstIndexRaw));
+  const lastIndex = Math.max(0, Math.min(candles.length - 1, lastIndexRaw + overscanBars));
+  const firstIndex = Math.max(0, Math.min(candles.length - 1, firstIndexRaw - overscanBars));
   
   return { 
     firstIndex, 
@@ -68,8 +76,9 @@ export function indexToX(
   chartWidth: number,
   profileWidth: number = 0
 ) {
-  const drawableWidth = chartWidth - profileWidth;
-  return drawableWidth - barWidth / 2 - (candlesLength - 1 - candleIndex) * barWidth + scrollOffset;
+  const safeBarWidth = Math.max(1, Number.isFinite(barWidth) ? barWidth : 1);
+  const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
+  return drawableWidth - safeBarWidth / 2 - (candlesLength - 1 - candleIndex) * safeBarWidth + scrollOffset;
 }
 
 export function yToPrice(y: number, priceMin: number, priceMax: number, drawableHeight: number) {
@@ -87,8 +96,9 @@ export function xToIndex(
   profileWidth: number = 0
 ) {
   if (candles.length === 0) return 0;
-  const drawableWidth = chartWidth - profileWidth;
-  const index = (candles.length - 1) + (x - drawableWidth + barWidth / 2 - scrollOffset) / barWidth;
+  const safeBarWidth = Math.max(1, Number.isFinite(barWidth) ? barWidth : 1);
+  const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
+  const index = (candles.length - 1) + (x - drawableWidth + safeBarWidth / 2 - scrollOffset) / safeBarWidth;
   return Math.max(0, Math.min(candles.length - 1, Math.round(index)));
 }
 

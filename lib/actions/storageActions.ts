@@ -1,8 +1,9 @@
 'use server'
 
-import { storeClosedCandle, storeRawTrades, type SerializedFootprintCell } from '../db/marketStorage'
+import { storeClosedCandle, storeFineProfileRows, storeRawTrades, type SerializedFootprintCell } from '../db/marketStorage'
 import type { Candle } from '../../types/candle'
 import type { Trade } from '../../types/trade'
+import type { FineProfileRowWriteInput } from '../db/database'
 
 export async function storeClosedCandleAction(
   symbol: string,
@@ -19,4 +20,12 @@ export async function storeClosedCandleAction(
 
 export async function storeRawTradesAction(symbol: string, trades: Trade[]) {
   await storeRawTrades(symbol, trades)
+}
+
+export async function storeFineProfileRowsAction(
+  symbol: string,
+  timeframe: string,
+  rows: FineProfileRowWriteInput[],
+) {
+  await storeFineProfileRows(symbol, timeframe, rows)
 }
