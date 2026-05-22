@@ -1,0 +1,190 @@
+import { FeedAdapter } from './adapter';
+import { Candle } from '../../types/candle';
+import { Trade } from '../../types/trade';
+
+export class BinanceFuturesAdapter implements FeedAdapter {
+  private ws: WebSocket | null = null;
+  private currentPair: string | null = null;
+  private currentTimeframe: string | null = null;
+  private candleCb: ((candle: Candle) => void) | null = null;
+  private tradeCb: ((trade: Trade) => void) | null = null;
+  private reconnectAttempts: number = 0;
+  private shouldReconnect: boolean = true;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private connectPending: boolean = false;
+  private restBase = 'https://fapi.binance.com/fapi/v1';
+
+  async fetchHistory(pair: string, timeframe: string, limit: number = 500): Promise<Candle[]> {
+    const symbol = pair.toUpperCase();
+    const url = `${this.restBase}/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+
+      const now = Date.now();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return data.map((k: any) => ({
+        time: Math.floor(k[0] / 1000),
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+        isClosed: Number(k[6]) < now,
+      }));
+    } catch (e) {
+      console.error('[BinanceFuturesAdapter] History fetch failed:', e);
+      return [];
+    }
+  }
+
+  subscribeCandles(pair: string, timeframe: string, cb: (candle: Candle) => void): void {
+    this.currentPair = pair.toLowerCase();
+    this.currentTimeframe = timeframe;
+    this.candleCb = cb;
+    this.shouldReconnect = true;
+    this.deferConnect();
+  }
+
+  subscribeTrades(pair: string, cb: (trade: Trade) => void): void {
+    this.currentPair = pair.toLowerCase();
+    this.tradeCb = cb;
+    this.shouldReconnect = true;
+    this.deferConnect();
+  }
+
+  private deferConnect(): void {
+    if (this.connectPending) return;
+    this.connectPending = true;
+    queueMicrotask(() => {
+      this.connectPending = false;
+      this.connect();
+    });
+  }
+
+  private connect(): void {
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+
+    if (!this.currentPair) return;
+
+    const streams: string[] = [];
+    if (this.currentTimeframe && this.candleCb) {
+      streams.push(`${this.currentPair}@kline_${this.currentTimeframe}`);
+    }
+    if (this.tradeCb) {
+      streams.push(`${this.currentPair}@aggTrade`);
+    }
+
+    if (streams.length === 0) return;
+
+    const url = `wss://fstream.binance.com/market/stream?streams=${streams.join('/')}`;
+    this.ws = new WebSocket(url);
+
+    this.ws.onopen = () => {
+      this.reconnectAttempts = 0;
+      console.log(`[BinanceFuturesAdapter] Connected to ${streams.join('/')}`);
+    };
+
+    this.ws.onmessage = (event) => {
+      this.handleMessage(event.data);
+    };
+
+    this.ws.onerror = (error) => {
+      if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
+        console.error('[BinanceFuturesAdapter] WebSocket error:', error);
+      }
+    };
+
+    this.ws.onclose = (event) => {
+      if (this.shouldReconnect && event.code !== 1000) {
+        this.scheduleReconnect();
+      }
+    };
+  }
+
+  private handleMessage(raw: string): void {
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed.stream || !parsed.data) return;
+
+      if (parsed.stream.includes('@kline') && this.candleCb) {
+        const k = parsed.data.k;
+        const candle: Candle = {
+          time: Math.floor(k.t / 1000),
+          open: parseFloat(k.o),
+          high: parseFloat(k.h),
+          low: parseFloat(k.l),
+          close: parseFloat(k.c),
+          volume: parseFloat(k.v),
+          isClosed: k.x,
+        };
+        this.candleCb(candle);
+      } else if (parsed.stream.includes('@aggTrade') && this.tradeCb) {
+        const data = parsed.data;
+        const trade: Trade = {
+          id: data.a,
+          time: data.T,
+          price: parseFloat(data.p),
+          quantity: parseFloat(data.q),
+          isBuyerMaker: data.m,
+        };
+        this.tradeCb(trade);
+      }
+    } catch (e) {
+      console.error('[BinanceFuturesAdapter] Error parsing message:', e);
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= 10) {
+      console.error('[BinanceFuturesAdapter] Max reconnect attempts reached.');
+      return;
+    }
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    this.reconnectAttempts++;
+    console.log(`[BinanceFuturesAdapter] Reconnecting in ${delay}ms (Attempt ${this.reconnectAttempts})`);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.connect();
+    }, delay);
+  }
+
+  disconnect(): void {
+    this.shouldReconnect = false;
+    this.connectPending = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+    this.currentPair = null;
+    this.currentTimeframe = null;
+    this.candleCb = null;
+    this.tradeCb = null;
+  }
+
+  clone(): BinanceFuturesAdapter {
+    return new BinanceFuturesAdapter();
+  }
+}

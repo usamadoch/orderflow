@@ -75,6 +75,7 @@ A personal, minimal order flow charting tool for learning market microstructure.
 │   ├── feeds/                # Data adapters for WebSockets & REST
 │   │   ├── adapter.ts        # FeedAdapter interface (History + Live + Orderbook + clone())
 │   │   ├── binance.ts        # Binance implementation (REST klines/depth + WebSocket kline/aggTrade/depth streams)
+│   │   ├── binanceFutures.ts # Binance futures adapter (REST klines + WebSocket kline/aggTrade streams)
 │   │   └── index.ts          # Active adapter export
 │   ├── store/                # Zustand global state
 │   │   └── chart.ts          # Panel state, timeframe settings, sessions, liquidity heatmap + iceberg settings, auth, persistence (v18)
@@ -150,6 +151,7 @@ types/trade.ts → Trade tick shape, including optional Binance aggregate trade 
 lib/volumeProfile/profileEngine.ts → Fine raw-trade Volume Profile source/aggregator with a replaceable interface for future shared cache support.
 app/api/history/trades/route.ts → API route returning stored raw trades for a symbol/time window.
 lib/feeds/binance.ts → Binance adapter for REST/WS market data, including aggTrade id parsing.
+lib/feeds/binanceFutures.ts → Binance futures adapter for public REST kline history and WebSocket kline/aggTrade data.
 components/ChartEngineContext.tsx → Shared chart engine context, including fine Volume Profile source and redraw revision.
 components/FeedProvider.tsx → Panel feed lifecycle, raw trade hydration/storage batching, fine profile ingestion, and existing chart/footprint feed orchestration.
 components/chart/ChartPanel.tsx → Panel state bridge from store/context into ChartCanvas, including fine profile source and tick size.
@@ -241,6 +243,37 @@ components/chart/drawCvd.ts → Pure CVD renderer for modes, axes, labels, compa
 components/ui/ChartSettingsDropdown.tsx → Settings window including CVD display, compact mode, divergence toggle, and divergence lookback controls.
 lib/store/chart.ts → Zustand panel state, persisted settings, drawing overlays, signals, profiles, and CVD compact/divergence settings.
 lib/utils/delta.ts → Builds CVD series and detects lightweight local price/CVD divergence windows.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/feeds/binanceFutures.ts → Binance futures adapter with public kline/aggTrade WebSocket reconnect handling.
+lib/feeds/index.ts → Feed adapter exports for spot and futures feed prototypes.
+components/FeedProvider.tsx → Panel feed lifecycle selecting spot, futures, or combined aggTrade sources while keeping spot candles/history/orderbook.
+components/ui/ChartSettingsDropdown.tsx → Settings window including compact data source selection controls.
+lib/store/chart.ts → Zustand panel state and persistence for per-panel trade data source mode.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/feeds/binance.ts → Binance spot adapter for REST/WS market data with standalone trade subscriptions and clean live-stream disconnects.
+lib/feeds/binanceFutures.ts → Binance futures adapter for REST kline history plus WebSocket kline/aggTrade streams.
+components/FeedProvider.tsx → Panel feed lifecycle separating contract candle source from aggregate trade sources, aligning non-contract trades to the contract price reference, and reporting live state from selected stream messages.
+components/ui/ChartSettingsDropdown.tsx → Settings window including contract type and aggregate trade source controls.
+lib/store/chart.ts → Zustand panel state and persistence for contract type plus aggregate trade source mode.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+components/FeedProvider.tsx → Panel feed lifecycle with live connection state updated by selected candle or aggregate-trade stream activity.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/feeds/binanceFutures.ts → Binance futures adapter using routed `/market/stream` WebSocket kline/aggTrade streams plus futures REST kline history.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+components/FeedProvider.tsx → Panel feed lifecycle with source-scoped fine Volume Profile restore/storage, aligned live profile aggregation, and safe spot/spot raw-trade profile hydration.
+lib/volumeProfile/profileEngine.ts → Fine Volume Profile source merging source-aware live/hydrated trades with compatible persisted rows without double-counting covered candles.
+app/api/history/profile/route.ts → API route returning source-scoped stored fine-grain Volume Profile rows for the active contract/trade-source selection.
+lib/config/markets.ts → Shared market validation plus source-scoped fine-profile storage key construction.
 skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
 skills/log.md → Change history for feature/fix context and impact summaries.
 

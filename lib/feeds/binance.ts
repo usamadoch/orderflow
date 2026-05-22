@@ -58,6 +58,7 @@ export class BinanceAdapter implements FeedAdapter {
   }
 
   subscribeTrades(pair: string, cb: (trade: Trade) => void): void {
+    this.currentPair = pair.toLowerCase();
     this.tradeCb = cb;
     this.shouldReconnect = true;
     this.deferConnect();
@@ -196,6 +197,10 @@ export class BinanceAdapter implements FeedAdapter {
       this.ws.close();
       this.ws = null;
     }
+    this.currentPair = null;
+    this.currentTimeframe = null;
+    this.candleCb = null;
+    this.tradeCb = null;
   }
 
   // ─── Orderbook Support ─────────────────────────────────────────

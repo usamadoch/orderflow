@@ -22,6 +22,8 @@ export type SessionId = 'tokyo' | 'london' | 'newYork';
 export type CvdMode = 'candles' | 'bars' | 'line' | 'histogram';
 export type CvdResetMode = 'none' | 'daily' | 'session';
 export type CvdScaleMode = 'auto' | 'fixed';
+export type ContractType = 'spot' | 'futures';
+export type DataSourceMode = 'spot' | 'futures' | 'both';
 
 export interface SessionConfig {
   enabled: boolean;
@@ -119,6 +121,8 @@ export interface PanelState {
   trades: Trade[];
   connected: boolean;
   isLoadingHistory: boolean;
+  contractType: ContractType;
+  dataSourceMode: DataSourceMode;
   footprintTrigger: number;
   absorptionEnabled: boolean;
   absorptionMinScore: number;
@@ -243,6 +247,8 @@ interface ChartState {
   setScrollOffset: (panelId: PanelId, offset: number) => void;
   setConnected: (panelId: PanelId, connected: boolean) => void;
   setLoadingHistory: (panelId: PanelId, v: boolean) => void;
+  setContractType: (panelId: PanelId, contractType: ContractType) => void;
+  setDataSourceMode: (panelId: PanelId, mode: DataSourceMode) => void;
   pushCandle: (panelId: PanelId, candle: Candle) => void;
   pushTrade: (panelId: PanelId, trade: Trade) => void;
   pushAllCandles: (panelId: PanelId, candles: Candle[]) => void;
@@ -368,6 +374,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     trades: [],
     connected: false,
     isLoadingHistory: false,
+    contractType: 'spot',
+    dataSourceMode: 'both',
     footprintTrigger: 0,
     absorptionEnabled: true,
     absorptionMinScore: 50,
@@ -609,6 +617,12 @@ export const useChartStore = create<ChartState>()(
 
       setLoadingHistory: (panelId, isLoadingHistory) =>
         set((state) => updatePanel(state, panelId, { isLoadingHistory })),
+
+      setContractType: (panelId, contractType) =>
+        set((state) => updatePanel(state, panelId, { contractType, candles: [], trades: [], icebergLevels: [], liquidityVacuumZones: [] })),
+
+      setDataSourceMode: (panelId, dataSourceMode) =>
+        set((state) => updatePanel(state, panelId, { dataSourceMode })),
 
       triggerFootprintRedraw: (panelId) =>
         set((state) => updatePanel(state, panelId, { footprintTrigger: Date.now() })),
@@ -999,13 +1013,18 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 22,
+      version: 24,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
           // Clear stale v1/v2 data — return fresh defaults
           return {};
         }
+        const ensureContractType = (contractType: unknown): ContractType =>
+          contractType === 'futures' ? 'futures' : 'spot';
+        const ensureDataSourceMode = (mode: unknown): DataSourceMode =>
+          mode === 'spot' || mode === 'futures' || mode === 'both' ? mode : 'both';
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ensurePanel = (p: any) => {
           if (!p) return p;
@@ -1013,6 +1032,8 @@ export const useChartStore = create<ChartState>()(
             ...p,
             footprintMode: p.footprintMode || 'bid-ask',
             autoBucketSize: p.autoBucketSize ?? false,
+            contractType: ensureContractType(p.contractType),
+            dataSourceMode: ensureDataSourceMode(p.dataSourceMode),
             absorptionEnabled: p.absorptionEnabled ?? true,
             absorptionMinScore: p.absorptionMinScore ?? 50,
             absorptionSide: p.absorptionSide || 'both',
@@ -1135,6 +1156,8 @@ export const useChartStore = create<ChartState>()(
             bucketSize: state.panels.left.bucketSize,
             autoBucketSize: state.panels.left.autoBucketSize,
             barWidth: state.panels.left.barWidth,
+            contractType: state.panels.left.contractType,
+            dataSourceMode: state.panels.left.dataSourceMode,
             absorptionEnabled: state.panels.left.absorptionEnabled,
             absorptionMinScore: state.panels.left.absorptionMinScore,
             absorptionSide: state.panels.left.absorptionSide,
@@ -1219,6 +1242,8 @@ export const useChartStore = create<ChartState>()(
             bucketSize: state.panels.right.bucketSize,
             autoBucketSize: state.panels.right.autoBucketSize,
             barWidth: state.panels.right.barWidth,
+            contractType: state.panels.right.contractType,
+            dataSourceMode: state.panels.right.dataSourceMode,
             absorptionEnabled: state.panels.right.absorptionEnabled,
             absorptionMinScore: state.panels.right.absorptionMinScore,
             absorptionSide: state.panels.right.absorptionSide,

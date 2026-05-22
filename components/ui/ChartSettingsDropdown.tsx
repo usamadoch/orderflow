@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Layers, Zap, X, Clock } from 'lucide-react';
-import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode } from '../../lib/store/chart';
+import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode } from '../../lib/store/chart';
 
 interface ChartSettingsDropdownProps {
   panelId: PanelId;
@@ -14,6 +14,8 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const tickSize = useChartStore(s => s.tickSize);
   const setFootprintMode = useChartStore(s => s.setFootprintMode);
   const setBucketSize = useChartStore(s => s.setBucketSize);
+  const setContractType = useChartStore(s => s.setContractType);
+  const setDataSourceMode = useChartStore(s => s.setDataSourceMode);
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
   const setBubbleThreshold = useChartStore(s => s.setBubbleThreshold);
   const setBubbleThresholdMode = useChartStore(s => s.setBubbleThresholdMode);
@@ -166,6 +168,15 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
     { label: 'Sell', value: 'sell' },
     { label: 'Both', value: 'both' },
   ];
+  const dataSourceModes: { label: string; value: DataSourceMode }[] = [
+    { label: 'Spot', value: 'spot' },
+    { label: 'Futures', value: 'futures' },
+    { label: 'Both', value: 'both' },
+  ];
+  const contractTypes: { label: string; value: ContractType }[] = [
+    { label: 'Spot', value: 'spot' },
+    { label: 'Futures', value: 'futures' },
+  ];
   const cvdModes: { label: string; value: CvdMode }[] = [
     { label: 'Candles', value: 'candles' },
     { label: 'Bars', value: 'bars' },
@@ -252,6 +263,56 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
             {/* Tab: Chart */}
             {activeTab === 'chart' && (
               <>
+                {/* Contract Type */}
+                <div className="space-y-4">
+                  <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Contract Type</div>
+                  <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Candles & Price</label>
+                    <div className="flex gap-1">
+                      {contractTypes.map(({ label, value }) => (
+                        <button
+                          key={value}
+                          onClick={() => setContractType(panelId, value)}
+                          className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.contractType === value
+                            ? 'bg-[#1A1A1A] border-accent text-accent'
+                            : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                            }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-[9px] text-text-dim/40 font-bold uppercase tracking-tighter">
+                      Sets the clean reference chart for candles, price axis, and OHLCV.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Data Sources */}
+                <div className="space-y-4">
+                  <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Aggregate Trades</div>
+                  <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">AggTrades</label>
+                    <div className="flex gap-1">
+                      {dataSourceModes.map(({ label, value }) => (
+                        <button
+                          key={value}
+                          onClick={() => setDataSourceMode(panelId, value)}
+                          className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.dataSourceMode === value
+                            ? 'bg-[#1A1A1A] border-accent text-accent'
+                            : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                            }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-[9px] text-text-dim/40 font-bold uppercase tracking-tighter">
+                      Controls footprint volume and delta only. Non-contract trades are aligned to the chart price.
+                    </span>
+                  </div>
+                </div>
+
                 {/* Bucket Size */}
                 <div className="space-y-4">
                   <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Aggregation</div>

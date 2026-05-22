@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChartStore, PanelId } from '../lib/store/chart';
-import { feedAdapter } from '../lib/feeds';
+import { feedAdapter, futuresFeedAdapter } from '../lib/feeds';
 import { AggregationEngine } from '../lib/aggregation/engine';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
@@ -22,6 +22,7 @@ import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
 import { storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
+import { getFineProfileStorageTimeframe } from '../lib/config/markets';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -40,6 +41,8 @@ const MAX_DEDUPE_KEYS = 100000;
 const queuedRawTradeStorageKeys = new Set<string>();
 const closedCandleStorageKeys = new Set<string>();
 const queuedFineProfileCandleKeys = new Set<string>();
+
+type TradeSource = 'spot' | 'futures';
 
 function getTimeframeSeconds(timeframe: string) {
   if (timeframe.endsWith('m')) return parseInt(timeframe, 10) * 60;
@@ -191,6 +194,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const bucketSize = useChartStore(s => s.panels[panelId].bucketSize);
   const autoBucketSize = useChartStore(s => s.panels[panelId].autoBucketSize);
   const chartMode = useChartStore(s => s.panels[panelId].chartMode);
+  const contractType = useChartStore(s => s.panels[panelId].contractType);
+  const dataSourceMode = useChartStore(s => s.panels[panelId].dataSourceMode);
   const tickSize = useChartStore(s => s.tickSize);
   const pushCandle = useChartStore(s => s.pushCandle);
   const setConnected = useChartStore(s => s.setConnected);
@@ -224,8 +229,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const rawTradeQueueRef = useRef<Trade[]>([]);
   const fineProfileQueueRef = useRef<FineProfileRow[]>([]);
   const liveFineProfileRowsRef = useRef<Map<number, Map<number, FineProfileRow>>>(new Map());
-  const processedTradeIdsRef = useRef<Set<number>>(new Set());
-  const firstFullyCoveredCandleTimeRef = useRef<number | null>(null);
+  const contractPriceRef = useRef<number | null>(null);
+  const processedTradeIdsRef = useRef<Set<string>>(new Set());
+  const firstFullyCoveredCandleTimeRef = useRef<Record<TradeSource, number | null>>({ spot: null, futures: null });
   const lastProfileRevisionAtRef = useRef(0);
   const [volumeProfileRevision, setVolumeProfileRevision] = useState(0);
   const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
@@ -236,6 +242,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const lastScoredCandleTimeRef = useRef<number | null>(null);
   // Each panel needs its own adapter instance for independent connections
   const adapterRef = useRef(feedAdapter.clone());
+  const futuresAdapterRef = useRef(futuresFeedAdapter.clone());
   // Orderbook manager per panel
   const orderbookRef = useRef<OrderbookManager>(new OrderbookManager());
   const pendingAggregationRef = useRef(false);
@@ -382,8 +389,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     rawTradeQueueRef.current = [];
     fineProfileQueueRef.current = [];
     liveFineProfileRowsRef.current = new Map();
+    contractPriceRef.current = null;
     processedTradeIdsRef.current = new Set();
-    firstFullyCoveredCandleTimeRef.current = null;
+    firstFullyCoveredCandleTimeRef.current = { spot: null, futures: null };
     lastProfileRevisionAtRef.current = 0;
     pendingProfileRedrawRef.current = false;
     absorptionMapRef.current = new Map();
@@ -397,18 +405,40 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     useChartStore.getState().setActiveMeasurement(panelId, null);
     liquidityHistoryRef.current.reset();
 
-    const adapter = adapterRef.current;
-    adapter.disconnect();
+    const spotAdapter = adapterRef.current;
+    const futuresAdapter = futuresAdapterRef.current;
+    const contractAdapter = contractType === 'futures' ? futuresAdapter : spotAdapter;
+    spotAdapter.disconnect();
+    futuresAdapter.disconnect();
 
     const timeframeSeconds = getTimeframeSeconds(timeframe);
+    const activeTradeSources: TradeSource[] = dataSourceMode === 'both'
+      ? ['spot', 'futures']
+      : [dataSourceMode];
+    const shouldUseSpotTrades = activeTradeSources.includes('spot');
+    const shouldUseFuturesTrades = activeTradeSources.includes('futures');
+    const shouldUseStoredHistory = contractType === 'spot';
+    const shouldHydrateStoredFootprints = contractType === 'spot';
+    const shouldHydrateStoredFineProfiles = true;
+    const shouldHydrateRawTrades = contractType === 'spot' && dataSourceMode === 'spot';
+    const fineProfileStorageTimeframe = getFineProfileStorageTimeframe(timeframe, contractType, dataSourceMode);
 
-    const markProcessedTrade = (trade: Trade) => {
-      if (!Number.isFinite(trade.id)) return true;
+    const getFirstFullyCoveredCandleTime = () => {
+      const coverageTimes = activeTradeSources.map((source) => firstFullyCoveredCandleTimeRef.current[source]);
+      if (coverageTimes.some((time) => time === null)) return null;
+      return Math.max(...coverageTimes.map((time) => time ?? 0));
+    };
 
-      const id = trade.id!;
-      if (processedTradeIdsRef.current.has(id)) return false;
+    const getTradeDedupeKey = (trade: Trade, source: TradeSource) => {
+      if (Number.isFinite(trade.id)) return `${source}:${trade.id}`;
+      return `${source}:${trade.time}:${trade.price}:${trade.quantity}:${trade.isBuyerMaker}`;
+    };
 
-      processedTradeIdsRef.current.add(id);
+    const markProcessedTrade = (trade: Trade, source: TradeSource) => {
+      const key = getTradeDedupeKey(trade, source);
+      if (processedTradeIdsRef.current.has(key)) return false;
+
+      processedTradeIdsRef.current.add(key);
       while (processedTradeIdsRef.current.size > MAX_DEDUPE_KEYS) {
         const oldest = processedTradeIdsRef.current.values().next().value;
         if (oldest === undefined) break;
@@ -416,6 +446,25 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
 
       return true;
+    };
+
+    const getContractAlignedTrade = (trade: Trade, source: TradeSource): Trade & { source: TradeSource } | null => {
+      const sourceTaggedTrade = { ...trade, source };
+      if (source === contractType) return sourceTaggedTrade;
+
+      const referencePrice = contractPriceRef.current;
+      if (!Number.isFinite(referencePrice)) return null;
+
+      return {
+        ...sourceTaggedTrade,
+        price: referencePrice as number,
+      };
+    };
+
+    const markLiveConnected = () => {
+      if (connectedRef.current) return;
+      connectedRef.current = true;
+      setConnected(panelId, true);
     };
 
     const recomputeSignalState = () => {
@@ -453,7 +502,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const batch = fineProfileQueueRef.current.splice(0, FINE_PROFILE_FLUSH_SIZE);
       if (batch.length === 0) return;
 
-      storeFineProfileRowsAction(pair, timeframe, batch).catch((err) => {
+      storeFineProfileRowsAction(pair, fineProfileStorageTimeframe, batch).catch((err) => {
         console.error('[Storage] Fine profile row batch save request failed:', err);
       });
     };
@@ -490,17 +539,19 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     };
 
     const handleCandle = (candle: Candle) => {
-      if (!connectedRef.current) {
-        connectedRef.current = true;
-        setConnected(panelId, true);
+      if (Number.isFinite(candle.close)) {
+        contractPriceRef.current = candle.close;
       }
+
+      markLiveConnected();
       engineRef.current.ingestCandle(candle);
       pushCandle(panelId, candle);
 
       if (candle.isClosed) {
         const footprint = engineRef.current.getFootprintCandle(candle.time);
-        const hasFullRealtimeFootprint = firstFullyCoveredCandleTimeRef.current !== null
-          && candle.time >= firstFullyCoveredCandleTimeRef.current;
+        const firstFullyCoveredCandleTime = getFirstFullyCoveredCandleTime();
+        const hasFullRealtimeFootprint = firstFullyCoveredCandleTime !== null
+          && candle.time >= firstFullyCoveredCandleTime;
         const cells = footprint && hasFullRealtimeFootprint
           ? Array.from(footprint.cells.entries()).map(([bucketPrice, cell]) => ({
             bucketPrice,
@@ -522,7 +573,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           console.warn(`[Storage] Skipping partial realtime footprint for ${pair} ${timeframe} candle ${candle.time}`);
         }
 
-        if (claimClosedCandleStorage(pair, timeframe, candle.time, bucketSize)) {
+        if (contractType === 'spot' && claimClosedCandleStorage(pair, timeframe, candle.time, bucketSize)) {
           storeClosedCandleAction(
             pair,
             timeframe,
@@ -538,18 +589,26 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
 
         const fineRows = liveFineProfileRowsRef.current.get(candle.time);
-        if (hasFullRealtimeFootprint && fineRows && fineRows.size > 0 && claimFineProfileStorage(pair, timeframe, candle.time, tickSize)) {
+        if (hasFullRealtimeFootprint && fineRows && fineRows.size > 0) {
           const rows = cloneFineProfileRows(fineRows.values());
           volumeProfileEngineRef.current.hydrateProfileRows(rows);
-          fineProfileQueueRef.current.push(...rows);
           liveFineProfileRowsRef.current.delete(candle.time);
           pendingProfileRedrawRef.current = true;
 
-          if (fineProfileQueueRef.current.length >= FINE_PROFILE_FLUSH_SIZE) {
-            flushFineProfileRows();
+          if (claimFineProfileStorage(pair, fineProfileStorageTimeframe, candle.time, tickSize)) {
+            fineProfileQueueRef.current.push(...rows);
+
+            if (fineProfileQueueRef.current.length >= FINE_PROFILE_FLUSH_SIZE) {
+              flushFineProfileRows();
+            }
           }
         } else if (!hasFullRealtimeFootprint) {
+          volumeProfileEngineRef.current.removeTradesInTimeRange(
+            candle.time * 1000,
+            (candle.time + timeframeSeconds) * 1000,
+          );
           liveFineProfileRowsRef.current.delete(candle.time);
+          pendingProfileRedrawRef.current = true;
         }
       }
 
@@ -593,19 +652,22 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
     };
 
-    const handleTrade = (trade: Trade) => {
-      if (!markProcessedTrade(trade)) return;
+    const handleTrade = (trade: Trade, source: TradeSource) => {
+      if (!markProcessedTrade(trade, source)) return;
+      markLiveConnected();
+      const alignedTrade = getContractAlignedTrade(trade, source);
+      if (!alignedTrade) return;
 
       const candleTime = getCandleTimeForTrade(trade.time, timeframeSeconds);
-      if (firstFullyCoveredCandleTimeRef.current === null) {
-        firstFullyCoveredCandleTimeRef.current = candleTime + timeframeSeconds;
+      if (firstFullyCoveredCandleTimeRef.current[source] === null) {
+        firstFullyCoveredCandleTimeRef.current[source] = candleTime + timeframeSeconds;
       }
 
-      engineRef.current.ingestTrade(trade, candleTime);
-      volumeProfileEngineRef.current.ingestTrade(trade);
-      aggregateFineProfileTrade(trade, candleTime);
+      engineRef.current.ingestTrade(alignedTrade, candleTime);
+      volumeProfileEngineRef.current.ingestTrade(alignedTrade);
+      aggregateFineProfileTrade(alignedTrade, candleTime);
 
-      if (claimRawTradeStorage(pair, trade)) {
+      if (contractType === 'spot' && source === 'spot' && claimRawTradeStorage(pair, trade)) {
         rawTradeQueueRef.current.push(trade);
       }
 
@@ -616,6 +678,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         flushRawTrades();
       }
     };
+
+    const handleSpotTrade = (trade: Trade) => handleTrade(trade, 'spot');
+    const handleFuturesTrade = (trade: Trade) => handleTrade(trade, 'futures');
 
     const fetchStoredHistory = async () => {
       const params = new URLSearchParams({
@@ -649,6 +714,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
       let cursorTime: number | null = null;
       let cursorId: number | null = null;
+      const profileTrades: Trade[] = [];
 
       while (active && stats.pages < RAW_TRADE_HISTORY_MAX_PAGES) {
         const params = new URLSearchParams({
@@ -693,9 +759,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           stats.oldestTime = stats.oldestTime === null ? trade.time : Math.min(stats.oldestTime, trade.time);
           stats.newestTime = stats.newestTime === null ? trade.time : Math.max(stats.newestTime, trade.time);
 
-          if (!markProcessedTrade(trade)) continue;
+          if (!markProcessedTrade(trade, 'spot')) continue;
 
           engineRef.current.ingestTrade(trade, candleTime);
+          profileTrades.push(trade);
           stats.hydrated += 1;
           stats.hydratedCandleTimes.add(candleTime);
         }
@@ -716,6 +783,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
 
       if (stats.hydrated > 0) {
+        volumeProfileEngineRef.current.hydrateTrades(profileTrades);
         pendingFootprintRedrawRef.current = true;
         pendingProfileRedrawRef.current = true;
       }
@@ -824,6 +892,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const params = new URLSearchParams({
         symbol: pair,
         timeframe,
+        contractType,
+        dataSourceMode,
         start: String(window.startSeconds),
         end: String(window.endSeconds),
         baseBucketSize: String(tickSize),
@@ -851,9 +921,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     const init = async () => {
       try {
-        console.log(`[PanelFeed:${panelId}] Connecting live streams for ${pair} ${timeframe}...`);
-        adapter.subscribeCandles(pair, timeframe, handleCandle);
-        adapter.subscribeTrades(pair, handleTrade);
+        console.log(`[PanelFeed:${panelId}] Connecting ${contractType} candles and ${dataSourceMode} aggTrades for ${pair} ${timeframe}...`);
+        contractAdapter.subscribeCandles(pair, timeframe, handleCandle);
+        if (shouldUseSpotTrades) {
+          spotAdapter.subscribeTrades(pair, handleSpotTrade);
+        }
+        if (shouldUseFuturesTrades) {
+          futuresAdapter.subscribeTrades(pair, handleFuturesTrade);
+        }
 
         setLoadingHistory(panelId, true);
         console.log(`[PanelFeed:${panelId}] Restoring stored history for ${pair} ${timeframe} in background...`);
@@ -862,21 +937,27 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         let binanceHistory: Candle[] = [];
         let historySource: 'Binance' | 'stored' | 'stored+Binance' | 'none' = 'none';
 
-        try {
-          storedHistory = await fetchStoredHistory();
-          if (storedHistory.length > 0 && active) {
-            history = storedHistory;
-            historySource = 'stored';
-            pushAllCandles(panelId, storedHistory);
-            storedHistory.forEach(c => engineRef.current.ingestCandle(c));
+        if (shouldUseStoredHistory) {
+          try {
+            storedHistory = await fetchStoredHistory();
+            if (storedHistory.length > 0 && active) {
+              history = storedHistory;
+              historySource = 'stored';
+              pushAllCandles(panelId, storedHistory);
+              storedHistory.forEach(c => engineRef.current.ingestCandle(c));
+              const lastStoredCandle = storedHistory[storedHistory.length - 1];
+              if (Number.isFinite(lastStoredCandle?.close)) {
+                contractPriceRef.current = lastStoredCandle.close;
+              }
+            }
+          } catch (err) {
+            console.warn('[History] Could not load stored candles:', err);
           }
-        } catch (err) {
-          console.warn('[History] Could not load stored candles:', err);
         }
 
-        console.log(`[PanelFeed:${panelId}] Fetching Binance history for ${pair} ${timeframe} in background...`);
+        console.log(`[PanelFeed:${panelId}] Fetching Binance ${contractType} history for ${pair} ${timeframe} in background...`);
         try {
-          binanceHistory = await adapter.fetchHistory(pair, timeframe);
+          binanceHistory = await contractAdapter.fetchHistory(pair, timeframe);
         } catch (err) {
           console.warn('[History] Could not load Binance candles:', err);
         }
@@ -890,6 +971,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
         if (history.length > 0) {
           pushAllCandles(panelId, history);
+          const lastHistoryCandle = history[history.length - 1];
+          if (Number.isFinite(lastHistoryCandle?.close)) {
+            contractPriceRef.current = lastHistoryCandle.close;
+          }
           const restoreWindow = getHistoryWindow(history, timeframeSeconds);
           let restoreBucketSize = bucketSize;
 
@@ -908,9 +993,29 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           }
 
           history.forEach(c => engineRef.current.ingestCandle(c));
-          const fineProfileStats = await hydrateStoredFineProfileRows(history);
-          const rawStats = await hydrateStoredRawTrades(history);
-          const footprintStats = await hydrateStoredFootprints(history, restoreBucketSize);
+          const fineProfileStats = shouldHydrateStoredFineProfiles
+            ? await hydrateStoredFineProfileRows(history)
+            : { rowsFetched: 0, candlesHydrated: 0 };
+          const rawStats = shouldHydrateRawTrades
+            ? await hydrateStoredRawTrades(history)
+            : {
+              pages: 0,
+              fetched: 0,
+              hydrated: 0,
+              oldestTime: null,
+              newestTime: null,
+              reachedStart: false,
+              hydratedCandleTimes: new Set<number>(),
+            };
+          const footprintStats = shouldHydrateStoredFootprints
+            ? await hydrateStoredFootprints(history, restoreBucketSize)
+            : {
+              rowsFetched: 0,
+              candlesHydrated: 0,
+              cellsHydrated: 0,
+              bucketMatches: 0,
+              bucketMisses: 0,
+            };
           if (!active) return;
 
           recomputeSignalState();
@@ -918,6 +1023,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           console.log(`[HistoryRestore:${panelId}] Restore diagnostics`, {
             pair,
             timeframe,
+            contractType,
+            dataSourceMode,
             source: historySource,
             storedCandles: storedHistory.length,
             binanceCandles: binanceHistory.length,
@@ -963,18 +1070,18 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const obManager = orderbookRef.current;
 
     const initOrderbook = async () => {
-      if (!adapter.fetchOrderbookSnapshot || !adapter.subscribeOrderbook) return;
+      if (!spotAdapter.fetchOrderbookSnapshot || !spotAdapter.subscribeOrderbook) return;
 
       try {
         console.log(`[PanelFeed:${panelId}] Fetching orderbook snapshot for ${pair}...`);
-        const snapshot = await adapter.fetchOrderbookSnapshot(pair, 500);
+        const snapshot = await spotAdapter.fetchOrderbookSnapshot(pair, 500);
         if (!active) return;
 
         obManager.initFromSnapshot(snapshot);
         console.log(`[PanelFeed:${panelId}] Orderbook snapshot loaded (${snapshot.bids.length} bids, ${snapshot.asks.length} asks)`);
 
         // Subscribe to incremental updates
-        adapter.subscribeOrderbook(pair, (update: DepthUpdate) => {
+        spotAdapter.subscribeOrderbook(pair, (update: DepthUpdate) => {
           obManager.applyUpdate(update);
           pendingAggregationRef.current = true;
         });
@@ -1014,18 +1121,19 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     return () => {
       active = false;
-      adapter.disconnect();
+      spotAdapter.disconnect();
+      futuresAdapter.disconnect();
       flushRawTrades();
       flushFineProfileRows();
       clearInterval(rawTradeFlushInterval);
-      if (adapter.disconnectOrderbook) adapter.disconnectOrderbook();
+      if (spotAdapter.disconnectOrderbook) spotAdapter.disconnectOrderbook();
       if (aggregationInterval) clearInterval(aggregationInterval);
       obManager.reset();
       setLiquidityZones(panelId, []);
       setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, rebuildLiquidityVacuumZones]);
+  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, rebuildLiquidityVacuumZones]);
 
   // Temporary Verification Hotkey
   useEffect(() => {
