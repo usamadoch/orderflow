@@ -51,6 +51,8 @@ export interface CandleRow {
 export interface FootprintCellRow {
   id: number
   symbol: string
+  contract_type: string
+  data_source_mode: string
   timeframe: string
   candle_time: number
   bucket_price: number
@@ -113,6 +115,8 @@ export type RawTradeWriteInput = Trade
 
 export interface ClosedCandleSnapshotInput {
   symbol: string
+  contractType: string
+  dataSourceMode: string
   timeframe: string
   candle: CandleInsertInput
   cells: FootprintCellWriteInput[]
@@ -121,6 +125,16 @@ export interface ClosedCandleSnapshotInput {
   sellVol: number
   bucketSize: number
   storedAtIso?: string
+}
+
+export interface FootprintSnapshotInput {
+  symbol: string
+  contractType: string
+  dataSourceMode: string
+  timeframe: string
+  candleTime: number
+  cells: FootprintCellWriteInput[]
+  bucketSize: number
 }
 
 export type RawTradeOrder = 'asc' | 'desc'
@@ -240,18 +254,20 @@ export async function initDatabase() {
       {
         sql: `
           CREATE TABLE IF NOT EXISTS footprint_cells (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol       TEXT    NOT NULL,
-            timeframe    TEXT    NOT NULL,
-            candle_time  INTEGER NOT NULL,
-            bucket_price REAL    NOT NULL,
-            bucket_size  REAL    NOT NULL,
-            bid_vol      REAL    NOT NULL DEFAULT 0,
-            ask_vol      REAL    NOT NULL DEFAULT 0,
-            delta        REAL    NOT NULL DEFAULT 0,
-            stored_at    INTEGER NOT NULL DEFAULT (unixepoch()),
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol           TEXT    NOT NULL,
+            contract_type    TEXT    NOT NULL,
+            data_source_mode TEXT    NOT NULL,
+            timeframe        TEXT    NOT NULL,
+            candle_time      INTEGER NOT NULL,
+            bucket_price     REAL    NOT NULL,
+            bucket_size      REAL    NOT NULL,
+            bid_vol          REAL    NOT NULL DEFAULT 0,
+            ask_vol          REAL    NOT NULL DEFAULT 0,
+            delta            REAL    NOT NULL DEFAULT 0,
+            stored_at        INTEGER NOT NULL DEFAULT (unixepoch()),
 
-            UNIQUE(symbol, timeframe, candle_time, bucket_price, bucket_size)
+            UNIQUE(symbol, contract_type, data_source_mode, timeframe, candle_time, bucket_price, bucket_size)
           )
         `,
         args: [],
@@ -259,7 +275,7 @@ export async function initDatabase() {
       {
         sql: `
           CREATE INDEX IF NOT EXISTS idx_footprint_query
-            ON footprint_cells(symbol, timeframe, candle_time DESC)
+            ON footprint_cells(symbol, contract_type, data_source_mode, timeframe, bucket_size, candle_time ASC)
         `,
         args: [],
       },
@@ -370,6 +386,78 @@ export async function initDatabase() {
     ],
     'write',
   )
+
+  await ensureSourceScopedFootprintCellsSchema()
+}
+
+async function ensureSourceScopedFootprintCellsSchema() {
+  const tableInfo = await db.execute('PRAGMA table_info(footprint_cells)')
+  const columnNames = new Set(tableInfo.rows.map((row) => String(row.name)))
+
+  if (columnNames.has('contract_type') && columnNames.has('data_source_mode')) {
+    return
+  }
+
+  console.warn('[DB] Migrating footprint_cells to source-scoped schema; legacy rows will be isolated under legacy/legacy source keys.')
+
+  await db.batch(
+    [
+      {
+        sql: 'DROP TABLE IF EXISTS footprint_cells_source_scoped',
+        args: [],
+      },
+      {
+        sql: `
+          CREATE TABLE footprint_cells_source_scoped (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol           TEXT    NOT NULL,
+            contract_type    TEXT    NOT NULL,
+            data_source_mode TEXT    NOT NULL,
+            timeframe        TEXT    NOT NULL,
+            candle_time      INTEGER NOT NULL,
+            bucket_price     REAL    NOT NULL,
+            bucket_size      REAL    NOT NULL,
+            bid_vol          REAL    NOT NULL DEFAULT 0,
+            ask_vol          REAL    NOT NULL DEFAULT 0,
+            delta            REAL    NOT NULL DEFAULT 0,
+            stored_at        INTEGER NOT NULL DEFAULT (unixepoch()),
+
+            UNIQUE(symbol, contract_type, data_source_mode, timeframe, candle_time, bucket_price, bucket_size)
+          )
+        `,
+        args: [],
+      },
+      {
+        sql: `
+          INSERT OR IGNORE INTO footprint_cells_source_scoped (
+            id, symbol, contract_type, data_source_mode, timeframe, candle_time,
+            bucket_price, bucket_size, bid_vol, ask_vol, delta, stored_at
+          )
+          SELECT
+            id, symbol, 'legacy', 'legacy', timeframe, candle_time,
+            bucket_price, bucket_size, bid_vol, ask_vol, delta, stored_at
+          FROM footprint_cells
+        `,
+        args: [],
+      },
+      {
+        sql: 'DROP TABLE footprint_cells',
+        args: [],
+      },
+      {
+        sql: 'ALTER TABLE footprint_cells_source_scoped RENAME TO footprint_cells',
+        args: [],
+      },
+      {
+        sql: `
+          CREATE INDEX IF NOT EXISTS idx_footprint_query
+            ON footprint_cells(symbol, contract_type, data_source_mode, timeframe, bucket_size, candle_time ASC)
+        `,
+        args: [],
+      },
+    ],
+    'write',
+  )
 }
 
 export async function insertCandle(symbol: string, timeframe: string, candle: CandleInsertInput) {
@@ -404,6 +492,8 @@ export async function insertCandle(symbol: string, timeframe: string, candle: Ca
 
 export async function insertFootprintBatch(
   symbol: string,
+  contractType: string,
+  dataSourceMode: string,
   timeframe: string,
   candleTime: number,
   cells: Map<number, FootprintCell>,
@@ -415,12 +505,14 @@ export async function insertFootprintBatch(
     Array.from(cells.entries()).map(([bucketPrice, cell]) => ({
       sql: `
         INSERT OR REPLACE INTO footprint_cells (
-          symbol, timeframe, candle_time, bucket_price, bucket_size, bid_vol, ask_vol, delta
+          symbol, contract_type, data_source_mode, timeframe, candle_time, bucket_price, bucket_size, bid_vol, ask_vol, delta
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
         symbol,
+        contractType,
+        dataSourceMode,
         timeframe,
         candleTime,
         bucketPrice,
@@ -436,6 +528,8 @@ export async function insertFootprintBatch(
 
 export async function persistClosedCandleSnapshot({
   symbol,
+  contractType,
+  dataSourceMode,
   timeframe,
   candle,
   cells,
@@ -480,12 +574,14 @@ export async function persistClosedCandleSnapshot({
       ...cells.map((cell) => ({
         sql: `
           INSERT OR REPLACE INTO footprint_cells (
-            symbol, timeframe, candle_time, bucket_price, bucket_size, bid_vol, ask_vol, delta
+            symbol, contract_type, data_source_mode, timeframe, candle_time, bucket_price, bucket_size, bid_vol, ask_vol, delta
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           symbol,
+          contractType,
+          dataSourceMode,
           timeframe,
           openTime,
           cell.bucketPrice,
@@ -521,6 +617,44 @@ export async function persistClosedCandleSnapshot({
 
   await withDbWriteRetry('Closed candle snapshot write', async () => {
     await db.batch(statements, 'write')
+  })
+}
+
+export async function persistFootprintSnapshot({
+  symbol,
+  contractType,
+  dataSourceMode,
+  timeframe,
+  candleTime,
+  cells,
+  bucketSize,
+}: FootprintSnapshotInput) {
+  if (cells.length === 0) return
+
+  await withDbWriteRetry('Footprint snapshot write', async () => {
+    await db.batch(
+      cells.map((cell) => ({
+        sql: `
+          INSERT OR REPLACE INTO footprint_cells (
+            symbol, contract_type, data_source_mode, timeframe, candle_time, bucket_price, bucket_size, bid_vol, ask_vol, delta
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [
+          symbol,
+          contractType,
+          dataSourceMode,
+          timeframe,
+          candleTime,
+          cell.bucketPrice,
+          bucketSize,
+          cell.bidVol,
+          cell.askVol,
+          cell.askVol - cell.bidVol,
+        ],
+      })),
+      'write',
+    )
   })
 }
 
@@ -689,6 +823,8 @@ export async function getRawTrades(
 
 export async function getFootprintCellsForRange(
   symbol: string,
+  contractType: string,
+  dataSourceMode: string,
   timeframe: string,
   startTime: number,
   endTime: number,
@@ -698,10 +834,16 @@ export async function getFootprintCellsForRange(
     sql: `
       SELECT *
       FROM footprint_cells
-      WHERE symbol = ? AND timeframe = ? AND candle_time >= ? AND candle_time < ? AND bucket_size = ?
+      WHERE symbol = ?
+        AND contract_type = ?
+        AND data_source_mode = ?
+        AND timeframe = ?
+        AND candle_time >= ?
+        AND candle_time < ?
+        AND bucket_size = ?
       ORDER BY candle_time ASC, bucket_price ASC
     `,
-    args: [symbol, timeframe, startTime, endTime, bucketSize],
+    args: [symbol, contractType, dataSourceMode, timeframe, startTime, endTime, bucketSize],
   })
 
   return result.rows as unknown as FootprintCellRow[]
@@ -774,20 +916,26 @@ export async function getCandles(
 
 export async function getFootprintCells(
   symbol: string,
+  contractType: string,
+  dataSourceMode: string,
   timeframe: string,
   candleTime: number,
   bucketSize?: number,
 ) {
   const bucketFilter = bucketSize == null ? '' : 'AND bucket_size = ?'
   const args = bucketSize == null
-    ? [symbol, timeframe, candleTime]
-    : [symbol, timeframe, candleTime, bucketSize]
+    ? [symbol, contractType, dataSourceMode, timeframe, candleTime]
+    : [symbol, contractType, dataSourceMode, timeframe, candleTime, bucketSize]
 
   const result = await db.execute({
     sql: `
       SELECT *
       FROM footprint_cells
-      WHERE symbol = ? AND timeframe = ? AND candle_time = ?
+      WHERE symbol = ?
+        AND contract_type = ?
+        AND data_source_mode = ?
+        AND timeframe = ?
+        AND candle_time = ?
       ${bucketFilter}
       ORDER BY bucket_price ASC
     `,

@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChartStore, PanelId } from '../lib/store/chart';
 import { feedAdapter, futuresFeedAdapter } from '../lib/feeds';
-import { AggregationEngine } from '../lib/aggregation/engine';
+import {
+  AggregationEngine,
+  BASE_FOOTPRINT_BUCKET_SIZE,
+  BASE_FOOTPRINT_TIMEFRAME,
+  BASE_FOOTPRINT_TIMEFRAME_SECONDS,
+} from '../lib/aggregation/engine';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
 import { IcebergEngine } from '../lib/iceberg/engine';
@@ -21,7 +26,7 @@ import { LiquidityVacuumZone } from '../types/liquidityVacuum';
 import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
-import { storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
+import { storeBaseFootprintAction, storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
 import { getFineProfileStorageTimeframe } from '../lib/config/markets';
 
 interface PanelFeedProviderProps {
@@ -77,8 +82,15 @@ function claimRawTradeStorage(symbol: string, trade: Trade) {
   return true;
 }
 
-function claimClosedCandleStorage(symbol: string, timeframe: string, candleTime: number, bucketSize: number) {
-  const key = `${symbol}:${timeframe}:${candleTime}:${bucketSize}`;
+function claimClosedCandleStorage(
+  symbol: string,
+  contractType: string,
+  dataSourceMode: string,
+  timeframe: string,
+  candleTime: number,
+  bucketSize: number,
+) {
+  const key = `${symbol}:${contractType}:${dataSourceMode}:${timeframe}:${candleTime}:${bucketSize}`;
   if (closedCandleStorageKeys.has(key)) return false;
 
   rememberBounded(closedCandleStorageKeys, key);
@@ -163,6 +175,25 @@ function getHistoryWindow(candles: Candle[], timeframeSeconds: number) {
   };
 }
 
+function getBaseFootprintWindow(candles: Candle[], timeframeSeconds: number) {
+  const window = getHistoryWindow(candles, timeframeSeconds);
+  if (!window) return null;
+
+  const startSeconds = Math.floor(window.startSeconds / BASE_FOOTPRINT_TIMEFRAME_SECONDS) * BASE_FOOTPRINT_TIMEFRAME_SECONDS;
+  const endSeconds = Math.ceil(window.endSeconds / BASE_FOOTPRINT_TIMEFRAME_SECONDS) * BASE_FOOTPRINT_TIMEFRAME_SECONDS;
+
+  return {
+    startSeconds,
+    endSeconds,
+    startMs: startSeconds * 1000,
+    endMs: endSeconds * 1000,
+  };
+}
+
+function getBaseCandleTimeForTrade(tradeTimeMs: number) {
+  return getCandleTimeForTrade(tradeTimeMs, BASE_FOOTPRINT_TIMEFRAME_SECONDS);
+}
+
 function getFootprintCoverage(candles: Candle[], engine: AggregationEngine) {
   let footprintCandles = 0;
   let footprintCandlesWithCells = 0;
@@ -222,6 +253,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const liquidityRange = useChartStore(s => s.panels[panelId].liquidityRange);
 
   const connectedRef = useRef(false);
+  const bucketSizeRef = useRef(bucketSize);
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
   const volumeProfileEngineRef = useRef(new RawTradeVolumeProfileEngine());
   const pendingFootprintRedrawRef = useRef(false);
@@ -248,9 +280,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const pendingAggregationRef = useRef(false);
   const liquidityHistoryRef = useRef<LiquidityHistoryManager>(new LiquidityHistoryManager(liquidityBucketSize, liquidityHistoryDepth));
 
+  useEffect(() => {
+    bucketSizeRef.current = bucketSize;
+  }, [bucketSize]);
+
   const rebuildLiquidityVacuumZones = useCallback((candles = useChartStore.getState().panels[panelId].candles || []) => {
+    const displayBucketSize = Math.max(BASE_FOOTPRINT_BUCKET_SIZE, bucketSizeRef.current);
     const zones = liquidityVacuumEnabled
-      ? buildLiquidityVacuumZones(candles, engineRef.current, bucketSize, {
+      ? buildLiquidityVacuumZones(candles, engineRef.current, displayBucketSize, {
         minScore: liquidityVacuumMinScore,
         maxZones: liquidityVacuumMaxZones,
       })
@@ -259,7 +296,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     liquidityVacuumZonesRef.current = zones;
     setLiquidityVacuumZones(panelId, zones);
     return zones;
-  }, [bucketSize, liquidityVacuumEnabled, liquidityVacuumMaxZones, liquidityVacuumMinScore, panelId, setLiquidityVacuumZones]);
+  }, [liquidityVacuumEnabled, liquidityVacuumMaxZones, liquidityVacuumMinScore, panelId, setLiquidityVacuumZones]);
 
   useEffect(() => {
     rebuildLiquidityVacuumZones();
@@ -337,13 +374,13 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerFootprintRedraw, chartMode, panelId, setAbsorptionMap, rebuildLiquidityVacuumZones]);
 
-  // Handle engine bucket size updates without reconnecting socket
+  // Handle display bucket size updates without reconnecting socket or clearing base cells.
   useEffect(() => {
-    engineRef.current.reset(bucketSize);
-    icebergEngineRef.current.setBucketSize(bucketSize);
+    const displayBucketSize = Math.max(BASE_FOOTPRINT_BUCKET_SIZE, bucketSize);
+    engineRef.current.setDisplayBucketSize(displayBucketSize);
+    icebergEngineRef.current.setBucketSize(displayBucketSize);
     const currentCandles = useChartStore.getState().panels[panelId].candles || [];
-    currentCandles.forEach(c => engineRef.current.ingestCandle(c));
-    // Rebuild absorption map with new bucket size
+    // Rebuild signal maps against the current display aggregation.
     const newMap = buildAbsorptionMap(currentCandles, engineRef.current);
     absorptionMapRef.current = newMap;
     setAbsorptionMap(panelId, newMap);
@@ -371,10 +408,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length;
         const targetTicks = avgRange / tickSize;
         const computedSize = Math.max(1, Math.round(targetTicks / 25));
+        const displayBucketSize = Math.max(BASE_FOOTPRINT_BUCKET_SIZE, computedSize);
         
-        if (computedSize !== bucketSize) {
-          setComputedBucketSize(panelId, computedSize);
-          // the bucketSize effect will catch this and reset the engine
+        if (displayBucketSize !== bucketSize) {
+          setComputedBucketSize(panelId, displayBucketSize);
         }
       }
     }
@@ -385,6 +422,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     connectedRef.current = false;
     setConnected(panelId, false);
     engineRef.current.reset();
+    engineRef.current.setSharedBaseCache({ symbol: pair, contractType, dataSourceMode });
     volumeProfileEngineRef.current.reset();
     rawTradeQueueRef.current = [];
     fineProfileQueueRef.current = [];
@@ -412,13 +450,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     futuresAdapter.disconnect();
 
     const timeframeSeconds = getTimeframeSeconds(timeframe);
+    engineRef.current.setDisplayTimeframeSeconds(timeframeSeconds);
     const activeTradeSources: TradeSource[] = dataSourceMode === 'both'
       ? ['spot', 'futures']
       : [dataSourceMode];
     const shouldUseSpotTrades = activeTradeSources.includes('spot');
     const shouldUseFuturesTrades = activeTradeSources.includes('futures');
     const shouldUseStoredHistory = contractType === 'spot';
-    const shouldHydrateStoredFootprints = contractType === 'spot';
+    const shouldHydrateStoredFootprints = true;
     const shouldHydrateStoredFineProfiles = true;
     const shouldHydrateRawTrades = contractType === 'spot' && dataSourceMode === 'spot';
     const fineProfileStorageTimeframe = getFineProfileStorageTimeframe(timeframe, contractType, dataSourceMode);
@@ -548,44 +587,56 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       pushCandle(panelId, candle);
 
       if (candle.isClosed) {
-        const footprint = engineRef.current.getFootprintCandle(candle.time);
         const firstFullyCoveredCandleTime = getFirstFullyCoveredCandleTime();
         const hasFullRealtimeFootprint = firstFullyCoveredCandleTime !== null
           && candle.time >= firstFullyCoveredCandleTime;
-        const cells = footprint && hasFullRealtimeFootprint
-          ? Array.from(footprint.cells.entries()).map(([bucketPrice, cell]) => ({
-            bucketPrice,
-            bidVol: cell.bidVol,
-            askVol: cell.askVol,
-          }))
+        const baseFootprints = hasFullRealtimeFootprint
+          ? engineRef.current.getBaseFootprintCandlesInRange(candle.time, candle.time + timeframeSeconds)
           : [];
-        let buyVol = 0;
-        let sellVol = 0;
 
-        if (footprint && hasFullRealtimeFootprint) {
-          footprint.cells.forEach((cell) => {
-            buyVol += cell.askVol;
-            sellVol += cell.bidVol;
-          });
-        } else if (!footprint) {
-          console.warn(`[Storage] Missing footprint for ${pair} ${timeframe} candle ${candle.time}`);
-        } else {
+        if (!hasFullRealtimeFootprint) {
           console.warn(`[Storage] Skipping partial realtime footprint for ${pair} ${timeframe} candle ${candle.time}`);
         }
 
-        if (contractType === 'spot' && claimClosedCandleStorage(pair, timeframe, candle.time, bucketSize)) {
+        if (contractType === 'spot' && claimClosedCandleStorage(pair, contractType, dataSourceMode, timeframe, candle.time, 0)) {
           storeClosedCandleAction(
             pair,
+            contractType,
+            dataSourceMode,
             timeframe,
             candle,
-            cells,
-            hasFullRealtimeFootprint ? footprint?.delta ?? 0 : 0,
-            buyVol,
-            sellVol,
-            bucketSize,
+            [],
+            0,
+            0,
+            0,
           ).catch((err) => {
             console.error('[Storage] Candle snapshot save request failed:', err);
           });
+        }
+
+        if (hasFullRealtimeFootprint) {
+          for (const baseFootprint of baseFootprints) {
+            if (baseFootprint.cells.size === 0) continue;
+            if (!claimClosedCandleStorage(pair, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, baseFootprint.time, BASE_FOOTPRINT_BUCKET_SIZE)) {
+              continue;
+            }
+
+            const cells = Array.from(baseFootprint.cells.entries()).map(([bucketPrice, cell]) => ({
+              bucketPrice,
+              bidVol: cell.bidVol,
+              askVol: cell.askVol,
+            }));
+
+            storeBaseFootprintAction(
+              pair,
+              contractType,
+              dataSourceMode,
+              baseFootprint.time,
+              cells,
+            ).catch((err) => {
+              console.error('[Storage] Base footprint save request failed:', err);
+            });
+          }
         }
 
         const fineRows = liveFineProfileRowsRef.current.get(candle.time);
@@ -659,11 +710,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (!alignedTrade) return;
 
       const candleTime = getCandleTimeForTrade(trade.time, timeframeSeconds);
+      const baseCandleTime = getBaseCandleTimeForTrade(trade.time);
       if (firstFullyCoveredCandleTimeRef.current[source] === null) {
-        firstFullyCoveredCandleTimeRef.current[source] = candleTime + timeframeSeconds;
+        firstFullyCoveredCandleTimeRef.current[source] = baseCandleTime + BASE_FOOTPRINT_TIMEFRAME_SECONDS;
       }
 
-      engineRef.current.ingestTrade(alignedTrade, candleTime);
+      engineRef.current.ingestTrade(alignedTrade, baseCandleTime);
       volumeProfileEngineRef.current.ingestTrade(alignedTrade);
       aggregateFineProfileTrade(alignedTrade, candleTime);
 
@@ -755,13 +807,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           }
 
           const trade = trades[i];
-          const candleTime = getCandleTimeForTrade(trade.time, timeframeSeconds);
+          const candleTime = getBaseCandleTimeForTrade(trade.time);
           stats.oldestTime = stats.oldestTime === null ? trade.time : Math.min(stats.oldestTime, trade.time);
           stats.newestTime = stats.newestTime === null ? trade.time : Math.max(stats.newestTime, trade.time);
 
           if (!markProcessedTrade(trade, 'spot')) continue;
 
-          engineRef.current.ingestTrade(trade, candleTime);
+          const hydratedTrade = { ...trade, source: 'spot' } as Trade & { source: TradeSource };
+          engineRef.current.ingestTrade(hydratedTrade, candleTime);
           profileTrades.push(trade);
           stats.hydrated += 1;
           stats.hydratedCandleTimes.add(candleTime);
@@ -797,10 +850,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       return stats;
     };
 
-    const hydrateStoredFootprints = async (
-      candles: Candle[],
-      restoreBucketSize: number,
-    ): Promise<FootprintHydrationStats> => {
+    const hydrateStoredFootprints = async (candles: Candle[]): Promise<FootprintHydrationStats> => {
       const stats: FootprintHydrationStats = {
         rowsFetched: 0,
         candlesHydrated: 0,
@@ -808,21 +858,21 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         bucketMatches: 0,
         bucketMisses: 0,
       };
-      const window = getHistoryWindow(candles, timeframeSeconds);
+      const window = getBaseFootprintWindow(candles, timeframeSeconds);
       if (!window) return stats;
 
-      const candidateCandles = candles.filter((candle) => {
-        const footprint = engineRef.current.getFootprintCandle(candle.time);
-        return !footprint || footprint.cells.size === 0;
-      });
-      if (candidateCandles.length === 0) return stats;
+      const candidateTimes = engineRef.current.getMissingBaseCandleTimes(window.startSeconds, window.endSeconds);
+      if (candidateTimes.length === 0) return stats;
 
+      const restoredStats = await engineRef.current.getBaseCache().runRestoreOnce(window.startSeconds, window.endSeconds, async () => {
       const params = new URLSearchParams({
         symbol: pair,
-        timeframe,
+        contractType,
+        dataSourceMode,
+        timeframe: BASE_FOOTPRINT_TIMEFRAME,
         start: String(window.startSeconds),
         end: String(window.endSeconds),
-        bucketSize: String(restoreBucketSize),
+        bucketSize: String(BASE_FOOTPRINT_BUCKET_SIZE),
       });
       const response = await fetch(`/api/history/footprint?${params.toString()}`, {
         cache: 'no-store',
@@ -843,15 +893,16 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         rowsByCandle.set(row.candleTime, current);
       }
 
-      const candidateTimes = new Set(candidateCandles.map((candle) => candle.time));
-      stats.bucketMatches = Array.from(candidateTimes).filter((time) => rowsByCandle.has(time)).length;
-      stats.bucketMisses = Math.max(0, candidateTimes.size - stats.bucketMatches);
+      const candidateTimeSet = new Set(candidateTimes);
+      stats.bucketMatches = candidateTimes.filter((time) => rowsByCandle.has(time)).length;
+      stats.bucketMisses = Math.max(0, candidateTimes.length - stats.bucketMatches);
 
-      for (const candle of candidateCandles) {
+      for (const candleTime of candidateTimes) {
         if (!active) return stats;
 
-        const candleRows = rowsByCandle.get(candle.time);
+        const candleRows = rowsByCandle.get(candleTime);
         if (!candleRows || candleRows.length === 0) continue;
+        if (!candidateTimeSet.has(candleTime)) continue;
 
         const cells = new Map<number, FootprintCell>();
         let delta = 0;
@@ -864,7 +915,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           delta += row.delta ?? row.askVol - row.bidVol;
         }
 
-        engineRef.current.hydrateFootprintCandle(candle, cells, delta);
+        engineRef.current.hydrateBaseFootprintCandle(candleTime, cells, undefined, delta);
         stats.candlesHydrated += 1;
         stats.cellsHydrated += cells.size;
 
@@ -873,12 +924,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
       }
 
-      if (stats.candlesHydrated > 0) {
+        return stats;
+      });
+
+      if (restoredStats.candlesHydrated > 0) {
         pendingFootprintRedrawRef.current = true;
         pendingProfileRedrawRef.current = true;
       }
 
-      return stats;
+      return restoredStats;
     };
 
     const hydrateStoredFineProfileRows = async (candles: Candle[]): Promise<FineProfileHydrationStats> => {
@@ -976,7 +1030,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             contractPriceRef.current = lastHistoryCandle.close;
           }
           const restoreWindow = getHistoryWindow(history, timeframeSeconds);
-          let restoreBucketSize = bucketSize;
+          let displayBucketSize = Math.max(
+            BASE_FOOTPRINT_BUCKET_SIZE,
+            useChartStore.getState().panels[panelId].bucketSize,
+          );
 
           // Auto Bucket Size Calculation
           if (autoBucketSize) {
@@ -984,12 +1041,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length;
             const targetTicks = avgRange / tickSize;
             // Aim for ~25 rows per footprint
-            const computedSize = Math.max(1, Math.round(targetTicks / 25));
-            restoreBucketSize = computedSize;
+            const computedSize = Math.max(BASE_FOOTPRINT_BUCKET_SIZE, Math.round(targetTicks / 25));
+            displayBucketSize = computedSize;
             setComputedBucketSize(panelId, computedSize);
-            if (computedSize !== bucketSize) {
-              engineRef.current.reset(computedSize);
-            }
+            engineRef.current.setDisplayBucketSize(computedSize);
           }
 
           history.forEach(c => engineRef.current.ingestCandle(c));
@@ -1008,7 +1063,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               hydratedCandleTimes: new Set<number>(),
             };
           const footprintStats = shouldHydrateStoredFootprints
-            ? await hydrateStoredFootprints(history, restoreBucketSize)
+            ? await hydrateStoredFootprints(history)
             : {
               rowsFetched: 0,
               candlesHydrated: 0,
@@ -1031,7 +1086,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             mergedCandles: history.length,
             rangeStart: restoreWindow ? formatSeconds(restoreWindow.startSeconds) : 'n/a',
             rangeEnd: restoreWindow ? formatSeconds(restoreWindow.endSeconds) : 'n/a',
-            bucketSize: restoreBucketSize,
+            footprintBaseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+            displayBucketSize,
             rawTradePages: rawStats.pages,
             rawTradesFetched: rawStats.fetched,
             rawTradesHydrated: rawStats.hydrated,
@@ -1133,7 +1189,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       setConnected(panelId, false);
       connectedRef.current = false;
     };
-  }, [pair, timeframe, panelId, bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, rebuildLiquidityVacuumZones]);
+  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, rebuildLiquidityVacuumZones]);
 
   // Temporary Verification Hotkey
   useEffect(() => {
