@@ -2,13 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChartStore, PanelId } from '../lib/store/chart';
-import { feedAdapter, futuresFeedAdapter } from '../lib/feeds';
 import {
   AggregationEngine,
   BASE_FOOTPRINT_BUCKET_SIZE,
   BASE_FOOTPRINT_TIMEFRAME,
   BASE_FOOTPRINT_TIMEFRAME_SECONDS,
 } from '../lib/aggregation/engine';
+import {
+  fetchSharedHistory,
+  fetchSharedOrderbookSnapshot,
+  subscribeDepthStream,
+  subscribeTradeStream,
+} from '../lib/feeds/feedRegistry';
+import { CandleHistoryRestoreResult, getSharedCandleCache } from '../lib/feeds/candleCache';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
 import { IcebergEngine } from '../lib/iceberg/engine';
@@ -28,6 +34,7 @@ import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
 import { storeBaseFootprintAction, storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
 import { FINE_PROFILE_STORAGE_TIMEFRAME } from '../lib/config/markets';
+import { recordRestoreDiagnostic } from '../lib/debug/marketMetrics';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -281,9 +288,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const icebergLevelsRef = useRef<IcebergLevel[]>([]);
   const liquidityVacuumZonesRef = useRef<LiquidityVacuumZone[]>([]);
   const lastScoredCandleTimeRef = useRef<number | null>(null);
-  // Each panel needs its own adapter instance for independent connections
-  const adapterRef = useRef(feedAdapter.clone());
-  const futuresAdapterRef = useRef(futuresFeedAdapter.clone());
   // Orderbook manager per panel
   const orderbookRef = useRef<OrderbookManager>(new OrderbookManager());
   const pendingAggregationRef = useRef(false);
@@ -459,12 +463,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     useChartStore.getState().setActiveMeasurement(panelId, null);
     liquidityHistoryRef.current.reset();
 
-    const spotAdapter = adapterRef.current;
-    const futuresAdapter = futuresAdapterRef.current;
-    const contractAdapter = contractType === 'futures' ? futuresAdapter : spotAdapter;
-    spotAdapter.disconnect();
-    futuresAdapter.disconnect();
-
     const timeframeSeconds = getTimeframeSeconds(timeframe);
     engineRef.current.setDisplayTimeframeSeconds(timeframeSeconds);
     const activeTradeSources: TradeSource[] = dataSourceMode === 'both'
@@ -477,6 +475,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const shouldHydrateStoredFineProfiles = true;
     const shouldHydrateRawTrades = contractType === 'spot' && dataSourceMode === 'spot';
     const fineProfileStorageTimeframe = FINE_PROFILE_STORAGE_TIMEFRAME;
+    const candleCache = getSharedCandleCache({
+      symbol: pair,
+      contractType,
+      timeframe,
+    });
 
     const getFirstFullyCoveredCandleTime = () => {
       const coverageTimes = activeTradeSources.map((source) => firstFullyCoveredCandleTimeRef.current[source]);
@@ -554,9 +557,34 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const batch = rawTradeQueueRef.current.splice(0, RAW_TRADE_FLUSH_SIZE);
       if (batch.length === 0) return;
 
-      storeRawTradesAction(pair, batch).catch((err) => {
-        console.error('[Storage] Raw trade batch save request failed:', err);
-      });
+      storeRawTradesAction(pair, batch)
+        .then(() => {
+          recordRestoreDiagnostic({
+            kind: 'storage',
+            key: `${pair}:rawTrades`,
+            timestamp: Date.now(),
+            rowsWritten: batch.length,
+            distinctCandleTimeCount: new Set(batch.map((trade) => getBaseCandleTimeForTrade(trade.time))).size,
+            details: {
+              panelId,
+              storageType: 'rawTrades',
+            },
+          });
+        })
+        .catch((err) => {
+          recordRestoreDiagnostic({
+            kind: 'storage',
+            key: `${pair}:rawTrades`,
+            timestamp: Date.now(),
+            failedRows: batch.length,
+            details: {
+              panelId,
+              storageType: 'rawTrades',
+              error: err instanceof Error ? err.message : String(err),
+            },
+          });
+          console.error('[Storage] Raw trade batch save request failed:', err);
+        });
     };
 
     const flushFineProfileRows = () => {
@@ -581,9 +609,38 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         baseBucketSizes: bucketSizes,
       });
 
-      storeFineProfileRowsAction(pair, contractType, dataSourceMode, fineProfileStorageTimeframe, batch).catch((err) => {
-        console.error('[Storage] Fine profile row batch save request failed:', err);
-      });
+      storeFineProfileRowsAction(pair, contractType, dataSourceMode, fineProfileStorageTimeframe, batch)
+        .then(() => {
+          recordRestoreDiagnostic({
+            kind: 'storage',
+            key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+            timestamp: Date.now(),
+            rowsWritten: batch.length,
+            distinctCandleTimeCount: candles.size,
+            details: {
+              panelId,
+              storageType: 'fineProfileRows',
+              minCandleTime: batch.reduce((min, row) => Math.min(min, row.candleTime), Number.POSITIVE_INFINITY),
+              maxCandleTime: batch.reduce((max, row) => Math.max(max, row.candleTime), Number.NEGATIVE_INFINITY),
+              baseBucketSizes: bucketSizes,
+            },
+          });
+        })
+        .catch((err) => {
+          recordRestoreDiagnostic({
+            kind: 'storage',
+            key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+            timestamp: Date.now(),
+            failedRows: batch.length,
+            distinctCandleTimeCount: candles.size,
+            details: {
+              panelId,
+              storageType: 'fineProfileRows',
+              error: err instanceof Error ? err.message : String(err),
+            },
+          });
+          console.error('[Storage] Fine profile row batch save request failed:', err);
+        });
     };
 
     const aggregateFineProfileTrade = (trade: Trade, candleTime: number) => {
@@ -663,6 +720,19 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             rowsSkippedPartial: stats.rowsSkippedPartial,
           });
         }
+        recordRestoreDiagnostic({
+          kind: 'storage',
+          key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+          timestamp: Date.now(),
+          skippedRows: stats.rowsSkippedPartial,
+          details: {
+            panelId,
+            storageType: 'fineProfileRows',
+            reason,
+            skipReason: 'coverage-not-ready',
+            slicesBefore: stats.slicesBefore,
+          },
+        });
         return stats;
       }
 
@@ -750,6 +820,25 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         });
       }
 
+      if (stats.rowsQueued > 0 || stats.rowsSkippedDuplicate > 0 || stats.rowsSkippedPartial > 0 || stats.rowsSkippedOpen > 0) {
+        recordRestoreDiagnostic({
+          kind: 'storage',
+          key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+          timestamp: Date.now(),
+          skippedRows: stats.rowsSkippedDuplicate + stats.rowsSkippedPartial + stats.rowsSkippedOpen,
+          details: {
+            panelId,
+            storageType: 'fineProfileRows',
+            reason,
+            slicesPersisted: stats.slicesPersisted,
+            rowsQueued: stats.rowsQueued,
+            rowsSkippedDuplicate: stats.rowsSkippedDuplicate,
+            rowsSkippedPartial: stats.rowsSkippedPartial,
+            rowsSkippedOpen: stats.rowsSkippedOpen,
+          },
+        });
+      }
+
       return stats;
     };
 
@@ -771,6 +860,18 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           : [];
 
         if (!hasFullRealtimeFootprint) {
+          recordRestoreDiagnostic({
+            kind: 'storage',
+            key: `${pair}:${contractType}:${dataSourceMode}:${timeframe}:footprint`,
+            timestamp: Date.now(),
+            skippedRows: 1,
+            details: {
+              panelId,
+              storageType: 'baseFootprint',
+              reason: 'partial-realtime-footprint',
+              candleTime: candle.time,
+            },
+          });
           console.warn(`[Storage] Skipping partial realtime footprint for ${pair} ${timeframe} candle ${candle.time}`);
         }
 
@@ -785,9 +886,37 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             0,
             0,
             0,
-          ).catch((err) => {
-            console.error('[Storage] Candle snapshot save request failed:', err);
-          });
+          )
+            .then(() => {
+              recordRestoreDiagnostic({
+                kind: 'storage',
+                key: `${pair}:${contractType}:${dataSourceMode}:${timeframe}:candle`,
+                timestamp: Date.now(),
+                rowsWritten: 1,
+                distinctCandleTimeCount: 1,
+                details: {
+                  panelId,
+                  storageType: 'closedCandle',
+                  candleTime: candle.time,
+                },
+              });
+            })
+            .catch((err) => {
+              recordRestoreDiagnostic({
+                kind: 'storage',
+                key: `${pair}:${contractType}:${dataSourceMode}:${timeframe}:candle`,
+                timestamp: Date.now(),
+                failedRows: 1,
+                distinctCandleTimeCount: 1,
+                details: {
+                  panelId,
+                  storageType: 'closedCandle',
+                  candleTime: candle.time,
+                  error: err instanceof Error ? err.message : String(err),
+                },
+              });
+              console.error('[Storage] Candle snapshot save request failed:', err);
+            });
         }
 
         if (hasFullRealtimeFootprint) {
@@ -809,9 +938,39 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               dataSourceMode,
               baseFootprint.time,
               cells,
-            ).catch((err) => {
-              console.error('[Storage] Base footprint save request failed:', err);
-            });
+            )
+              .then(() => {
+                recordRestoreDiagnostic({
+                  kind: 'storage',
+                  key: `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`,
+                  timestamp: Date.now(),
+                  rowsWritten: cells.length,
+                  distinctCandleTimeCount: 1,
+                  details: {
+                    panelId,
+                    storageType: 'baseFootprint',
+                    candleTime: baseFootprint.time,
+                    baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+                  },
+                });
+              })
+              .catch((err) => {
+                recordRestoreDiagnostic({
+                  kind: 'storage',
+                  key: `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`,
+                  timestamp: Date.now(),
+                  failedRows: cells.length,
+                  distinctCandleTimeCount: 1,
+                  details: {
+                    panelId,
+                    storageType: 'baseFootprint',
+                    candleTime: baseFootprint.time,
+                    baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+                    error: err instanceof Error ? err.message : String(err),
+                  },
+                });
+                console.error('[Storage] Base footprint save request failed:', err);
+              });
           }
         }
 
@@ -916,7 +1075,24 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         throw new Error(`History API returned ${response.status}`);
       }
 
-      return await response.json() as Candle[];
+      const candles = await response.json() as Candle[];
+      recordRestoreDiagnostic({
+        kind: 'candles',
+        key: `${pair}:${timeframe}:stored`,
+        timestamp: Date.now(),
+        rowsFetched: candles.length,
+        distinctCandleTimeCount: new Set(candles.map((candle) => candle.time)).size,
+        details: {
+          panelId,
+          source: 'stored-history-api',
+          symbol: pair,
+          timeframe,
+          minCandleTime: candles[0]?.time ?? null,
+          maxCandleTime: candles[candles.length - 1]?.time ?? null,
+        },
+      });
+
+      return candles;
     };
 
     const hydrateStoredRawTrades = async (candles: Candle[]): Promise<RawTradeHydrationStats> => {
@@ -931,6 +1107,26 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       };
       const window = getHistoryWindow(candles, timeframeSeconds);
       if (!window) return stats;
+      const recordRawTradeRestore = (status: string) => {
+        recordRestoreDiagnostic({
+          kind: 'rawTrades',
+          key: `${pair}:rawTrades:${window.startMs}:${window.endMs}`,
+          timestamp: Date.now(),
+          rowsFetched: stats.fetched,
+          distinctCandleTimeCount: stats.hydratedCandleTimes.size,
+          failedRows: status === 'failed' ? Math.max(1, RAW_TRADE_HISTORY_PAGE_SIZE - stats.fetched) : 0,
+          skippedRows: Math.max(0, stats.fetched - stats.hydrated),
+          details: {
+            panelId,
+            status,
+            pages: stats.pages,
+            hydratedRows: stats.hydrated,
+            oldestTime: stats.oldestTime,
+            newestTime: stats.newestTime,
+            reachedStart: stats.reachedStart,
+          },
+        });
+      };
 
       let cursorTime: number | null = null;
       let cursorId: number | null = null;
@@ -956,12 +1152,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
         if (!response.ok) {
           console.warn(`[HistoryRestore:${panelId}] Raw trade page failed with ${response.status}`);
+          recordRawTradeRestore('failed');
           return stats;
         }
 
         const trades = await response.json() as Trade[];
         if (trades.length === 0) {
           stats.reachedStart = true;
+          recordRawTradeRestore('empty-page');
           return stats;
         }
 
@@ -1015,6 +1213,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         );
       }
 
+      recordRawTradeRestore(stats.reachedStart ? 'complete' : 'partial');
       return stats;
     };
 
@@ -1033,64 +1232,96 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (candidateTimes.length === 0) return stats;
 
       const restoredStats = await engineRef.current.getBaseCache().runRestoreOnce(window.startSeconds, window.endSeconds, async () => {
-      const params = new URLSearchParams({
-        symbol: pair,
-        contractType,
-        dataSourceMode,
-        timeframe: BASE_FOOTPRINT_TIMEFRAME,
-        start: String(window.startSeconds),
-        end: String(window.endSeconds),
-        bucketSize: String(BASE_FOOTPRINT_BUCKET_SIZE),
-      });
-      const response = await fetch(`/api/history/footprint?${params.toString()}`, {
-        cache: 'no-store',
-      });
+        const params = new URLSearchParams({
+          symbol: pair,
+          contractType,
+          dataSourceMode,
+          timeframe: BASE_FOOTPRINT_TIMEFRAME,
+          start: String(window.startSeconds),
+          end: String(window.endSeconds),
+          bucketSize: String(BASE_FOOTPRINT_BUCKET_SIZE),
+        });
+        const response = await fetch(`/api/history/footprint?${params.toString()}`, {
+          cache: 'no-store',
+        });
 
-      if (!response.ok) {
-        console.warn(`[HistoryRestore:${panelId}] Stored footprint fallback failed with ${response.status}`);
-        return stats;
-      }
-
-      const rows = await response.json() as FootprintHistoryRow[];
-      stats.rowsFetched = rows.length;
-
-      const rowsByCandle = new Map<number, FootprintHistoryRow[]>();
-      for (const row of rows) {
-        const current = rowsByCandle.get(row.candleTime) ?? [];
-        current.push(row);
-        rowsByCandle.set(row.candleTime, current);
-      }
-
-      const candidateTimeSet = new Set(candidateTimes);
-      stats.bucketMatches = candidateTimes.filter((time) => rowsByCandle.has(time)).length;
-      stats.bucketMisses = Math.max(0, candidateTimes.length - stats.bucketMatches);
-
-      for (const candleTime of candidateTimes) {
-        if (!active) return stats;
-
-        const candleRows = rowsByCandle.get(candleTime);
-        if (!candleRows || candleRows.length === 0) continue;
-        if (!candidateTimeSet.has(candleTime)) continue;
-
-        const cells = new Map<number, FootprintCell>();
-        let delta = 0;
-
-        for (const row of candleRows) {
-          cells.set(row.bucketPrice, {
-            bidVol: row.bidVol,
-            askVol: row.askVol,
+        if (!response.ok) {
+          recordRestoreDiagnostic({
+            kind: 'footprint',
+            key: `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`,
+            timestamp: Date.now(),
+            failedRows: candidateTimes.length,
+            details: {
+              panelId,
+              status: response.status,
+              start: window.startSeconds,
+              end: window.endSeconds,
+              baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+            },
           });
-          delta += row.delta ?? row.askVol - row.bidVol;
+          console.warn(`[HistoryRestore:${panelId}] Stored footprint fallback failed with ${response.status}`);
+          return stats;
         }
 
-        engineRef.current.hydrateBaseFootprintCandle(candleTime, cells, undefined, delta);
-        stats.candlesHydrated += 1;
-        stats.cellsHydrated += cells.size;
+        const rows = await response.json() as FootprintHistoryRow[];
+        stats.rowsFetched = rows.length;
 
-        if (stats.candlesHydrated % HYDRATION_CHUNK_SIZE === 0) {
-          await yieldToBrowser();
+        const rowsByCandle = new Map<number, FootprintHistoryRow[]>();
+        for (const row of rows) {
+          const current = rowsByCandle.get(row.candleTime) ?? [];
+          current.push(row);
+          rowsByCandle.set(row.candleTime, current);
         }
-      }
+
+        const candidateTimeSet = new Set(candidateTimes);
+        stats.bucketMatches = candidateTimes.filter((time) => rowsByCandle.has(time)).length;
+        stats.bucketMisses = Math.max(0, candidateTimes.length - stats.bucketMatches);
+
+        for (const candleTime of candidateTimes) {
+          if (!active) return stats;
+
+          const candleRows = rowsByCandle.get(candleTime);
+          if (!candleRows || candleRows.length === 0) continue;
+          if (!candidateTimeSet.has(candleTime)) continue;
+
+          const cells = new Map<number, FootprintCell>();
+          let delta = 0;
+
+          for (const row of candleRows) {
+            cells.set(row.bucketPrice, {
+              bidVol: row.bidVol,
+              askVol: row.askVol,
+            });
+            delta += row.delta ?? row.askVol - row.bidVol;
+          }
+
+          engineRef.current.hydrateBaseFootprintCandle(candleTime, cells, undefined, delta);
+          stats.candlesHydrated += 1;
+          stats.cellsHydrated += cells.size;
+
+          if (stats.candlesHydrated % HYDRATION_CHUNK_SIZE === 0) {
+            await yieldToBrowser();
+          }
+        }
+
+        recordRestoreDiagnostic({
+          kind: 'footprint',
+          key: `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`,
+          timestamp: Date.now(),
+          rowsFetched: stats.rowsFetched,
+          distinctCandleTimeCount: stats.candlesHydrated,
+          skippedRows: stats.bucketMisses,
+          details: {
+            panelId,
+            start: window.startSeconds,
+            end: window.endSeconds,
+            candidateCandles: candidateTimes.length,
+            cellsHydrated: stats.cellsHydrated,
+            bucketMatches: stats.bucketMatches,
+            bucketMisses: stats.bucketMisses,
+            baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+          },
+        });
 
         return stats;
       });
@@ -1114,6 +1345,21 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const profileCache = volumeProfileEngineRef.current.getBaseCache();
       const candidateTimes = profileCache.getMissingBaseCandleTimes(window.startSeconds, window.endSeconds);
       if (candidateTimes.length === 0) {
+        recordRestoreDiagnostic({
+          kind: 'volumeProfile',
+          key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+          timestamp: Date.now(),
+          rowsFetched: 0,
+          distinctCandleTimeCount: 0,
+          details: {
+            panelId,
+            status: 'cache-covered',
+            sourceKey: profileCache.key,
+            start: window.startSeconds,
+            end: window.endSeconds,
+            baseBucketSize: tickSize,
+          },
+        });
         console.debug('[VPROFILE_CACHE] Fine profile restore skipped because shared base cache already covers range', {
           panelId,
           pair,
@@ -1146,6 +1392,20 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         });
 
         if (!response.ok) {
+          recordRestoreDiagnostic({
+            kind: 'volumeProfile',
+            key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+            timestamp: Date.now(),
+            failedRows: candidateTimes.length,
+            details: {
+              panelId,
+              status: response.status,
+              sourceKey: profileCache.key,
+              start: window.startSeconds,
+              end: window.endSeconds,
+              baseBucketSize: tickSize,
+            },
+          });
           console.warn(`[HistoryRestore:${panelId}] Fine profile row restore failed with ${response.status}`);
           return stats;
         }
@@ -1179,6 +1439,25 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           coverageRange: profileCache.getLoadedRanges(),
         });
 
+        recordRestoreDiagnostic({
+          kind: 'volumeProfile',
+          key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+          timestamp: Date.now(),
+          rowsFetched: stats.rowsFetched,
+          distinctCandleTimeCount: stats.candlesHydrated,
+          skippedRows: Math.max(0, candidateTimes.length - stats.candlesHydrated),
+          details: {
+            panelId,
+            sourceKey: profileCache.key,
+            start: window.startSeconds,
+            end: window.endSeconds,
+            candidateCandles: candidateTimes.length,
+            baseBucketSize: tickSize,
+            minCandleTime: rows.length > 0 ? Math.min(...rows.map((row) => row.candleTime)) : null,
+            maxCandleTime: rows.length > 0 ? Math.max(...rows.map((row) => row.candleTime)) : null,
+          },
+        });
+
         return stats;
       });
 
@@ -1189,58 +1468,110 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       return restoredStats;
     };
 
+    const feedUnsubscribers: Array<() => void> = [];
+
     const init = async () => {
       try {
         console.log(`[PanelFeed:${panelId}] Connecting ${contractType} candles and ${dataSourceMode} aggTrades for ${pair} ${timeframe}...`);
-        contractAdapter.subscribeCandles(pair, timeframe, handleCandle);
+        feedUnsubscribers.push(candleCache.subscribe((snapshot) => {
+          if (!active) return;
+
+          if (snapshot.reason === 'live' && snapshot.candle) {
+            // console.log(`[CANDLE_CACHE_VERIFY:${panelId}] live candle from shared cache`, {
+            //   candleCacheKey: snapshot.key,
+            //   pair,
+            //   contractType,
+            //   timeframe,
+            //   candleTime: snapshot.candle.time,
+            //   isClosed: snapshot.candle.isClosed,
+            //   candleCount: snapshot.candleCount,
+            //   subscriberPanel: panelId,
+            // });
+            handleCandle(snapshot.candle);
+            return;
+          }
+
+          console.log(`[CANDLE_CACHE_VERIFY:${panelId}] syncing candle snapshot from shared cache`, {
+            candleCacheKey: snapshot.key,
+            pair,
+            contractType,
+            timeframe,
+            reason: snapshot.reason,
+            candleCount: snapshot.candleCount,
+            firstCandleTime: snapshot.candles[0]?.time ?? null,
+            lastCandleTime: snapshot.candles[snapshot.candles.length - 1]?.time ?? null,
+            subscriberPanel: panelId,
+          });
+          pushAllCandles(panelId, snapshot.candles);
+          const lastCandle = snapshot.candles[snapshot.candles.length - 1];
+          if (Number.isFinite(lastCandle?.close)) {
+            contractPriceRef.current = lastCandle.close;
+          }
+        }));
         if (shouldUseSpotTrades) {
-          spotAdapter.subscribeTrades(pair, handleSpotTrade);
+          feedUnsubscribers.push(subscribeTradeStream('spot', pair, handleSpotTrade));
         }
         if (shouldUseFuturesTrades) {
-          futuresAdapter.subscribeTrades(pair, handleFuturesTrade);
+          feedUnsubscribers.push(subscribeTradeStream('futures', pair, handleFuturesTrade));
         }
 
         setLoadingHistory(panelId, true);
         console.log(`[PanelFeed:${panelId}] Restoring stored history for ${pair} ${timeframe} in background...`);
-        let history: Candle[] = [];
-        let storedHistory: Candle[] = [];
-        let binanceHistory: Candle[] = [];
-        let historySource: 'Binance' | 'stored' | 'stored+Binance' | 'none' = 'none';
+        const historyResult: CandleHistoryRestoreResult = await candleCache.restoreHistory(async () => {
+          let restoredHistory: Candle[] = [];
+          let storedHistory: Candle[] = [];
+          let binanceHistory: Candle[] = [];
+          let source: CandleHistoryRestoreResult['source'] = 'none';
 
-        if (shouldUseStoredHistory) {
-          try {
-            storedHistory = await fetchStoredHistory();
-            if (storedHistory.length > 0 && active) {
-              history = storedHistory;
-              historySource = 'stored';
-              pushAllCandles(panelId, storedHistory);
-              storedHistory.forEach(c => engineRef.current.ingestCandle(c));
-              const lastStoredCandle = storedHistory[storedHistory.length - 1];
-              if (Number.isFinite(lastStoredCandle?.close)) {
-                contractPriceRef.current = lastStoredCandle.close;
+          if (shouldUseStoredHistory) {
+            try {
+              storedHistory = await fetchStoredHistory();
+              if (storedHistory.length > 0) {
+                restoredHistory = storedHistory;
+                source = 'stored';
               }
+            } catch (err) {
+              console.warn('[History] Could not load stored candles:', err);
             }
-          } catch (err) {
-            console.warn('[History] Could not load stored candles:', err);
           }
-        }
 
-        console.log(`[PanelFeed:${panelId}] Fetching Binance ${contractType} history for ${pair} ${timeframe} in background...`);
-        try {
-          binanceHistory = await contractAdapter.fetchHistory(pair, timeframe);
-        } catch (err) {
-          console.warn('[History] Could not load Binance candles:', err);
-        }
+          console.log(`[PanelFeed:${panelId}] Fetching Binance ${contractType} history for ${pair} ${timeframe} in background...`);
+          try {
+            binanceHistory = await fetchSharedHistory(contractType, pair, timeframe);
+          } catch (err) {
+            console.warn('[History] Could not load Binance candles:', err);
+          }
 
-        if (binanceHistory.length > 0) {
-          history = mergeHistoryCandles(history, binanceHistory);
-          historySource = storedHistory.length > 0 ? 'stored+Binance' : 'Binance';
-        }
+          if (binanceHistory.length > 0) {
+            restoredHistory = mergeHistoryCandles(restoredHistory, binanceHistory);
+            source = storedHistory.length > 0 ? 'stored+Binance' : 'Binance';
+          }
+
+          return {
+            candles: restoredHistory,
+            source,
+            storedCandles: storedHistory.length,
+            binanceCandles: binanceHistory.length,
+          };
+        });
+        const history = historyResult.candles;
+        const historySource = historyResult.source;
+        console.log(`[CANDLE_CACHE_VERIFY:${panelId}] restore result`, {
+          candleCacheKey: candleCache.key,
+          pair,
+          contractType,
+          timeframe,
+          source: historyResult.source,
+          reused: historyResult.reused ?? false,
+          restoredCandles: history.length,
+          storedCandles: historyResult.storedCandles,
+          binanceCandles: historyResult.binanceCandles,
+          subscriberPanel: panelId,
+        });
 
         if (!active) return;
 
         if (history.length > 0) {
-          pushAllCandles(panelId, history);
           const lastHistoryCandle = history[history.length - 1];
           if (Number.isFinite(lastHistoryCandle?.close)) {
             contractPriceRef.current = lastHistoryCandle.close;
@@ -1297,8 +1628,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             contractType,
             dataSourceMode,
             source: historySource,
-            storedCandles: storedHistory.length,
-            binanceCandles: binanceHistory.length,
+            candleCacheKey: candleCache.key,
+            candleCacheReused: historyResult.reused ?? false,
+            storedCandles: historyResult.storedCandles,
+            binanceCandles: historyResult.binanceCandles,
             mergedCandles: history.length,
             rangeStart: restoreWindow ? formatSeconds(restoreWindow.startSeconds) : 'n/a',
             rangeEnd: restoreWindow ? formatSeconds(restoreWindow.endSeconds) : 'n/a',
@@ -1321,6 +1654,29 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             finalFootprintCandles: coverage.footprintCandles,
             finalFootprintCandlesWithCells: coverage.footprintCandlesWithCells,
           });
+          recordRestoreDiagnostic({
+            kind: 'candles',
+            key: `${pair}:${contractType}:${dataSourceMode}:${timeframe}:panel-restore`,
+            timestamp: Date.now(),
+            rowsFetched: history.length,
+            distinctCandleTimeCount: new Set(history.map((candle) => candle.time)).size,
+            details: {
+              panelId,
+              source: historySource,
+              candleCacheKey: candleCache.key,
+              candleCacheReused: historyResult.reused ?? false,
+              storedCandles: historyResult.storedCandles,
+              binanceCandles: historyResult.binanceCandles,
+              rawTradesFetched: rawStats.fetched,
+              rawTradesHydrated: rawStats.hydrated,
+              fineProfileRowsFetched: fineProfileStats.rowsFetched,
+              footprintRowsFetched: footprintStats.rowsFetched,
+              footprintCellsHydrated: footprintStats.cellsHydrated,
+              footprintCandlesHydrated: footprintStats.candlesHydrated,
+              finalFootprintCandles: coverage.footprintCandles,
+              finalFootprintCandlesWithCells: coverage.footprintCandlesWithCells,
+            },
+          });
         }
 
         console.log(`[PanelFeed:${panelId}] ${historySource} history merged (${history.length} candles). Live streams already running.`);
@@ -1342,21 +1698,21 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const obManager = orderbookRef.current;
 
     const initOrderbook = async () => {
-      if (!spotAdapter.fetchOrderbookSnapshot || !spotAdapter.subscribeOrderbook) return;
-
       try {
         console.log(`[PanelFeed:${panelId}] Fetching orderbook snapshot for ${pair}...`);
-        const snapshot = await spotAdapter.fetchOrderbookSnapshot(pair, 500);
+        const snapshot = await fetchSharedOrderbookSnapshot(pair, 500);
         if (!active) return;
 
         obManager.initFromSnapshot(snapshot);
         console.log(`[PanelFeed:${panelId}] Orderbook snapshot loaded (${snapshot.bids.length} bids, ${snapshot.asks.length} asks)`);
 
         // Subscribe to incremental updates
-        spotAdapter.subscribeOrderbook(pair, (update: DepthUpdate) => {
-          obManager.applyUpdate(update);
-          pendingAggregationRef.current = true;
-        });
+        feedUnsubscribers.push(
+          subscribeDepthStream(pair, (update: DepthUpdate) => {
+            obManager.applyUpdate(update);
+            pendingAggregationRef.current = true;
+          })
+        );
 
         // Throttled aggregation at 500ms
         aggregationInterval = setInterval(() => {
@@ -1393,8 +1749,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     return () => {
       active = false;
-      spotAdapter.disconnect();
-      futuresAdapter.disconnect();
+      feedUnsubscribers.forEach((unsubscribe) => unsubscribe());
       console.debug('[VPROFILE_DEBUG] Live fine profile 1m slices before feed cleanup', {
         panelId,
         pair,
@@ -1412,7 +1767,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       flushRawTrades();
       flushFineProfileRows();
       clearInterval(rawTradeFlushInterval);
-      if (spotAdapter.disconnectOrderbook) spotAdapter.disconnectOrderbook();
       if (aggregationInterval) clearInterval(aggregationInterval);
       obManager.reset();
       setLiquidityZones(panelId, []);

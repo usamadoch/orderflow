@@ -119,6 +119,7 @@ app/api/history/profile/route.ts → API route returning stored fine-grain Volum
 app/api/history/status/route.ts → API route returning collector metadata, candle counts, retention, and DB size.
 components/FeedProvider.tsx → Panel feed lifecycle, DB-backed startup history restore, and closed-candle storage serialization.
 lib/config/markets.ts → Shared allowed symbols and timeframes for history API validation.
+lib/debug/marketMetrics.ts → Dev-only market-data observability registry exposed through `window.__MARKET_DEBUG__`.
 lib/actions/storageActions.ts → Server Action bridge that accepts serialized closed-candle data from the client feed.
 lib/aggregation/engine.ts → AggregationEngine footprint storage, candle ingestion, and persisted footprint hydration.
 lib/db/cleanupJob.ts → Server cleanup timer for retention-based database pruning.
@@ -152,6 +153,8 @@ lib/volumeProfile/profileEngine.ts → Fine raw-trade Volume Profile source/aggr
 app/api/history/trades/route.ts → API route returning stored raw trades for a symbol/time window.
 lib/feeds/binance.ts → Binance adapter for REST/WS market data, including aggTrade id parsing.
 lib/feeds/binanceFutures.ts → Binance futures adapter for public REST kline history and WebSocket kline/aggTrade data.
+lib/feeds/feedRegistry.ts → Shared ref-counted live feed registry for candle, aggTrade, depth, and in-flight REST fetch reuse.
+lib/feeds/candleCache.ts → Shared in-memory contract/symbol/timeframe OHLCV cache for capped merged candles, subscriber fanout, loaded ranges, and restore dedupe.
 components/ChartEngineContext.tsx → Shared chart engine context, including fine Volume Profile source and redraw revision.
 components/FeedProvider.tsx → Panel feed lifecycle, raw trade hydration/storage batching, fine profile ingestion, and existing chart/footprint feed orchestration.
 components/chart/ChartPanel.tsx → Panel state bridge from store/context into ChartCanvas, including fine profile source and tick size.
@@ -329,6 +332,22 @@ skills/log.md → Change history for feature/fix context and impact summaries.
 lib/volumeProfile/profileCache.ts → Shared in-memory source-scoped cache for canonical 1m fine Volume Profile rows, live updates, coverage metadata, and restore dedupe.
 lib/volumeProfile/profileEngine.ts → Panel-local Volume Profile source/view over shared fine-row base cache with display row-size aggregation and raw-trade fallback.
 components/FeedProvider.tsx → Panel feed lifecycle attaching Volume Profile engines to shared source/base-bucket caches and deduping fine-profile restore calls.
+lib/feeds/feedRegistry.ts → Shared ref-counted feed registry for kline, aggTrade, spot depth, in-flight history/snapshot requests, and visible feed reuse logs.
+components/FeedProvider.tsx → Panel feed lifecycle using shared feed registry subscriptions while keeping engines, orderbook managers, signals, storage, and rendering panel-local.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/feeds/candleCache.ts → Shared in-memory contract/symbol/timeframe OHLCV cache with capped merged candles, live kline subscription fanout, subscriber tracking, loaded ranges, restore dedupe, and verification logs.
+components/FeedProvider.tsx → Panel feed lifecycle syncing Zustand candles from the shared candle cache with panel-level verification logs while keeping panel engines, footprints, profiles, signals, storage, scroll, and render state local.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/debug/marketMetrics.ts → Dev-only market-data metrics registry for feed streams, shared caches, restore diagnostics, storage writes/skips, and browser console snapshots.
+lib/feeds/feedRegistry.ts → Shared ref-counted feed registry instrumented with stream lifecycle, subscriber, event-rate, history, and orderbook snapshot metrics.
+lib/feeds/candleCache.ts → Shared OHLCV cache instrumented with candle counts, subscriber counts, coverage, history restore hit/miss, and restore dedupe metrics.
+lib/aggregation/footprintCache.ts → Shared 1m/$5 footprint cache instrumented with base-slice counts, cell counts, coverage, cache hit/miss, restore dedupe, and live trade dedupe metrics.
+lib/volumeProfile/profileCache.ts → Shared 1m fine Volume Profile cache instrumented with slice/row counts, base bucket, coverage, cache hit/miss, restore dedupe, and live trade dedupe metrics.
+components/FeedProvider.tsx → Panel feed lifecycle with restore/storage diagnostics reported to the dev-only market metrics snapshot.
 skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
 skills/log.md → Change history for feature/fix context and impact summaries.
 

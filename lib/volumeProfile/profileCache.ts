@@ -1,4 +1,11 @@
 import { Trade } from '@/types/trade';
+import {
+  getCoverageFromTimes,
+  recordCacheAccess,
+  recordCacheRestoreRequest,
+  recordLiveTradeDedupe,
+  updateCacheMetric,
+} from '@/lib/debug/marketMetrics';
 import { normalizePriceToBucket } from '@/lib/utils/aggregation';
 import type { FineProfileRow } from './profileEngine';
 
@@ -115,7 +122,11 @@ export class VolumeProfileBaseCache {
 
   ingestTrade(trade: Trade, origin = 'live') {
     const inserted = this.addTrade(trade);
-    if (!inserted || this.baseBucketSize <= 0) return false;
+    if (!inserted) {
+      recordLiveTradeDedupe('volumeProfile', this.key, this.getMetricDetails());
+      return false;
+    }
+    if (this.baseBucketSize <= 0) return false;
 
     const candleTime = getBaseCandleTimeForTradeMs(trade.time);
     const bucketPrice = normalizePriceToBucket(trade.price, this.baseBucketSize);
@@ -148,6 +159,7 @@ export class VolumeProfileBaseCache {
     row.tradeCount += 1;
     this.fineRowOrigins.set(getFineRowStorageKey(row), origin);
     this.versionValue += 1;
+    updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
 
     if (createdRow || row.tradeCount % 100 === 0) {
       console.debug('[VPROFILE_CACHE] Live fine row update', {
@@ -174,6 +186,9 @@ export class VolumeProfileBaseCache {
     }
     this.ensureSorted();
     this.enforceTradeLimit();
+    if (inserted > 0) {
+      updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
+    }
     return inserted;
   }
 
@@ -209,6 +224,7 @@ export class VolumeProfileBaseCache {
     stats.distinctCandleTimes = candleTimes.size;
     if (stats.rowsInserted > 0) {
       this.versionValue += 1;
+      updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
     }
 
     console.debug('[VPROFILE_CACHE] Hydrated fine rows', {
@@ -259,6 +275,7 @@ export class VolumeProfileBaseCache {
 
     if (this.trades.length !== beforeTradeCount || rowsRemoved > 0) {
       this.versionValue += 1;
+      updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
       return true;
     }
 
@@ -278,6 +295,7 @@ export class VolumeProfileBaseCache {
 
     if (this.trades.length !== beforeTradeCount || this.rowCount !== beforeRowCount) {
       this.versionValue += 1;
+      updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
       return true;
     }
 
@@ -351,6 +369,13 @@ export class VolumeProfileBaseCache {
       loadedRanges: this.getLoadedRanges(),
     });
 
+    recordCacheAccess('volumeProfile', this.key, missing.length === 0, {
+      ...this.getMetricDetails(),
+      requestStartTime: normalizeProfileBaseCandleTime(startTime),
+      requestEndTime: normalizeProfileBaseCandleTime(endTime),
+      missingBaseSliceCount: missing.length,
+    });
+
     return missing;
   }
 
@@ -366,6 +391,11 @@ export class VolumeProfileBaseCache {
     const restoreKey = this.getRestoreKey(startTime, endTime);
     const existing = this.restorePromises.get(restoreKey) as Promise<T> | undefined;
     if (existing) {
+      recordCacheRestoreRequest('volumeProfile', this.key, true, {
+        ...this.getMetricDetails(),
+        requestStartTime: normalizeProfileBaseCandleTime(startTime),
+        requestEndTime: normalizeProfileBaseCandleTime(endTime),
+      });
       console.debug('[VPROFILE_CACHE] Restore dedupe', {
         sourceKey: this.key,
         baseBucketSize: this.baseBucketSize,
@@ -375,6 +405,12 @@ export class VolumeProfileBaseCache {
       });
       return existing;
     }
+
+    recordCacheRestoreRequest('volumeProfile', this.key, false, {
+      ...this.getMetricDetails(),
+      requestStartTime: normalizeProfileBaseCandleTime(startTime),
+      requestEndTime: normalizeProfileBaseCandleTime(endTime),
+    });
 
     console.debug('[VPROFILE_CACHE] Restore start', {
       sourceKey: this.key,
@@ -386,6 +422,7 @@ export class VolumeProfileBaseCache {
 
     const restorePromise = restore().then((result) => {
       this.rememberLoadedRange(startTime, endTime);
+      updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
       console.debug('[VPROFILE_CACHE] Restore complete', {
         sourceKey: this.key,
         baseBucketSize: this.baseBucketSize,
@@ -468,6 +505,7 @@ export class VolumeProfileBaseCache {
     this.trades = this.trades.slice(this.trades.length - this.maxTrades);
     this.rebuildSeenTradeKeys();
     this.versionValue += 1;
+    updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
   }
 
   private rebuildSeenTradeKeys() {
@@ -491,6 +529,23 @@ export class VolumeProfileBaseCache {
       this.loadedRanges = this.loadedRanges.slice(-100);
     }
   }
+
+  private getMetricDetails() {
+    return {
+      activeCacheKey: this.key,
+      fineProfileSliceCount: this.candleCount,
+      fineRowCount: this.rowCount,
+      baseBucketSize: this.baseBucketSize,
+      baseTimeframeSeconds: BASE_PROFILE_TIMEFRAME_SECONDS,
+      tradeCount: this.trades.length,
+      approximateMemoryBytes: this.rowCount * 56 + this.trades.length * 72,
+      coverageRange: getCoverageFromTimes(Array.from(this.fineRowsByCandle.keys())),
+      loadedRanges: this.getLoadedRanges(),
+      inFlightRestoreCount: this.restorePromises.size,
+      seenTradeKeyCount: this.seenTradeKeys.size,
+      version: this.versionValue,
+    };
+  }
 }
 
 const sharedVolumeProfileCaches = new Map<string, VolumeProfileBaseCache>();
@@ -501,6 +556,20 @@ export function getSharedVolumeProfileCache(parts: VolumeProfileCacheKeyParts) {
   if (!cache) {
     cache = new VolumeProfileBaseCache(key, parts.baseBucketSize);
     sharedVolumeProfileCaches.set(key, cache);
+    updateCacheMetric('volumeProfile', key, {
+      activeCacheKey: key,
+      fineProfileSliceCount: 0,
+      fineRowCount: 0,
+      baseBucketSize: parts.baseBucketSize,
+      baseTimeframeSeconds: BASE_PROFILE_TIMEFRAME_SECONDS,
+      tradeCount: 0,
+      approximateMemoryBytes: 0,
+      coverageRange: null,
+      loadedRanges: [],
+      inFlightRestoreCount: 0,
+      seenTradeKeyCount: 0,
+      created: true,
+    });
     console.debug('[VPROFILE_CACHE] Cache miss: created shared base cache', {
       sourceKey: key,
       symbol: parts.symbol,
@@ -510,6 +579,15 @@ export function getSharedVolumeProfileCache(parts: VolumeProfileCacheKeyParts) {
     });
     return cache;
   }
+
+  updateCacheMetric('volumeProfile', key, {
+    activeCacheKey: key,
+    fineProfileSliceCount: cache.candleCount,
+    fineRowCount: cache.rowCount,
+    baseBucketSize: cache.baseBucketSize,
+    loadedRanges: cache.getLoadedRanges(),
+    reused: true,
+  });
 
   console.debug('[VPROFILE_CACHE] Cache hit: reused shared base cache', {
     sourceKey: key,

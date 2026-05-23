@@ -1,6 +1,13 @@
 import { Candle } from '../../types/candle';
 import { FootprintCandle, FootprintCell } from '../../types/footprint';
 import { Trade } from '../../types/trade';
+import {
+  getCoverageFromTimes,
+  recordCacheAccess,
+  recordCacheRestoreRequest,
+  recordLiveTradeDedupe,
+  updateCacheMetric,
+} from '../debug/marketMetrics';
 import { normalizePriceToBucket } from '../utils/aggregation';
 
 export const BASE_FOOTPRINT_BUCKET_SIZE = 5;
@@ -65,7 +72,10 @@ export class FootprintBaseCache {
 
   ingestTrade(trade: Trade, currentCandleTime: number) {
     const tradeKey = this.getTradeKey(trade);
-    if (this.seenTradeKeys.has(tradeKey)) return;
+    if (this.seenTradeKeys.has(tradeKey)) {
+      recordLiveTradeDedupe('footprint', this.key, this.getMetricDetails());
+      return;
+    }
     this.seenTradeKeys.add(tradeKey);
     this.trimTradeKeys();
 
@@ -98,6 +108,7 @@ export class FootprintBaseCache {
     candle.close = trade.price;
     candle.volume += trade.quantity;
     candle.delta += trade.isBuyerMaker ? -trade.quantity : trade.quantity;
+    updateCacheMetric('footprint', this.key, this.getMetricDetails());
   }
 
   hydrateBaseFootprintCandle(time: number, cells: Map<number, FootprintCell>, candle?: Partial<Candle>, delta?: number) {
@@ -113,6 +124,7 @@ export class FootprintBaseCache {
       cells: cloneCells(cells),
       isClosed: candle?.isClosed ?? true
     });
+    updateCacheMetric('footprint', this.key, this.getMetricDetails());
   }
 
   getBaseFootprintCandle(time: number): FootprintCandle | null {
@@ -157,6 +169,13 @@ export class FootprintBaseCache {
       }
     }
 
+    recordCacheAccess('footprint', this.key, missing.length === 0, {
+      ...this.getMetricDetails(),
+      requestStartTime: normalizeBaseCandleTime(startTime),
+      requestEndTime: normalizeBaseCandleTime(endTime),
+      missingBaseSliceCount: missing.length,
+    });
+
     return missing;
   }
 
@@ -168,6 +187,7 @@ export class FootprintBaseCache {
     for (const key of toDelete) {
       this.baseFootprintMap.delete(key);
     }
+    updateCacheMetric('footprint', this.key, this.getMetricDetails());
   }
 
   private getTradeKey(trade: Trade) {
@@ -195,10 +215,24 @@ export class FootprintBaseCache {
   async runRestoreOnce<T>(startTime: number, endTime: number, restore: () => Promise<T>): Promise<T> {
     const restoreKey = this.getRestoreKey(startTime, endTime);
     const existing = this.restorePromises.get(restoreKey) as Promise<T> | undefined;
-    if (existing) return existing;
+    if (existing) {
+      recordCacheRestoreRequest('footprint', this.key, true, {
+        ...this.getMetricDetails(),
+        requestStartTime: normalizeBaseCandleTime(startTime),
+        requestEndTime: normalizeBaseCandleTime(endTime),
+      });
+      return existing;
+    }
+
+    recordCacheRestoreRequest('footprint', this.key, false, {
+      ...this.getMetricDetails(),
+      requestStartTime: normalizeBaseCandleTime(startTime),
+      requestEndTime: normalizeBaseCandleTime(endTime),
+    });
 
     const restorePromise = restore().then((result) => {
       this.rememberLoadedRange(startTime, endTime);
+      updateCacheMetric('footprint', this.key, this.getMetricDetails());
       return result;
     }).finally(() => {
       this.restorePromises.delete(restoreKey);
@@ -222,6 +256,26 @@ export class FootprintBaseCache {
       this.loadedRanges = this.loadedRanges.slice(-100);
     }
   }
+
+  private getMetricDetails() {
+    let rowCellCount = 0;
+    for (const candle of this.baseFootprintMap.values()) {
+      rowCellCount += candle.cells.size;
+    }
+
+    return {
+      activeCacheKey: this.key,
+      baseSliceCount: this.baseFootprintMap.size,
+      baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+      baseTimeframe: BASE_FOOTPRINT_TIMEFRAME,
+      approximateRowCellCount: rowCellCount,
+      approximateMemoryBytes: rowCellCount * 32 + this.baseFootprintMap.size * 96,
+      coverageRange: getCoverageFromTimes(Array.from(this.baseFootprintMap.keys())),
+      loadedRanges: this.getLoadedRanges(),
+      inFlightRestoreCount: this.restorePromises.size,
+      seenTradeKeyCount: this.seenTradeKeys.size,
+    };
+  }
 }
 
 const sharedFootprintCaches = new Map<string, FootprintBaseCache>();
@@ -232,6 +286,24 @@ export function getSharedFootprintCache(parts: FootprintCacheKeyParts) {
   if (!cache) {
     cache = new FootprintBaseCache(key);
     sharedFootprintCaches.set(key, cache);
+    updateCacheMetric('footprint', key, {
+      activeCacheKey: key,
+      baseSliceCount: 0,
+      baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+      baseTimeframe: BASE_FOOTPRINT_TIMEFRAME,
+      approximateRowCellCount: 0,
+      approximateMemoryBytes: 0,
+      coverageRange: null,
+      loadedRanges: [],
+      inFlightRestoreCount: 0,
+      seenTradeKeyCount: 0,
+      created: true,
+    });
+  } else {
+    updateCacheMetric('footprint', key, {
+      activeCacheKey: key,
+      reused: true,
+    });
   }
   return cache;
 }

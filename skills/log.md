@@ -1,5 +1,41 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-23] - Observability: Market Debug Metrics Snapshot
+- **What changed**:
+  - Added a central dev-only `lib/debug/marketMetrics.ts` metrics registry exposed as `window.__MARKET_DEBUG__`.
+  - Instrumented the shared feed registry with stream creation/reuse/close counts, subscriber counts, last event timestamps, and per-stream event rates.
+  - Instrumented candle, footprint, and Volume Profile shared caches with active keys, slice/row/cell counts, approximate memory size, coverage ranges, cache hit/miss counts, restore requests, restore dedupe counts, and live trade dedupe counts.
+  - Added restore/storage diagnostics from the panel feed lifecycle for candle/history restores, raw trade restores, footprint/profile restores, row write requests, skipped rows, and failed writes.
+- **Why it changed**:
+  - Shared feeds and caches needed a browser-console snapshot for validating split-panel reuse, restore dedupe, cache coverage, subscriber changes, and storage health without changing runtime behavior.
+- **Impact summary**:
+  - In development, DevTools can inspect `window.__MARKET_DEBUG__.getSnapshot()` and clear counters with `window.__MARKET_DEBUG__.reset()`. Production remains no-op unless explicitly enabled with market debug env flags.
+  - Chart rendering, database schema, storage format, and feed/cache behavior are unchanged; only lightweight counters and derived summaries were added.
+
+## [2026-05-23] - Architecture: Shared Candle/OHLCV Cache
+- **What changed**:
+  - Added a shared in-memory candle cache keyed by `contractType::symbol::timeframe`.
+  - Routed panel candle history restore and live kline updates through the cache while syncing snapshots back into panel Zustand candle state.
+  - Added `[CANDLE_CACHE]` diagnostics for cache creation/reuse, subscriber add/remove, history restore, live updates, candle counts, cache keys, and in-flight restore reuse.
+  - Promoted candle cache verification output to visible console logs and added `[CANDLE_CACHE_VERIFY:left/right]` panel sync logs for restore results, snapshot syncs, and live candle fanout.
+  - Re-enabled `[FEED_REGISTRY]` console logs so stream creation/reuse and subscriber counts are visible alongside candle cache logs.
+- **Why it changed**:
+  - Matching split panels could still restore, merge, and maintain duplicate OHLCV candle arrays even though their live kline WebSocket stream was already shared.
+  - Manual validation needed obvious browser-console markers for cache reuse and panel fanout.
+- **Impact summary**:
+  - Panels with the same contract, symbol, and timeframe reuse one capped merged candle base and one live kline cache update path. Panel-specific viewport, scroll, zoom, drawings, overlays, signals, footprint/profile settings, and render state remain local.
+  - The extra logs are verification-only and do not change footprint cache, Volume Profile cache, feed registry, chart UI, or storage behavior.
+
+## [2026-05-23] - Architecture: Shared Live Feed Registry
+- **What changed**:
+  - Added a shared ref-counted feed registry for Binance kline, aggTrade, and spot depth streams.
+  - Routed panel feed subscriptions through registry keys so identical panels reuse live streams while each panel keeps its own callbacks.
+  - Added in-flight reuse for Binance candle history and orderbook snapshot fetches to reduce duplicate concurrent API requests.
+- **Why it changed**:
+  - Split panels with matching symbol/source/timeframe were opening duplicate WebSocket subscriptions and doing duplicate live network work.
+- **Impact summary**:
+  - Matching panels now share underlying live feed subscriptions until the final subscriber unsubscribes, while footprint/profile caches, contract alignment, signals, orderbook managers, storage, and chart rendering remain panel-local.
+
 ## [2026-05-23] - Architecture: Shared Volume Profile Base Cache
 - **What changed**:
   - Added a shared in-memory Volume Profile base cache keyed by `symbol::contractType::dataSourceMode::baseBucketSize`.
@@ -98,6 +134,3 @@
   - The compact bar was rendering underneath the horizontal timestamp axis instead of collapsing above it.
 - **Impact summary**:
   - Minimized CVD now preserves the time axis at the absolute bottom while keeping minimize/expand behavior lightweight and isolated to layout positioning.
-
-
-
