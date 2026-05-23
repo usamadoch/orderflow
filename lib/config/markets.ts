@@ -5,6 +5,7 @@ export type AllowedSymbol = (typeof ALLOWED_SYMBOLS)[number]
 export type AllowedTimeframe = (typeof ALLOWED_TIMEFRAMES)[number]
 export type MarketContractType = 'spot' | 'futures'
 export type MarketDataSourceMode = 'spot' | 'futures' | 'both'
+export const FINE_PROFILE_STORAGE_TIMEFRAME = '1m'
 
 export function isAllowedSymbol(symbol: string | null): symbol is AllowedSymbol {
   return ALLOWED_SYMBOLS.includes(symbol as AllowedSymbol)
@@ -20,12 +21,4 @@ export function isAllowedContractType(contractType: string | null): contractType
 
 export function isAllowedDataSourceMode(mode: string | null): mode is MarketDataSourceMode {
   return mode === 'spot' || mode === 'futures' || mode === 'both'
-}
-
-export function getFineProfileStorageTimeframe(
-  timeframe: string,
-  contractType: MarketContractType,
-  dataSourceMode: MarketDataSourceMode,
-) {
-  return `${timeframe}::${contractType}::${dataSourceMode}`
 }

@@ -277,6 +277,61 @@ lib/config/markets.ts → Shared market validation plus source-scoped fine-profi
 skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
 skills/log.md → Change history for feature/fix context and impact summaries.
 
+lib/aggregation/engine.ts → AggregationEngine stores footprint cells at fixed $5 base resolution and exposes display-bucket aggregation.
+components/FeedProvider.tsx → Panel feed lifecycle with fixed $5 footprint restore/storage and bucket-size changes handled as in-memory display aggregation.
+app/api/history/footprint/route.ts → API route returning stored base $5 footprint cells for single-candle or range hydration.
+lib/actions/storageActions.ts → Server Action bridge for closed-candle snapshots using the fixed $5 footprint storage path.
+lib/db/marketStorage.ts → Closed-candle storage orchestration forcing footprint writes to the $5 base bucket size.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/aggregation/engine.ts → AggregationEngine stores canonical 1m/$5 base footprint slices and derives display timeframe/bucket views.
+components/FeedProvider.tsx → Panel feed lifecycle with source-scoped 1m/$5 footprint restore/storage and chart timeframe aggregation from base rows.
+app/api/history/footprint/route.ts → API route returning source-scoped canonical 1m/$5 footprint rows for hydration.
+lib/db/database.ts → Turso/libSQL schema and helpers for source-scoped footprint_cells persistence and canonical base-row queries.
+lib/actions/storageActions.ts → Server Action bridge for chart candle storage and source-scoped base footprint row storage.
+lib/db/marketStorage.ts → Storage orchestration for chart OHLCV snapshots plus source-scoped 1m/$5 footprint snapshots.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/aggregation/footprintCache.ts → Shared in-memory source-scoped cache for canonical 1m/$5 footprint slices, coverage metadata, and restore dedupe.
+lib/aggregation/engine.ts → Panel-specific AggregationEngine view over shared base footprint cache with display timeframe/bucket aggregation.
+components/FeedProvider.tsx → Panel feed lifecycle attaching engines to shared source-scoped footprint caches and deduping base restore calls.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/db/database.ts → Turso/libSQL schema and helpers for explicit source-scoped canonical 1m fine_profile_rows persistence.
+lib/db/marketStorage.ts → Storage orchestration for source-scoped canonical 1m fine Volume Profile rows.
+lib/actions/storageActions.ts → Server Action bridge for source-scoped fine Volume Profile row batches.
+app/api/history/profile/route.ts → API route returning explicit-source canonical 1m fine Volume Profile rows for hydration.
+components/FeedProvider.tsx → Panel feed lifecycle aggregating live fine Volume Profile rows at canonical 1m base times.
+lib/volumeProfile/profileEngine.ts → Fine Volume Profile source deriving visible profile windows from restored 1m rows plus uncovered live/raw trades.
+lib/config/markets.ts → Shared market validation plus canonical fine Volume Profile storage timeframe constant.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+components/FeedProvider.tsx → Panel feed lifecycle with canonical 1m Volume Profile row persistence, reset-safe eligible row flush, and profile restore/write diagnostics.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+components/FeedProvider.tsx → Volume Profile persistence debug trace for live 1m rows, eligibility, queueing, cleanup, and restore hydration.
+lib/volumeProfile/profileEngine.ts → Volume Profile debug counters for row hydration origins and selected range profile build sources.
+app/api/history/profile/route.ts → Profile history API debug logging for restore query parameters and result coverage.
+lib/db/database.ts → Fine profile row DB write debug logging for accepted/skipped rows and write completion counts.
+components/chart/ChartCanvas.tsx → Selected custom Volume Profile render debug context passed into the profile engine.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+components/FeedProvider.tsx → Volume Profile fine-row storage queueing with per-price-level dedupe for canonical 1m profile rows.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/volumeProfile/profileCache.ts → Shared in-memory source-scoped cache for canonical 1m fine Volume Profile rows, live updates, coverage metadata, and restore dedupe.
+lib/volumeProfile/profileEngine.ts → Panel-local Volume Profile source/view over shared fine-row base cache with display row-size aggregation and raw-trade fallback.
+components/FeedProvider.tsx → Panel feed lifecycle attaching Volume Profile engines to shared source/base-bucket caches and deduping fine-profile restore calls.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
 ## Architecture & Tech Stack
 - **Framework:** Next.js 14 (App Router)
 - **Styling:** Tailwind CSS (Strict dark mode, custom color palette)

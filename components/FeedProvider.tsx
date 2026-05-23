@@ -27,7 +27,7 @@ import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
 import { storeBaseFootprintAction, storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
-import { getFineProfileStorageTimeframe } from '../lib/config/markets';
+import { FINE_PROFILE_STORAGE_TIMEFRAME } from '../lib/config/markets';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -97,8 +97,16 @@ function claimClosedCandleStorage(
   return true;
 }
 
-function claimFineProfileStorage(symbol: string, timeframe: string, candleTime: number, baseBucketSize: number) {
-  const key = `${symbol}:${timeframe}:${candleTime}:${baseBucketSize}`;
+function claimFineProfileStorage(
+  symbol: string,
+  contractType: string,
+  dataSourceMode: string,
+  timeframe: string,
+  candleTime: number,
+  baseBucketSize: number,
+  bucketPrice: number,
+) {
+  const key = `${symbol}:${contractType}:${dataSourceMode}:${timeframe}:${candleTime}:${baseBucketSize}:${bucketPrice}`;
   if (queuedFineProfileCandleKeys.has(key)) return false;
 
   rememberBounded(queuedFineProfileCandleKeys, key);
@@ -264,6 +272,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const contractPriceRef = useRef<number | null>(null);
   const processedTradeIdsRef = useRef<Set<string>>(new Set());
   const firstFullyCoveredCandleTimeRef = useRef<Record<TradeSource, number | null>>({ spot: null, futures: null });
+  const latestTradeBaseCandleTimeRef = useRef<Record<TradeSource, number | null>>({ spot: null, futures: null });
   const lastProfileRevisionAtRef = useRef(0);
   const [volumeProfileRevision, setVolumeProfileRevision] = useState(0);
   const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
@@ -424,12 +433,19 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     engineRef.current.reset();
     engineRef.current.setSharedBaseCache({ symbol: pair, contractType, dataSourceMode });
     volumeProfileEngineRef.current.reset();
+    volumeProfileEngineRef.current.setSharedBaseCache({
+      symbol: pair,
+      contractType,
+      dataSourceMode,
+      baseBucketSize: tickSize,
+    });
     rawTradeQueueRef.current = [];
     fineProfileQueueRef.current = [];
     liveFineProfileRowsRef.current = new Map();
     contractPriceRef.current = null;
     processedTradeIdsRef.current = new Set();
     firstFullyCoveredCandleTimeRef.current = { spot: null, futures: null };
+    latestTradeBaseCandleTimeRef.current = { spot: null, futures: null };
     lastProfileRevisionAtRef.current = 0;
     pendingProfileRedrawRef.current = false;
     absorptionMapRef.current = new Map();
@@ -460,12 +476,20 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const shouldHydrateStoredFootprints = true;
     const shouldHydrateStoredFineProfiles = true;
     const shouldHydrateRawTrades = contractType === 'spot' && dataSourceMode === 'spot';
-    const fineProfileStorageTimeframe = getFineProfileStorageTimeframe(timeframe, contractType, dataSourceMode);
+    const fineProfileStorageTimeframe = FINE_PROFILE_STORAGE_TIMEFRAME;
 
     const getFirstFullyCoveredCandleTime = () => {
       const coverageTimes = activeTradeSources.map((source) => firstFullyCoveredCandleTimeRef.current[source]);
       if (coverageTimes.some((time) => time === null)) return null;
       return Math.max(...coverageTimes.map((time) => time ?? 0));
+    };
+
+    const getLiveFineProfileSliceCount = () => liveFineProfileRowsRef.current.size;
+
+    const getTradeClosedFineProfileTime = () => {
+      const latestTimes = activeTradeSources.map((source) => latestTradeBaseCandleTimeRef.current[source]);
+      if (latestTimes.some((time) => time === null)) return null;
+      return Math.min(...latestTimes.map((time) => time ?? 0));
     };
 
     const getTradeDedupeKey = (trade: Trade, source: TradeSource) => {
@@ -541,7 +565,23 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const batch = fineProfileQueueRef.current.splice(0, FINE_PROFILE_FLUSH_SIZE);
       if (batch.length === 0) return;
 
-      storeFineProfileRowsAction(pair, fineProfileStorageTimeframe, batch).catch((err) => {
+      const candles = new Set(batch.map((row) => row.candleTime));
+      const bucketSizes = Array.from(new Set(batch.map((row) => row.baseBucketSize)));
+      console.debug('[VPROFILE_DEBUG] Fine profile storage batch queued from client', {
+        panelId,
+        pair,
+        contractType,
+        dataSourceMode,
+        timeframe: fineProfileStorageTimeframe,
+        rows: batch.length,
+        distinctCandleTimes: candles.size,
+        minCandleTime: batch.reduce((min, row) => Math.min(min, row.candleTime), Number.POSITIVE_INFINITY),
+        maxCandleTime: batch.reduce((max, row) => Math.max(max, row.candleTime), Number.NEGATIVE_INFINITY),
+        tickSize,
+        baseBucketSizes: bucketSizes,
+      });
+
+      storeFineProfileRowsAction(pair, contractType, dataSourceMode, fineProfileStorageTimeframe, batch).catch((err) => {
         console.error('[Storage] Fine profile row batch save request failed:', err);
       });
     };
@@ -575,6 +615,142 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
       row.totalVol += trade.quantity;
       row.tradeCount += 1;
+
+      if (row.tradeCount === 1 || row.tradeCount % 100 === 0) {
+        console.debug('[VPROFILE_DEBUG] Live fine profile row created/updated', {
+          symbol: pair,
+          contractType,
+          dataSourceMode,
+          baseCandleTime: candleTime,
+          bucketPriceCount: candleRows.size,
+          totalVolume: Array.from(candleRows.values()).reduce((sum, profileRow) => sum + profileRow.totalVol, 0),
+          tradeCount: Array.from(candleRows.values()).reduce((sum, profileRow) => sum + profileRow.tradeCount, 0),
+          baseBucketSize: tickSize,
+        });
+      }
+    };
+
+    const persistEligibleFineProfileRows = (closedBeforeTime: number | null, reason: string) => {
+      const coverageStart = getFirstFullyCoveredCandleTime();
+      const beforeSlices = getLiveFineProfileSliceCount();
+      const stats = {
+        slicesBefore: beforeSlices,
+        slicesPersisted: 0,
+        rowsQueued: 0,
+        rowsSkippedDuplicate: 0,
+        rowsSkippedPartial: 0,
+        rowsSkippedOpen: 0,
+      };
+
+      if (beforeSlices === 0) return stats;
+
+      if (coverageStart === null || closedBeforeTime === null) {
+        stats.rowsSkippedPartial = Array.from(liveFineProfileRowsRef.current.values())
+          .reduce((sum, rows) => sum + rows.size, 0);
+        if (reason !== 'trade-advanced-1m') {
+          console.debug('[VPROFILE_DEBUG] Fine profile 1m slice skipped before eligibility', {
+            panelId,
+            reason,
+            pair,
+            contractType,
+            dataSourceMode,
+            tickSize,
+            slicesBefore: stats.slicesBefore,
+            closedBeforeTime,
+            currentStreamBaseTime: closedBeforeTime,
+            isClosed: false,
+            coverageStart,
+            rowsSkippedPartial: stats.rowsSkippedPartial,
+          });
+        }
+        return stats;
+      }
+
+      for (const [candleTime, candleRows] of Array.from(liveFineProfileRowsRef.current.entries())) {
+        if (candleTime < coverageStart) {
+          stats.rowsSkippedPartial += candleRows.size;
+          liveFineProfileRowsRef.current.delete(candleTime);
+          continue;
+        }
+
+        if (candleTime >= closedBeforeTime) {
+          stats.rowsSkippedOpen += candleRows.size;
+          continue;
+        }
+
+        const rows = cloneFineProfileRows(candleRows.values());
+        if (rows.length === 0) {
+          liveFineProfileRowsRef.current.delete(candleTime);
+          continue;
+        }
+
+        volumeProfileEngineRef.current.hydrateProfileRows(rows, 'closed-1m');
+        liveFineProfileRowsRef.current.delete(candleTime);
+        stats.slicesPersisted += 1;
+
+        const storableRows = rows.filter((row) => {
+          const claimed = claimFineProfileStorage(
+            pair,
+            contractType,
+            dataSourceMode,
+            fineProfileStorageTimeframe,
+            row.candleTime,
+            row.baseBucketSize,
+            row.bucketPrice,
+          );
+          if (!claimed) stats.rowsSkippedDuplicate += 1;
+          return claimed;
+        });
+
+        if (storableRows.length > 0) {
+          fineProfileQueueRef.current.push(...storableRows);
+          stats.rowsQueued += storableRows.length;
+        }
+
+        console.debug('[VPROFILE_DEBUG] Fine profile 1m slice eligible and queued', {
+          panelId,
+          reason,
+          pair,
+          contractType,
+          dataSourceMode,
+          timeframe: fineProfileStorageTimeframe,
+          baseCandleTime: candleTime,
+          currentStreamBaseTime: closedBeforeTime,
+          isClosed: candleTime < closedBeforeTime,
+          coverageStatus: candleTime >= coverageStart ? 'covered' : 'partial',
+          baseBucketSize: tickSize,
+          rowsQueued: storableRows.length,
+          rowsSkippedDuplicate: rows.length - storableRows.length,
+        });
+      }
+
+      if (stats.slicesPersisted > 0) {
+        pendingProfileRedrawRef.current = true;
+
+        if (fineProfileQueueRef.current.length >= FINE_PROFILE_FLUSH_SIZE) {
+          flushFineProfileRows();
+        }
+      }
+
+      if (stats.slicesPersisted > 0 || stats.rowsSkippedPartial > 0 || reason !== 'trade-advanced-1m') {
+        console.debug('[VPROFILE_DEBUG] Fine profile 1m eligibility pass', {
+          panelId,
+          reason,
+          pair,
+          contractType,
+          dataSourceMode,
+          timeframe: fineProfileStorageTimeframe,
+          tickSize,
+          closedBeforeTime,
+          currentStreamBaseTime: closedBeforeTime,
+          coverageStart,
+          ...stats,
+          slicesRemaining: getLiveFineProfileSliceCount(),
+          queuedRowsPending: fineProfileQueueRef.current.length,
+        });
+      }
+
+      return stats;
     };
 
     const handleCandle = (candle: Candle) => {
@@ -639,26 +815,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           }
         }
 
-        const fineRows = liveFineProfileRowsRef.current.get(candle.time);
-        if (hasFullRealtimeFootprint && fineRows && fineRows.size > 0) {
-          const rows = cloneFineProfileRows(fineRows.values());
-          volumeProfileEngineRef.current.hydrateProfileRows(rows);
-          liveFineProfileRowsRef.current.delete(candle.time);
-          pendingProfileRedrawRef.current = true;
+        const profileRangeEnd = candle.time + timeframeSeconds;
+        persistEligibleFineProfileRows(profileRangeEnd, 'selected-candle-close');
 
-          if (claimFineProfileStorage(pair, fineProfileStorageTimeframe, candle.time, tickSize)) {
-            fineProfileQueueRef.current.push(...rows);
-
-            if (fineProfileQueueRef.current.length >= FINE_PROFILE_FLUSH_SIZE) {
-              flushFineProfileRows();
-            }
-          }
-        } else if (!hasFullRealtimeFootprint) {
+        if (!hasFullRealtimeFootprint) {
           volumeProfileEngineRef.current.removeTradesInTimeRange(
             candle.time * 1000,
-            (candle.time + timeframeSeconds) * 1000,
+            profileRangeEnd * 1000,
           );
-          liveFineProfileRowsRef.current.delete(candle.time);
           pendingProfileRedrawRef.current = true;
         }
       }
@@ -709,15 +873,19 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const alignedTrade = getContractAlignedTrade(trade, source);
       if (!alignedTrade) return;
 
-      const candleTime = getCandleTimeForTrade(trade.time, timeframeSeconds);
       const baseCandleTime = getBaseCandleTimeForTrade(trade.time);
       if (firstFullyCoveredCandleTimeRef.current[source] === null) {
         firstFullyCoveredCandleTimeRef.current[source] = baseCandleTime + BASE_FOOTPRINT_TIMEFRAME_SECONDS;
       }
+      const previousSourceBaseTime = latestTradeBaseCandleTimeRef.current[source];
+      latestTradeBaseCandleTimeRef.current[source] = previousSourceBaseTime === null
+        ? baseCandleTime
+        : Math.max(previousSourceBaseTime, baseCandleTime);
+      persistEligibleFineProfileRows(getTradeClosedFineProfileTime(), 'trade-advanced-1m');
 
       engineRef.current.ingestTrade(alignedTrade, baseCandleTime);
       volumeProfileEngineRef.current.ingestTrade(alignedTrade);
-      aggregateFineProfileTrade(alignedTrade, candleTime);
+      aggregateFineProfileTrade(alignedTrade, baseCandleTime);
 
       if (contractType === 'spot' && source === 'spot' && claimRawTradeStorage(pair, trade)) {
         rawTradeQueueRef.current.push(trade);
@@ -815,7 +983,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
           const hydratedTrade = { ...trade, source: 'spot' } as Trade & { source: TradeSource };
           engineRef.current.ingestTrade(hydratedTrade, candleTime);
-          profileTrades.push(trade);
+          profileTrades.push(hydratedTrade);
           stats.hydrated += 1;
           stats.hydratedCandleTimes.add(candleTime);
         }
@@ -943,34 +1111,82 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const window = getHistoryWindow(candles, timeframeSeconds);
       if (!window || tickSize <= 0) return stats;
 
-      const params = new URLSearchParams({
-        symbol: pair,
-        timeframe,
-        contractType,
-        dataSourceMode,
-        start: String(window.startSeconds),
-        end: String(window.endSeconds),
-        baseBucketSize: String(tickSize),
-      });
-      const response = await fetch(`/api/history/profile?${params.toString()}`, {
-        cache: 'no-store',
-      });
-
-      if (!response.ok) {
-        console.warn(`[HistoryRestore:${panelId}] Fine profile row restore failed with ${response.status}`);
+      const profileCache = volumeProfileEngineRef.current.getBaseCache();
+      const candidateTimes = profileCache.getMissingBaseCandleTimes(window.startSeconds, window.endSeconds);
+      if (candidateTimes.length === 0) {
+        console.debug('[VPROFILE_CACHE] Fine profile restore skipped because shared base cache already covers range', {
+          panelId,
+          pair,
+          contractType,
+          dataSourceMode,
+          sourceKey: profileCache.key,
+          requestedChartTimeframe: timeframe,
+          storageTimeframe: fineProfileStorageTimeframe,
+          baseBucketSize: tickSize,
+          start: window.startSeconds,
+          end: window.endSeconds,
+          rowCount: profileCache.rowCount,
+          coverageRange: profileCache.getLoadedRanges(),
+        });
         return stats;
       }
 
-      const rows = await response.json() as FineProfileRow[];
-      stats.rowsFetched = rows.length;
+      const restoredStats = await profileCache.runRestoreOnce(window.startSeconds, window.endSeconds, async () => {
+        const params = new URLSearchParams({
+          symbol: pair,
+          timeframe: fineProfileStorageTimeframe,
+          contractType,
+          dataSourceMode,
+          start: String(window.startSeconds),
+          end: String(window.endSeconds),
+          baseBucketSize: String(tickSize),
+        });
+        const response = await fetch(`/api/history/profile?${params.toString()}`, {
+          cache: 'no-store',
+        });
 
-      if (rows.length > 0) {
-        volumeProfileEngineRef.current.hydrateProfileRows(rows);
+        if (!response.ok) {
+          console.warn(`[HistoryRestore:${panelId}] Fine profile row restore failed with ${response.status}`);
+          return stats;
+        }
+
+        const rows = await response.json() as FineProfileRow[];
+        stats.rowsFetched = rows.length;
         stats.candlesHydrated = new Set(rows.map((row) => row.candleTime)).size;
+
+        if (rows.length > 0) {
+          volumeProfileEngineRef.current.hydrateProfileRows(rows, 'restore');
+          pendingProfileRedrawRef.current = true;
+        }
+
+        console.debug('[VPROFILE_CACHE] Fine profile restore hydrated in shared cache', {
+          panelId,
+          pair,
+          contractType,
+          dataSourceMode,
+          sourceKey: profileCache.key,
+          requestedChartTimeframe: timeframe,
+          storageTimeframe: fineProfileStorageTimeframe,
+          baseBucketSize: tickSize,
+          start: window.startSeconds,
+          end: window.endSeconds,
+          candidateCandles: candidateTimes.length,
+          rowsFetched: stats.rowsFetched,
+          distinctCandleTimes: stats.candlesHydrated,
+          minCandleTime: rows.length > 0 ? Math.min(...rows.map((row) => row.candleTime)) : null,
+          maxCandleTime: rows.length > 0 ? Math.max(...rows.map((row) => row.candleTime)) : null,
+          rowCount: profileCache.rowCount,
+          coverageRange: profileCache.getLoadedRanges(),
+        });
+
+        return stats;
+      });
+
+      if (restoredStats.candlesHydrated > 0) {
         pendingProfileRedrawRef.current = true;
       }
 
-      return stats;
+      return restoredStats;
     };
 
     const init = async () => {
@@ -1179,6 +1395,20 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       active = false;
       spotAdapter.disconnect();
       futuresAdapter.disconnect();
+      console.debug('[VPROFILE_DEBUG] Live fine profile 1m slices before feed cleanup', {
+        panelId,
+        pair,
+        contractType,
+        dataSourceMode,
+        timeframe,
+        storageTimeframe: fineProfileStorageTimeframe,
+        tickSize,
+        liveSlices: getLiveFineProfileSliceCount(),
+        queuedRowsPending: fineProfileQueueRef.current.length,
+        closedBeforeTime: getTradeClosedFineProfileTime(),
+        coverageStart: getFirstFullyCoveredCandleTime(),
+      });
+      persistEligibleFineProfileRows(getTradeClosedFineProfileTime(), 'cleanup-before-reset');
       flushRawTrades();
       flushFineProfileRows();
       clearInterval(rawTradeFlushInterval);

@@ -554,11 +554,19 @@ export function ChartCanvas({
         const customFirstIndex = Math.min(customProfileRange.firstIndex, customProfileRange.lastIndex);
         const customLastIndex = Math.max(customProfileRange.firstIndex, customProfileRange.lastIndex);
         const customCandles = candles.slice(customFirstIndex, customLastIndex + 1);
+        const customStartTime = customCandles[0]?.time ?? null;
+        const customEndTime = customCandles[customCandles.length - 1]?.time ?? null;
         const customProfile = volumeProfileEngine.buildProfile({
           candles: customCandles,
           profileBucketSize,
           priceHigh: customProfileRange.priceHigh,
           priceLow: customProfileRange.priceLow,
+          debugContext: {
+            label: 'selected-custom-profile-render',
+            panelId,
+            selectedStartTime: customStartTime ?? undefined,
+            selectedEndTime: customEndTime ?? undefined,
+          },
         });
         drawCustomProfile(
           ctx,

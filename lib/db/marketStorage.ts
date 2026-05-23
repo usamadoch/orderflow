@@ -94,15 +94,17 @@ export async function storeRawTrades(symbol: string, trades: Trade[]) {
 
 export async function storeFineProfileRows(
   symbol: string,
+  contractType: string,
+  dataSourceMode: string,
   timeframe: string,
   rows: FineProfileRowWriteInput[],
 ) {
   try {
     if (rows.length === 0) return
 
-    await insertFineProfileRows(symbol, timeframe, rows)
+    await insertFineProfileRows(symbol, contractType, dataSourceMode, timeframe, rows)
   } catch (error) {
-    console.error(`[Storage] Failed to store fine profile rows for ${symbol} ${timeframe}:`, error)
+    console.error(`[Storage] Failed to store fine profile rows for ${symbol} ${contractType}/${dataSourceMode} ${timeframe}:`, error)
   }
 }
 

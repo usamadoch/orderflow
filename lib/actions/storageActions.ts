@@ -35,8 +35,10 @@ export async function storeRawTradesAction(symbol: string, trades: Trade[]) {
 
 export async function storeFineProfileRowsAction(
   symbol: string,
+  contractType: string,
+  dataSourceMode: string,
   timeframe: string,
   rows: FineProfileRowWriteInput[],
 ) {
-  await storeFineProfileRows(symbol, timeframe, rows)
+  await storeFineProfileRows(symbol, contractType, dataSourceMode, timeframe, rows)
 }

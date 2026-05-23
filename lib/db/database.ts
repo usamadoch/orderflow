@@ -84,6 +84,8 @@ export interface RawTradeRow {
 export interface FineProfileRow {
   id: number
   symbol: string
+  contract_type: string
+  data_source_mode: string
   timeframe: string
   candle_time: number
   base_bucket_size: number
@@ -324,6 +326,8 @@ export async function initDatabase() {
           CREATE TABLE IF NOT EXISTS fine_profile_rows (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol           TEXT    NOT NULL,
+            contract_type    TEXT    NOT NULL,
+            data_source_mode TEXT    NOT NULL,
             timeframe        TEXT    NOT NULL,
             candle_time      INTEGER NOT NULL,
             base_bucket_size REAL    NOT NULL,
@@ -334,7 +338,7 @@ export async function initDatabase() {
             trade_count      INTEGER NOT NULL DEFAULT 0,
             stored_at        INTEGER NOT NULL DEFAULT (unixepoch()),
 
-            UNIQUE(symbol, timeframe, candle_time, base_bucket_size, bucket_price)
+            UNIQUE(symbol, contract_type, data_source_mode, timeframe, candle_time, base_bucket_size, bucket_price)
           )
         `,
         args: [],
@@ -342,7 +346,7 @@ export async function initDatabase() {
       {
         sql: `
           CREATE INDEX IF NOT EXISTS idx_fine_profile_rows_query
-            ON fine_profile_rows(symbol, timeframe, base_bucket_size, candle_time ASC)
+            ON fine_profile_rows(symbol, contract_type, data_source_mode, timeframe, base_bucket_size, candle_time ASC)
         `,
         args: [],
       },
@@ -388,6 +392,7 @@ export async function initDatabase() {
   )
 
   await ensureSourceScopedFootprintCellsSchema()
+  await ensureSourceScopedFineProfileRowsSchema()
 }
 
 async function ensureSourceScopedFootprintCellsSchema() {
@@ -452,6 +457,97 @@ async function ensureSourceScopedFootprintCellsSchema() {
         sql: `
           CREATE INDEX IF NOT EXISTS idx_footprint_query
             ON footprint_cells(symbol, contract_type, data_source_mode, timeframe, bucket_size, candle_time ASC)
+        `,
+        args: [],
+      },
+    ],
+    'write',
+  )
+}
+
+async function recreateFineProfileRowsQueryIndex() {
+  await db.batch(
+    [
+      {
+        sql: 'DROP INDEX IF EXISTS idx_fine_profile_rows_query',
+        args: [],
+      },
+      {
+        sql: `
+          CREATE INDEX idx_fine_profile_rows_query
+            ON fine_profile_rows(symbol, contract_type, data_source_mode, timeframe, base_bucket_size, candle_time ASC)
+        `,
+        args: [],
+      },
+    ],
+    'write',
+  )
+}
+
+async function ensureSourceScopedFineProfileRowsSchema() {
+  const tableInfo = await db.execute('PRAGMA table_info(fine_profile_rows)')
+  const columnNames = new Set(tableInfo.rows.map((row) => String(row.name)))
+
+  if (columnNames.has('contract_type') && columnNames.has('data_source_mode')) {
+    await recreateFineProfileRowsQueryIndex()
+    return
+  }
+
+  console.warn('[DB] Migrating fine_profile_rows to source-scoped schema; legacy rows will be isolated under legacy/legacy source keys.')
+
+  await db.batch(
+    [
+      {
+        sql: 'DROP TABLE IF EXISTS fine_profile_rows_source_scoped',
+        args: [],
+      },
+      {
+        sql: `
+          CREATE TABLE fine_profile_rows_source_scoped (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol           TEXT    NOT NULL,
+            contract_type    TEXT    NOT NULL,
+            data_source_mode TEXT    NOT NULL,
+            timeframe        TEXT    NOT NULL,
+            candle_time      INTEGER NOT NULL,
+            base_bucket_size REAL    NOT NULL,
+            bucket_price     REAL    NOT NULL,
+            bid_vol          REAL    NOT NULL DEFAULT 0,
+            ask_vol          REAL    NOT NULL DEFAULT 0,
+            total_vol        REAL    NOT NULL DEFAULT 0,
+            trade_count      INTEGER NOT NULL DEFAULT 0,
+            stored_at        INTEGER NOT NULL DEFAULT (unixepoch()),
+
+            UNIQUE(symbol, contract_type, data_source_mode, timeframe, candle_time, base_bucket_size, bucket_price)
+          )
+        `,
+        args: [],
+      },
+      {
+        sql: `
+          INSERT OR IGNORE INTO fine_profile_rows_source_scoped (
+            id, symbol, contract_type, data_source_mode, timeframe, candle_time,
+            base_bucket_size, bucket_price, bid_vol, ask_vol, total_vol, trade_count, stored_at
+          )
+          SELECT
+            id, symbol, 'legacy', 'legacy', timeframe, candle_time,
+            base_bucket_size, bucket_price, bid_vol, ask_vol, total_vol, trade_count, stored_at
+          FROM fine_profile_rows
+        `,
+        args: [],
+      },
+      {
+        sql: 'DROP TABLE fine_profile_rows',
+        args: [],
+      },
+      {
+        sql: 'ALTER TABLE fine_profile_rows_source_scoped RENAME TO fine_profile_rows',
+        args: [],
+      },
+      {
+        sql: `
+          CREATE INDEX IF NOT EXISTS idx_fine_profile_rows_query
+            ON fine_profile_rows(symbol, contract_type, data_source_mode, timeframe, base_bucket_size, candle_time ASC)
         `,
         args: [],
       },
@@ -687,30 +783,70 @@ export async function insertRawTradeBatch(symbol: string, trades: RawTradeWriteI
 
 export async function insertFineProfileRows(
   symbol: string,
+  contractType: string,
+  dataSourceMode: string,
   timeframe: string,
   rows: FineProfileRowWriteInput[],
 ) {
-  const storableRows = rows.filter((row) =>
-    Number.isFinite(row.candleTime)
-    && row.baseBucketSize > 0
-    && Number.isFinite(row.bucketPrice)
-    && row.totalVol > 0
-    && row.tradeCount > 0,
-  )
+  const skipped = {
+    invalidCandleTime: 0,
+    invalidBaseBucketSize: 0,
+    invalidBucketPrice: 0,
+    nonPositiveVolume: 0,
+    nonPositiveTradeCount: 0,
+  }
+  const storableRows = rows.filter((row) => {
+    const validCandleTime = Number.isFinite(row.candleTime)
+    const validBaseBucketSize = row.baseBucketSize > 0
+    const validBucketPrice = Number.isFinite(row.bucketPrice)
+    const validVolume = row.totalVol > 0
+    const validTradeCount = row.tradeCount > 0
+
+    if (!validCandleTime) skipped.invalidCandleTime += 1
+    if (!validBaseBucketSize) skipped.invalidBaseBucketSize += 1
+    if (!validBucketPrice) skipped.invalidBucketPrice += 1
+    if (!validVolume) skipped.nonPositiveVolume += 1
+    if (!validTradeCount) skipped.nonPositiveTradeCount += 1
+
+    return validCandleTime
+      && validBaseBucketSize
+      && validBucketPrice
+      && validVolume
+      && validTradeCount
+  })
+  const candleTimes = storableRows.map((row) => row.candleTime)
+  const baseBucketSizes = Array.from(new Set(storableRows.map((row) => row.baseBucketSize)))
+
+  console.debug('[VPROFILE_DEBUG] Fine profile DB write requested', {
+    symbol,
+    contractType,
+    dataSourceMode,
+    timeframe,
+    rowsReceived: rows.length,
+    rowsStorable: storableRows.length,
+    distinctCandleTimeCount: new Set(candleTimes).size,
+    minCandleTime: candleTimes.length > 0 ? Math.min(...candleTimes) : null,
+    maxCandleTime: candleTimes.length > 0 ? Math.max(...candleTimes) : null,
+    baseBucketSizes,
+    skipped,
+  })
+
   if (storableRows.length === 0) return
 
   await withDbWriteRetry('Fine profile row batch write', async () => {
-    await db.batch(
+    const results = await db.batch(
       storableRows.map((row) => ({
         sql: `
           INSERT OR REPLACE INTO fine_profile_rows (
-            symbol, timeframe, candle_time, base_bucket_size, bucket_price,
+            symbol, contract_type, data_source_mode, timeframe, candle_time, base_bucket_size, bucket_price,
             bid_vol, ask_vol, total_vol, trade_count
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           symbol,
+          contractType,
+          dataSourceMode,
           timeframe,
           row.candleTime,
           row.baseBucketSize,
@@ -723,6 +859,19 @@ export async function insertFineProfileRows(
       })),
       'write',
     )
+
+    console.debug('[VPROFILE_DEBUG] Fine profile DB write completed', {
+      symbol,
+      contractType,
+      dataSourceMode,
+      timeframe,
+      rowsSubmitted: storableRows.length,
+      rowsAffected: results.reduce((total, result) => total + Number(result.rowsAffected ?? 0), 0),
+      distinctCandleTimeCount: new Set(candleTimes).size,
+      minCandleTime: candleTimes.length > 0 ? Math.min(...candleTimes) : null,
+      maxCandleTime: candleTimes.length > 0 ? Math.max(...candleTimes) : null,
+      baseBucketSizes,
+    })
   })
 }
 
@@ -851,6 +1000,8 @@ export async function getFootprintCellsForRange(
 
 export async function getFineProfileRows(
   symbol: string,
+  contractType: string,
+  dataSourceMode: string,
   timeframe: string,
   startTime: number,
   endTime: number,
@@ -861,13 +1012,15 @@ export async function getFineProfileRows(
       SELECT *
       FROM fine_profile_rows
       WHERE symbol = ?
+        AND contract_type = ?
+        AND data_source_mode = ?
         AND timeframe = ?
         AND candle_time >= ?
         AND candle_time < ?
         AND base_bucket_size = ?
       ORDER BY candle_time ASC, bucket_price ASC
     `,
-    args: [symbol, timeframe, startTime, endTime, baseBucketSize],
+    args: [symbol, contractType, dataSourceMode, timeframe, startTime, endTime, baseBucketSize],
   })
 
   return result.rows as unknown as FineProfileRow[]

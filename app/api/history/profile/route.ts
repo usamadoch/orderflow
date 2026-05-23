@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getFineProfileRows } from '../../../../lib/db/database'
 import {
-  getFineProfileStorageTimeframe,
+  FINE_PROFILE_STORAGE_TIMEFRAME,
   isAllowedContractType,
   isAllowedDataSourceMode,
   isAllowedSymbol,
@@ -41,11 +41,29 @@ export async function GET(request: NextRequest) {
 
   const rows = await getFineProfileRows(
     symbol,
-    getFineProfileStorageTimeframe(timeframe, contractType, dataSourceMode),
+    contractType,
+    dataSourceMode,
+    FINE_PROFILE_STORAGE_TIMEFRAME,
     start,
     end,
     baseBucketSize,
   )
+  const candleTimes = rows.map((row) => row.candle_time)
+
+  console.debug('[VPROFILE_DEBUG] Profile history API restore query', {
+    symbol,
+    contractType,
+    dataSourceMode,
+    requestedTimeframe: timeframe,
+    storageTimeframe: FINE_PROFILE_STORAGE_TIMEFRAME,
+    start,
+    end,
+    baseBucketSize,
+    rowsFetched: rows.length,
+    distinctCandleTimeCount: new Set(candleTimes).size,
+    minCandleTime: candleTimes.length > 0 ? Math.min(...candleTimes) : null,
+    maxCandleTime: candleTimes.length > 0 ? Math.max(...candleTimes) : null,
+  })
 
   return NextResponse.json(rows.map((row) => ({
     candleTime: row.candle_time,

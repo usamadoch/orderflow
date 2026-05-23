@@ -1,5 +1,45 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-23] - Architecture: Shared Volume Profile Base Cache
+- **What changed**:
+  - Added a shared in-memory Volume Profile base cache keyed by `symbol::contractType::dataSourceMode::baseBucketSize`.
+  - Updated `RawTradeVolumeProfileEngine` to keep panel-local build/cache state while reading and writing canonical 1m fine rows through the shared cache.
+  - Routed fine-profile history restore through cache-level coverage checks and in-flight restore dedupe with `[VPROFILE_CACHE]` diagnostics.
+- **Why it changed**:
+  - Matching split panels still owned separate Volume Profile memory, causing duplicate fine-row restore calls and duplicate base profile aggregation work.
+- **Impact summary**:
+  - Panels with the same symbol/source/base bucket reuse restored and live fine Volume Profile rows while keeping independent timeframe, visible/profile range, display row size, chart settings, drawings, and render state. Different symbol/source/base-bucket combinations remain isolated.
+
+## [2026-05-22] - Architecture: Shared Footprint Base Cache
+- **What changed**:
+  - Added a shared source-scoped in-memory footprint cache keyed by `symbol::contractType::dataSourceMode`.
+  - Updated `AggregationEngine` to keep panel-specific display settings and candle metadata while reading/writing canonical 1m/$5 base slices through the shared cache.
+  - Added cache-level live trade dedupe and in-flight restore dedupe so panels sharing a source do not double-count trades or duplicate matching restore requests.
+- **Why it changed**:
+  - Each panel still owned separate base footprint memory, so matching symbol/source panels could duplicate 1m/$5 restore and live base data.
+- **Impact summary**:
+  - Panels with the same symbol/source can reuse loaded base footprints while keeping independent timeframes, display bucket sizes, signals, overlays, and render state. Different symbol/source combinations remain isolated.
+
+## [2026-05-22] - Architecture: Source-Scoped Base Footprints
+- **What changed**:
+  - Added `contractType` and `dataSourceMode` to footprint persistence and query identity, with a schema migration that isolates old rows under `legacy/legacy`.
+  - Changed footprint storage/restore to use canonical `1m` timeframe and `$5` bucket rows only.
+  - Updated the aggregation engine to keep 1m/$5 base footprint slices and derive selected chart timeframes and larger display buckets in memory.
+- **Why it changed**:
+  - Footprint rows were source-unsafe and still tied to selected chart timeframe, which could mix spot/futures/both data or create direct 5m/15m footprint storage.
+- **Impact summary**:
+  - Source combinations no longer overwrite each other in `footprint_cells`. 5m/15m/etc. chart footprints are derived from restored/live 1m/$5 base slices, while display bucket changes remain DB-free.
+
+## [2026-05-22] - Architecture: Fixed Base Footprint Bucket
+- **What changed**:
+  - Updated the footprint aggregation engine to ingest and hydrate footprint cells at a fixed $5 base bucket size.
+  - Added in-memory display aggregation so larger selected bucket sizes combine existing $5 cells instead of changing the stored footprint resolution.
+  - Updated footprint restore, the storage action bridge, and closed-candle storage to request/write only the $5 base bucket, and prevented bucket-size changes from restarting the feed restore path.
+- **Why it changed**:
+  - Footprint history restore/storage was tied to the selected display bucket size, so switching from $5 to larger buckets could miss stored data or trigger bucket-specific restore behavior.
+- **Impact summary**:
+  - Changing display bucket size now re-aggregates loaded $5 footprint data in memory. $10 combines two $5 levels, $25 combines five $5 levels, and stored/restored DB footprint rows stay on one base resolution.
+
 ## [2026-05-21] - Fix: Source-Scoped Volume Profile History
 - **What changed**:
   - Scoped fine-grain Volume Profile row restore/storage by the active Candles & Prices contract and Aggregate Trades source selection.
@@ -58,3 +98,6 @@
   - The compact bar was rendering underneath the horizontal timestamp axis instead of collapsing above it.
 - **Impact summary**:
   - Minimized CVD now preserves the time axis at the absolute bottom while keeping minimize/expand behavior lightweight and isolated to layout positioning.
+
+
+
