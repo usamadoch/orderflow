@@ -30,6 +30,7 @@ function mergeCell(target: FootprintCell, source: FootprintCell) {
 
 export class AggregationEngine {
   private baseCache = new FootprintBaseCache('panel-local');
+  private sharedBaseCache: FootprintBaseCache | null = null;
   private displayCandleMap = new Map<number, Candle>();
   private displayBucketSize: number;
   private displayTimeframeSeconds: number;
@@ -164,16 +165,36 @@ export class AggregationEngine {
   }
 
   setBaseCache(cache: FootprintBaseCache) {
+    if (this.sharedBaseCache && this.sharedBaseCache !== cache) {
+      this.sharedBaseCache.release();
+      this.sharedBaseCache = null;
+    }
     this.baseCache = cache;
     this.trim();
   }
 
   setSharedBaseCache(parts: FootprintCacheKeyParts) {
-    this.setBaseCache(getSharedFootprintCache(parts));
+    const sharedCache = getSharedFootprintCache(parts);
+    if (this.sharedBaseCache !== sharedCache) {
+      if (this.sharedBaseCache) {
+        this.sharedBaseCache.release();
+      }
+      sharedCache.acquire();
+      this.sharedBaseCache = sharedCache;
+    }
+    this.setBaseCache(sharedCache);
   }
 
   getBaseCache() {
     return this.baseCache;
+  }
+
+  releaseSharedBaseCache() {
+    if (!this.sharedBaseCache) return;
+
+    this.sharedBaseCache.release();
+    this.sharedBaseCache = null;
+    this.baseCache = new FootprintBaseCache('panel-local');
   }
 
   reset(bucketSize?: number) {

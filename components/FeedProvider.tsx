@@ -443,6 +443,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       dataSourceMode,
       baseBucketSize: tickSize,
     });
+    const footprintEngine = engineRef.current;
+    const volumeProfileEngine = volumeProfileEngineRef.current;
     rawTradeQueueRef.current = [];
     fineProfileQueueRef.current = [];
     liveFineProfileRowsRef.current = new Map();
@@ -1772,6 +1774,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       setLiquidityZones(panelId, []);
       setConnected(panelId, false);
       connectedRef.current = false;
+      footprintEngine.releaseSharedBaseCache();
+      volumeProfileEngine.releaseSharedBaseCache();
     };
   }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, rebuildLiquidityVacuumZones]);
 

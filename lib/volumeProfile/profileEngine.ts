@@ -50,6 +50,7 @@ const DEFAULT_MAX_TRADES = 50000;
  */
 export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
   private baseCache = new VolumeProfileBaseCache('panel-local::spot::spot::1', 1);
+  private sharedBaseCache: VolumeProfileBaseCache | null = null;
   private maxTrades: number;
   private cachedProfile: {
     key: string;
@@ -145,17 +146,39 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
   }
 
   setBaseCache(cache: VolumeProfileBaseCache) {
+    if (this.sharedBaseCache && this.sharedBaseCache !== cache) {
+      this.sharedBaseCache.release();
+      this.sharedBaseCache = null;
+    }
     this.baseCache = cache;
     this.baseCache.setMaxTrades(this.maxTrades);
     this.cachedProfile = null;
   }
 
   setSharedBaseCache(parts: VolumeProfileCacheKeyParts) {
-    this.setBaseCache(getSharedVolumeProfileCache(parts));
+    const sharedCache = getSharedVolumeProfileCache(parts);
+    if (this.sharedBaseCache !== sharedCache) {
+      if (this.sharedBaseCache) {
+        this.sharedBaseCache.release();
+      }
+      sharedCache.acquire();
+      this.sharedBaseCache = sharedCache;
+    }
+    this.setBaseCache(sharedCache);
   }
 
   getBaseCache() {
     return this.baseCache;
+  }
+
+  releaseSharedBaseCache() {
+    if (!this.sharedBaseCache) return;
+
+    this.sharedBaseCache.release();
+    this.sharedBaseCache = null;
+    this.baseCache = new VolumeProfileBaseCache('panel-local::spot::spot::1', 1);
+    this.baseCache.setMaxTrades(this.maxTrades);
+    this.cachedProfile = null;
   }
 
   private buildProfileFromRowsAndTrades(

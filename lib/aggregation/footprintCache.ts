@@ -3,11 +3,21 @@ import { FootprintCandle, FootprintCell } from '../../types/footprint';
 import { Trade } from '../../types/trade';
 import {
   getCoverageFromTimes,
+  recordCacheCleanup,
   recordCacheAccess,
   recordCacheRestoreRequest,
   recordLiveTradeDedupe,
   updateCacheMetric,
 } from '../debug/marketMetrics';
+import {
+  MARKET_CACHE_CLEANUP_INTERVAL_MS,
+  MARKET_CACHE_INACTIVE_GRACE_MS,
+  MARKET_CACHE_MAX_BASE_SLICES,
+  MARKET_CACHE_MAX_FOOTPRINT_CELLS,
+  MARKET_CACHE_RETENTION_MINUTES,
+  getCleanupTimestamp,
+  getRetentionCutoffSeconds,
+} from '../cache/marketCachePolicy';
 import { normalizePriceToBucket } from '../utils/aggregation';
 
 export const BASE_FOOTPRINT_BUCKET_SIZE = 5;
@@ -67,8 +77,28 @@ export class FootprintBaseCache {
   private seenTradeKeys = new Set<string>();
   private restorePromises = new Map<string, Promise<unknown>>();
   private loadedRanges: Array<{ startTime: number; endTime: number }> = [];
+  private subscriberCountValue = 0;
+  private inactiveSince: number | null = null;
 
   constructor(readonly key: string) {}
+
+  get subscriberCount() {
+    return this.subscriberCountValue;
+  }
+
+  acquire() {
+    this.subscriberCountValue += 1;
+    this.inactiveSince = null;
+    updateCacheMetric('footprint', this.key, this.getMetricDetails());
+  }
+
+  release() {
+    this.subscriberCountValue = Math.max(0, this.subscriberCountValue - 1);
+    if (this.subscriberCountValue === 0 && this.inactiveSince === null) {
+      this.inactiveSince = getCleanupTimestamp();
+    }
+    updateCacheMetric('footprint', this.key, this.getMetricDetails());
+  }
 
   ingestTrade(trade: Trade, currentCandleTime: number) {
     const tradeKey = this.getTradeKey(trade);
@@ -190,6 +220,71 @@ export class FootprintBaseCache {
     updateCacheMetric('footprint', this.key, this.getMetricDetails());
   }
 
+  cleanup() {
+    const before = this.getMetricDetails();
+    const beforeSlices = this.baseFootprintMap.size;
+    const beforeCells = this.getRowCellCount();
+    const latestTime = this.getLatestBaseTime();
+    let removedSlices = 0;
+    let removedCells = 0;
+
+    if (latestTime !== null) {
+      const cutoffTime = getRetentionCutoffSeconds(latestTime);
+      const removableTimes = Array.from(this.baseFootprintMap.keys())
+        .filter((time) => time < cutoffTime && time !== latestTime)
+        .sort((a, b) => a - b);
+
+      for (const time of removableTimes) {
+        removedCells += this.deleteBaseSlice(time);
+        removedSlices += 1;
+      }
+    }
+
+    while (this.baseFootprintMap.size > MARKET_CACHE_MAX_BASE_SLICES) {
+      const oldestTime = this.getOldestBaseTimeExceptLatest();
+      if (oldestTime === null) break;
+      removedCells += this.deleteBaseSlice(oldestTime);
+      removedSlices += 1;
+    }
+
+    while (this.getRowCellCount() > MARKET_CACHE_MAX_FOOTPRINT_CELLS) {
+      const oldestTime = this.getOldestBaseTimeExceptLatest();
+      if (oldestTime === null) break;
+      removedCells += this.deleteBaseSlice(oldestTime);
+      removedSlices += 1;
+    }
+
+    const after = this.getMetricDetails();
+    if (removedSlices > 0 || removedCells > 0) {
+      this.loadedRanges = [];
+      updateCacheMetric('footprint', this.key, this.getMetricDetails());
+    }
+
+    recordCacheCleanup('footprint', this.key, {
+      ...this.getMetricDetails(),
+      retentionMinutes: MARKET_CACHE_RETENTION_MINUTES,
+      inactiveGraceMs: MARKET_CACHE_INACTIVE_GRACE_MS,
+      maxBaseSlices: MARKET_CACHE_MAX_BASE_SLICES,
+      maxRowCells: MARKET_CACHE_MAX_FOOTPRINT_CELLS,
+      slicesRemoved: beforeSlices - this.baseFootprintMap.size,
+      rowsRemoved: beforeCells - this.getRowCellCount(),
+      approximateMemoryBytesBefore: Number(before.approximateMemoryBytes ?? 0),
+      approximateMemoryBytesAfter: Number(after.approximateMemoryBytes ?? 0),
+    });
+  }
+
+  shouldEvict(nowMs: number) {
+    if (this.subscriberCountValue > 0) return false;
+    if (this.restorePromises.size > 0) return false;
+
+    const inactiveSince = this.inactiveSince ?? nowMs;
+    return nowMs - inactiveSince >= MARKET_CACHE_INACTIVE_GRACE_MS;
+  }
+
+  getEvictionDetails() {
+    return this.getMetricDetails();
+  }
+
   private getTradeKey(trade: Trade) {
     const source = 'source' in trade ? String(trade.source ?? 'unknown') : 'unknown';
     if (Number.isFinite(trade.id)) return `${source}:${trade.id}`;
@@ -257,14 +352,43 @@ export class FootprintBaseCache {
     }
   }
 
-  private getMetricDetails() {
+  private deleteBaseSlice(time: number) {
+    const candle = this.baseFootprintMap.get(time);
+    if (!candle) return 0;
+
+    const cellCount = candle.cells.size;
+    this.baseFootprintMap.delete(time);
+    return cellCount;
+  }
+
+  private getLatestBaseTime() {
+    if (this.baseFootprintMap.size === 0) return null;
+    return Math.max(...this.baseFootprintMap.keys());
+  }
+
+  private getOldestBaseTimeExceptLatest() {
+    if (this.baseFootprintMap.size <= 1) return null;
+
+    const latestTime = this.getLatestBaseTime();
+    const sortedTimes = Array.from(this.baseFootprintMap.keys()).sort((a, b) => a - b);
+    return sortedTimes.find((time) => time !== latestTime) ?? null;
+  }
+
+  private getRowCellCount() {
     let rowCellCount = 0;
     for (const candle of this.baseFootprintMap.values()) {
       rowCellCount += candle.cells.size;
     }
+    return rowCellCount;
+  }
+
+  private getMetricDetails() {
+    const rowCellCount = this.getRowCellCount();
 
     return {
       activeCacheKey: this.key,
+      subscriberCount: this.subscriberCountValue,
+      inactiveSince: this.inactiveSince,
       baseSliceCount: this.baseFootprintMap.size,
       baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
       baseTimeframe: BASE_FOOTPRINT_TIMEFRAME,
@@ -279,8 +403,42 @@ export class FootprintBaseCache {
 }
 
 const sharedFootprintCaches = new Map<string, FootprintBaseCache>();
+let footprintCleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+function ensureFootprintCleanupTimer() {
+  if (footprintCleanupInterval || MARKET_CACHE_CLEANUP_INTERVAL_MS <= 0) return;
+
+  footprintCleanupInterval = setInterval(() => {
+    cleanupSharedFootprintCaches();
+  }, MARKET_CACHE_CLEANUP_INTERVAL_MS);
+}
+
+export function cleanupSharedFootprintCaches() {
+  const timestamp = getCleanupTimestamp();
+
+  for (const [key, cache] of Array.from(sharedFootprintCaches.entries())) {
+    const before = cache.getEvictionDetails();
+    cache.cleanup();
+
+    if (!cache.shouldEvict(timestamp)) continue;
+
+    const after = cache.getEvictionDetails();
+    sharedFootprintCaches.delete(key);
+    recordCacheCleanup('footprint', key, {
+      ...after,
+      evicted: true,
+      retentionMinutes: MARKET_CACHE_RETENTION_MINUTES,
+      inactiveGraceMs: MARKET_CACHE_INACTIVE_GRACE_MS,
+      slicesRemoved: Number(after.baseSliceCount ?? 0),
+      rowsRemoved: Number(after.approximateRowCellCount ?? 0),
+      approximateMemoryBytesBefore: Number(before.approximateMemoryBytes ?? after.approximateMemoryBytes ?? 0),
+      approximateMemoryBytesAfter: 0,
+    });
+  }
+}
 
 export function getSharedFootprintCache(parts: FootprintCacheKeyParts) {
+  ensureFootprintCleanupTimer();
   const key = getFootprintCacheKey(parts);
   let cache = sharedFootprintCaches.get(key);
   if (!cache) {

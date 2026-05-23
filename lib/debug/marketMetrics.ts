@@ -28,6 +28,12 @@ interface CacheMetric {
   restoreRequestCount: number;
   restoreDedupeCount: number;
   liveTradeDedupeCount: number;
+  cleanupCount: number;
+  evictedCount: number;
+  slicesRemoved: number;
+  rowsRemoved: number;
+  memoryBytesRemoved: number;
+  lastCleanupAt: number | null;
   lastUpdatedAt: number | null;
   details: Record<string, unknown>;
 }
@@ -65,6 +71,11 @@ export interface MarketDebugSnapshot {
     restoreRequests: number;
     restoreDedupe: number;
     liveTradeDedupe: number;
+    cacheCleanupRuns: number;
+    cacheKeysEvicted: number;
+    cacheSlicesRemoved: number;
+    cacheRowsRemoved: number;
+    cacheMemoryBytesRemoved: number;
   };
 }
 
@@ -136,6 +147,12 @@ function getCacheMetric(kind: CacheKind, key: string) {
       restoreRequestCount: 0,
       restoreDedupeCount: 0,
       liveTradeDedupeCount: 0,
+      cleanupCount: 0,
+      evictedCount: 0,
+      slicesRemoved: 0,
+      rowsRemoved: 0,
+      memoryBytesRemoved: 0,
+      lastCleanupAt: null,
       lastUpdatedAt: null,
       details: {},
     };
@@ -256,6 +273,47 @@ export function recordLiveTradeDedupe(
   markCacheUpdated(metric, details);
 }
 
+export function recordCacheCleanup(
+  kind: CacheKind,
+  key: string,
+  details: {
+    evicted?: boolean;
+    slicesRemoved?: number;
+    rowsRemoved?: number;
+    approximateMemoryBytesBefore?: number;
+    approximateMemoryBytesAfter?: number;
+  } & Record<string, unknown>,
+) {
+  if (!isMarketMetricsEnabled()) return;
+  attachBrowserApi();
+  const metric = getCacheMetric(kind, key);
+  const timestamp = now();
+  const slicesRemoved = Number(details.slicesRemoved ?? 0);
+  const rowsRemoved = Number(details.rowsRemoved ?? 0);
+  const memoryBefore = Number(details.approximateMemoryBytesBefore ?? 0);
+  const memoryAfter = Number(details.approximateMemoryBytesAfter ?? 0);
+
+  metric.cleanupCount += 1;
+  metric.slicesRemoved += Number.isFinite(slicesRemoved) ? slicesRemoved : 0;
+  metric.rowsRemoved += Number.isFinite(rowsRemoved) ? rowsRemoved : 0;
+  metric.memoryBytesRemoved += Math.max(0, memoryBefore - memoryAfter);
+  metric.lastCleanupAt = timestamp;
+  metric.lastUpdatedAt = timestamp;
+
+  if (details.evicted) {
+    metric.evictedCount += 1;
+    metric.active = false;
+  } else {
+    metric.active = true;
+  }
+
+  metric.details = {
+    ...metric.details,
+    ...details,
+    lastCleanupTimestamp: timestamp,
+  };
+}
+
 export function recordRestoreDiagnostic(call: RestoreMetric) {
   if (!isMarketMetricsEnabled()) return;
   attachBrowserApi();
@@ -308,6 +366,12 @@ export function getSnapshot(): MarketDebugSnapshot {
     restoreRequestCount: metric.restoreRequestCount,
     restoreDedupeCount: metric.restoreDedupeCount,
     liveTradeDedupeCount: metric.liveTradeDedupeCount,
+    cleanupCount: metric.cleanupCount,
+    evictedCount: metric.evictedCount,
+    slicesRemoved: metric.slicesRemoved,
+    rowsRemoved: metric.rowsRemoved,
+    memoryBytesRemoved: metric.memoryBytesRemoved,
+    lastCleanupAt: metric.lastCleanupAt,
     lastUpdatedAt: metric.lastUpdatedAt,
     details: { ...metric.details },
   }));
@@ -320,6 +384,11 @@ export function getSnapshot(): MarketDebugSnapshot {
       acc.restoreRequests += cache.restoreRequestCount;
       acc.restoreDedupe += cache.restoreDedupeCount;
       acc.liveTradeDedupe += cache.liveTradeDedupeCount;
+      acc.cacheCleanupRuns += cache.cleanupCount;
+      acc.cacheKeysEvicted += cache.evictedCount;
+      acc.cacheSlicesRemoved += cache.slicesRemoved;
+      acc.cacheRowsRemoved += cache.rowsRemoved;
+      acc.cacheMemoryBytesRemoved += cache.memoryBytesRemoved;
       return acc;
     },
     {
@@ -331,6 +400,11 @@ export function getSnapshot(): MarketDebugSnapshot {
       restoreRequests: 0,
       restoreDedupe: 0,
       liveTradeDedupe: 0,
+      cacheCleanupRuns: 0,
+      cacheKeysEvicted: 0,
+      cacheSlicesRemoved: 0,
+      cacheRowsRemoved: 0,
+      cacheMemoryBytesRemoved: 0,
     },
   );
 

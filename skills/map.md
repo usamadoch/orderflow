@@ -119,6 +119,7 @@ app/api/history/profile/route.ts → API route returning stored fine-grain Volum
 app/api/history/status/route.ts → API route returning collector metadata, candle counts, retention, and DB size.
 components/FeedProvider.tsx → Panel feed lifecycle, DB-backed startup history restore, and closed-candle storage serialization.
 lib/config/markets.ts → Shared allowed symbols and timeframes for history API validation.
+lib/cache/marketCachePolicy.ts → Shared market cache retention, cleanup interval, grace, and max-size defaults/env overrides.
 lib/debug/marketMetrics.ts → Dev-only market-data observability registry exposed through `window.__MARKET_DEBUG__`.
 lib/actions/storageActions.ts → Server Action bridge that accepts serialized closed-candle data from the client feed.
 lib/aggregation/engine.ts → AggregationEngine footprint storage, candle ingestion, and persisted footprint hydration.
@@ -348,6 +349,17 @@ lib/feeds/candleCache.ts → Shared OHLCV cache instrumented with candle counts,
 lib/aggregation/footprintCache.ts → Shared 1m/$5 footprint cache instrumented with base-slice counts, cell counts, coverage, cache hit/miss, restore dedupe, and live trade dedupe metrics.
 lib/volumeProfile/profileCache.ts → Shared 1m fine Volume Profile cache instrumented with slice/row counts, base bucket, coverage, cache hit/miss, restore dedupe, and live trade dedupe metrics.
 components/FeedProvider.tsx → Panel feed lifecycle with restore/storage diagnostics reported to the dev-only market metrics snapshot.
+skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
+skills/log.md → Change history for feature/fix context and impact summaries.
+
+lib/cache/marketCachePolicy.ts → Shared configurable TTL, cleanup interval, inactive grace, and cap values for in-memory market caches.
+lib/debug/marketMetrics.ts → Dev-only market metrics registry including cache cleanup, eviction, removed slice/row, memory delta, and last cleanup counters.
+lib/aggregation/footprintCache.ts → Shared 1m/$5 footprint cache with subscriber-aware TTL cleanup, max slice/cell caps, inactive grace eviction, and cleanup metrics.
+lib/aggregation/engine.ts → Panel-specific AggregationEngine view over shared footprint cache with acquire/release lifecycle ownership.
+lib/volumeProfile/profileCache.ts → Shared 1m fine Volume Profile cache with subscriber-aware TTL cleanup, max slice/row caps, inactive grace eviction, and cleanup metrics.
+lib/volumeProfile/profileEngine.ts → Panel-local Volume Profile source/view over shared fine-row cache with acquire/release lifecycle ownership.
+lib/feeds/candleCache.ts → Shared OHLCV cache with TTL/max-candle trimming, subscriber-aware inactive key eviction, and cleanup metrics.
+components/FeedProvider.tsx → Panel feed lifecycle releasing shared footprint/profile cache ownership on cleanup.
 skills/map.md → Source-of-truth file responsibility map and latest responsibility updates.
 skills/log.md → Change history for feature/fix context and impact summaries.
 

@@ -1,5 +1,17 @@
 # OrderFlow Chart - Change Log
 
+## [2026-05-23] - Memory: Shared Market Cache TTL Cleanup
+- **What changed**:
+  - Added shared market cache policy constants/env overrides for retention, cleanup interval, inactive grace, max base slices, and max row/cell/candle caps.
+  - Added subscriber-aware cleanup to shared footprint, Volume Profile, and candle caches: active keys are trimmed, zero-subscriber keys remain warm during grace, then inactive keys are evicted from memory.
+  - Added acquire/release lifecycle ownership for panel footprint/profile engines and release calls during feed cleanup.
+  - Extended `window.__MARKET_DEBUG__` cache metrics with cleanup runs, evictions, removed slices/rows, memory delta, and last cleanup timestamps.
+- **Why it changed**:
+  - Shared in-memory market caches could grow indefinitely across live use, restores, and panel/source switches even though persisted DB data remains the durable source of truth.
+- **Impact summary**:
+  - Default in-memory retention keeps recent 1m base context while preserving the newest/current slice, trims extreme growth by oldest data first, and evicts inactive cache keys only after grace.
+  - Database retention/storage, chart UI, feed registry behavior, and footprint/profile calculation logic are unchanged.
+
 ## [2026-05-23] - Observability: Market Debug Metrics Snapshot
 - **What changed**:
   - Added a central dev-only `lib/debug/marketMetrics.ts` metrics registry exposed as `window.__MARKET_DEBUG__`.

@@ -1,11 +1,21 @@
 import { Trade } from '@/types/trade';
 import {
   getCoverageFromTimes,
+  recordCacheCleanup,
   recordCacheAccess,
   recordCacheRestoreRequest,
   recordLiveTradeDedupe,
   updateCacheMetric,
 } from '@/lib/debug/marketMetrics';
+import {
+  MARKET_CACHE_CLEANUP_INTERVAL_MS,
+  MARKET_CACHE_INACTIVE_GRACE_MS,
+  MARKET_CACHE_MAX_BASE_SLICES,
+  MARKET_CACHE_MAX_PROFILE_ROWS,
+  MARKET_CACHE_RETENTION_MINUTES,
+  getCleanupTimestamp,
+  getRetentionCutoffSeconds,
+} from '@/lib/cache/marketCachePolicy';
 import { normalizePriceToBucket } from '@/lib/utils/aggregation';
 import type { FineProfileRow } from './profileEngine';
 
@@ -93,6 +103,8 @@ export class VolumeProfileBaseCache {
   private sorted = true;
   private maxTrades = 50000;
   private versionValue = 0;
+  private subscriberCountValue = 0;
+  private inactiveSince: number | null = null;
 
   constructor(
     readonly key: string,
@@ -101,6 +113,10 @@ export class VolumeProfileBaseCache {
 
   get version() {
     return this.versionValue;
+  }
+
+  get subscriberCount() {
+    return this.subscriberCountValue;
   }
 
   get rowCount() {
@@ -118,6 +134,20 @@ export class VolumeProfileBaseCache {
   setMaxTrades(maxTrades: number) {
     this.maxTrades = Math.max(0, maxTrades);
     this.enforceTradeLimit();
+  }
+
+  acquire() {
+    this.subscriberCountValue += 1;
+    this.inactiveSince = null;
+    updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
+  }
+
+  release() {
+    this.subscriberCountValue = Math.max(0, this.subscriberCountValue - 1);
+    if (this.subscriberCountValue === 0 && this.inactiveSince === null) {
+      this.inactiveSince = getCleanupTimestamp();
+    }
+    updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
   }
 
   ingestTrade(trade: Trade, origin = 'live') {
@@ -302,6 +332,79 @@ export class VolumeProfileBaseCache {
     return false;
   }
 
+  cleanup() {
+    const before = this.getMetricDetails();
+    const beforeSlices = this.candleCount;
+    const beforeRows = this.rowCount;
+    const latestTime = this.getLatestFineRowTime();
+    let removedSlices = 0;
+    let removedRows = 0;
+    let removedTrades = 0;
+
+    if (latestTime !== null) {
+      const cutoffSeconds = getRetentionCutoffSeconds(latestTime);
+      const result = this.deleteRowsBefore(cutoffSeconds, latestTime);
+      removedSlices += result.slicesRemoved;
+      removedRows += result.rowsRemoved;
+
+      const beforeTradeCount = this.trades.length;
+      this.trades = this.trades.filter((trade) => Math.floor(trade.time / 1000) >= cutoffSeconds);
+      removedTrades += beforeTradeCount - this.trades.length;
+    }
+
+    while (this.fineRowsByCandle.size > MARKET_CACHE_MAX_BASE_SLICES) {
+      const oldestTime = this.getOldestFineRowTimeExceptLatest();
+      if (oldestTime === null) break;
+      const rows = this.deleteFineRowSlice(oldestTime);
+      removedRows += rows;
+      removedSlices += 1;
+    }
+
+    while (this.rowCount > MARKET_CACHE_MAX_PROFILE_ROWS) {
+      const oldestTime = this.getOldestFineRowTimeExceptLatest();
+      if (oldestTime === null) break;
+      const rows = this.deleteFineRowSlice(oldestTime);
+      removedRows += rows;
+      removedSlices += 1;
+    }
+
+    if (removedTrades > 0) {
+      this.rebuildSeenTradeKeys();
+    }
+
+    const after = this.getMetricDetails();
+    if (removedSlices > 0 || removedRows > 0 || removedTrades > 0) {
+      this.loadedRanges = [];
+      this.versionValue += 1;
+      updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
+    }
+
+    recordCacheCleanup('volumeProfile', this.key, {
+      ...this.getMetricDetails(),
+      retentionMinutes: MARKET_CACHE_RETENTION_MINUTES,
+      inactiveGraceMs: MARKET_CACHE_INACTIVE_GRACE_MS,
+      maxBaseSlices: MARKET_CACHE_MAX_BASE_SLICES,
+      maxRows: MARKET_CACHE_MAX_PROFILE_ROWS,
+      slicesRemoved: beforeSlices - this.candleCount,
+      rowsRemoved: beforeRows - this.rowCount,
+      tradesRemoved: removedTrades,
+      approximateMemoryBytesBefore: Number(before.approximateMemoryBytes ?? 0),
+      approximateMemoryBytesAfter: Number(after.approximateMemoryBytes ?? 0),
+    });
+  }
+
+  shouldEvict(nowMs: number) {
+    if (this.subscriberCountValue > 0) return false;
+    if (this.restorePromises.size > 0) return false;
+
+    const inactiveSince = this.inactiveSince ?? nowMs;
+    return nowMs - inactiveSince >= MARKET_CACHE_INACTIVE_GRACE_MS;
+  }
+
+  getEvictionDetails() {
+    return this.getMetricDetails();
+  }
+
   getFineRowsInRange(startSeconds: number, endSeconds: number): FineProfileRowSnapshot[] {
     const rows: FineProfileRowSnapshot[] = [];
     for (
@@ -478,17 +581,7 @@ export class VolumeProfileBaseCache {
   }
 
   private pruneRowsBefore(timeSeconds: number) {
-    for (const candleTime of Array.from(this.fineRowsByCandle.keys())) {
-      if (candleTime >= timeSeconds) continue;
-
-      const rows = this.fineRowsByCandle.get(candleTime);
-      if (rows) {
-        for (const row of rows.values()) {
-          this.fineRowOrigins.delete(getFineRowStorageKey(row));
-        }
-      }
-      this.fineRowsByCandle.delete(candleTime);
-    }
+    this.deleteRowsBefore(timeSeconds, null);
   }
 
   private ensureSorted() {
@@ -530,9 +623,53 @@ export class VolumeProfileBaseCache {
     }
   }
 
+  private deleteRowsBefore(timeSeconds: number, preservedTime: number | null) {
+    const result = {
+      slicesRemoved: 0,
+      rowsRemoved: 0,
+    };
+
+    for (const candleTime of Array.from(this.fineRowsByCandle.keys())) {
+      if (candleTime >= timeSeconds || candleTime === preservedTime) continue;
+
+      result.rowsRemoved += this.deleteFineRowSlice(candleTime);
+      result.slicesRemoved += 1;
+    }
+
+    return result;
+  }
+
+  private deleteFineRowSlice(candleTime: number) {
+    const rows = this.fineRowsByCandle.get(candleTime);
+    if (!rows) return 0;
+
+    for (const row of rows.values()) {
+      this.fineRowOrigins.delete(getFineRowStorageKey(row));
+    }
+
+    const rowCount = rows.size;
+    this.fineRowsByCandle.delete(candleTime);
+    return rowCount;
+  }
+
+  private getLatestFineRowTime() {
+    if (this.fineRowsByCandle.size === 0) return null;
+    return Math.max(...this.fineRowsByCandle.keys());
+  }
+
+  private getOldestFineRowTimeExceptLatest() {
+    if (this.fineRowsByCandle.size <= 1) return null;
+
+    const latestTime = this.getLatestFineRowTime();
+    const sortedTimes = Array.from(this.fineRowsByCandle.keys()).sort((a, b) => a - b);
+    return sortedTimes.find((time) => time !== latestTime) ?? null;
+  }
+
   private getMetricDetails() {
     return {
       activeCacheKey: this.key,
+      subscriberCount: this.subscriberCountValue,
+      inactiveSince: this.inactiveSince,
       fineProfileSliceCount: this.candleCount,
       fineRowCount: this.rowCount,
       baseBucketSize: this.baseBucketSize,
@@ -549,8 +686,42 @@ export class VolumeProfileBaseCache {
 }
 
 const sharedVolumeProfileCaches = new Map<string, VolumeProfileBaseCache>();
+let volumeProfileCleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+function ensureVolumeProfileCleanupTimer() {
+  if (volumeProfileCleanupInterval || MARKET_CACHE_CLEANUP_INTERVAL_MS <= 0) return;
+
+  volumeProfileCleanupInterval = setInterval(() => {
+    cleanupSharedVolumeProfileCaches();
+  }, MARKET_CACHE_CLEANUP_INTERVAL_MS);
+}
+
+export function cleanupSharedVolumeProfileCaches() {
+  const timestamp = getCleanupTimestamp();
+
+  for (const [key, cache] of Array.from(sharedVolumeProfileCaches.entries())) {
+    const before = cache.getEvictionDetails();
+    cache.cleanup();
+
+    if (!cache.shouldEvict(timestamp)) continue;
+
+    const after = cache.getEvictionDetails();
+    sharedVolumeProfileCaches.delete(key);
+    recordCacheCleanup('volumeProfile', key, {
+      ...after,
+      evicted: true,
+      retentionMinutes: MARKET_CACHE_RETENTION_MINUTES,
+      inactiveGraceMs: MARKET_CACHE_INACTIVE_GRACE_MS,
+      slicesRemoved: Number(after.fineProfileSliceCount ?? 0),
+      rowsRemoved: Number(after.fineRowCount ?? 0),
+      approximateMemoryBytesBefore: Number(before.approximateMemoryBytes ?? after.approximateMemoryBytes ?? 0),
+      approximateMemoryBytesAfter: 0,
+    });
+  }
+}
 
 export function getSharedVolumeProfileCache(parts: VolumeProfileCacheKeyParts) {
+  ensureVolumeProfileCleanupTimer();
   const key = getVolumeProfileCacheKey(parts);
   let cache = sharedVolumeProfileCaches.get(key);
   if (!cache) {

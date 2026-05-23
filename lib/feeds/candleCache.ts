@@ -1,14 +1,23 @@
 import { Candle } from '../../types/candle';
 import {
   getCoverageFromTimes,
+  recordCacheCleanup,
   recordCacheAccess,
   recordCacheRestoreRequest,
   updateCacheMetric,
 } from '../debug/marketMetrics';
+import {
+  MARKET_CACHE_CLEANUP_INTERVAL_MS,
+  MARKET_CACHE_INACTIVE_GRACE_MS,
+  MARKET_CACHE_MAX_CANDLES,
+  MARKET_CACHE_RETENTION_MINUTES,
+  getCleanupTimestamp,
+  getRetentionCutoffSeconds,
+} from '../cache/marketCachePolicy';
 import type { ContractType } from '../store/chart';
 import { subscribeCandleStream } from './feedRegistry';
 
-export const MAX_SHARED_CANDLES = 500;
+export const MAX_SHARED_CANDLES = Math.max(1, MARKET_CACHE_MAX_CANDLES);
 
 export interface CandleCacheKeyParts {
   symbol: string;
@@ -80,8 +89,8 @@ function getRange(candles: Candle[]) {
 }
 
 function log(message: string, details: Record<string, unknown>) {
-  const cacheKey = String(details.cacheKey ?? 'n/a');
-  const subscriberCount = String(details.subscriberCount ?? 'n/a');
+  void message;
+  void details;
 
   // console.log(
   //   `[CANDLE_CACHE] ${message} | key=${cacheKey} | subscribers=${subscriberCount}`,
@@ -96,6 +105,7 @@ export class CandleCache {
   private restorePromise: Promise<CandleHistoryRestoreResult> | null = null;
   private historyRestored = false;
   private unsubscribeLive: (() => void) | null = null;
+  private inactiveSince: number | null = null;
 
   constructor(
     readonly key: string,
@@ -119,6 +129,7 @@ export class CandleCache {
       activeCacheKey: this.key,
       candleCount: this.candles.length,
       subscriberCount: this.subscribers.size,
+      inactiveSince: this.inactiveSince,
       contractType: this.parts.contractType,
       symbol: this.parts.symbol,
       timeframe: this.parts.timeframe,
@@ -143,6 +154,7 @@ export class CandleCache {
 
   subscribe(subscriber: CandleCacheSubscriber) {
     this.subscribers.add(subscriber);
+    this.inactiveSince = null;
     this.ensureLiveStream();
     updateCacheMetric('candle', this.key, this.getMetricDetails());
     log('subscriber added', {
@@ -158,6 +170,9 @@ export class CandleCache {
 
     return () => {
       this.subscribers.delete(subscriber);
+      if (this.subscribers.size === 0 && this.inactiveSince === null) {
+        this.inactiveSince = getCleanupTimestamp();
+      }
       updateCacheMetric('candle', this.key, this.getMetricDetails());
       log('subscriber removed', {
         cacheKey: this.key,
@@ -271,6 +286,7 @@ export class CandleCache {
 
   private ingestLiveCandle(candle: Candle) {
     this.candles = mergeCandles(this.candles, [candle]);
+    this.cleanupRetainedCandles();
     this.rememberLoadedRange(this.candles);
     updateCacheMetric('candle', this.key, this.getMetricDetails());
 
@@ -311,11 +327,110 @@ export class CandleCache {
       this.loadedRanges = this.loadedRanges.slice(-100);
     }
   }
+
+  cleanup() {
+    const before = this.getMetricDetails();
+    const beforeCount = this.candles.length;
+    const removedCandles = this.cleanupRetainedCandles();
+
+    const after = this.getMetricDetails();
+    if (removedCandles > 0) {
+      this.loadedRanges = [];
+      updateCacheMetric('candle', this.key, this.getMetricDetails());
+    }
+
+    recordCacheCleanup('candle', this.key, {
+      ...this.getMetricDetails(),
+      retentionMinutes: MARKET_CACHE_RETENTION_MINUTES,
+      inactiveGraceMs: MARKET_CACHE_INACTIVE_GRACE_MS,
+      maxCandles: MAX_SHARED_CANDLES,
+      slicesRemoved: beforeCount - this.candles.length,
+      rowsRemoved: beforeCount - this.candles.length,
+      approximateMemoryBytesBefore: Number(before.approximateMemoryBytes ?? 0),
+      approximateMemoryBytesAfter: Number(after.approximateMemoryBytes ?? 0),
+    });
+  }
+
+  shouldEvict(nowMs: number) {
+    if (this.subscribers.size > 0) return false;
+    if (this.restorePromise) return false;
+
+    const inactiveSince = this.inactiveSince ?? nowMs;
+    return nowMs - inactiveSince >= MARKET_CACHE_INACTIVE_GRACE_MS;
+  }
+
+  dispose() {
+    if (this.unsubscribeLive) {
+      this.unsubscribeLive();
+      this.unsubscribeLive = null;
+    }
+  }
+
+  getEvictionDetails() {
+    return this.getMetricDetails();
+  }
+
+  private cleanupRetainedCandles() {
+    if (this.candles.length <= 1) return 0;
+
+    const beforeCount = this.candles.length;
+    const latestCandle = this.candles[this.candles.length - 1];
+    const latestTime = latestCandle?.time;
+    if (!Number.isFinite(latestTime)) return 0;
+
+    const cutoffTime = getRetentionCutoffSeconds(latestTime);
+    this.candles = this.candles.filter((candle) => candle.time >= cutoffTime || candle.time === latestTime);
+
+    if (this.candles.length > MAX_SHARED_CANDLES) {
+      const preservedLatest = this.candles[this.candles.length - 1];
+      const older = this.candles
+        .slice(0, -1)
+        .slice(Math.max(0, this.candles.length - 1 - (MAX_SHARED_CANDLES - 1)));
+      this.candles = [...older, preservedLatest];
+    }
+
+    return beforeCount - this.candles.length;
+  }
 }
 
 const sharedCandleCaches = new Map<string, CandleCache>();
+let candleCleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+function ensureCandleCleanupTimer() {
+  if (candleCleanupInterval || MARKET_CACHE_CLEANUP_INTERVAL_MS <= 0) return;
+
+  candleCleanupInterval = setInterval(() => {
+    cleanupSharedCandleCaches();
+  }, MARKET_CACHE_CLEANUP_INTERVAL_MS);
+}
+
+export function cleanupSharedCandleCaches() {
+  const timestamp = getCleanupTimestamp();
+
+  for (const [key, cache] of Array.from(sharedCandleCaches.entries())) {
+    const before = cache.getEvictionDetails();
+    cache.cleanup();
+
+    if (!cache.shouldEvict(timestamp)) continue;
+
+    const after = cache.getEvictionDetails();
+    cache.dispose();
+    sharedCandleCaches.delete(key);
+    recordCacheCleanup('candle', key, {
+      ...after,
+      evicted: true,
+      retentionMinutes: MARKET_CACHE_RETENTION_MINUTES,
+      inactiveGraceMs: MARKET_CACHE_INACTIVE_GRACE_MS,
+      slicesRemoved: Number(after.candleCount ?? 0),
+      rowsRemoved: Number(after.candleCount ?? 0),
+      approximateMemoryBytesBefore: Number(before.approximateMemoryBytes ?? after.approximateMemoryBytes ?? 0),
+      approximateMemoryBytesAfter: 0,
+    });
+  }
+}
 
 export function getSharedCandleCache(parts: CandleCacheKeyParts) {
+  ensureCandleCleanupTimer();
   const normalizedParts = {
     ...parts,
     symbol: normalizeSymbol(parts.symbol),
