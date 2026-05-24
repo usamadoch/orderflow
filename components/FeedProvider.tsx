@@ -472,7 +472,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       : [dataSourceMode];
     const shouldUseSpotTrades = activeTradeSources.includes('spot');
     const shouldUseFuturesTrades = activeTradeSources.includes('futures');
-    const shouldUseStoredHistory = contractType === 'spot';
+    const shouldUseStoredHistory = true;
     const shouldHydrateStoredFootprints = true;
     const shouldHydrateStoredFineProfiles = true;
     const shouldHydrateRawTrades = contractType === 'spot' && dataSourceMode === 'spot';
@@ -877,7 +877,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           console.warn(`[Storage] Skipping partial realtime footprint for ${pair} ${timeframe} candle ${candle.time}`);
         }
 
-        if (contractType === 'spot' && claimClosedCandleStorage(pair, contractType, dataSourceMode, timeframe, candle.time, 0)) {
+        if (claimClosedCandleStorage(pair, contractType, dataSourceMode, timeframe, candle.time, 0)) {
           storeClosedCandleAction(
             pair,
             contractType,
@@ -1066,6 +1066,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const fetchStoredHistory = async () => {
       const params = new URLSearchParams({
         symbol: pair,
+        contractType,
         timeframe,
         limit: '500',
       });
@@ -1088,6 +1089,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           panelId,
           source: 'stored-history-api',
           symbol: pair,
+          contractType,
           timeframe,
           minCandleTime: candles[0]?.time ?? null,
           maxCandleTime: candles[candles.length - 1]?.time ?? null,

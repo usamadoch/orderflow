@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getFootprintCells, getFootprintCellsForRange } from '../../../../lib/db/database'
+import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
 import {
   isAllowedContractType,
   isAllowedDataSourceMode,
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid start, end, or bucketSize' }, { status: 400 })
     }
 
-    const rows = await getFootprintCellsForRange(
+    const rows = await getMarketStorageAdapter().getFootprintCellsForRange(
       symbol,
       contractType,
       dataSourceMode,
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid candleTime or bucketSize' }, { status: 400 })
   }
 
-  const rows = await getFootprintCells(
+  const rows = await getMarketStorageAdapter().getFootprintCells(
     symbol,
     contractType,
     dataSourceMode,

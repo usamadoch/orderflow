@@ -1,6 +1,7 @@
 'use server'
 
 import { storeBaseFootprint, storeClosedCandle, storeFineProfileRows, storeRawTrades, type SerializedFootprintCell } from '../db/marketStorage'
+import { getMarketDbDriver, getMarketStorageAdapter } from '../db/storageAdapter'
 import type { Candle } from '../../types/candle'
 import type { Trade } from '../../types/trade'
 import type { FineProfileRowWriteInput } from '../db/database'
@@ -16,7 +17,23 @@ export async function storeClosedCandleAction(
   buyVol: number,
   sellVol: number,
 ) {
-  await storeClosedCandle(symbol, contractType, dataSourceMode, timeframe, candle, cells, delta, buyVol, sellVol)
+  if (getMarketDbDriver() === 'libsql') {
+    if (contractType !== 'spot') return
+    await storeClosedCandle(symbol, contractType, dataSourceMode, timeframe, candle, cells, delta, buyVol, sellVol)
+    return
+  }
+
+  await getMarketStorageAdapter().storeClosedCandle({
+    symbol,
+    contractType,
+    dataSourceMode,
+    timeframe,
+    candle,
+    cells,
+    delta,
+    buyVol,
+    sellVol,
+  })
 }
 
 export async function storeBaseFootprintAction(
@@ -26,7 +43,18 @@ export async function storeBaseFootprintAction(
   candleTime: number,
   cells: SerializedFootprintCell[],
 ) {
-  await storeBaseFootprint(symbol, contractType, dataSourceMode, candleTime, cells)
+  if (getMarketDbDriver() === 'libsql') {
+    await storeBaseFootprint(symbol, contractType, dataSourceMode, candleTime, cells)
+    return
+  }
+
+  await getMarketStorageAdapter().storeBaseFootprint({
+    symbol,
+    contractType,
+    dataSourceMode,
+    candleTime,
+    cells,
+  })
 }
 
 export async function storeRawTradesAction(symbol: string, trades: Trade[]) {
@@ -40,5 +68,16 @@ export async function storeFineProfileRowsAction(
   timeframe: string,
   rows: FineProfileRowWriteInput[],
 ) {
-  await storeFineProfileRows(symbol, contractType, dataSourceMode, timeframe, rows)
+  if (getMarketDbDriver() === 'libsql') {
+    await storeFineProfileRows(symbol, contractType, dataSourceMode, timeframe, rows)
+    return
+  }
+
+  await getMarketStorageAdapter().storeFineProfileRows({
+    symbol,
+    contractType,
+    dataSourceMode,
+    timeframe,
+    rows,
+  })
 }

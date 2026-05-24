@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getFineProfileRows } from '../../../../lib/db/database'
+import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
 import {
   FINE_PROFILE_STORAGE_TIMEFRAME,
   isAllowedContractType,
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid start, end, or baseBucketSize' }, { status: 400 })
   }
 
-  const rows = await getFineProfileRows(
+  const rows = await getMarketStorageAdapter().getFineProfileRows(
     symbol,
     contractType,
     dataSourceMode,
