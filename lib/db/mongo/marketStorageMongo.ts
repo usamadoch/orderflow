@@ -1,4 +1,4 @@
-import type { Collection, Db } from 'mongodb'
+import type { Collection, Db, Filter } from 'mongodb'
 import { getMongoDb, verifyMongoConnection } from './client'
 import type {
   StoreBaseFootprintInput,
@@ -26,6 +26,15 @@ const PROFILE_QUERY_INDEX = 'idx_profile_rows_source_time_price'
 const COLLECTOR_META_KEY_INDEX = 'idx_collector_meta_key'
 const BASE_FOOTPRINT_TIMEFRAME = '1m'
 const BASE_FOOTPRINT_BUCKET_SIZE = 5
+const PROFILE_QUERY_INDEX_SPEC = {
+  'meta.symbol': 1,
+  'meta.contractType': 1,
+  'meta.dataSourceMode': 1,
+  'meta.timeframe': 1,
+  'meta.baseBucketSizeKey': 1,
+  time: 1,
+  bucketPriceKey: 1,
+} as const
 
 const MONGO_RETENTION_SECONDS = getMongoRetentionSeconds()
 
@@ -311,6 +320,12 @@ function sortFineProfileRows(rows: FineProfileRow[]) {
   return rows.sort((a, b) => a.candle_time - b.candle_time || a.bucket_price - b.bucket_price)
 }
 
+function isMongoQueryMemorySortError(error: unknown) {
+  if (typeof error !== 'object' || error === null) return false
+  const maybeMongoError = error as { code?: unknown; codeName?: unknown }
+  return maybeMongoError.code === 292 || maybeMongoError.codeName === 'QueryExceededMemoryLimitNoDiskUseAllowed'
+}
+
 async function getCandleCollection(): Promise<Collection<MongoCandleDocument>> {
   await ensureCandleCollection()
   const db = await getMongoDb()
@@ -415,18 +430,17 @@ async function initProfileCollection() {
   await ensureTimeSeriesCollection(db, MONGO_MARKET_COLLECTIONS.profileRows)
 
   const collection = db.collection<MongoProfileRowDocument>(MONGO_MARKET_COLLECTIONS.profileRows)
-  await collection.createIndex(
-    {
-      'meta.symbol': 1,
-      'meta.contractType': 1,
-      'meta.dataSourceMode': 1,
-      'meta.timeframe': 1,
-      'meta.baseBucketSizeKey': 1,
-      time: 1,
-      bucketPriceKey: 1,
-    },
-    { name: PROFILE_QUERY_INDEX },
-  )
+  const existingProfileIndexes = await collection.indexes()
+  const existingProfileQueryIndex = existingProfileIndexes.find((index) => index.name === PROFILE_QUERY_INDEX)
+
+  if (
+    existingProfileQueryIndex
+    && JSON.stringify(existingProfileQueryIndex.key) !== JSON.stringify(PROFILE_QUERY_INDEX_SPEC)
+  ) {
+    await collection.dropIndex(PROFILE_QUERY_INDEX)
+  }
+
+  await collection.createIndex(PROFILE_QUERY_INDEX_SPEC, { name: PROFILE_QUERY_INDEX })
 
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[MongoDB] Profile rows collection ready: ${MONGO_MARKET_COLLECTIONS.profileRows}`)
@@ -847,20 +861,44 @@ export const mongoMarketStorageAdapter: MarketStorageAdapter = {
 
   async getFineProfileRows(symbol, contractType, dataSourceMode, timeframe, startTime, endTime, baseBucketSize) {
     const collection = await getProfileCollection()
-    const rows = await collection
-      .find({
-        'meta.symbol': symbol,
-        'meta.contractType': contractType,
-        'meta.dataSourceMode': dataSourceMode,
-        'meta.timeframe': timeframe,
-        'meta.baseBucketSizeKey': toNumberKey(baseBucketSize),
-        time: {
-          $gte: toDateFromSeconds(startTime),
-          $lt: toDateFromSeconds(endTime),
-        },
+    const filter: Filter<MongoProfileRowDocument> = {
+      'meta.symbol': symbol,
+      'meta.contractType': contractType,
+      'meta.dataSourceMode': dataSourceMode,
+      'meta.timeframe': timeframe,
+      'meta.baseBucketSizeKey': toNumberKey(baseBucketSize),
+      time: {
+        $gte: toDateFromSeconds(startTime),
+        $lt: toDateFromSeconds(endTime),
+      },
+    }
+    const readRows = (allowDiskUse: boolean) => {
+      const cursor = collection
+        .find(filter)
+        .hint(PROFILE_QUERY_INDEX)
+        .sort({ time: 1, bucketPriceKey: 1 })
+
+      return (allowDiskUse ? cursor.allowDiskUse(true) : cursor).toArray()
+    }
+    let rows: MongoProfileRowDocument[]
+
+    try {
+      rows = await readRows(false)
+    } catch (error) {
+      if (!isMongoQueryMemorySortError(error)) throw error
+
+      console.warn('[MongoDB] Profile restore query exceeded in-memory sort limit; retrying with allowDiskUse fallback', {
+        symbol,
+        contractType,
+        dataSourceMode,
+        timeframe,
+        baseBucketSize,
+        startTime,
+        endTime,
+        index: PROFILE_QUERY_INDEX,
       })
-      .sort({ time: 1, bucketPriceKey: 1 })
-      .toArray()
+      rows = await readRows(true)
+    }
 
     return sortFineProfileRows(rows.map(toFineProfileRow))
   },

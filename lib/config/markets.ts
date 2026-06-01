@@ -6,6 +6,12 @@ export type AllowedTimeframe = (typeof ALLOWED_TIMEFRAMES)[number]
 export type MarketContractType = 'spot' | 'futures'
 export type MarketDataSourceMode = 'spot' | 'futures' | 'both'
 export const FINE_PROFILE_STORAGE_TIMEFRAME = '1m'
+export const MIN_FINE_PROFILE_BASE_BUCKET_SIZE = 1.5
+
+export function getFineProfileBaseBucketSize(tickSize: number) {
+  if (!Number.isFinite(tickSize) || tickSize <= 0) return MIN_FINE_PROFILE_BASE_BUCKET_SIZE
+  return Math.max(MIN_FINE_PROFILE_BASE_BUCKET_SIZE, tickSize)
+}
 
 export function isAllowedSymbol(symbol: string | null): symbol is AllowedSymbol {
   return ALLOWED_SYMBOLS.includes(symbol as AllowedSymbol)

@@ -33,7 +33,7 @@ import { OrderbookManager, DepthUpdate } from '../lib/liquidity/orderbook';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
 import { storeBaseFootprintAction, storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
-import { FINE_PROFILE_STORAGE_TIMEFRAME } from '../lib/config/markets';
+import { FINE_PROFILE_STORAGE_TIMEFRAME, getFineProfileBaseBucketSize } from '../lib/config/markets';
 import { recordRestoreDiagnostic } from '../lib/debug/marketMetrics';
 
 interface PanelFeedProviderProps {
@@ -432,6 +432,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
   useEffect(() => {
     let active = true;
+    const fineProfileBaseBucketSize = getFineProfileBaseBucketSize(tickSize);
     connectedRef.current = false;
     setConnected(panelId, false);
     engineRef.current.reset();
@@ -441,7 +442,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       symbol: pair,
       contractType,
       dataSourceMode,
-      baseBucketSize: tickSize,
+      baseBucketSize: fineProfileBaseBucketSize,
     });
     const footprintEngine = engineRef.current;
     const volumeProfileEngine = volumeProfileEngineRef.current;
@@ -646,16 +647,16 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     };
 
     const aggregateFineProfileTrade = (trade: Trade, candleTime: number) => {
-      if (tickSize <= 0) return;
+      if (fineProfileBaseBucketSize <= 0) return;
 
-      const bucketPrice = normalizePriceToBucket(trade.price, tickSize);
+      const bucketPrice = normalizePriceToBucket(trade.price, fineProfileBaseBucketSize);
       const candleRows = liveFineProfileRowsRef.current.get(candleTime) ?? new Map<number, FineProfileRow>();
       let row = candleRows.get(bucketPrice);
 
       if (!row) {
         row = {
           candleTime,
-          baseBucketSize: tickSize,
+          baseBucketSize: fineProfileBaseBucketSize,
           bucketPrice,
           bidVol: 0,
           askVol: 0,
@@ -684,7 +685,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           bucketPriceCount: candleRows.size,
           totalVolume: Array.from(candleRows.values()).reduce((sum, profileRow) => sum + profileRow.totalVol, 0),
           tradeCount: Array.from(candleRows.values()).reduce((sum, profileRow) => sum + profileRow.tradeCount, 0),
-          baseBucketSize: tickSize,
+          tickSize,
+          baseBucketSize: fineProfileBaseBucketSize,
         });
       }
     };
@@ -714,6 +716,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             contractType,
             dataSourceMode,
             tickSize,
+            baseBucketSize: fineProfileBaseBucketSize,
             slicesBefore: stats.slicesBefore,
             closedBeforeTime,
             currentStreamBaseTime: closedBeforeTime,
@@ -790,7 +793,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           currentStreamBaseTime: closedBeforeTime,
           isClosed: candleTime < closedBeforeTime,
           coverageStatus: candleTime >= coverageStart ? 'covered' : 'partial',
-          baseBucketSize: tickSize,
+          tickSize,
+          baseBucketSize: fineProfileBaseBucketSize,
           rowsQueued: storableRows.length,
           rowsSkippedDuplicate: rows.length - storableRows.length,
         });
@@ -813,6 +817,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           dataSourceMode,
           timeframe: fineProfileStorageTimeframe,
           tickSize,
+          baseBucketSize: fineProfileBaseBucketSize,
           closedBeforeTime,
           currentStreamBaseTime: closedBeforeTime,
           coverageStart,
@@ -1344,7 +1349,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         candlesHydrated: 0,
       };
       const window = getHistoryWindow(candles, timeframeSeconds);
-      if (!window || tickSize <= 0) return stats;
+      if (!window || fineProfileBaseBucketSize <= 0) return stats;
 
       const profileCache = volumeProfileEngineRef.current.getBaseCache();
       const candidateTimes = profileCache.getMissingBaseCandleTimes(window.startSeconds, window.endSeconds);
@@ -1361,7 +1366,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             sourceKey: profileCache.key,
             start: window.startSeconds,
             end: window.endSeconds,
-            baseBucketSize: tickSize,
+            tickSize,
+            baseBucketSize: fineProfileBaseBucketSize,
           },
         });
         console.debug('[VPROFILE_CACHE] Fine profile restore skipped because shared base cache already covers range', {
@@ -1372,7 +1378,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           sourceKey: profileCache.key,
           requestedChartTimeframe: timeframe,
           storageTimeframe: fineProfileStorageTimeframe,
-          baseBucketSize: tickSize,
+          tickSize,
+          baseBucketSize: fineProfileBaseBucketSize,
           start: window.startSeconds,
           end: window.endSeconds,
           rowCount: profileCache.rowCount,
@@ -1389,7 +1396,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           dataSourceMode,
           start: String(window.startSeconds),
           end: String(window.endSeconds),
-          baseBucketSize: String(tickSize),
+          baseBucketSize: String(fineProfileBaseBucketSize),
         });
         const response = await fetch(`/api/history/profile?${params.toString()}`, {
           cache: 'no-store',
@@ -1407,7 +1414,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               sourceKey: profileCache.key,
               start: window.startSeconds,
               end: window.endSeconds,
-              baseBucketSize: tickSize,
+              tickSize,
+              baseBucketSize: fineProfileBaseBucketSize,
             },
           });
           console.warn(`[HistoryRestore:${panelId}] Fine profile row restore failed with ${response.status}`);
@@ -1431,7 +1439,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           sourceKey: profileCache.key,
           requestedChartTimeframe: timeframe,
           storageTimeframe: fineProfileStorageTimeframe,
-          baseBucketSize: tickSize,
+          tickSize,
+          baseBucketSize: fineProfileBaseBucketSize,
           start: window.startSeconds,
           end: window.endSeconds,
           candidateCandles: candidateTimes.length,
@@ -1456,7 +1465,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             start: window.startSeconds,
             end: window.endSeconds,
             candidateCandles: candidateTimes.length,
-            baseBucketSize: tickSize,
+            tickSize,
+            baseBucketSize: fineProfileBaseBucketSize,
             minCandleTime: rows.length > 0 ? Math.min(...rows.map((row) => row.candleTime)) : null,
             maxCandleTime: rows.length > 0 ? Math.max(...rows.map((row) => row.candleTime)) : null,
           },
@@ -1762,6 +1772,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         timeframe,
         storageTimeframe: fineProfileStorageTimeframe,
         tickSize,
+        baseBucketSize: fineProfileBaseBucketSize,
         liveSlices: getLiveFineProfileSliceCount(),
         queuedRowsPending: fineProfileQueueRef.current.length,
         closedBeforeTime: getTradeClosedFineProfileTime(),

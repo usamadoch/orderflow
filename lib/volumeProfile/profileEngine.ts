@@ -359,10 +359,7 @@ function getCandleTimeWindow(candles: Candle[]) {
 
 function isCompatibleProfileBucket(baseBucketSize: number, profileBucketSize: number) {
   if (baseBucketSize <= 0 || profileBucketSize <= 0) return false;
-  if (baseBucketSize > profileBucketSize) return false;
-
-  const ratio = profileBucketSize / baseBucketSize;
-  return Math.abs(ratio - Math.round(ratio)) < 1e-6;
+  return baseBucketSize <= profileBucketSize + 1e-9;
 }
 
 function getCandleTimeForTradeMs(tradeTimeMs: number, candles: Candle[]) {
