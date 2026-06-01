@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Minus, MoveRight, Ruler, Settings2, Square } from 'lucide-react';
+import { ChevronDown, Maximize2, Minimize2, Minus, MoveRight, Ruler, Settings2, Square } from 'lucide-react';
 import { useChartStore, PanelId, LineDrawMode } from '../../lib/store/chart';
 
 const PAIRS = ['BTCUSDT', 'ETHUSDT'];
@@ -19,11 +19,9 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setTimeframe = useChartStore(s => s.setTimeframe);
   const setChartMode = useChartStore(s => s.setChartMode);
   const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
-  const setAbsorptionEnabled = useChartStore(s => s.setAbsorptionEnabled);
-  const setExhaustionEnabled = useChartStore(s => s.setExhaustionEnabled);
-  const setIcebergEnabled = useChartStore(s => s.setIcebergEnabled);
-  const setLiquidityVacuumEnabled = useChartStore(s => s.setLiquidityVacuumEnabled);
   const setCvdEnabled = useChartStore(s => s.setCvdEnabled);
+  const focusMode = useChartStore(s => s.focusMode);
+  const setFocusMode = useChartStore(s => s.setFocusMode);
 
   useEffect(() => {
     if (!toolsOpen) return;
@@ -191,53 +189,6 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         )}
       </div>
 
-      {/* Signal Toggles */}
-      <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
-        <span className={`text-[9px] font-black tracking-widest ${panel.absorptionEnabled || panel.exhaustionEnabled || panel.icebergEnabled || panel.liquidityVacuumEnabled ? 'text-text-dim' : 'text-[#333]'}`}>
-          SIGNALS
-        </span>
-        <button
-          onClick={() => setAbsorptionEnabled(panelId, !panel.absorptionEnabled)}
-          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.absorptionEnabled
-            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
-            }`}
-          title="Toggle Absorption"
-        >
-          ABS
-        </button>
-        <button
-          onClick={() => setExhaustionEnabled(panelId, !panel.exhaustionEnabled)}
-          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.exhaustionEnabled
-            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
-            }`}
-          title="Toggle Exhaustion"
-        >
-          EX
-        </button>
-        <button
-          onClick={() => setIcebergEnabled(panelId, !panel.icebergEnabled)}
-          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.icebergEnabled
-            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
-            }`}
-          title="Toggle Iceberg (K)"
-        >
-          ICE
-        </button>
-        <button
-          onClick={() => setLiquidityVacuumEnabled(panelId, !panel.liquidityVacuumEnabled)}
-          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.liquidityVacuumEnabled
-            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
-            }`}
-          title="Toggle Liquidity Vacuum (V)"
-        >
-          VAC
-        </button>
-      </div>
-
       {/* Sessions Quick Toggle */}
       <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
         <button
@@ -259,6 +210,16 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
           title="Toggle Liquidity Map (Q)"
         >
           Q
+        </button>
+      </div>
+
+      <div className="ml-auto flex items-center border-l border-[#1A1A1A] pl-3 h-5">
+        <button
+          onClick={() => setFocusMode(!focusMode)}
+          className="h-6 w-6 flex items-center justify-center rounded border border-[#1A1A1A] bg-[#080808] text-[#787B86] transition-all duration-200 hover:border-accent/60 hover:text-[#E8E8E8]"
+          title={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
+        >
+          {focusMode ? <Minimize2 size={11} strokeWidth={2.5} /> : <Maximize2 size={11} strokeWidth={2.5} />}
         </button>
       </div>
 

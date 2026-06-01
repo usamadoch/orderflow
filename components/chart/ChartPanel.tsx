@@ -9,7 +9,6 @@ import { ChartCanvas } from './ChartCanvas';
 import { CvdPanel } from './CvdPanel';
 import { formatCvdValue } from './drawCvd';
 import { PanelToolbar } from '../ui/PanelToolbar';
-// import { PanelToolbar } from '../ui/PanelToolbar';
 
 interface ChartPanelProps {
   panelId: PanelId;

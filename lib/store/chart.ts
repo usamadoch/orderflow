@@ -234,6 +234,8 @@ interface ChartState {
   // Shared settings
   tickSize: number;
   sidebarCollapsed: boolean;
+  focusMode: boolean;
+  settingsDropdownHeight: number;
   crosshair: GlobalCrosshair;
   crosshairSyncEnabled: boolean;
 
@@ -350,6 +352,8 @@ interface ChartState {
   setSplitRatio: (ratio: number) => void;
   setTickSize: (size: number) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  setFocusMode: (focusMode: boolean) => void;
+  setSettingsDropdownHeight: (height: number) => void;
   setCrosshair: (crosshair: GlobalCrosshair) => void;
   setCrosshairSyncEnabled: (enabled: boolean) => void;
 
@@ -569,6 +573,8 @@ export const useChartStore = create<ChartState>()(
       splitRatio: 0.5,
       tickSize: 0.5,
       sidebarCollapsed: false,
+      focusMode: false,
+      settingsDropdownHeight: 500,
       crosshair: { activePanel: null, time: null, price: null },
       crosshairSyncEnabled: true,
       isAuthenticated: false,
@@ -992,6 +998,9 @@ export const useChartStore = create<ChartState>()(
       setSplitRatio: (splitRatio) => set({ splitRatio: Math.max(0.15, Math.min(0.85, splitRatio)) }),
       setTickSize: (tickSize) => set({ tickSize }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+      setFocusMode: (focusMode) => set({ focusMode }),
+      setSettingsDropdownHeight: (settingsDropdownHeight) =>
+        set({ settingsDropdownHeight: Math.max(350, Math.min(900, Math.round(settingsDropdownHeight))) }),
       setCrosshair: (crosshair) => set({ crosshair }),
       setCrosshairSyncEnabled: (crosshairSyncEnabled) => {
         if (!crosshairSyncEnabled) {
@@ -1013,7 +1022,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 24,
+      version: 26,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -1028,8 +1037,10 @@ export const useChartStore = create<ChartState>()(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ensurePanel = (p: any) => {
           if (!p) return p;
+          const panelRest = { ...p };
+          delete panelRest.panelHeaderCollapsed;
           return {
-            ...p,
+            ...panelRest,
             footprintMode: p.footprintMode || 'bid-ask',
             autoBucketSize: p.autoBucketSize ?? false,
             contractType: ensureContractType(p.contractType),
@@ -1124,6 +1135,7 @@ export const useChartStore = create<ChartState>()(
           if (persisted.panels.left) persisted.panels.left = ensurePanel(persisted.panels.left);
           if (persisted.panels.right) persisted.panels.right = ensurePanel(persisted.panels.right);
         }
+        persisted.settingsDropdownHeight = Math.max(350, Math.min(900, persisted.settingsDropdownHeight ?? 500));
         return persisted;
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1323,6 +1335,7 @@ export const useChartStore = create<ChartState>()(
         },
         tickSize: state.tickSize,
         sidebarCollapsed: state.sidebarCollapsed,
+        settingsDropdownHeight: state.settingsDropdownHeight,
         crosshairSyncEnabled: state.crosshairSyncEnabled,
         isAuthenticated: state.isAuthenticated,
       }),

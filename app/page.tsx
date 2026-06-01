@@ -11,6 +11,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 export default function Home() {
   const layoutMode = useChartStore(s => s.layoutMode);
   const splitRatio = useChartStore(s => s.splitRatio);
+  const focusMode = useChartStore(s => s.focusMode);
   const setSplitRatio = useChartStore(s => s.setSplitRatio);
   useKeyboardShortcuts();
 
@@ -47,10 +48,10 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden text-main bg-background font-sans selection:bg-accent/30">
-      <Header />
+      {!focusMode && <Header />}
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        {!focusMode && <Sidebar />}
 
         <main ref={containerRef} className="flex-1 relative flex bg-[#080808] min-w-0">
           {/* Left Panel — always visible */}

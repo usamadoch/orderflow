@@ -17,15 +17,29 @@ export function useKeyboardShortcuts() {
   const setBarWidth = useChartStore(s => s.setBarWidth);
   const setScrollOffset = useChartStore(s => s.setScrollOffset);
   const setBucketSize = useChartStore(s => s.setBucketSize);
+  const setFocusMode = useChartStore(s => s.setFocusMode);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
 
       const key = e.key.toLowerCase();
       const activePanel = useChartStore.getState().activePanel;
       const panel = useChartStore.getState().panels[activePanel];
+
+      if (e.altKey && e.shiftKey && key === 'z') {
+        e.preventDefault();
+        setFocusMode(!useChartStore.getState().focusMode);
+        return;
+      }
 
       // 1-5: Timeframe shortcuts
       if (TIMEFRAME_KEYS[key]) {
@@ -177,5 +191,5 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [setTimeframe, setChartMode, setBarWidth, setScrollOffset, setBucketSize]);
+  }, [setTimeframe, setChartMode, setBarWidth, setScrollOffset, setBucketSize, setFocusMode]);
 }

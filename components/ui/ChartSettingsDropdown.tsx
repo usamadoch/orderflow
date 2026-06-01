@@ -4,6 +4,26 @@ import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Layers, Zap, X, Clock } from 'lucide-react';
 import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode } from '../../lib/store/chart';
 
+const SETTINGS_WIDTH = 440;
+const SETTINGS_MIN_HEIGHT = 350;
+const SETTINGS_DEFAULT_HEIGHT = 500;
+const VIEWPORT_MARGIN = 16;
+
+function getViewportMaxHeight(top: number) {
+  if (typeof window === 'undefined') {
+    return SETTINGS_DEFAULT_HEIGHT;
+  }
+
+  return Math.max(
+    SETTINGS_MIN_HEIGHT,
+    window.innerHeight - top - VIEWPORT_MARGIN
+  );
+}
+
+function clampSettingsHeight(nextHeight: number, top: number) {
+  return Math.max(SETTINGS_MIN_HEIGHT, Math.min(nextHeight, getViewportMaxHeight(top)));
+}
+
 interface ChartSettingsDropdownProps {
   panelId: PanelId;
   onClose: () => void;
@@ -11,6 +31,8 @@ interface ChartSettingsDropdownProps {
 
 export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdownProps) {
   const panel = useChartStore(s => s.panels[panelId]);
+  const settingsDropdownHeight = useChartStore(s => s.settingsDropdownHeight);
+  const setSettingsDropdownHeight = useChartStore(s => s.setSettingsDropdownHeight);
   const tickSize = useChartStore(s => s.tickSize);
   const setFootprintMode = useChartStore(s => s.setFootprintMode);
   const setBucketSize = useChartStore(s => s.setBucketSize);
@@ -95,14 +117,47 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const [position, setPosition] = useState({ x: -1, y: 48 }); // -1 means initial center/right
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [height, setHeight] = useState(settingsDropdownHeight || SETTINGS_DEFAULT_HEIGHT);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStart, setResizeStart] = useState({ mouseY: 0, height });
 
   // Initialize position once on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && position.x === -1) {
-      const width = 440; // New width
-      setPosition({ x: window.innerWidth - width - 16, y: 48 });
+      setPosition({ x: window.innerWidth - SETTINGS_WIDTH - VIEWPORT_MARGIN, y: 48 });
     }
   }, [position.x]);
+
+  useEffect(() => {
+    setHeight(settingsDropdownHeight || SETTINGS_DEFAULT_HEIGHT);
+  }, [settingsDropdownHeight]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleResize = () => {
+      setHeight((currentHeight) => {
+        const top = position.y;
+        const nextHeight = clampSettingsHeight(currentHeight, top);
+        if (nextHeight !== currentHeight) {
+          setSettingsDropdownHeight(nextHeight);
+        }
+        return nextHeight;
+      });
+
+      setPosition((currentPosition) => {
+        const nextHeight = clampSettingsHeight(height, currentPosition.y);
+        const maxTop = Math.max(VIEWPORT_MARGIN / 2, window.innerHeight - nextHeight - VIEWPORT_MARGIN);
+        if (currentPosition.y > maxTop) {
+          return { ...currentPosition, y: maxTop };
+        }
+        return currentPosition;
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [height, position.y, setSettingsDropdownHeight]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     // Only drag from header, not buttons/inputs
@@ -118,26 +173,33 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
+      if (isDragging) {
+        let newX = e.clientX - dragStart.x;
+        let newY = e.clientY - dragStart.y;
 
-      let newX = e.clientX - dragStart.x;
-      let newY = e.clientY - dragStart.y;
+        newX = Math.max(8, Math.min(newX, window.innerWidth - SETTINGS_WIDTH - 8));
+        newY = Math.max(8, Math.min(newY, window.innerHeight - height - 8));
 
-      // Clamp to screen bounds
-      const width = 440;
-      const height = dropdownRef.current?.offsetHeight || 600;
-      
-      newX = Math.max(8, Math.min(newX, window.innerWidth - width - 8));
-      newY = Math.max(8, Math.min(newY, window.innerHeight - height - 8));
+        setPosition({ x: newX, y: newY });
+        return;
+      }
 
-      setPosition({ x: newX, y: newY });
+      if (isResizing) {
+        const nextHeight = clampSettingsHeight(resizeStart.height + (e.clientY - resizeStart.mouseY), position.y);
+        setHeight(nextHeight);
+        return;
+      }
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      if (isResizing) {
+        setSettingsDropdownHeight(height);
+      }
+      setIsResizing(false);
     };
 
-    if (isDragging) {
+    if (isDragging || isResizing) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -146,8 +208,15 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragStart]);
+  }, [dragStart, height, isDragging, isResizing, position.y, resizeStart, setSettingsDropdownHeight]);
   // --- End Draggable Logic ---
+
+  const handleResizeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeStart({ mouseY: e.clientY, height });
+  };
 
   // Sync local when store changes
   useEffect(() => {
@@ -199,6 +268,36 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
     { id: 'signals', label: 'Signals', icon: Zap },
     { id: 'sessions', label: 'Sessions', icon: Clock },
   ] as const;
+  const signalToggles = [
+    {
+      id: 'absorption',
+      label: 'Absorption',
+      enabled: panel.absorptionEnabled,
+      onToggle: () => setAbsorptionEnabled(panelId, !panel.absorptionEnabled),
+      enabledClass: 'bg-[#26A69A]/10 border-[#26A69A]/60 text-[#26A69A]',
+    },
+    {
+      id: 'exhaustion',
+      label: 'Exhaustion',
+      enabled: panel.exhaustionEnabled,
+      onToggle: () => setExhaustionEnabled(panelId, !panel.exhaustionEnabled),
+      enabledClass: 'bg-[#F0B90B]/10 border-[#F0B90B]/60 text-[#F0B90B]',
+    },
+    {
+      id: 'iceberg',
+      label: 'Iceberg',
+      enabled: panel.icebergEnabled,
+      onToggle: () => setIcebergEnabled(panelId, !panel.icebergEnabled),
+      enabledClass: 'bg-[#26A69A]/10 border-[#26A69A]/60 text-[#26A69A]',
+    },
+    {
+      id: 'liquidity-vacuum',
+      label: 'Liquidity Vacuum',
+      enabled: panel.liquidityVacuumEnabled,
+      onToggle: () => setLiquidityVacuumEnabled(panelId, !panel.liquidityVacuumEnabled),
+      enabledClass: 'bg-[#3D7EFF]/10 border-[#3D7EFF]/60 text-[#3D7EFF]',
+    },
+  ] as const;
 
   return (
     <div
@@ -208,7 +307,9 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
         left: position.x === -1 ? 'auto' : position.x,
         top: position.y,
         right: position.x === -1 ? '16px' : 'auto',
-        maxHeight: 'calc(100vh - 32px)',
+        height,
+        minHeight: SETTINGS_MIN_HEIGHT,
+        maxHeight: getViewportMaxHeight(position.y),
         userSelect: isDragging ? 'none' : 'auto'
       }}
     >
@@ -1131,18 +1232,43 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
             {/* Tab: Signals */}
             {activeTab === 'signals' && (
               <>
+                <div className="space-y-4">
+                  <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Signal Toggles</div>
+                  <div className="grid grid-cols-1 gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    {signalToggles.map((signal) => (
+                      <button
+                        key={signal.id}
+                        onClick={signal.onToggle}
+                        className={`flex items-center justify-between rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-all duration-200 ${
+                          signal.enabled
+                            ? signal.enabledClass
+                            : 'border-[#1F1F1F] bg-[#0D0D0D] text-text-dim hover:border-[#333] hover:text-main'
+                        }`}
+                      >
+                        <span>{signal.label}</span>
+                        <div
+                          className={`relative h-4 w-8 rounded-full transition-colors duration-200 ${
+                            signal.enabled ? 'bg-current/25' : 'bg-[#1F1F1F]'
+                          }`}
+                        >
+                          <div
+                            className={`absolute top-1 h-2 w-2 rounded-full bg-current transition-all duration-200 ${
+                              signal.enabled ? 'left-5' : 'left-1'
+                            }`}
+                          />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Absorption Settings */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Absorption Signals</div>
-                    <button
-                      onClick={() => setAbsorptionEnabled(panelId, !panel.absorptionEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.absorptionEnabled ? 'bg-[#26A69A]' : 'bg-[#1F1F1F]'
-                        }`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.absorptionEnabled ? 'left-5' : 'left-1'
-                        }`} />
-                    </button>
+                    <span className={`rounded-full border px-2 py-1 text-[9px] font-black tracking-[0.18em] ${panel.absorptionEnabled ? 'border-[#26A69A]/60 text-[#26A69A]' : 'border-[#1F1F1F] text-text-dim/50'}`}>
+                      {panel.absorptionEnabled ? 'ON' : 'OFF'}
+                    </span>
                   </div>
 
                   {panel.absorptionEnabled && (
@@ -1186,14 +1312,9 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Exhaustion Signals</div>
-                    <button
-                      onClick={() => setExhaustionEnabled(panelId, !panel.exhaustionEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.exhaustionEnabled ? 'bg-[#F0B90B]' : 'bg-[#1F1F1F]'
-                        }`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.exhaustionEnabled ? 'left-5' : 'left-1'
-                        }`} />
-                    </button>
+                    <span className={`rounded-full border px-2 py-1 text-[9px] font-black tracking-[0.18em] ${panel.exhaustionEnabled ? 'border-[#F0B90B]/60 text-[#F0B90B]' : 'border-[#1F1F1F] text-text-dim/50'}`}>
+                      {panel.exhaustionEnabled ? 'ON' : 'OFF'}
+                    </span>
                   </div>
 
                   {panel.exhaustionEnabled && (
@@ -1263,14 +1384,9 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Iceberg Detection</div>
-                    <button
-                      onClick={() => setIcebergEnabled(panelId, !panel.icebergEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.icebergEnabled ? 'bg-[#26A69A]' : 'bg-[#1F1F1F]'
-                        }`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.icebergEnabled ? 'left-5' : 'left-1'
-                        }`} />
-                    </button>
+                    <span className={`rounded-full border px-2 py-1 text-[9px] font-black tracking-[0.18em] ${panel.icebergEnabled ? 'border-[#26A69A]/60 text-[#26A69A]' : 'border-[#1F1F1F] text-text-dim/50'}`}>
+                      {panel.icebergEnabled ? 'ON' : 'OFF'}
+                    </span>
                   </div>
 
                   {panel.icebergEnabled && (
@@ -1330,14 +1446,9 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Liquidity Vacuum</div>
-                    <button
-                      onClick={() => setLiquidityVacuumEnabled(panelId, !panel.liquidityVacuumEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.liquidityVacuumEnabled ? 'bg-[#3D7EFF]' : 'bg-[#1F1F1F]'
-                        }`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.liquidityVacuumEnabled ? 'left-5' : 'left-1'
-                        }`} />
-                    </button>
+                    <span className={`rounded-full border px-2 py-1 text-[9px] font-black tracking-[0.18em] ${panel.liquidityVacuumEnabled ? 'border-[#3D7EFF]/60 text-[#3D7EFF]' : 'border-[#1F1F1F] text-text-dim/50'}`}>
+                      {panel.liquidityVacuumEnabled ? 'ON' : 'OFF'}
+                    </span>
                   </div>
 
                   {panel.liquidityVacuumEnabled && (
@@ -1408,6 +1519,13 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
         <div className="text-[9px] text-text-dim/40 text-center font-medium uppercase tracking-widest">
           Global Settings • {panelId} Panel
         </div>
+      </div>
+      <div
+        onMouseDown={handleResizeMouseDown}
+        className="h-3 shrink-0 cursor-row-resize bg-[#080808]/60 border-t border-[#1A1A1A] flex items-center justify-center"
+        title="Resize settings panel"
+      >
+        <div className="h-1 w-12 rounded-full bg-[#2A2A2A]" />
       </div>
     </div>
   );

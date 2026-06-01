@@ -1,148 +1,326 @@
 # OrderFlow Chart - Change Log
 
-## [2026-05-23] - Memory: Shared Market Cache TTL Cleanup
+## [2026-06-01] - UI: Fix Focus Toggle Scope And Resizable Settings Window
 - **What changed**:
-  - Added shared market cache policy constants/env overrides for retention, cleanup interval, inactive grace, max base slices, and max row/cell/candle caps.
-  - Added subscriber-aware cleanup to shared footprint, Volume Profile, and candle caches: active keys are trimmed, zero-subscriber keys remain warm during grace, then inactive keys are evicted from memory.
-  - Added acquire/release lifecycle ownership for panel footprint/profile engines and release calls during feed cleanup.
-  - Extended `window.__MARKET_DEBUG__` cache metrics with cleanup runs, evictions, removed slices/rows, memory delta, and last cleanup timestamps.
+  - Removed the mistaken per-panel header hiding behavior and reverted chart panels to always keep their own toolbar visible.
+  - Rewired the panel toolbar expand button to toggle a global `focusMode` that hides the app-level header and sidebar while leaving panel toolbars visible.
+  - Added `Alt+Shift+Z` focus-mode keyboard support in the existing shortcuts hook.
+  - Replaced the fixed settings dropdown height with a draggable bottom resize handle, persisted dropdown height, min/max clamping, and internal scrolling.
+  - Added outside-click closing for the settings dropdown while preserving normal button toggle behavior and allowing drag/resize interactions inside the panel.
 - **Why it changed**:
-  - Shared in-memory market caches could grow indefinitely across live use, restores, and panel/source switches even though persisted DB data remains the durable source of truth.
+  - The previous change solved the wrong problem by hiding the panel toolbar itself instead of reclaiming space from the global layout chrome, and the fixed 400 px settings height was too restrictive.
 - **Impact summary**:
-  - Default in-memory retention keeps recent 1m base context while preserving the newest/current slice, trims extreme growth by oldest data first, and evicts inactive cache keys only after grace.
-  - Database retention/storage, chart UI, feed registry behavior, and footprint/profile calculation logic are unchanged.
+  - Global header/sidebar focus toggle now expands chart workspace without removing the chart panel header.
+  - Settings height now defaults to `500px`, clamps to a `350px` minimum and viewport-safe maximum, and stays scrollable when content exceeds the visible area.
+  - This remains UI/layout-only; market data, feeds, MongoDB/storage, chart calculations, footprint, volume profile, heatmap, and signal logic were not changed.
+  - `next build` now succeeds for the touched UI files and still stops only on the existing unrelated lint errors in `lib/feeds/feedRegistry.ts`.
 
-## [2026-05-23] - Observability: Market Debug Metrics Snapshot
+## [2026-06-01] - UI: Cleaner Chart Panel Header And Settings
 - **What changed**:
-  - Added a central dev-only `lib/debug/marketMetrics.ts` metrics registry exposed as `window.__MARKET_DEBUG__`.
-  - Instrumented the shared feed registry with stream creation/reuse/close counts, subscriber counts, last event timestamps, and per-stream event rates.
-  - Instrumented candle, footprint, and Volume Profile shared caches with active keys, slice/row/cell counts, approximate memory size, coverage ranges, cache hit/miss counts, restore requests, restore dedupe counts, and live trade dedupe counts.
-  - Added restore/storage diagnostics from the panel feed lifecycle for candle/history restores, raw trade restores, footprint/profile restores, row write requests, skipped rows, and failed writes.
+  - Limited the global chart settings dropdown to `min(400px, calc(100vh - 32px))` and kept the inner content area scrollable.
+  - Removed the Absorption, Exhaustion, Iceberg, and Liquidity Vacuum quick buttons from the per-panel header toolbar.
+  - Added compact signal toggle controls at the top of the Settings > Signals tab while keeping the existing per-signal settings behavior intact.
+  - Added a persisted per-panel `panelHeaderCollapsed` UI state, a header collapse button in the panel toolbar, and a small in-canvas restore button when the header is hidden.
 - **Why it changed**:
-  - Shared feeds and caches needed a browser-console snapshot for validating split-panel reuse, restore dedupe, cache coverage, subscriber changes, and storage health without changing runtime behavior.
+  - The chart toolbar was using too much vertical and horizontal space, and the settings window was too tall for a compact canvas-focused workflow.
 - **Impact summary**:
-  - In development, DevTools can inspect `window.__MARKET_DEBUG__.getSnapshot()` and clear counters with `window.__MARKET_DEBUG__.reset()`. Production remains no-op unless explicitly enabled with market debug env flags.
-  - Chart rendering, database schema, storage format, and feed/cache behavior are unchanged; only lightweight counters and derived summaries were added.
+  - This is a UI/layout-only change: market data, feeds, MongoDB/storage, chart calculations, footprint, volume profile, heatmap, and signal logic were not changed.
+  - Panel header collapse is independent per panel and does not touch the global page header/sidebar focus mode.
+  - `next build` compiled the updated chart UI successfully, but the build still fails at the existing unrelated lint errors in `lib/feeds/feedRegistry.ts`.
 
-## [2026-05-23] - Architecture: Shared Candle/OHLCV Cache
+## [2026-06-01] - Fix: Mongo Profile Restore Indexing And Fine Bucket Size
 - **What changed**:
-  - Added a shared in-memory candle cache keyed by `contractType::symbol::timeframe`.
-  - Routed panel candle history restore and live kline updates through the cache while syncing snapshots back into panel Zustand candle state.
-  - Added `[CANDLE_CACHE]` diagnostics for cache creation/reuse, subscriber add/remove, history restore, live updates, candle counts, cache keys, and in-flight restore reuse.
-  - Promoted candle cache verification output to visible console logs and added `[CANDLE_CACHE_VERIFY:left/right]` panel sync logs for restore results, snapshot syncs, and live candle fanout.
-  - Re-enabled `[FEED_REGISTRY]` console logs so stream creation/reuse and subscriber counts are visible alongside candle cache logs.
+  - Added canonical fine profile base-bucket sizing with a minimum stored bucket of `1.5`.
+  - Changed live fine profile aggregation, shared profile cache keys, storage writes, and `/api/history/profile` restore requests to use the canonical base bucket instead of raw `tickSize`.
+  - Kept MongoDB `profile_rows_ts` restore filters source/timeframe/base-bucket scoped, forced the matching compound index hint for the `time, bucketPriceKey` sort, and added `allowDiskUse` only as a code-292 fallback.
+  - Relaxed profile row compatibility so stored `1.5` base rows can aggregate into larger visual row sizes such as `2`, `2.5`, and `5`.
 - **Why it changed**:
-  - Matching split panels could still restore, merge, and maintain duplicate OHLCV candle arrays even though their live kline WebSocket stream was already shared.
-  - Manual validation needed obvious browser-console markers for cache reuse and panel fanout.
+  - Storing/restoring `0.5` fine profile rows created excessive row counts and could trigger MongoDB's in-memory sort limit during profile restore.
 - **Impact summary**:
-  - Panels with the same contract, symbol, and timeframe reuse one capped merged candle base and one live kline cache update path. Panel-specific viewport, scroll, zoom, drawings, overlays, signals, footprint/profile settings, and render state remain local.
-  - The extra logs are verification-only and do not change footprint cache, Volume Profile cache, feed registry, chart UI, or storage behavior.
+  - New profile writes/restores on `tickSize = 0.5` use `baseBucketSize = 1.5`; old `0.5` Mongo rows remain untouched and are ignored by new canonical restore requests.
+  - Volume Profile rendering still uses the existing visual row-size controls, with restored coarse-enough rows aggregated into the requested visual buckets.
+  - Candles, footprints, raw trades, heatmap, feeds, and Mongo candle/footprint storage were not changed.
 
-## [2026-05-23] - Architecture: Shared Live Feed Registry
+## [2026-06-01] - Audit: Volume Profile Rendering
 - **What changed**:
-  - Added a shared ref-counted feed registry for Binance kline, aggTrade, and spot depth streams.
-  - Routed panel feed subscriptions through registry keys so identical panels reuse live streams while each panel keeps its own callbacks.
-  - Added in-flight reuse for Binance candle history and orderbook snapshot fetches to reduce duplicate concurrent API requests.
+  - Added `artifacts/volume_profile_rendering_audit.md` covering custom/default profile data flow, row-size aggregation, width normalization, visual clamping, POC/VA/LVN behavior, visual noise causes, and recommended fix order.
+  - Updated `skills/map.md` with the new audit artifact.
 - **Why it changed**:
-  - Split panels with matching symbol/source/timeframe were opening duplicate WebSocket subscriptions and doing duplicate live network work.
+  - The current Volume Profile display can look noisy because fine row size, sqrt scaling, min width, and min row height visually inflate weak rows.
 - **Impact summary**:
-  - Matching panels now share underlying live feed subscriptions until the final subscriber unsubscribes, while footprint/profile caches, contract alignment, signals, orderbook managers, storage, and chart rendering remain panel-local.
+  - Documentation-only audit. Runtime chart code, storage, feeds, cache, MongoDB, and profile engine behavior were not changed.
 
-## [2026-05-23] - Architecture: Shared Volume Profile Base Cache
+## [2026-05-31] - Polish: Orderbook Heatmap Labels And Intensity
 - **What changed**:
-  - Added a shared in-memory Volume Profile base cache keyed by `symbol::contractType::dataSourceMode::baseBucketSize`.
-  - Updated `RawTradeVolumeProfileEngine` to keep panel-local build/cache state while reading and writing canonical 1m fine rows through the shared cache.
-  - Routed fine-profile history restore through cache-level coverage checks and in-flight restore dedupe with `[VPROFILE_CACHE]` diagnostics.
+  - Reused one orderbook heatmap column/metrics snapshot per chart redraw so the background cell pass and late label pass derive from the same heatmap data.
+  - Kept labels tied to the final clipped heatmap rectangle geometry used for visible cells, with existing merge, size, and overlap gates plus draw-count limits for zoomed-out readability.
+  - Changed real heatmap coloring from side color plus opacity only to a side-preserving intensity ramp that moves stronger liquidity toward amber and extreme liquidity toward bright yellow.
+  - Tightened percentile normalization with a lower-percentile floor and capped high-percentile upper bound so small levels stay subtle while large levels pop.
 - **Why it changed**:
-  - Matching split panels still owned separate Volume Profile memory, causing duplicate fine-row restore calls and duplicate base profile aggregation work.
+  - Final heatmap polish needed labels to remain visually anchored during pan/zoom, avoid unreadable zoomed-out clutter, and make large asset quantities stand out more like a Bookmap heatmap.
 - **Impact summary**:
-  - Panels with the same symbol/source/base bucket reuse restored and live fine Volume Profile rows while keeping independent timeframe, visible/profile range, display row size, chart settings, drawings, and render state. Different symbol/source/base-bucket combinations remain isolated.
+  - Labels still show asset quantity only, not USD/notional and not order count.
+  - Zoomed-out labels merge/skip and prioritize stronger visible areas; zoomed-in readable cells can show individual labels.
+  - High liquidity now transitions to amber/yellow while weak liquidity remains dark/subtle.
+  - Depth adapters, orderbook sync, storage, candles, footprint, volume profile, and trade logic were not changed.
 
-## [2026-05-22] - Architecture: Shared Footprint Base Cache
+## [2026-05-31] - Fix: Responsive Heatmap Label Settings And Geometry
 - **What changed**:
-  - Added a shared source-scoped in-memory footprint cache keyed by `symbol::contractType::dataSourceMode`.
-  - Updated `AggregationEngine` to keep panel-specific display settings and candle metadata while reading/writing canonical 1m/$5 base slices through the shared cache.
-  - Added cache-level live trade dedupe and in-flight restore dedupe so panels sharing a source do not double-count trades or duplicate matching restore requests.
+  - Added normal settings for real orderbook heatmap labels: `Show Liquidity Labels`, label visibility mode (`Off`, `Auto`, `Readable`), label detail (`Total quantity` or `Total + max level`), and minimum label quantity.
+  - Changed heatmap labels to be built from final visible heatmap rectangle geometry after clipping and pixel-column grouping, instead of drawing one label per raw/render bucket blindly.
+  - Added label candidate merging for overlapping/touching horizontal or vertical visible regions, with summed asset quantity for merged labels and max-level quantity preserved as the largest max-level value in the merged group.
+  - Added measured text gates and overlap checks so labels are skipped when the visible grouped region cannot fit the text or would collide with a previously drawn label.
+  - Kept the force-label path as a development-only fallback; normal labels no longer require console or localStorage flags.
+  - Added label metrics for candidates, merged labels, drawn labels, overlap skips, size skips, width/height skips, threshold skips, missing quantity skips, and setting-off skips.
 - **Why it changed**:
-  - Each panel still owned separate base footprint memory, so matching symbol/source panels could duplicate 1m/$5 restore and live base data.
+  - The previous label pass proved text rendering worked, but it behaved like debug/static text and did not adapt to zoomed-out compressed heatmap geometry.
 - **Impact summary**:
-  - Panels with the same symbol/source can reuse loaded base footprints while keeping independent timeframes, display bucket sizes, signals, overlays, and render state. Different symbol/source combinations remain isolated.
+  - Zoomed-out labels now merge or skip instead of becoming unreadable, while zoomed-in readable regions can show individual labels.
+  - Grouped labels sum asset quantity from the final visible label candidates; labels remain BTC/ETH/base-asset quantity only and are not USD/notional or order counts.
+  - The real heatmap bar intensity/width calculation, heatmap engine data model, depth adapters, orderbook sync, MongoDB/storage, candles, footprints, and profiles were not changed.
 
-## [2026-05-22] - Architecture: Source-Scoped Base Footprints
+## [2026-05-31] - Fix: Forced Debug And Late-Pass Heatmap Labels
 - **What changed**:
-  - Added `contractType` and `dataSourceMode` to footprint persistence and query identity, with a schema migration that isolates old rows under `legacy/legacy`.
-  - Changed footprint storage/restore to use canonical `1m` timeframe and `$5` bucket rows only.
-  - Updated the aggregation engine to keep 1m/$5 base footprint slices and derive selected chart timeframes and larger display buckets in memory.
+  - Added a force-label debug path for the real orderbook heatmap renderer. It can be enabled with `window.__ORDERFLOW_FORCE_HEATMAP_LABELS__ = true` or `localStorage.setItem('orderflow.forceHeatmapLabels', 'true')`, then a chart redraw.
+  - Moved the heatmap label pass later in `ChartCanvas`, after candles/footprints, bubbles, signals, profiles, and measurement overlays, while still clipping text to the chart plot area.
+  - Forced labels bypass width, height, normalized-strength, and min-quantity gates, but still require a visible heatmap bar with usable quantity.
+  - Production labels keep sensible gates for width, height, min quantity, and normalized strength, and use the same total asset quantity that drives heatmap intensity.
+  - Added exact debug fields for `heatmapLabelEnabled`, `heatmapBarsDrawn`, `heatmapLabelCandidates`, `heatmapLabelsDrawn`, `labelsSkippedByWidth`, `labelsSkippedByHeight`, `labelsSkippedByThreshold`, and `labelsSkippedByMissingQuantity`.
 - **Why it changed**:
-  - Footprint rows were source-unsafe and still tied to selected chart timeframe, which could mix spot/futures/both data or create direct 5m/15m footprint storage.
+  - The heatmap bars proved quantity data was available, so the remaining issue needed a forced text path to separate label gating from draw order, clipping, and coordinate bugs.
 - **Impact summary**:
-  - Source combinations no longer overwrite each other in `footprint_cells`. 5m/15m/etc. chart footprints are derived from restored/live 1m/$5 base slices, while display bucket changes remain DB-free.
+  - Heatmap labels are drawn only by the real time x price heatmap grid renderer, not the right-side liquidity summary.
+  - Labels remain asset quantity only, including BTC quantity for BTCUSDT, and are not USD/notional or order counts.
+  - Validated in headless Chrome on `http://localhost:3000` with force-label debug enabled: 16 real heatmap bars were drawn and 16 asset-quantity labels were drawn visibly on those bars.
+  - Depth adapters, orderbook sync, MongoDB/storage, candle logic, footprint logic, profile logic, heatmap engine data shape, and heatmap bar intensity calculation were not changed.
 
-## [2026-05-22] - Architecture: Fixed Base Footprint Bucket
+## [2026-05-31] - Fix: Real Heatmap Asset Quantity Label Overlay
 - **What changed**:
-  - Updated the footprint aggregation engine to ingest and hydrate footprint cells at a fixed $5 base bucket size.
-  - Added in-memory display aggregation so larger selected bucket sizes combine existing $5 cells instead of changing the stored footprint resolution.
-  - Updated footprint restore, the storage action bridge, and closed-candle storage to request/write only the $5 base bucket, and prevented bucket-size changes from restarting the feed restore path.
+  - Split real orderbook heatmap rendering so cells still draw in the background pass while asset-quantity labels draw in a later text-only pass after candles/footprints.
+  - Kept labels gated to strong/readable cells, lowered the normalized label strength gate slightly, and continued falling back to total-only labels when total + max-level text is too wide or max-level data is unavailable.
+  - Added label debug metrics for labels enabled, label candidates, labels drawn, size skips, threshold skips, and missing-quantity skips.
 - **Why it changed**:
-  - Footprint history restore/storage was tied to the selected display bucket size, so switching from $5 to larger buckets could miss stored data or trigger bucket-specific restore behavior.
+  - Labels were being drawn inside the heatmap background pass, then candle/footprint rendering could cover the label text even though the heatmap cells themselves were visible.
 - **Impact summary**:
-  - Changing display bucket size now re-aggregates loaded $5 footprint data in memory. $10 combines two $5 levels, $25 combines five $5 levels, and stored/restored DB footprint rows stay on one base resolution.
+  - Labels now render on the real time x price orderbook heatmap grid and show asset quantity only, such as BTC quantity on BTCUSDT and ETH quantity on ETHUSDT.
+  - Heatmap cells remain behind chart candles/footprints; the later label pass is still restricted to strong readable cells to avoid clutter.
+  - Depth adapters, orderbook sync, MongoDB/storage, candle logic, footprint logic, volume profile logic, and the legacy right-side liquidity summary were not changed.
 
-## [2026-05-21] - Fix: Source-Scoped Volume Profile History
+## [2026-05-31] - Fix: Orderbook Heatmap Label Visibility
 - **What changed**:
-  - Scoped fine-grain Volume Profile row restore/storage by the active Candles & Prices contract and Aggregate Trades source selection.
-  - Updated live closed-candle profile row handoff so full-coverage rows are retained in the profile engine for spot, futures, and combined source modes.
-  - Updated the profile engine to merge compatible hydrated fine rows with hydrated raw trades for candles that do not already have fine rows, while keeping source-aware live trade dedupe.
+  - Relaxed heatmap label readability gates to use the clipped visible cell size, lower the required visible strength, and allow total-only labels on narrower cells.
+  - Centered labels inside the actually visible heatmap rectangle and added a small dark text stroke so labels remain legible over colored liquidity cells.
+  - Changed the default minimum heatmap label quantity to `0`, and migrated the previous saved default of `10` down to `0`, leaving clutter control to the strength/size gates unless the user raises the threshold.
 - **Why it changed**:
-  - Volume Profiles could fall back to only the active candle because historical fine rows were not consistently retained/restored after source-routing changes, and unscoped restored rows could mix incompatible Spot/Futures source combinations.
+  - Labels were enabled but not appearing on the rendered heatmap because visible cells could be wide enough to draw liquidity bands while still failing the prior 52px width, 14px height, 0.82 normalized-strength, and default quantity-10 label gates.
 - **Impact summary**:
-  - Default and custom Volume Profiles can rebuild across historical candles from source-matched fine rows or safe spot/spot raw-trade fallback without changing candle price alignment or aggregate-trade source behavior.
+  - Strong readable cells should now show raw asset-quantity labels sooner, including BTC quantity for BTCUSDT and ETH quantity for ETHUSDT.
+  - Total + max-level mode still falls back to total-only on narrow cells to avoid unreadable `total / maxLevel` text.
+  - Heatmap collection, depth adapters, orderbook sync, storage, candles, footprints, profiles, and color rendering were not changed.
 
-## [2026-05-21] - Fix: Routed Binance Futures Market WebSocket
+## [2026-05-31] - Feature: Orderbook Heatmap Asset Quantity Labels
 - **What changed**:
-  - Updated the Binance futures adapter to connect kline/aggTrade combined streams through the routed `/market/stream` WebSocket endpoint.
-  - Left futures REST history, message parsing, reconnect handling, and feed routing unchanged.
+  - Added real orderbook heatmap label settings for label enablement, total-only vs total-plus-max-level mode, and a minimum label quantity threshold.
+  - Added per-bucket `maxLevelQty` tracking in the heatmap engine so labels can show total bucket asset quantity and the largest single aggregated price-level quantity inside that bucket.
+  - Updated the heatmap renderer to draw compact asset-quantity labels only on strong, readable cells, and to report labels drawn plus threshold/visibility skips.
+  - Added heatmap coverage debug metrics for visible price range, collection price range, max distance, collected buckets, levels skipped by distance, levels skipped by side, and levels scanned.
 - **Why it changed**:
-  - The previous unrouted `fstream.binance.com/stream` URL could open without delivering futures market kline or aggTrade messages, leaving Futures/Futures mode with REST candles but no live footprint flow or live connection state.
+  - Labels needed to show raw orderbook quantity units, not notional value or order counts, and the heatmap needed clearer diagnostics for narrow vertical coverage.
 - **Impact summary**:
-  - Futures candle and aggregate-trade WebSocket messages can now reach the existing provider callbacks, allowing Futures/Futures mode to populate footprint/delta cells and report `LIVE` once messages arrive.
+  - BTCUSDT labels represent BTC quantity, ETHUSDT labels represent ETH quantity, and no USD conversion or individual order-count claim is made.
+  - Total + max-level mode renders as `total / maxLevel`, where max-level is the largest aggregated price level inside the heatmap bucket.
+  - Vertical heatmap coverage remains controlled by max-distance settings, visible chart price range, bucket size, intensity threshold, and actual depth-source liquidity; depth adapters, sync, storage, candles, footprints, profiles, and color rendering behavior were not changed.
 
-## [2026-05-21] - Fix: Futures Live Connection Status
+## [2026-05-31] - Feature: Real Orderbook Heatmap Settings
 - **What changed**:
-  - Updated the panel feed lifecycle so the connected flag flips to live when any selected live stream message arrives, including futures aggTrades.
-  - Kept candle handling unchanged for price/chart updates while allowing trade-only live flow to report an active connection.
+  - Added panel-scoped real orderbook heatmap controls in the global settings dropdown for enable/disable, opacity, price bucket size, lookback window, max near-price distance, intensity mode, quantity labels, and bid/ask/both colors.
+  - Added persisted store fields and setters for the new heatmap visual/window settings, with migration defaults for existing saved panels.
+  - Routed heatmap bucket size, lookback, and max distance into the heatmap engine so those changes reset the rolling heatmap history safely and keep columns capped.
+  - Routed intensity mode and side colors into the canvas renderer while keeping the right-side Liquidity Summary controls separate.
 - **Why it changed**:
-  - Futures/Futures mode could display REST-loaded candle data while the header still showed `DISCONNECTED` because connection state was only updated from live candle messages.
+  - The real time x price heatmap was rendering, but key visual and collection parameters were still hardcoded or shared with the separate liquidity overlay.
 - **Impact summary**:
-  - Futures-only aggregate trade mode can now report `LIVE` once futures live data is flowing, without changing working spot routing or chart rendering behavior.
+  - Users can tune real heatmap visibility, density, history length, near-price collection range, intensity scaling, labels, and colors from Settings > Chart.
+  - Bucket size, lookback, max distance, symbol, contract, depth source, and trade source changes rebuild the session heatmap data; opacity, labels, intensity, and colors redraw immediately without resetting collected columns.
+  - MongoDB/storage, candles, trades, footprint/profile logic, depth adapters, feed registry, volume profile rendering, and orderbook sync logic were not changed.
 
-## [2026-05-21] - Fix: Separate Contract Type From Aggregate Trades
+## [2026-05-31] - Reliability: Orderbook Depth Synchronization
 - **What changed**:
-  - Added a persisted per-panel Contract Type setting for `Spot` or `Futures` candles/price, defaulting to spot.
-  - Extended the futures adapter to support futures REST kline history and WebSocket kline streams in addition to aggTrades.
-  - Updated the feed lifecycle so candles/history follow Contract Type while aggregate trades still use `Spot`, `Futures`, or `Both`.
-  - Aligned non-contract aggTrades to the selected contract candle price before footprint/profile aggregation so mixed sources do not create hybrid price buckets.
-  - Cleared spot/futures live-stream callbacks on disconnect so changing modes cannot accidentally reconnect stale streams.
+  - Changed depth initialization to subscribe first, buffer incoming depth updates, fetch the REST snapshot, and only mark each local book ready after a valid snapshot-to-stream bridge.
+  - Added sequence continuity checks for Binance spot/futures depth, including Binance futures `pu` validation when present, plus stale/gap state and safe resync on broken continuity.
+  - Preserved Bybit update IDs and sequence values, uses Bybit WebSocket snapshots as reset snapshots, and applies monotonic Bybit deltas while exposing its weaker gap-detection limits through debug state.
+  - Changed Combined depth aggregation to merge only ready per-exchange books; stale or resyncing sources are excluded from the aggregate orderbook and heatmap source.
+  - Added orderbook sync metrics to `window.__MARKET_DEBUG__.getSnapshot()` for ready/stale status, gaps, resyncs, buffered updates, active depth sources, and combined ready sources.
 - **Why it changed**:
-  - Combined spot and futures aggTrades were using their own market prices, which could distort footprint price buckets away from the selected tradeable reference chart.
+  - Fetching snapshots before opening the depth stream could miss diff updates, and continuing after a sequence gap could show stale or incorrect liquidity in the heatmap.
 - **Impact summary**:
-  - Candle OHLCV and the price axis now come from one clean contract source, while footprint volume, delta, CVD, profiles, and signals can still use spot-only, futures-only, or combined aggression without price-axis drift.
+  - Binance spot and futures orderbooks now require a valid initial bridge and resync instead of silently applying broken streams.
+  - Combined mode can show partial-ready liquidity from healthy sources without mixing stale books.
+  - Candles, trades, footprint/profile calculations, MongoDB/storage, settings layout, and heatmap rendering style were left unchanged.
 
-## [2026-05-21] - Feature: Binance Futures AggTrade Feed
+## [2026-05-31] - Refinement: Orderbook Heatmap Readability
 - **What changed**:
-  - Added a Binance futures trade-only feed adapter using the public futures aggTrade WebSocket.
-  - Added persisted per-panel data source mode with `Spot`, `Futures`, and default `Both` options in chart settings.
-  - Updated the panel feed lifecycle to keep spot candles/history/orderbook active while routing selected spot and/or futures trades into the existing aggregation engine.
-  - Made live trade dedupe source-aware and kept raw-trade DB writes spot-only to avoid schema changes.
+  - Updated the real orderbook heatmap renderer to compress sub-pixel one-second samples into readable pixel-width time groups.
+  - Aggregated grouped columns by peak bid/ask liquidity per price bucket so stable levels render as continuous horizontal zones instead of barcode-like vertical stripes.
+  - Changed visible-cell normalization to a percentile/log-scaled basis and faded low-liquidity noise while preserving stronger levels.
+  - Added grouped-column render metrics alongside existing visible-column, cell, duration, and skip counters.
 - **Why it changed**:
-  - The chart needed optional Binance perpetual futures flow combined with existing spot aggTrades without changing aggregation, rendering, candle, or adapter interfaces.
+  - The first renderer mapped every sampled column directly to the current zoom scale, which made one-second samples appear as dense 1 px stripes when the chart was zoomed out.
 - **Impact summary**:
-  - Delta, footprint cells, volume profile, CVD, and signals can now reflect spot-only, futures-only, or combined live trade activity. Switching the source setting reconnects the active trade streams while candles and liquidity remain spot-based.
+  - Heatmap time mapping still uses the existing chart time/index scale and price-to-Y scale, but compressed groups make live liquidity easier to read over time.
+  - Candles and footprints remain drawn above the heatmap, and the legacy right-side Liquidity Summary remains separate.
+  - No heatmap engine sampling, depth adapters, MongoDB/storage, candle, footprint, or profile calculation behavior changed.
 
-## [2026-05-20] - Fix: CVD Compact Bar Time-Axis Position
+## [2026-05-31] - Feature: Real Orderbook Heatmap Rendering
 - **What changed**:
-  - Moved the minimized CVD compact bar from a bottom flex row to an absolute overlay directly above the chart time axis.
+  - Added a clipped canvas renderer for the `OrderbookHeatmapEngine` rolling columns so snapshot time maps to chart X and bucket price maps to chart Y.
+  - Drew bid liquidity with teal/green tones, ask liquidity with red/orange tones, and mixed buckets with amber tones using log-scaled opacity.
+  - Rendered the real heatmap behind candles/footprint while leaving the legacy right-side Liquidity Summary strip separate.
+  - Added persisted per-panel controls for real orderbook heatmap enablement, opacity, and optional quantity labels.
+  - Added render metrics for cells drawn, visible columns, draw duration, offscreen skips, tiny-cell skips, and max visible quantity.
 - **Why it changed**:
-  - The compact bar was rendering underneath the horizontal timestamp axis instead of collapsing above it.
+  - The heatmap engine already collected time x price orderbook snapshots, but the chart still only rendered the old summary strip.
 - **Impact summary**:
-  - Minimized CVD now preserves the time axis at the absolute bottom while keeping minimize/expand behavior lightweight and isolated to layout positioning.
+  - Real session-memory heatmap cells now appear across the chart from live orderbook samples and stay aligned during pan/zoom through the existing time/index and price scaling logic.
+  - The old Liquidity Summary remains available as a separate right-side strip and is not used as the real heatmap.
+  - Heatmap data still resets through the existing engine lifecycle on symbol, contract, depth source, trade source mode, bucket size, or range changes, with no storage, MongoDB, depth adapter, candle, footprint, or profile calculation changes.
+
+## [2026-05-31] - Feature: Orderbook Heatmap Engine
+- **What changed**:
+  - Added `OrderbookHeatmapEngine`, a rolling time x price data model that stores sampled columns of bucketed bid, ask, total quantity, side, notional, and timestamp data.
+  - Added fixed-cadence 1000 ms heatmap sampling in the panel feed lifecycle using the active aggregate orderbook from Binance, Bybit, or Combined depth.
+  - Capped the rolling window at 900 columns, roughly 15 minutes at the default cadence, and limited sampled buckets to the configured near-price liquidity range.
+  - Exposed heatmap sampling metrics through `window.__MARKET_DEBUG__.getSnapshot()` including column count, bucket count, sample interval, source key, near-price range, and memory estimate.
+  - Exposed the heatmap engine through `ChartEngineContext` for the future renderer step.
+- **Why it changed**:
+  - The existing liquidity summary was not a real time x price heatmap. The app needed a durable engine-level model before replacing any renderer.
+- **Impact summary**:
+  - Heatmap columns now collect on a fixed cadence and reset on symbol, contract, depth source, trade source mode, bucket size, or range changes.
+  - Existing liquidity zones, right-side summary/ladder, candles, trades, footprints, profiles, MongoDB/storage, and chart visuals were left unchanged.
+  - The next step is rendering these heatmap columns across the chart canvas.
+
+## [2026-05-30] - Feature: Combined Depth Aggregation
+- **What changed**:
+  - Added a `Combined` per-panel depth source option alongside Binance and Bybit.
+  - Kept the shared feed registry limited to concrete exchange depth streams while `FeedProvider` expands Combined into separate Binance and Bybit snapshot/stream subscriptions.
+  - Maintained one local orderbook per exchange, then merged ready exchange bid/ask levels by exact price before passing them into the existing bucketed liquidity-zone aggregation.
+  - Reset per-exchange books, the aggregate book, and visible liquidity zones when switching depth source, contract, pair, or unmounting the panel.
+- **Why it changed**:
+  - Liquidity visualization needed an optional multi-exchange orderbook view without changing candles, trades, footprints, profiles, storage, MongoDB, or the heatmap engine.
+- **Impact summary**:
+  - Binance mode still uses only Binance depth, Bybit mode still uses only Bybit depth, and Combined mode sums available Binance and Bybit levels before bucket filtering.
+  - Combined can show larger or more populated liquidity buckets because sizes at matching price levels are added across exchanges.
+  - Exchange precision and available depth can differ, so merged bucket strength is useful for visualization but is not a consolidated tradable orderbook.
+
+## [2026-05-30] - Feature: Bybit Depth Source
+- **What changed**:
+  - Added Bybit spot and USDT linear futures depth adapters using public v5 REST orderbook snapshots and public v5 WebSocket orderbook streams.
+  - Added a persisted per-panel depth source setting with Binance and Bybit options in Settings > Chart > Liquidity Map.
+  - Routed shared orderbook snapshot dedupe and depth stream keys by depth source, contract type, and symbol so exchange changes do not reuse stale subscriptions.
+  - Taught the orderbook manager to reset from WebSocket snapshot messages so Bybit reconnect/service snapshots do not leave stale levels behind.
+  - Split the panel orderbook lifecycle from the broader candle/trade feed effect so changing depth source cleans up only the old depth subscription and clears old liquidity zones.
+- **Why it changed**:
+  - Liquidity depth was limited to Binance. The chart needed a second exchange orderbook source while keeping contract type separate from exchange selection.
+- **Impact summary**:
+  - Binance depth remains the default and continues to route spot/futures by contract type.
+  - Bybit depth can be selected per panel and feeds the existing orderbook manager and liquidity overlay without combining exchanges or changing heatmap, candle, footprint, profile, storage, or MongoDB logic.
+  - Unsupported Bybit symbol/category combinations fail closed with an empty liquidity overlay instead of mixing in Binance depth.
+
+## [2026-05-30] - Feature: Contract-Routed Depth Adapters
+- **What changed**:
+  - Added a dedicated depth adapter abstraction with Binance spot and Binance futures REST snapshot and depth WebSocket implementations.
+  - Routed shared orderbook snapshots and depth streams through contract-scoped depth keys in the feed registry.
+  - Updated panel feed orderbook initialization so spot charts use spot depth and futures charts use futures depth.
+  - Kept candle, aggTrade, footprint, profile, storage, and heatmap-engine behavior unchanged.
+- **Why it changed**:
+  - The liquidity overlay previously used Binance spot depth even when the selected chart contract was futures, which could show misleading orderbook liquidity.
+- **Impact summary**:
+  - Existing liquidity zones now consume depth from the selected contract type. Spot panels stay on Binance spot depth, while futures panels use Binance futures depth without adding new exchanges or rebuilding the heatmap engine.
+
+## [2026-05-30] - Cleanup: Liquidity Overlay Near-Price Filtering
+- **What changed**:
+  - Changed current liquidity zone aggregation to include near-price orderbook levels, cap the range to a small near-price percent, rank by size with a near-price preference, and limit displayed zones per side.
+  - Deemphasized the current liquidity renderer from full-width bands into faint fills plus right-edge markers.
+  - Renamed the fake heatmap UI to Liquidity Summary and disabled it by default for new panel settings.
+  - Updated `skills/map.md` with the adjusted liquidity renderer and summary-strip responsibilities.
+- **Why it changed**:
+  - The previous liquidity overlay excluded the closest 2 percent around mid price and selected distant zones that were not useful for normal near-price chart context.
+- **Impact summary**:
+  - This is a small cleanup of the existing spot-only liquidity overlay. It does not add the real time x price heatmap engine and does not change futures orderbook support, storage, candles, footprints, or profiles.
+
+## [2026-05-30] - Audit: Liquidity Heatmap Implementation
+- **What changed**:
+  - Added `artifacts/liquidity_heatmap_audit.md` documenting the current spot-only orderbook source, liquidity zone aggregation, sparse history snapshots, right-side heatmap strip rendering, root causes, and ranked rebuild plan.
+  - Updated `skills/map.md` with the new audit artifact.
+- **Why it changed**:
+  - The liquidity/heatmap overlay was showing distant horizontal zones and detached right-side heatmap accents instead of behaving like a time x price orderbook heatmap.
+- **Impact summary**:
+  - Documentation-only audit. Chart rendering, storage, feeds, settings, and liquidity code were not changed.
+
+## [2026-05-30] - Feature: VWAP Chart Overlay
+- **What changed**:
+  - Added persisted per-panel VWAP settings for enable/disable, line color, line width, and reset mode.
+  - Added VWAP controls to the Settings > Chart tab.
+  - Added a canvas VWAP renderer that calculates from active panel candles using typical price and volume, with continuous, daily, and session reset modes.
+  - Routed VWAP settings through `ChartPanel` into `ChartCanvas` so the overlay redraws with live candle updates.
+  - Updated `skills/map.md` with the VWAP store, settings, render, and drawer responsibilities.
+- **Why it changed**:
+  - The chart needed a basic VWAP line overlay controlled from the existing global/settings dropdown without expanding the market-data or indicator architecture.
+- **Impact summary**:
+  - VWAP appears when enabled and is skipped when disabled.
+  - Live candle updates trigger the existing chart redraw path, so the VWAP line updates with the active panel/timeframe.
+  - Footprint, Volume Profile, feeds, storage, MongoDB, and cache behavior were not changed.
+
+## [2026-05-30] - UI: Signals Settings And Persistent Tools
+- **What changed**:
+  - Removed the Absorption, Exhaustion, Iceberg, and Liquidity Vacuum quick toggles from the per-panel toolbar.
+  - Kept those signal controls in the existing Settings > Signals tab, using the same store actions and panel state.
+  - Stopped the chart canvas from automatically clearing Horizontal Line, Vertical Line, Right Ray, Box, or Custom Profile tools after placement.
+  - Updated `skills/map.md` with the adjusted toolbar, settings, and drawing-interaction responsibilities.
+- **Why it changed**:
+  - The panel header needed less signal-control clutter, and drawing tools should remain active across redraws, settings changes, timeframe changes, and normal panel updates until manually changed.
+- **Impact summary**:
+  - Signal behavior is unchanged because the same settings toggles still drive the same store state.
+  - Drawing overlays still use the existing creation and render logic, but selected drawing tools now stay selected after drawing.
+  - Market data, chart calculations, storage, feeds, cache behavior, and render math were not changed.
+
+## [2026-05-30] - Fix: Footprint Persistence Restore Gaps
+- **What changed**:
+  - Moved canonical 1m/$5 footprint row persistence out of the selected chart candle-close path.
+  - Base footprint rows are now queued only after the selected aggTrade source stream(s) advance past a closed 1m slice, so MongoDB receives the finalized live footprint slice instead of an early kline-close snapshot.
+  - Added focused `[FOOTPRINT_RESTORE_DEBUG]` diagnostics for client write eligibility/skips, MongoDB write confirmation, history API restore coverage, hydration acceptance/rejection, renderer visible coverage, and shared cache cleanup removals.
+  - Left candle storage, chart visuals, passive redraw throttling, footprint display aggregation, and MongoDB collection schema unchanged.
+- **Why it changed**:
+  - The regression was at the write stage: live aggTrade rows could arrive after the selected candle close event had already claimed/stored that 1m footprint slice, leaving MongoDB with empty or partial `footprint_cells_ts` rows while the in-memory chart later looked correct until refresh.
+- **Impact summary**:
+  - Refresh and fresh-tab restore should now fetch and hydrate the same closed 1m footprint cells that were visible live.
+  - Restore queries and renderer cache usage are instrumented so any remaining gap can be classified as write, restore, hydration, cache cleanup, or render coverage.
+  - Recent rendering/performance optimization logic was not changed except for adding renderer coverage diagnostics.
+
+## [2026-05-29] - Performance: Footprint Passive Redraw Throttle
+- **What changed**:
+  - Made the main chart passive redraw throttle depend on chart mode.
+  - Kept candle/default passive redraws at the existing 125 ms interval.
+  - Slowed footprint-mode passive redraws to a 300 ms interval, targeting roughly 2-4 passive redraws per second during live flow.
+  - Continued reporting `chartMode`, `passiveRedrawIntervalMs`, `passiveRedrawsPerSecond`, `passiveRedrawThrottledCount`, and `footprintRepaintCount` through the existing render metrics path.
+- **Why it changed**:
+  - Footprint mode repaints heavier visible footprint cells and bubbles, and recent metrics showed live passive redraws around 7.5/sec without a memory or subscriber leak.
+- **Impact summary**:
+  - Only main chart passive/live-data redraw scheduling changed.
+  - Interaction redraws still use the immediate rAF path for pan, zoom, mousemove/crosshair, wheel, and resize behavior.
+  - Footprint calculations, footprint cache, feed registry, MongoDB/storage, raw trades, fine profile persistence, and chart visuals were not changed.
+
+## [2026-05-29] - Feature: Focus Layout Mode
+- **What changed**:
+  - Added a header Focus button that toggles a layout-only focus mode.
+  - Focus mode hides the top header and sidebar, allowing the chart workspace to expand into the freed screen space.
+  - Added a small floating `Exit Focus` button while focus mode is active.
+  - Added `Alt+Shift+Z` as a focus mode toggle shortcut.
+  - Extended the keyboard shortcut typing guard to skip inputs, textareas, selects, combobox/listbox targets, and editable fields.
+  - Updated `skills/map.md` with the adjusted layout and shortcut responsibilities.
+- **Why it changed**:
+  - The chart needs a quick temporary fullscreen-style workspace without altering the existing sidebar collapse state or chart/data behavior.
+- **Impact summary**:
+  - This is a UI/layout-only change in the page scaffold, header, and keyboard shortcut hook.
+  - Existing sidebar expanded/icon-collapsed state is preserved because focus mode conditionally hides the sidebar without changing the stored sidebar collapse setting.
+  - Chart rendering, data feeds, cache, storage, settings behavior, and sidebar collapse behavior were not changed.
