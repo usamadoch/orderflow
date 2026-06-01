@@ -25,6 +25,11 @@ export type CvdScaleMode = 'auto' | 'fixed';
 export type ContractType = 'spot' | 'futures';
 export type DataSourceMode = 'spot' | 'futures' | 'both';
 
+export interface DrawingToolbarPosition {
+  x: number;
+  y: number;
+}
+
 export interface SessionConfig {
   enabled: boolean;
   startHour: number; // 0–23, UTC
@@ -146,6 +151,7 @@ export interface PanelState {
   isProfileSelected: boolean;
   drawnLines: DrawnLine[];
   lineDrawMode: LineDrawMode;
+  drawingToolbarPosition: DrawingToolbarPosition;
   exhaustionEnabled: boolean;
   exhaustionMinScore: number;
   exhaustionSide: ExhaustionSide;
@@ -276,6 +282,7 @@ interface ChartState {
   updateLine: (panelId: PanelId, id: string, updates: Partial<DrawnLine>) => void;
   removeLine: (panelId: PanelId, id: string) => void;
   setLineDrawMode: (panelId: PanelId, mode: LineDrawMode) => void;
+  setDrawingToolbarPosition: (panelId: PanelId, position: DrawingToolbarPosition) => void;
   setExhaustionEnabled: (panelId: PanelId, enabled: boolean) => void;
   setExhaustionMinScore: (panelId: PanelId, score: number) => void;
   setExhaustionSide: (panelId: PanelId, side: ExhaustionSide) => void;
@@ -398,6 +405,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     isProfileSelected: false,
     drawnLines: [],
     lineDrawMode: 'none',
+    drawingToolbarPosition: { x: 16, y: 48 },
     exhaustionEnabled: true,
     exhaustionMinScore: 40,
     exhaustionSide: 'both' as ExhaustionSide,
@@ -723,6 +731,14 @@ export const useChartStore = create<ChartState>()(
           return updatePanel(state, panelId, updates);
         }),
 
+      setDrawingToolbarPosition: (panelId, drawingToolbarPosition) =>
+        set((state) => updatePanel(state, panelId, {
+          drawingToolbarPosition: {
+            x: Math.round(drawingToolbarPosition.x),
+            y: Math.max(0, Math.round(drawingToolbarPosition.y)),
+          },
+        })),
+
       setExhaustionEnabled: (panelId, exhaustionEnabled) =>
         set((state) => updatePanel(state, panelId, { exhaustionEnabled })),
 
@@ -1022,7 +1038,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 26,
+      version: 28,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -1033,6 +1049,16 @@ export const useChartStore = create<ChartState>()(
           contractType === 'futures' ? 'futures' : 'spot';
         const ensureDataSourceMode = (mode: unknown): DataSourceMode =>
           mode === 'spot' || mode === 'futures' || mode === 'both' ? mode : 'both';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ensureDrawingToolbarPosition = (position: any): DrawingToolbarPosition => {
+          const x = Number(position?.x);
+          const y = Number(position?.y);
+          const panelHeaderOffset = version < 28 ? 32 : 0;
+          return {
+            x: Number.isFinite(x) ? Math.max(0, Math.round(x)) : 16,
+            y: Number.isFinite(y) ? Math.max(0, Math.round(y + panelHeaderOffset)) : 48,
+          };
+        };
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ensurePanel = (p: any) => {
@@ -1061,6 +1087,7 @@ export const useChartStore = create<ChartState>()(
             isProfileSelected: false,
             drawnLines: p.drawnLines ?? [],
             lineDrawMode: p.lineDrawMode || 'none',
+            drawingToolbarPosition: ensureDrawingToolbarPosition(p.drawingToolbarPosition),
             exhaustionEnabled: p.exhaustionEnabled ?? true,
             exhaustionMinScore: p.exhaustionMinScore ?? 40,
             exhaustionSide: p.exhaustionSide || 'both',
@@ -1185,6 +1212,7 @@ export const useChartStore = create<ChartState>()(
             customProfileLocked: state.panels.left.customProfileLocked,
             drawnLines: state.panels.left.drawnLines,
             lineDrawMode: state.panels.left.lineDrawMode,
+            drawingToolbarPosition: state.panels.left.drawingToolbarPosition,
             exhaustionEnabled: state.panels.left.exhaustionEnabled,
             exhaustionMinScore: state.panels.left.exhaustionMinScore,
             exhaustionSide: state.panels.left.exhaustionSide,
@@ -1271,6 +1299,7 @@ export const useChartStore = create<ChartState>()(
             customProfileLocked: state.panels.right.customProfileLocked,
             drawnLines: state.panels.right.drawnLines,
             lineDrawMode: state.panels.right.lineDrawMode,
+            drawingToolbarPosition: state.panels.right.drawingToolbarPosition,
             exhaustionEnabled: state.panels.right.exhaustionEnabled,
             exhaustionMinScore: state.panels.right.exhaustionMinScore,
             exhaustionSide: state.panels.right.exhaustionSide,

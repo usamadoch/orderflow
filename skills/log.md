@@ -1,5 +1,28 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-01] - UI: Icon-Only Drawing Toolbar Buttons
+- **What changed**:
+  - Removed the text letters from the floating drawing toolbar buttons and left icon-only controls with hover titles and aria labels.
+- **Why it changed**:
+  - The toolbar needed a cleaner, denser visual treatment without label clutter.
+- **Impact summary**:
+  - Toolbar behavior, drag bounds, drawing selection state, and existing drawing logic remain unchanged.
+
+## [2026-06-01] - UI: Draggable Drawing Favorites Toolbar
+- **What changed**:
+  - Added a draggable per-panel floating drawing favorites toolbar that can move beyond the canvas into header/sidebar space while staying horizontally bounded to its owning panel side.
+  - Moved Profile, Measure, Horizontal Line, Vertical Line, existing Line/Right-Ray, and Box selection onto the floating toolbar using the existing drawing store actions.
+  - Persisted each panel's floating toolbar position in the existing Zustand settings persistence.
+  - Removed the drawing dropdown from the panel header after moving all drawing controls to the floating toolbar.
+  - Updated `skills/map.md` with the new toolbar component and adjusted responsibilities.
+- **Why it changed**:
+  - Common drawing tools needed direct TradingView-style access without reopening the panel dropdown, while preserving the existing drawing creation/rendering mechanics.
+- **Impact summary**:
+  - Profile, Measure, horizontal, vertical, line/right-ray, and box drawing selection now happens from the floating toolbar and keeps the same active-state/toggle behavior as the old dropdown path.
+  - Dragging the toolbar is handled on its drag handle and stops pointer propagation so it does not start chart drawing.
+  - The left toolbar is clamped before the left/right panel divider and the right toolbar is clamped after it, so tools do not cross into another panel.
+  - Chart rendering, drawing storage, feeds, MongoDB/storage, footprint, volume profile, heatmap, and signal logic were not changed.
+
 ## [2026-06-01] - UI: Fix Focus Toggle Scope And Resizable Settings Window
 - **What changed**:
   - Removed the mistaken per-panel header hiding behavior and reverted chart panels to always keep their own toolbar visible.

@@ -9,6 +9,7 @@ import { ChartCanvas } from './ChartCanvas';
 import { CvdPanel } from './CvdPanel';
 import { formatCvdValue } from './drawCvd';
 import { PanelToolbar } from '../ui/PanelToolbar';
+import { DrawingFavoritesToolbar } from '../ui/DrawingFavoritesToolbar';
 
 interface ChartPanelProps {
   panelId: PanelId;
@@ -66,10 +67,12 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
 
   return (
     <div
-      className="flex flex-col h-full w-full"
+      data-chart-panel-id={panelId}
+      className="relative flex flex-col h-full w-full overflow-hidden"
       onMouseEnter={() => setActivePanel(panelId)}
     >
       <PanelToolbar panelId={panelId} />
+      <DrawingFavoritesToolbar panelId={panelId} />
       <div ref={chartAreaRef} className="flex-1 relative min-h-0 flex flex-col">
         <div
           className={`relative min-h-0 ${isCvdCompact ? 'flex-1' : ''}`}
