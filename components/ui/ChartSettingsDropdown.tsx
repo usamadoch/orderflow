@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { BarChart2, Layers, Zap, X, Clock } from 'lucide-react';
-import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode } from '../../lib/store/chart';
+import { useState, useEffect, useRef, type RefObject } from 'react';
+import { Activity, BarChart2, Layers, Zap, X } from 'lucide-react';
+import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode, IndicatorSettingsSection } from '../../lib/store/chart';
 
-const SETTINGS_WIDTH = 440;
+const SETTINGS_WIDTH = 544;
 const SETTINGS_MIN_HEIGHT = 350;
 const SETTINGS_DEFAULT_HEIGHT = 500;
 const VIEWPORT_MARGIN = 16;
@@ -26,10 +26,12 @@ function clampSettingsHeight(nextHeight: number, top: number) {
 
 interface ChartSettingsDropdownProps {
   panelId: PanelId;
+  focusSection?: IndicatorSettingsSection | null;
+  focusRequestId?: number;
   onClose: () => void;
 }
 
-export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdownProps) {
+export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 0, onClose }: ChartSettingsDropdownProps) {
   const panel = useChartStore(s => s.panels[panelId]);
   const settingsDropdownHeight = useChartStore(s => s.settingsDropdownHeight);
   const setSettingsDropdownHeight = useChartStore(s => s.setSettingsDropdownHeight);
@@ -110,8 +112,12 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   const setLiquidityHeatmapProfileSync = useChartStore(s => s.setLiquidityHeatmapProfileSync);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
-  const [activeTab, setActiveTab] = useState<'chart' | 'profiles' | 'signals' | 'sessions'>('chart');
+  const [activeTab, setActiveTab] = useState<'chart' | 'indicators' | 'profiles' | 'signals'>('chart');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const sessionsSectionRef = useRef<HTMLDivElement>(null);
+  const cvdSectionRef = useRef<HTMLDivElement>(null);
+  const bubblesSectionRef = useRef<HTMLDivElement>(null);
+  const volumeProfileSectionRef = useRef<HTMLDivElement>(null);
 
   // --- Draggable Logic ---
   const [position, setPosition] = useState({ x: -1, y: 48 }); // -1 means initial center/right
@@ -131,6 +137,21 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
   useEffect(() => {
     setHeight(settingsDropdownHeight || SETTINGS_DEFAULT_HEIGHT);
   }, [settingsDropdownHeight]);
+
+  useEffect(() => {
+    if (!focusSection || focusRequestId <= 0) return;
+
+    setActiveTab('indicators');
+    window.requestAnimationFrame(() => {
+      const sectionRefs: Record<IndicatorSettingsSection, RefObject<HTMLDivElement>> = {
+        sessions: sessionsSectionRef,
+        cvd: cvdSectionRef,
+        bubbles: bubblesSectionRef,
+        volumeProfile: volumeProfileSectionRef,
+      };
+      sectionRefs[focusSection]?.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  }, [focusRequestId, focusSection]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -264,9 +285,9 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
 
   const tabs = [
     { id: 'chart', label: 'Chart', icon: BarChart2 },
+    { id: 'indicators', label: 'Indicators', icon: Activity },
     { id: 'profiles', label: 'Profiles', icon: Layers },
     { id: 'signals', label: 'Signals', icon: Zap },
-    { id: 'sessions', label: 'Sessions', icon: Clock },
   ] as const;
   const signalToggles = [
     {
@@ -299,10 +320,525 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
     },
   ] as const;
 
+  const renderSessionsSettings = () => (
+    <div ref={sessionsSectionRef} className="scroll-mt-5 space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Sessions</div>
+        <button
+          onClick={() => setSessionsEnabled(panelId, !panel.sessionsEnabled)}
+          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.sessionsEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+            }`}
+        >
+          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.sessionsEnabled ? 'left-5' : 'left-1'
+            }`} />
+        </button>
+      </div>
+
+      <div className="space-y-6 pt-2">
+        {(['tokyo', 'london', 'newYork'] as SessionId[]).map((sid) => {
+          const session = panel.sessions[sid];
+          const label = sid.toUpperCase().replace('YORK', ' YORK');
+          return (
+            <div key={sid} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="h-[1px] flex-1 bg-[#1F1F1F]" />
+                <span className="text-[9px] font-bold font-mono tracking-tighter" style={{ color: session.color }}>
+                  {label}
+                </span>
+                <div className="h-[1px] flex-1 bg-[#1F1F1F]" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setSessionEnabled(panelId, sid, !session.enabled)}
+                  className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-200 ${session.enabled
+                    ? 'bg-accent/5 border-accent text-accent'
+                    : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    }`}
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Enabled</span>
+                  <div className={`w-1.5 h-1.5 rounded-full ${session.enabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                </button>
+
+                <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#1F1F1F] bg-[#080808]">
+                  <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Color</span>
+                  <input
+                    type="color"
+                    value={session.color}
+                    onChange={(e) => setSessionColor(panelId, sid, e.target.value)}
+                    className="w-4 h-4 bg-transparent border-none cursor-pointer outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1.5 bg-[#080808] p-2 rounded-lg border border-[#1F1F1F]">
+                  <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time (UTC)</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={session.startHour}
+                      onChange={(e) => setSessionTime(panelId, sid, 'startHour', Number(e.target.value))}
+                      className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
+                      min="0" max="23" step="1"
+                    />
+                    <span className="text-text-dim/40">:</span>
+                    <select
+                      value={session.startMin}
+                      onChange={(e) => setSessionTime(panelId, sid, 'startMin', Number(e.target.value))}
+                      className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
+                    >
+                      <option value="0">00</option>
+                      <option value="30">30</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5 bg-[#080808] p-2 rounded-lg border border-[#1F1F1F]">
+                  <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time (UTC)</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={session.endHour}
+                      onChange={(e) => setSessionTime(panelId, sid, 'endHour', Number(e.target.value))}
+                      className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
+                      min="0" max="23" step="1"
+                    />
+                    <span className="text-text-dim/40">:</span>
+                    <select
+                      value={session.endMin}
+                      onChange={(e) => setSessionTime(panelId, sid, 'endMin', Number(e.target.value))}
+                      className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
+                    >
+                      <option value="0">00</option>
+                      <option value="30">30</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderCvdSettings = () => (
+    <div ref={cvdSectionRef} className="scroll-mt-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">CVD</div>
+        <button
+          onClick={() => setCvdEnabled(panelId, !panel.cvdEnabled)}
+          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.cvdEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'}`}
+        >
+          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.cvdEnabled ? 'left-5' : 'left-1'}`} />
+        </button>
+      </div>
+
+      {panel.cvdEnabled && (
+        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="grid grid-cols-4 gap-1.5">
+            {cvdModes.map((mode) => (
+              <button
+                key={mode.value}
+                onClick={() => setCvdMode(panelId, mode.value)}
+                className={`py-2 rounded-lg border text-[9px] font-black uppercase transition-all duration-200 ${panel.cvdMode === mode.value
+                  ? 'bg-accent/10 border-accent text-accent'
+                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => setCvdMinimized(panelId, !panel.cvdMinimized)}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdMinimized
+              ? 'bg-accent/5 border-accent text-accent'
+              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              }`}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider">Compact Mode</span>
+            <span className="text-[9px] font-black uppercase tracking-wider">{panel.cvdMinimized ? 'Minimized' : 'Expanded'}</span>
+          </button>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Reset</label>
+              <select
+                value={panel.cvdResetMode}
+                onChange={(e) => setCvdResetMode(panelId, e.target.value as CvdResetMode)}
+                className="bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-bold text-main focus:border-accent focus:outline-none"
+              >
+                {cvdResetModes.map((mode) => (
+                  <option key={mode.value} value={mode.value}>{mode.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scale</label>
+              <div className="flex gap-1">
+                {cvdScaleModes.map((mode) => (
+                  <button
+                    key={mode.value}
+                    onClick={() => setCvdScaleMode(panelId, mode.value)}
+                    className={`flex-1 py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.cvdScaleMode === mode.value
+                      ? 'bg-[#1A1A1A] border-accent text-accent'
+                      : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                      }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Height</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdPanelHeightPct}%</span>
+            </div>
+            <input
+              type="range"
+              value={panel.cvdPanelHeightPct}
+              onChange={(e) => setCvdPanelHeightPct(panelId, Number(e.target.value))}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="12" max="45" step="1"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Smoothing</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdSmoothing <= 1 ? 'OFF' : `${panel.cvdSmoothing}`}</span>
+            </div>
+            <input
+              type="range"
+              value={panel.cvdSmoothing}
+              onChange={(e) => setCvdSmoothing(panelId, Number(e.target.value))}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="1" max="50" step="1"
+            />
+          </div>
+
+          {panel.cvdScaleMode === 'fixed' && (
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Fixed Range</label>
+              <input
+                type="number"
+                value={panel.cvdFixedRange}
+                onChange={(e) => setCvdFixedRange(panelId, Number(e.target.value) || 1)}
+                className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-mono font-bold text-main focus:border-accent focus:outline-none"
+                min="1"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Positive</span>
+              <input
+                type="color"
+                value={panel.cvdPositiveColor}
+                onChange={(e) => setCvdPositiveColor(panelId, e.target.value)}
+                className="w-8 h-6 bg-transparent border-0 p-0 cursor-pointer"
+              />
+            </label>
+            <label className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Negative</span>
+              <input
+                type="color"
+                value={panel.cvdNegativeColor}
+                onChange={(e) => setCvdNegativeColor(panelId, e.target.value)}
+                className="w-8 h-6 bg-transparent border-0 p-0 cursor-pointer"
+              />
+            </label>
+          </div>
+
+          <button
+            onClick={() => setCvdShowDivergence(panelId, !panel.cvdShowDivergence)}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdShowDivergence
+              ? 'bg-accent/5 border-accent text-accent'
+              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              }`}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider">Divergence Markers</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${panel.cvdShowDivergence ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+          </button>
+
+          {panel.cvdShowDivergence && (
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Divergence Lookback</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdDivergenceLookback}</span>
+              </div>
+              <input
+                type="range"
+                value={panel.cvdDivergenceLookback}
+                onChange={(e) => setCvdDivergenceLookback(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="3" max="30" step="1"
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderBubbleSettings = () => (
+    <div ref={bubblesSectionRef} className="scroll-mt-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Bubbles</div>
+        <button
+          onClick={() => setBubblesEnabled(panelId, !panel.bubblesEnabled)}
+          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.bubblesEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+            }`}
+        >
+          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.bubblesEnabled ? 'left-5' : 'left-1'
+            }`} />
+        </button>
+      </div>
+
+      {panel.bubblesEnabled && (
+        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Volume</label>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setBubbleThresholdMode(panelId, panel.bubbleThresholdMode === 'absolute' ? 'relative' : 'absolute')}
+                className="px-2 py-1 bg-[#1A1A1A] border border-[#1F1F1F] rounded text-[10px] font-black text-text-dim hover:text-main transition-colors uppercase"
+              >
+                {panel.bubbleThresholdMode === 'absolute' ? 'Fixed (BTC)' : 'Adaptive (x Avg)'}
+              </button>
+              <input
+                type="number"
+                value={localThreshold}
+                onChange={handleThresholdChange}
+                step={panel.bubbleThresholdMode === 'relative' ? "0.5" : "1"}
+                className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                min="0.1"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
+            <div className="flex gap-1">
+              {bubbleSides.map(({ label, value }) => (
+                <button
+                  key={value}
+                  onClick={() => setBubbleSide(panelId, value)}
+                  className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.bubbleSide === value
+                    ? 'bg-[#1A1A1A] border-accent text-accent'
+                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderVolumeProfileSettings = () => (
+    <div ref={volumeProfileSectionRef} className="scroll-mt-5 space-y-4">
+      <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Volume Profile</div>
+
+      <div className="space-y-3">
+        <button
+          onClick={() => setDefaultProfileEnabled(panelId, !panel.defaultProfileEnabled)}
+          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.defaultProfileEnabled
+            ? 'bg-accent/5 border-accent text-accent'
+            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+            }`}
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wider">Default Profile</span>
+          <div className={`w-1.5 h-1.5 rounded-full ${panel.defaultProfileEnabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+        </button>
+
+        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scaling</label>
+            <div className="flex gap-1 w-24">
+              {(['linear', 'sqrt'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setProfileScaleMode(panelId, m)}
+                  className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.profileScaleMode === m
+                    ? 'bg-[#1A1A1A] border-accent text-accent'
+                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
+            <span className="text-[12px] font-mono font-bold text-accent">
+              {panel.profileResolutionTicks}t / {(panel.profileResolutionTicks * tickSize).toFixed(2)}
+            </span>
+          </div>
+          <input
+            type="range"
+            value={panel.profileResolutionTicks}
+            onChange={(e) => setProfileResolutionTicks(panelId, Number(e.target.value))}
+            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            min="1" max="40" step="1"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Width</label>
+            <span className="text-[12px] font-mono font-bold text-accent">{panel.profileWidthPct}%</span>
+          </div>
+          <input
+            type="range"
+            value={panel.profileWidthPct}
+            onChange={(e) => setProfileWidthPct(panelId, Number(e.target.value))}
+            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            min="10" max="100" step="5"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
+            <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.profileOpacity * 100)}%</span>
+          </div>
+          <input
+            type="range"
+            value={panel.profileOpacity * 100}
+            onChange={(e) => setProfileOpacity(panelId, Number(e.target.value) / 100)}
+            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            min="10" max="100" step="5"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Width</label>
+            <span className="text-[12px] font-mono font-bold text-accent">
+              {panel.profileMinRowWidth === 0 ? 'OFF' : `${panel.profileMinRowWidth}px`}
+            </span>
+          </div>
+          <input
+            type="range"
+            value={panel.profileMinRowWidth}
+            onChange={(e) => setProfileMinRowWidth(panelId, Number(e.target.value))}
+            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            min="0" max="8" step="1"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex justify-between items-center mb-1">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Height</label>
+            <span className="text-[12px] font-mono font-bold text-accent">
+              {panel.profileMinRowHeight === 0 ? 'OFF' : `${panel.profileMinRowHeight}px`}
+            </span>
+          </div>
+          <input
+            type="range"
+            value={panel.profileMinRowHeight}
+            onChange={(e) => setProfileMinRowHeight(panelId, Number(e.target.value))}
+            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            min="0" max="4" step="0.5"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={() => setProfileShowPocHighlight(panelId, !panel.profileShowPocHighlight)}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocHighlight
+              ? 'bg-accent/5 border-accent text-accent'
+              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              }`}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider">POC Highlight</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowPocHighlight ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+          </button>
+
+          <button
+            onClick={() => setProfileShowVaFill(panelId, !panel.profileShowVaFill)}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaFill
+              ? 'bg-accent/5 border-accent text-accent'
+              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              }`}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider">VA Area Fill</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowVaFill ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+          </button>
+
+          <button
+            onClick={() => setProfileShowPocLine(panelId, !panel.profileShowPocLine)}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocLine
+              ? 'bg-accent/5 border-accent text-accent'
+              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              }`}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider">POC Line</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowPocLine ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+          </button>
+
+          <button
+            onClick={() => setProfileShowVaLines(panelId, !panel.profileShowVaLines)}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaLines
+              ? 'bg-accent/5 border-accent text-accent'
+              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              }`}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider">VA Lines</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowVaLines ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+          </button>
+
+          <button
+            onClick={() => setProfileShowDelta(panelId, !panel.profileShowDelta)}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowDelta
+              ? 'bg-accent/5 border-accent text-accent'
+              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              }`}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider">Show Delta</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowDelta ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+          </button>
+        </div>
+
+        {panel.profileShowDelta && (
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Delta Width</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{panel.deltaProfileWidth}px</span>
+            </div>
+            <input
+              type="range"
+              value={panel.deltaProfileWidth}
+              onChange={(e) => setDeltaProfileWidth(panelId, Number(e.target.value))}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="40" max="160" step="5"
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div
       ref={dropdownRef}
-      className={`fixed w-[440px] bg-[#0D0D0D]/95 backdrop-blur-xl border border-[#1F1F1F] rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden transition-shadow duration-200 ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''}`}
+      className={`fixed w-[544px] bg-[#0D0D0D]/95 backdrop-blur-xl border border-[#1F1F1F] rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden transition-shadow duration-200 ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''}`}
       style={{ 
         left: position.x === -1 ? 'auto' : position.x,
         top: position.y,
@@ -443,63 +979,6 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                       <span className="text-[9px] text-text-dim font-black uppercase">Ticks</span>
                     </div>
                   </div>
-                </div>
-
-                {/* Volume Bubble Settings */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Volume Bubbles</div>
-                    <button
-                      onClick={() => setBubblesEnabled(panelId, !panel.bubblesEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.bubblesEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-                        }`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.bubblesEnabled ? 'left-5' : 'left-1'
-                        }`} />
-                    </button>
-                  </div>
-
-                  {panel.bubblesEnabled && (
-                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Volume</label>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setBubbleThresholdMode(panelId, panel.bubbleThresholdMode === 'absolute' ? 'relative' : 'absolute')}
-                            className="px-2 py-1 bg-[#1A1A1A] border border-[#1F1F1F] rounded text-[10px] font-black text-text-dim hover:text-main transition-colors uppercase"
-                          >
-                            {panel.bubbleThresholdMode === 'absolute' ? 'Fixed (BTC)' : 'Adaptive (x Avg)'}
-                          </button>
-                          <input
-                            type="number"
-                            value={localThreshold}
-                            onChange={handleThresholdChange}
-                            step={panel.bubbleThresholdMode === 'relative' ? "0.5" : "1"}
-                            className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                            min="0.1"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
-                        <div className="flex gap-1">
-                          {bubbleSides.map(({ label, value }) => (
-                            <button
-                              key={value}
-                              onClick={() => setBubbleSide(panelId, value)}
-                              className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.bubbleSide === value
-                                ? 'bg-[#1A1A1A] border-accent text-accent'
-                                : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                                }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Synchronized Crosshair */}
@@ -738,108 +1217,14 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
               </>
             )}
 
-            {/* Tab: Sessions */}
-            {activeTab === 'sessions' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Session Visualization</div>
-                  <button
-                    onClick={() => setSessionsEnabled(panelId, !panel.sessionsEnabled)}
-                    className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.sessionsEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-                      }`}
-                  >
-                    <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.sessionsEnabled ? 'left-5' : 'left-1'
-                      }`} />
-                  </button>
-                </div>
-
-                <div className="space-y-6 pt-2">
-                  {(['tokyo', 'london', 'newYork'] as SessionId[]).map((sid) => {
-                    const session = panel.sessions[sid];
-                    const label = sid.toUpperCase().replace('YORK', ' YORK');
-                    return (
-                      <div key={sid} className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-[1px] flex-1 bg-[#1F1F1F]" />
-                          <span className="text-[9px] font-bold font-mono tracking-tighter" style={{ color: session.color }}>
-                            {label}
-                          </span>
-                          <div className="h-[1px] flex-1 bg-[#1F1F1F]" />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => setSessionEnabled(panelId, sid, !session.enabled)}
-                            className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-200 ${session.enabled
-                              ? 'bg-accent/5 border-accent text-accent'
-                              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                              }`}
-                          >
-                            <span className="text-[10px] font-bold uppercase tracking-wider">Enabled</span>
-                            <div className={`w-1.5 h-1.5 rounded-full ${session.enabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                          </button>
-
-                          <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#1F1F1F] bg-[#080808]">
-                            <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Color</span>
-                            <input
-                              type="color"
-                              value={session.color}
-                              onChange={(e) => setSessionColor(panelId, sid, e.target.value)}
-                              className="w-4 h-4 bg-transparent border-none cursor-pointer outline-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="flex flex-col gap-1.5 bg-[#080808] p-2 rounded-lg border border-[#1F1F1F]">
-                            <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time (UTC)</label>
-                            <div className="flex items-center gap-1">
-                                <input
-                                  type="number"
-                                  value={session.startHour}
-                                  onChange={(e) => setSessionTime(panelId, sid, 'startHour', Number(e.target.value))}
-                                  className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
-                                  min="0" max="23" step="1"
-                                />
-                              <span className="text-text-dim/40">:</span>
-                              <select
-                                value={session.startMin}
-                                onChange={(e) => setSessionTime(panelId, sid, 'startMin', Number(e.target.value))}
-                                className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
-                              >
-                                <option value="0">00</option>
-                                <option value="30">30</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-1.5 bg-[#080808] p-2 rounded-lg border border-[#1F1F1F]">
-                            <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time (UTC)</label>
-                            <div className="flex items-center gap-1">
-                                <input
-                                  type="number"
-                                  value={session.endHour}
-                                  onChange={(e) => setSessionTime(panelId, sid, 'endHour', Number(e.target.value))}
-                                  className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
-                                  min="0" max="23" step="1"
-                                />
-                              <span className="text-text-dim/40">:</span>
-                              <select
-                                value={session.endMin}
-                                onChange={(e) => setSessionTime(panelId, sid, 'endMin', Number(e.target.value))}
-                                className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
-                              >
-                                <option value="0">00</option>
-                                <option value="30">30</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+            {/* Tab: Indicators */}
+            {activeTab === 'indicators' && (
+              <>
+                {renderSessionsSettings()}
+                {renderCvdSettings()}
+                {renderBubbleSettings()}
+                {renderVolumeProfileSettings()}
+              </>
             )}
 
             {/* Tab: Profiles */}
@@ -1062,170 +1447,6 @@ export function ChartSettingsDropdown({ panelId, onClose }: ChartSettingsDropdow
                   </div>
                 </div>
 
-                {/* CVD Settings */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">CVD Panel</div>
-                    <button
-                      onClick={() => setCvdEnabled(panelId, !panel.cvdEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.cvdEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'}`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.cvdEnabled ? 'left-5' : 'left-1'}`} />
-                    </button>
-                  </div>
-
-                  {panel.cvdEnabled && (
-                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {cvdModes.map((mode) => (
-                          <button
-                            key={mode.value}
-                            onClick={() => setCvdMode(panelId, mode.value)}
-                            className={`py-2 rounded-lg border text-[9px] font-black uppercase transition-all duration-200 ${panel.cvdMode === mode.value
-                              ? 'bg-accent/10 border-accent text-accent'
-                              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                              }`}
-                          >
-                            {mode.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      <button
-                        onClick={() => setCvdMinimized(panelId, !panel.cvdMinimized)}
-                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdMinimized
-                          ? 'bg-accent/5 border-accent text-accent'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                          }`}
-                      >
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Compact Mode</span>
-                        <span className="text-[9px] font-black uppercase tracking-wider">{panel.cvdMinimized ? 'Minimized' : 'Expanded'}</span>
-                      </button>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Reset</label>
-                          <select
-                            value={panel.cvdResetMode}
-                            onChange={(e) => setCvdResetMode(panelId, e.target.value as CvdResetMode)}
-                            className="bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-bold text-main focus:border-accent focus:outline-none"
-                          >
-                            {cvdResetModes.map((mode) => (
-                              <option key={mode.value} value={mode.value}>{mode.label}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scale</label>
-                          <div className="flex gap-1">
-                            {cvdScaleModes.map((mode) => (
-                              <button
-                                key={mode.value}
-                                onClick={() => setCvdScaleMode(panelId, mode.value)}
-                                className={`flex-1 py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.cvdScaleMode === mode.value
-                                  ? 'bg-[#1A1A1A] border-accent text-accent'
-                                  : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                                  }`}
-                              >
-                                {mode.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Height</label>
-                          <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdPanelHeightPct}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          value={panel.cvdPanelHeightPct}
-                          onChange={(e) => setCvdPanelHeightPct(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                          min="12" max="45" step="1"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Smoothing</label>
-                          <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdSmoothing <= 1 ? 'OFF' : `${panel.cvdSmoothing}`}</span>
-                        </div>
-                        <input
-                          type="range"
-                          value={panel.cvdSmoothing}
-                          onChange={(e) => setCvdSmoothing(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                          min="1" max="50" step="1"
-                        />
-                      </div>
-
-                      {panel.cvdScaleMode === 'fixed' && (
-                        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Fixed Range</label>
-                          <input
-                            type="number"
-                            value={panel.cvdFixedRange}
-                            onChange={(e) => setCvdFixedRange(panelId, Number(e.target.value) || 1)}
-                            className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-mono font-bold text-main focus:border-accent focus:outline-none"
-                            min="1"
-                          />
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <label className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Positive</span>
-                          <input
-                            type="color"
-                            value={panel.cvdPositiveColor}
-                            onChange={(e) => setCvdPositiveColor(panelId, e.target.value)}
-                            className="w-8 h-6 bg-transparent border-0 p-0 cursor-pointer"
-                          />
-                        </label>
-                        <label className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Negative</span>
-                          <input
-                            type="color"
-                            value={panel.cvdNegativeColor}
-                            onChange={(e) => setCvdNegativeColor(panelId, e.target.value)}
-                            className="w-8 h-6 bg-transparent border-0 p-0 cursor-pointer"
-                          />
-                        </label>
-                      </div>
-
-                      <button
-                        onClick={() => setCvdShowDivergence(panelId, !panel.cvdShowDivergence)}
-                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdShowDivergence
-                          ? 'bg-accent/5 border-accent text-accent'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                          }`}
-                      >
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Divergence Markers</span>
-                        <div className={`w-1.5 h-1.5 rounded-full ${panel.cvdShowDivergence ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                      </button>
-
-                      {panel.cvdShowDivergence && (
-                        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                          <div className="flex justify-between items-center mb-1">
-                            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Divergence Lookback</label>
-                            <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdDivergenceLookback}</span>
-                          </div>
-                          <input
-                            type="range"
-                            value={panel.cvdDivergenceLookback}
-                            onChange={(e) => setCvdDivergenceLookback(panelId, Number(e.target.value))}
-                            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                            min="3" max="30" step="1"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
               </>
             )}
 

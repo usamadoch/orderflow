@@ -24,6 +24,13 @@ export type CvdResetMode = 'none' | 'daily' | 'session';
 export type CvdScaleMode = 'auto' | 'fixed';
 export type ContractType = 'spot' | 'futures';
 export type DataSourceMode = 'spot' | 'futures' | 'both';
+export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeProfile';
+
+export interface SettingsOpenRequest {
+  panelId: PanelId;
+  section: IndicatorSettingsSection;
+  requestId: number;
+}
 
 export interface DrawingToolbarPosition {
   x: number;
@@ -242,6 +249,7 @@ interface ChartState {
   sidebarCollapsed: boolean;
   focusMode: boolean;
   settingsDropdownHeight: number;
+  settingsOpenRequest: SettingsOpenRequest | null;
   crosshair: GlobalCrosshair;
   crosshairSyncEnabled: boolean;
 
@@ -361,6 +369,7 @@ interface ChartState {
   setSidebarCollapsed: (collapsed: boolean) => void;
   setFocusMode: (focusMode: boolean) => void;
   setSettingsDropdownHeight: (height: number) => void;
+  openIndicatorSettings: (panelId: PanelId, section: IndicatorSettingsSection) => void;
   setCrosshair: (crosshair: GlobalCrosshair) => void;
   setCrosshairSyncEnabled: (enabled: boolean) => void;
 
@@ -583,6 +592,7 @@ export const useChartStore = create<ChartState>()(
       sidebarCollapsed: false,
       focusMode: false,
       settingsDropdownHeight: 500,
+      settingsOpenRequest: null,
       crosshair: { activePanel: null, time: null, price: null },
       crosshairSyncEnabled: true,
       isAuthenticated: false,
@@ -1017,6 +1027,15 @@ export const useChartStore = create<ChartState>()(
       setFocusMode: (focusMode) => set({ focusMode }),
       setSettingsDropdownHeight: (settingsDropdownHeight) =>
         set({ settingsDropdownHeight: Math.max(350, Math.min(900, Math.round(settingsDropdownHeight))) }),
+      openIndicatorSettings: (panelId, section) =>
+        set((state) => ({
+          activePanel: panelId,
+          settingsOpenRequest: {
+            panelId,
+            section,
+            requestId: (state.settingsOpenRequest?.requestId ?? 0) + 1,
+          },
+        })),
       setCrosshair: (crosshair) => set({ crosshair }),
       setCrosshairSyncEnabled: (crosshairSyncEnabled) => {
         if (!crosshairSyncEnabled) {

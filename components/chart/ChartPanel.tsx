@@ -10,6 +10,7 @@ import { CvdPanel } from './CvdPanel';
 import { formatCvdValue } from './drawCvd';
 import { PanelToolbar } from '../ui/PanelToolbar';
 import { DrawingFavoritesToolbar } from '../ui/DrawingFavoritesToolbar';
+import { IndicatorLabels } from './IndicatorLabels';
 
 interface ChartPanelProps {
   panelId: PanelId;
@@ -162,6 +163,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             onBarWidthChange={(v) => setBarWidth(panelId, v)}
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
           />
+          <IndicatorLabels panelId={panelId} />
           {isCvdCompact && (
             <button
               onClick={() => setCvdMinimized(panelId, false)}

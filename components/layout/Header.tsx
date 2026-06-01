@@ -9,6 +9,7 @@ export function Header() {
   const layoutMode = useChartStore(s => s.layoutMode);
   const setLayoutMode = useChartStore(s => s.setLayoutMode);
   const activePanelId = useChartStore(s => s.activePanel);
+  const settingsOpenRequest = useChartStore(s => s.settingsOpenRequest);
   const isAuthenticated = useChartStore(s => s.isAuthenticated);
   const authenticate = useChartStore(s => s.authenticate);
   const logout = useChartStore(s => s.logout);
@@ -41,6 +42,12 @@ export function Header() {
     window.addEventListener('pointerdown', handlePointerDown);
     return () => window.removeEventListener('pointerdown', handlePointerDown);
   }, [showSettings]);
+
+  useEffect(() => {
+    if (settingsOpenRequest) {
+      setShowSettings(true);
+    }
+  }, [settingsOpenRequest]);
 
   return (
     <header className="font-sans h-10 border-b border-border bg-surface flex items-center px-4 justify-between shrink-0 shadow-sm z-20 relative">
@@ -162,6 +169,8 @@ export function Header() {
           {showSettings && (
             <ChartSettingsDropdown 
               panelId={activePanelId} 
+              focusSection={settingsOpenRequest?.section ?? null}
+              focusRequestId={settingsOpenRequest?.requestId ?? 0}
               onClose={() => setShowSettings(false)} 
             />
           )}

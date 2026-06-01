@@ -1,5 +1,55 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-01] - UI: Indicator Label Size And Hover Contrast
+- **What changed**:
+  - Reduced the indicator label text, icon, and collapse-button sizing slightly.
+  - Darkened the indicator-row hover background so the hover state reads more clearly.
+- **Why it changed**:
+  - The indicator overlay needed a lighter resting footprint and a stronger hover contrast cue.
+- **Impact summary**:
+  - This is visual refinement only. Indicator toggles, settings jumps, rendering, calculations, feeds, storage, footprint, volume profile, heatmap, and chart logic were not changed.
+
+## [2026-06-01] - UI: Compact Indicator Labels
+- **What changed**:
+  - Added a very small collapse/expand button for the chart indicator label list.
+  - Changed indicator rows to a text-only default state with no persistent background or always-visible icons.
+  - Revealed the row background plus eye/settings controls only on hover, with a short slide/fade-in transition.
+- **Why it changed**:
+  - Multiple active indicators were creating a bulky visual block in the top-left of the chart.
+- **Impact summary**:
+  - This is a UX-only refinement of the existing label overlay. Indicator visibility toggles, settings jumps, rendering behavior, calculations, feeds, storage, footprint, volume profile, heatmap, and chart logic were not changed.
+
+## [2026-06-01] - UI: TradingView-Style Indicator Labels
+- **What changed**:
+  - Added top-left chart indicator labels for Bubbles, CVD, Sessions, and VOP/Volume Profile.
+  - Added eye buttons that toggle the existing per-panel indicator visibility settings.
+  - Added settings buttons that open the global settings dropdown for the owning panel and focus the relevant Indicators section.
+  - Added Volume Profile controls to the Indicators tab so the VOP settings jump lands with the other indicator settings.
+- **Why it changed**:
+  - Active visual overlays needed TradingView-style on-chart labels with quick visibility and settings access.
+- **Impact summary**:
+  - This is UX/control organization only. Indicator calculations, chart rendering logic, market data, feeds, MongoDB/storage, footprint, volume profile engine, heatmap, and signals were not changed.
+
+## [2026-06-01] - UI: Wider Settings Dropdown And Thin Scrollbar
+- **What changed**:
+  - Increased the global settings dropdown width by `104px`, from `440px` to `544px`.
+  - Added a scoped `.custom-scrollbar` style for the dropdown content area with a thin dark thumb and transparent track.
+- **Why it changed**:
+  - The settings panel needed a bit more horizontal room, and the browser-default thick white scrollbar looked out of place in the existing dark UI.
+- **Impact summary**:
+  - This is visual polish only. Settings behavior, persistence, chart calculations, rendering logic, feeds, storage, footprint, volume profile, heatmap, and signals were not changed.
+
+## [2026-06-01] - UI: Indicators Settings Tab
+- **What changed**:
+  - Added a global Settings > Indicators tab.
+  - Moved Sessions, CVD, and Bubbles controls into the Indicators tab while keeping their existing store actions and persisted settings.
+  - Removed the separate Sessions tab, removed CVD settings from Profiles, removed Bubbles settings from Chart, and removed CVD/Sessions quick toggles from the panel toolbar.
+- **Why it changed**:
+  - Indicator-related controls needed one clean settings location instead of being split across Chart, Profiles, Sessions, and panel header controls.
+- **Impact summary**:
+  - Settings organization changed only; calculations, rendering logic, market data, feeds, MongoDB/storage, footprint, volume profile, heatmap, and signals were not changed.
+  - Existing CVD, session, and bubble settings continue to persist through the same panel state fields.
+
 ## [2026-06-01] - UI: Icon-Only Drawing Toolbar Buttons
 - **What changed**:
   - Removed the text letters from the floating drawing toolbar buttons and left icon-only controls with hover titles and aria labels.

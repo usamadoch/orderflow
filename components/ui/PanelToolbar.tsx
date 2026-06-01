@@ -15,7 +15,6 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setPair = useChartStore(s => s.setPair);
   const setTimeframe = useChartStore(s => s.setTimeframe);
   const setChartMode = useChartStore(s => s.setChartMode);
-  const setCvdEnabled = useChartStore(s => s.setCvdEnabled);
   const focusMode = useChartStore(s => s.focusMode);
   const setFocusMode = useChartStore(s => s.setFocusMode);
 
@@ -76,32 +75,8 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         </button>
       </div>
 
-      {/* CVD Panel Toggle */}
+      {/* Liquidity Quick Toggle */}
       <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
-        <button
-          onClick={() => setCvdEnabled(panelId, !panel.cvdEnabled)}
-          className={`h-5 px-2 flex items-center justify-center rounded text-[9px] font-black transition-all duration-200 ${panel.cvdEnabled
-            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
-            }`}
-          title="Toggle CVD Panel"
-        >
-          CVD
-        </button>
-      </div>
-
-      {/* Sessions Quick Toggle */}
-      <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
-        <button
-          onClick={() => useChartStore.getState().setSessionsEnabled(panelId, !panel.sessionsEnabled)}
-          className={`h-5 w-6 flex items-center justify-center rounded text-[11px] font-black transition-all duration-200 ${panel.sessionsEnabled
-            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
-            }`}
-          title="Toggle Sessions (S)"
-        >
-          S
-        </button>
         <button
           onClick={() => useChartStore.getState().setLiquidityEnabled(panelId, !panel.liquidityEnabled)}
           className={`h-5 w-6 flex items-center justify-center rounded text-[11px] font-black transition-all duration-200 ${panel.liquidityEnabled

@@ -59,7 +59,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `instrumentation.ts` → Server startup hook that initializes the selected storage adapter and runs libSQL cleanup only when using libSQL.
 - `app/layout.tsx` → Root layout and global app shell wiring.
 - `app/page.tsx` → Main app scaffold with Header, Sidebar, chart panel layout, draggable split, and focus layout mode.
-- `app/globals.css` → Tailwind base styles and custom color variables.
+- `app/globals.css` → Tailwind base styles, custom color variables, and shared scoped scrollbar styling utilities.
 
 ### History APIs
 
@@ -71,12 +71,12 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Layout / UI Components
 
-- `components/layout/Header.tsx` → Top toolbar, layout controls, connection/settings access, and outside-click-managed settings dropdown toggle.
+- `components/layout/Header.tsx` → Top toolbar, layout controls, connection/settings access, outside-click-managed settings dropdown toggle, and indicator-label settings open requests.
 - `components/layout/Sidebar.tsx` → Active panel settings, market/session stats, and signal summaries.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection indicator.
-- `components/ui/PanelToolbar.tsx` → Per-panel controls for pair, timeframe, chart mode, CVD, sessions/liquidity quick toggles, and whole-layout focus toggle.
+- `components/ui/PanelToolbar.tsx` → Per-panel controls for pair, timeframe, chart mode, liquidity quick toggle, and whole-layout focus toggle.
 - `components/ui/DrawingFavoritesToolbar.tsx` → Draggable panel-bounded icon-only floating toolbar for Profile, Measure, and favorite line/box drawing tool selection using existing drawing state.
-- `components/ui/ChartSettingsDropdown.tsx` → Draggable, resizable settings window with persisted height, internal scrolling, compact signal toggles/settings, sessions, CVD, single/combined liquidity depth source, real orderbook heatmap visual controls, responsive label visibility/detail/min-quantity controls, and related controls.
+- `components/ui/ChartSettingsDropdown.tsx` → Draggable, resizable wider settings window with persisted height, internal scrolling, dedicated Indicators tab for sessions/CVD/bubbles/Volume Profile with direct section focus, compact signal toggles/settings, single/combined liquidity depth source, real orderbook heatmap visual controls, responsive label visibility/detail/min-quantity controls, and related controls.
 - `components/ui/PairSelector.tsx` → Panel-scoped pair switcher.
 - `components/ui/TimeframeSelector.tsx` → Panel-scoped timeframe switcher.
 - `components/ui/ChartModeToggle.tsx` → Candle/footprint mode toggle.
@@ -89,7 +89,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Chart Rendering
 
-- `components/chart/ChartPanel.tsx` → Panel state bridge from Zustand/context into chart and CVD canvases, including orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
+- `components/chart/ChartPanel.tsx` → Panel state bridge from Zustand/context into chart, indicator labels, and CVD canvases, including orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
+- `components/chart/IndicatorLabels.tsx` → TradingView-style top-left chart indicator labels for Bubbles, CVD, Sessions, and VOP with a compact collapsible text-first layout, smaller icon/text sizing, darker hover reveal, per-panel eye toggles, and settings-section jump buttons.
 - `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order, hit-testing, drawing placement, custom profile interactions, render metrics, and visible footprint/profile/CVD wiring.
 - `components/chart/CvdPanel.tsx` → Attached CVD canvas with synced horizontal geometry, vertical scaling, memoized CVD series/divergence, and render metrics.
 - `components/chart/useCoordinates.ts` → Coordinate math for price/time/index mapping, visible range, and drawable width.
@@ -124,7 +125,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Zustand panel state, persisted settings, candles, drawing tools/overlays, draggable drawing toolbar positions, signals, sessions, CVD, profiles, real orderbook heatmap visual/window/responsive-label controls, contract/trade/single-or-combined depth source modes, plus global focus-mode and settings-window UI state.
+- `lib/store/chart.ts` → Zustand panel state, persisted settings, candles, drawing tools/overlays, draggable drawing toolbar positions, signals, sessions, CVD, profiles, real orderbook heatmap visual/window/responsive-label controls, contract/trade/single-or-combined depth source modes, plus global focus-mode, settings-window UI state, and transient indicator settings open requests.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcuts for chart modes, tools, sessions, liquidity, signal toggles, focus mode, and active panel targeting.
 
 ### Feeds / Shared Live Data
