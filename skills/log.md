@@ -1,5 +1,42 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-02] - Fix: Time-Anchored Chart Drawings
+- **What changed**:
+  - Added timestamp anchors for vertical lines, horizontal rays, boxes, and custom Volume Profile selections while keeping legacy index fields as fallback.
+  - Resolved timestamp anchors back to retained candle indices only at render, hit-test, drag/resize, and custom profile build time.
+  - Changed custom Volume Profile selection builds to use the anchored time range instead of stale candle index slices.
+- **Why it changed**:
+  - Drawing anchors stored as mutable candle array indices drifted when the rolling 500-candle window dropped the oldest candle.
+- **Impact summary**:
+  - New drawings stay attached to the original candle time as live candles arrive.
+  - Timestamped drawings are hidden when their anchor candle falls outside retained candles instead of rebinding to a different candle.
+  - Market data, feeds, MongoDB/storage, footprint, heatmap, indicators, and Volume Profile math were not changed.
+
+## [2026-06-02] - Fix: Per-Panel Indicator Collapse State
+- **What changed**:
+  - Moved indicator-label collapsed/expanded persistence from one global store field into each chart panel's state.
+  - Updated the indicator label collapse button to read/write only the owning panel's collapsed state.
+- **Why it changed**:
+  - In split/multi-chart layouts, minimizing the indicator list on one chart was also minimizing it on the other chart.
+- **Impact summary**:
+  - Indicator-list collapse now belongs to the specific chart panel and persists independently per panel.
+  - Indicator enable/disable state, heatmap/liquidity behavior, market data, feeds, storage, calculations, and rendering logic were not changed.
+
+## [2026-06-02] - UI: Thin Sidebar And Indicator Organization
+- **What changed**:
+  - Replaced the expandable sidebar with a fixed thin tools/sidebar strip and removed tick-size input plus signal/count summary clutter from it.
+  - Moved the global tick-size input into the settings dropdown under Chart > Aggregation.
+  - Persisted the top-left indicator label list collapsed/expanded state in the existing chart settings store.
+  - Removed the Liquidity Map quick toggle from the panel toolbar.
+  - Added Heatmap and Liquidity Map to the top-left indicator list with eye/settings actions.
+  - Moved Heatmap and Liquidity Map settings into the Indicators tab with direct section focus support.
+- **Why it changed**:
+  - Chart UI controls needed to be less cluttered and grouped around indicator UX instead of sidebar/header shortcuts.
+- **Impact summary**:
+  - This is UI/state organization only. Market data, feeds, MongoDB/storage, footprint calculations, Volume Profile calculations, heatmap calculations, collector code, and chart rendering logic were not changed.
+  - Heatmap and Liquidity Map keep the same existing persisted settings fields and toggles; only their control placement changed.
+  - `npm.cmd run build` compiled successfully, then failed on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
+
 ## [2026-06-02] - Website: Disable Browser Footprint/Profile Writes
 - **What changed**:
   - Added a default-off `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES` gate around website-side footprint and fine Volume Profile persistence in `components/FeedProvider.tsx`.

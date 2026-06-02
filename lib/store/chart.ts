@@ -25,7 +25,7 @@ export type CvdResetMode = 'none' | 'daily' | 'session';
 export type CvdScaleMode = 'auto' | 'fixed';
 export type ContractType = 'spot' | 'futures';
 export type DataSourceMode = 'spot' | 'futures' | 'both';
-export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeProfile';
+export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeProfile' | 'heatmap' | 'liquidityMap';
 
 export interface SettingsOpenRequest {
   panelId: PanelId;
@@ -112,8 +112,12 @@ export interface Measurement {
 export interface DrawnLine {
   id: string;
   type: 'horizontal' | 'vertical' | 'horizontal-ray' | 'box';
-  value: number; // price for horizontal/ray, candle index for vertical, top price fallback for box
+  value: number; // price for horizontal/ray, legacy candle index for vertical, top price fallback for box
+  time?: number;
+  startTime?: number;
   startIndex?: number;
+  firstTime?: number;
+  lastTime?: number;
   firstIndex?: number;
   lastIndex?: number;
   priceHigh?: number;
@@ -150,6 +154,8 @@ export interface PanelState {
   bubbleSide: BubbleSide;
   isDrawMode: boolean;
   customProfileRange: {
+    firstTime?: number;
+    lastTime?: number;
     firstIndex: number;
     lastIndex: number;
     priceHigh: number;
@@ -179,6 +185,7 @@ export interface PanelState {
   liquidityVacuumOpacity: number;
   liquidityVacuumMaxZones: number;
   liquidityVacuumZones: LiquidityVacuumZone[];
+  indicatorLabelsCollapsed: boolean;
   // Volume Profile Visuals
   profileWidthPct: number;
   defaultProfileEnabled: boolean;
@@ -370,6 +377,7 @@ interface ChartState {
   setSidebarCollapsed: (collapsed: boolean) => void;
   setFocusMode: (focusMode: boolean) => void;
   setSettingsDropdownHeight: (height: number) => void;
+  setIndicatorLabelsCollapsed: (panelId: PanelId, collapsed: boolean) => void;
   openIndicatorSettings: (panelId: PanelId, section: IndicatorSettingsSection) => void;
   setCrosshair: (crosshair: GlobalCrosshair) => void;
   setCrosshairSyncEnabled: (enabled: boolean) => void;
@@ -435,6 +443,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     liquidityVacuumOpacity: 0.18,
     liquidityVacuumMaxZones: 6,
     liquidityVacuumZones: [],
+    indicatorLabelsCollapsed: false,
     profileWidthPct: 70,
     defaultProfileEnabled: true,
     profileResolutionTicks: getMinimumFineProfileResolutionTicks(0.5),
@@ -1074,6 +1083,8 @@ export const useChartStore = create<ChartState>()(
       setFocusMode: (focusMode) => set({ focusMode }),
       setSettingsDropdownHeight: (settingsDropdownHeight) =>
         set({ settingsDropdownHeight: Math.max(350, Math.min(900, Math.round(settingsDropdownHeight))) }),
+      setIndicatorLabelsCollapsed: (panelId, indicatorLabelsCollapsed) =>
+        set((state) => updatePanel(state, panelId, { indicatorLabelsCollapsed })),
       openIndicatorSettings: (panelId, section) =>
         set((state) => ({
           activePanel: panelId,
@@ -1104,7 +1115,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 29,
+      version: 31,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -1173,6 +1184,7 @@ export const useChartStore = create<ChartState>()(
             liquidityVacuumOpacity: Math.max(0.05, Math.min(0.5, p.liquidityVacuumOpacity ?? 0.18)),
             liquidityVacuumMaxZones: Math.max(1, Math.min(20, p.liquidityVacuumMaxZones ?? 6)),
             liquidityVacuumZones: [],
+            indicatorLabelsCollapsed: p.indicatorLabelsCollapsed ?? persisted.indicatorLabelsCollapsed ?? false,
             profileWidthPct: p.profileWidthPct ?? 70,
             defaultProfileEnabled: p.defaultProfileEnabled ?? true,
             profileResolutionTicks: clampProfileResolutionTicks(p.profileResolutionTicks, tickSize),
@@ -1230,6 +1242,7 @@ export const useChartStore = create<ChartState>()(
           if (persisted.panels.right) persisted.panels.right = ensurePanel(persisted.panels.right);
         }
         persisted.settingsDropdownHeight = Math.max(350, Math.min(900, persisted.settingsDropdownHeight ?? 500));
+        delete persisted.indicatorLabelsCollapsed;
         return persisted;
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1317,6 +1330,7 @@ export const useChartStore = create<ChartState>()(
             liquidityVacuumShowLabels: state.panels.left.liquidityVacuumShowLabels,
             liquidityVacuumOpacity: state.panels.left.liquidityVacuumOpacity,
             liquidityVacuumMaxZones: state.panels.left.liquidityVacuumMaxZones,
+            indicatorLabelsCollapsed: state.panels.left.indicatorLabelsCollapsed,
             profileWidthPct: state.panels.left.profileWidthPct,
             defaultProfileEnabled: state.panels.left.defaultProfileEnabled,
             profileResolutionTicks: state.panels.left.profileResolutionTicks,
@@ -1404,6 +1418,7 @@ export const useChartStore = create<ChartState>()(
             liquidityVacuumShowLabels: state.panels.right.liquidityVacuumShowLabels,
             liquidityVacuumOpacity: state.panels.right.liquidityVacuumOpacity,
             liquidityVacuumMaxZones: state.panels.right.liquidityVacuumMaxZones,
+            indicatorLabelsCollapsed: state.panels.right.indicatorLabelsCollapsed,
             profileWidthPct: state.panels.right.profileWidthPct,
             defaultProfileEnabled: state.panels.right.defaultProfileEnabled,
             profileResolutionTicks: state.panels.right.profileResolutionTicks,

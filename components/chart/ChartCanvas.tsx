@@ -44,6 +44,76 @@ import { MIN_FINE_PROFILE_BASE_BUCKET_SIZE } from '@/lib/config/markets';
 
 type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
 type DrawingHitZone = 'hover' | 'move' | 'delete' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
+type CustomProfileRange = NonNullable<PanelState['customProfileRange']>;
+
+function findExactTimeIndex(time: number, candles: Candle[]) {
+  let left = 0;
+  let right = candles.length - 1;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const midTime = candles[mid].time;
+    if (midTime === time) return mid;
+    if (midTime < time) left = mid + 1;
+    else right = mid - 1;
+  }
+
+  return null;
+}
+
+function resolveIndexFromTimeOrFallback(time: number | undefined, fallbackIndex: number | undefined, candles: Candle[]) {
+  if (time !== undefined) {
+    return findExactTimeIndex(time, candles);
+  }
+  if (fallbackIndex === undefined || candles.length === 0) return null;
+  if (fallbackIndex < 0 || fallbackIndex > candles.length - 1) return null;
+  return fallbackIndex;
+}
+
+function candleTimeAt(index: number | null, candles: Candle[]) {
+  return index !== null ? candles[index]?.time : undefined;
+}
+
+function resolveLineForRender(line: DrawnLine, candles: Candle[]): DrawnLine | null {
+  if (line.type === 'horizontal') return line;
+
+  if (line.type === 'vertical') {
+    const index = resolveIndexFromTimeOrFallback(line.time, line.value, candles);
+    return index === null ? null : { ...line, value: index };
+  }
+
+  if (line.type === 'horizontal-ray') {
+    const startIndex = resolveIndexFromTimeOrFallback(line.startTime, line.startIndex, candles);
+    return startIndex === null ? null : { ...line, startIndex };
+  }
+
+  if (line.type === 'box') {
+    const firstIndex = resolveIndexFromTimeOrFallback(line.firstTime, line.firstIndex, candles);
+    const lastIndex = resolveIndexFromTimeOrFallback(line.lastTime, line.lastIndex, candles);
+    if (firstIndex === null || lastIndex === null) return null;
+    return { ...line, firstIndex, lastIndex };
+  }
+
+  return line;
+}
+
+function resolveCustomProfileRange(range: PanelState['customProfileRange'], candles: Candle[]): CustomProfileRange | null {
+  if (!range) return null;
+  const firstIndex = resolveIndexFromTimeOrFallback(range.firstTime, range.firstIndex, candles);
+  const lastIndex = resolveIndexFromTimeOrFallback(range.lastTime, range.lastIndex, candles);
+  if (firstIndex === null || lastIndex === null) return null;
+  return { ...range, firstIndex, lastIndex };
+}
+
+function getCustomProfileTimeBounds(range: CustomProfileRange, candles: Candle[]) {
+  const firstTime = range.firstTime ?? candles[range.firstIndex]?.time;
+  const lastTime = range.lastTime ?? candles[range.lastIndex]?.time;
+  if (firstTime === undefined || lastTime === undefined) return null;
+  return {
+    startTime: Math.min(firstTime, lastTime),
+    endTime: Math.max(firstTime, lastTime),
+  };
+}
 
 function getDrawingHitZone(
   line: DrawnLine,
@@ -181,6 +251,8 @@ interface ChartCanvasProps {
   bubbleSide: BubbleSide;
   isDrawMode: boolean;
   customProfileRange: {
+    firstTime?: number;
+    lastTime?: number;
     firstIndex: number;
     lastIndex: number;
     priceHigh: number;
@@ -411,10 +483,14 @@ export function ChartCanvas({
       const pRange = priceRange.current;
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
+      const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
+      const resolvedDrawnLines = drawnLines
+        .map((line) => resolveLineForRender(line, candles))
+        .filter((line): line is DrawnLine => line !== null);
       const localProfileHitZone =
         isMouseOver.current && mouseX.current !== null && mouseY.current !== null
           ? getCustomProfileHitZone(
-              customProfileRange,
+              resolvedCustomProfileRange,
               mouseX.current,
               mouseY.current,
               candles.length,
@@ -443,7 +519,7 @@ export function ChartCanvas({
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
       const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
 
-      drawLines(ctx, drawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, hoveredLineId.current, isHoveringDeleteDot.current);
+      drawLines(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, hoveredLineId.current, isHoveringDeleteDot.current);
 
       drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
@@ -506,7 +582,7 @@ export function ChartCanvas({
         ctx,
         isDrawMode ? dragStart.current : null,
         isDrawMode ? dragEnd.current : null,
-        customProfileRange,
+        resolvedCustomProfileRange,
         (idx) => indexToX(idx),
         (p) => priceToY(p),
         currentBarWidth
@@ -552,17 +628,18 @@ export function ChartCanvas({
       }
 
       // 6. Custom Profile (on top of candles and other overlays)
-      if (customProfileRange) {
-        const customFirstIndex = Math.min(customProfileRange.firstIndex, customProfileRange.lastIndex);
-        const customLastIndex = Math.max(customProfileRange.firstIndex, customProfileRange.lastIndex);
-        const customCandles = candles.slice(customFirstIndex, customLastIndex + 1);
-        const customStartTime = customCandles[0]?.time ?? null;
-        const customEndTime = customCandles[customCandles.length - 1]?.time ?? null;
+      if (resolvedCustomProfileRange) {
+        const customTimeBounds = getCustomProfileTimeBounds(resolvedCustomProfileRange, candles);
+        const customCandles = customTimeBounds
+          ? candles.filter((candle) => candle.time >= customTimeBounds.startTime && candle.time <= customTimeBounds.endTime)
+          : [];
+        const customStartTime = customTimeBounds?.startTime ?? null;
+        const customEndTime = customTimeBounds?.endTime ?? null;
         const customProfile = volumeProfileEngine.buildProfile({
           candles: customCandles,
           profileBucketSize,
-          priceHigh: customProfileRange.priceHigh,
-          priceLow: customProfileRange.priceLow,
+          priceHigh: resolvedCustomProfileRange.priceHigh,
+          priceLow: resolvedCustomProfileRange.priceLow,
           debugContext: {
             label: 'selected-custom-profile-render',
             panelId,
@@ -572,7 +649,7 @@ export function ChartCanvas({
         });
         drawCustomProfile(
           ctx,
-          customProfileRange,
+          resolvedCustomProfileRange,
           customProfile,
           indexToX,
           priceToY,
@@ -594,8 +671,8 @@ export function ChartCanvas({
         );
 
         if (profileShowDelta && customProfile) {
-          const customX1 = indexToX(customProfileRange.firstIndex) - currentBarWidth / 2;
-          const customX2 = indexToX(customProfileRange.lastIndex) + currentBarWidth / 2;
+          const customX1 = indexToX(resolvedCustomProfileRange.firstIndex) - currentBarWidth / 2;
+          const customX2 = indexToX(resolvedCustomProfileRange.lastIndex) + currentBarWidth / 2;
           const customRectX = Math.min(customX1, customX2);
 
           drawDeltaProfile(
@@ -636,7 +713,7 @@ export function ChartCanvas({
           baseProfileWidth, 
           priceAxisWidth, 
           bucketSize, 
-          !!customProfileRange,
+          !!resolvedCustomProfileRange,
           profileWidthPct,
           profileOpacity,
           profileMinRowWidth,
@@ -701,7 +778,7 @@ export function ChartCanvas({
       }
 
       drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight);
-      drawDrawingPriceLabels(ctx, drawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth);
+      drawDrawingPriceLabels(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth);
       if (showTimeAxis) {
         drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
       }
@@ -815,8 +892,9 @@ export function ChartCanvas({
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
+        const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
         const profileHitZone = getCustomProfileHitZone(
-          customProfileRange,
+          resolvedCustomProfileRange,
           x,
           y,
           candles.length,
@@ -854,8 +932,9 @@ export function ChartCanvas({
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
+      const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
       const profileHitZone = getCustomProfileHitZone(
-        customProfileRange,
+        resolvedCustomProfileRange,
         x,
         y,
         candles.length,
@@ -991,6 +1070,8 @@ export function ChartCanvas({
   // Controls overlay positioning
   const customProfileControls = useMemo(() => {
     if (!customProfileRange || containerSize.width === 0) return null;
+    const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
+    if (!resolvedCustomProfileRange) return null;
 
     const chartWidth = containerSize.width - priceAxisWidth;
     const chartHeight = containerSize.height - timeAxisHeight;
@@ -1000,7 +1081,7 @@ export function ChartCanvas({
     const priceMin = pCenter - pRange / 2;
     const priceMax = pCenter + pRange / 2;
 
-    const { lastIndex, priceHigh } = customProfileRange;
+    const { lastIndex, priceHigh } = resolvedCustomProfileRange;
     const x2 = calcIndexToX(lastIndex, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
     const y1 = calcPriceToY(priceHigh, priceMin, priceMax, chartHeight);
     const overlayWidth = 76;
@@ -1009,7 +1090,7 @@ export function ChartCanvas({
       top: Math.max(4, Math.min(chartHeight - 34, y1 - 32)),
       left: Math.max(4, Math.min(chartWidth - overlayWidth - 4, x2 + barWidth.current / 2 - overlayWidth / 2)),
     };
-  }, [customProfileRange, containerSize, candles.length, priceAxisWidth, timeAxisHeight, profileWidth, scrollOffset, barWidth, priceCenter, priceRange]);
+  }, [customProfileRange, containerSize, candles, priceAxisWidth, timeAxisHeight, profileWidth, scrollOffset, barWidth, priceCenter, priceRange]);
 
   // Drawing Interaction Logic
   useEffect(() => {
@@ -1061,10 +1142,10 @@ export function ChartCanvas({
           const priceMax = pCenter + pRange / 2;
           const price = yToPrice(y, priceMin, priceMax, chartHeight);
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal-ray', value: price, startIndex: index });
+          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal-ray', value: price, startIndex: index, startTime: candles[index]?.time });
         } else if (lineDrawMode === 'vertical') {
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'vertical', value: index });
+          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'vertical', value: index, time: candles[index]?.time });
         } else if (lineDrawMode === 'box') {
           dragStart.current = { x, y };
           dragEnd.current = { x, y };
@@ -1108,8 +1189,9 @@ export function ChartCanvas({
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
       const currentPanel = useChartStore.getState().panels[panelId];
+      const resolvedCurrentProfileRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
       const profileHitZone = getCustomProfileHitZone(
-        currentPanel.customProfileRange,
+        resolvedCurrentProfileRange,
         x,
         y,
         candles.length,
@@ -1127,7 +1209,7 @@ export function ChartCanvas({
 
       if (profileHitZone && !currentPanel.customProfileLocked) {
         dragAnchor.current = { x, y };
-        profileSnapshot.current = currentPanel.customProfileRange;
+        profileSnapshot.current = resolvedCurrentProfileRange;
 
         if (profileHitZone === 'move') {
           isDraggingProfile.current = true;
@@ -1191,9 +1273,10 @@ export function ChartCanvas({
             const pRange = priceRange.current ?? 100;
             const priceMin = pCenter - pRange / 2;
             const priceMax = pCenter + pRange / 2;
+            const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
 
             hoverZone.current = getCustomProfileHitZone(
-              customProfileRange,
+              resolvedCustomProfileRange,
               x,
               y,
               candles.length,
@@ -1236,7 +1319,11 @@ export function ChartCanvas({
             const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
             const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
-            for (const line of drawnLines) {
+            const resolvedDrawnLines = drawnLines
+              .map((line) => resolveLineForRender(line, candles))
+              .filter((line): line is DrawnLine => line !== null);
+
+            for (const line of resolvedDrawnLines) {
               const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current);
               if (hitZone) {
                 hoveredLineId.current = line.id;
@@ -1412,16 +1499,21 @@ export function ChartCanvas({
           const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
           const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
           const priceDelta = priceAtCurrent - priceAtAnchor;
+          const baseStartIndex = resolveIndexFromTimeOrFallback(snapshot.startTime, snapshot.startIndex, candles);
 
           if (zone === 'resize-left') {
+            const startIndex = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
             useChartStore.getState().updateLine(panelId, snapshot.id, {
-              startIndex: xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth),
+              startIndex,
+              startTime: candles[startIndex]?.time,
               value: priceAtCurrent,
             });
-          } else if (zone === 'move') {
+          } else if (zone === 'move' && baseStartIndex !== null) {
             const indexDelta = Math.round((x - dragAnchor.current.x) / barWidth.current);
+            const startIndex = Math.max(0, Math.min(candles.length - 1, baseStartIndex + indexDelta));
             useChartStore.getState().updateLine(panelId, snapshot.id, {
-              startIndex: (snapshot.startIndex ?? 0) + indexDelta,
+              startIndex,
+              startTime: candles[startIndex]?.time,
               value: snapshot.value + priceDelta,
             });
           }
@@ -1434,22 +1526,32 @@ export function ChartCanvas({
           snapshot.priceLow !== undefined
         ) {
           const updates: Partial<DrawnLine> = {};
+          const baseFirstIndex = resolveIndexFromTimeOrFallback(snapshot.firstTime, snapshot.firstIndex, candles);
+          const baseLastIndex = resolveIndexFromTimeOrFallback(snapshot.lastTime, snapshot.lastIndex, candles);
+          if (baseFirstIndex === null || baseLastIndex === null) {
+            redraw();
+            return;
+          }
 
           if (zone === 'move') {
             const indexDelta = Math.round((x - dragAnchor.current.x) / barWidth.current);
             const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
             const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
             const priceDelta = priceAtCurrent - priceAtAnchor;
-            updates.firstIndex = Math.max(0, Math.min(candles.length - 1, snapshot.firstIndex + indexDelta));
-            updates.lastIndex = Math.max(0, Math.min(candles.length - 1, snapshot.lastIndex + indexDelta));
+            updates.firstIndex = Math.max(0, Math.min(candles.length - 1, baseFirstIndex + indexDelta));
+            updates.lastIndex = Math.max(0, Math.min(candles.length - 1, baseLastIndex + indexDelta));
+            updates.firstTime = candles[updates.firstIndex]?.time;
+            updates.lastTime = candles[updates.lastIndex]?.time;
             updates.priceHigh = snapshot.priceHigh + priceDelta;
             updates.priceLow = snapshot.priceLow + priceDelta;
           } else if (zone === 'resize-left' || zone === 'resize-right') {
             const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
             if (zone === 'resize-left') {
-              updates.firstIndex = Math.min(index, snapshot.lastIndex - 1);
+              updates.firstIndex = Math.min(index, baseLastIndex - 1);
+              updates.firstTime = candleTimeAt(updates.firstIndex, candles);
             } else {
-              updates.lastIndex = Math.max(index, snapshot.firstIndex + 1);
+              updates.lastIndex = Math.max(index, baseFirstIndex + 1);
+              updates.lastTime = candleTimeAt(updates.lastIndex, candles);
             }
           } else if (zone === 'resize-top' || zone === 'resize-bottom') {
             const price = yToPrice(y, priceMin, priceMax, chartHeight);
@@ -1468,6 +1570,12 @@ export function ChartCanvas({
 
         const currentBarWidth = barWidth.current;
         const indexDelta = Math.round(deltaX / currentBarWidth);
+        const baseFirstIndex = resolveIndexFromTimeOrFallback(profileSnapshot.current.firstTime, profileSnapshot.current.firstIndex, candles);
+        const baseLastIndex = resolveIndexFromTimeOrFallback(profileSnapshot.current.lastTime, profileSnapshot.current.lastIndex, candles);
+        if (baseFirstIndex === null || baseLastIndex === null) {
+          redraw();
+          return;
+        }
 
         const chartHeight = rect.height - timeAxisHeight;
         const pCenter = priceCenter.current ?? 0;
@@ -1480,13 +1588,18 @@ export function ChartCanvas({
         const priceDelta = priceAtCurrent - priceAtAnchor;
 
         const newRange = {
-          firstIndex: Math.max(0, Math.min(candles.length - 1, profileSnapshot.current.firstIndex + indexDelta)),
-          lastIndex: Math.max(0, Math.min(candles.length - 1, profileSnapshot.current.lastIndex + indexDelta)),
+          firstIndex: Math.max(0, Math.min(candles.length - 1, baseFirstIndex + indexDelta)),
+          lastIndex: Math.max(0, Math.min(candles.length - 1, baseLastIndex + indexDelta)),
           priceHigh: profileSnapshot.current.priceHigh + priceDelta,
           priceLow: profileSnapshot.current.priceLow + priceDelta,
         };
+        const nextRange = {
+          ...newRange,
+          firstTime: candles[newRange.firstIndex]?.time,
+          lastTime: candles[newRange.lastIndex]?.time,
+        };
 
-        useChartStore.getState().setCustomProfileRange(panelId, newRange);
+        useChartStore.getState().setCustomProfileRange(panelId, nextRange);
         redraw();
       } else if (isDraggingResize.current && dragAnchor.current && profileSnapshot.current) {
         const chartWidth = rect.width - priceAxisWidth;
@@ -1497,13 +1610,21 @@ export function ChartCanvas({
         const priceMax = pCenter + pRange / 2;
 
         const updatedRange = { ...profileSnapshot.current };
+        const baseFirstIndex = resolveIndexFromTimeOrFallback(profileSnapshot.current.firstTime, profileSnapshot.current.firstIndex, candles);
+        const baseLastIndex = resolveIndexFromTimeOrFallback(profileSnapshot.current.lastTime, profileSnapshot.current.lastIndex, candles);
+        if (baseFirstIndex === null || baseLastIndex === null) {
+          redraw();
+          return;
+        }
 
         if (resizeEdge.current === 'left' || resizeEdge.current === 'right') {
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
           if (resizeEdge.current === 'left') {
-            updatedRange.firstIndex = Math.min(index, profileSnapshot.current.lastIndex - 2);
+            updatedRange.firstIndex = Math.min(index, baseLastIndex - 2);
+            updatedRange.firstTime = candleTimeAt(updatedRange.firstIndex, candles);
           } else {
-            updatedRange.lastIndex = Math.max(index, profileSnapshot.current.firstIndex + 2);
+            updatedRange.lastIndex = Math.max(index, baseFirstIndex + 2);
+            updatedRange.lastTime = candleTimeAt(updatedRange.lastIndex, candles);
           }
         } else {
           const price = yToPrice(y, priceMin, priceMax, chartHeight);
@@ -1611,6 +1732,8 @@ export function ChartCanvas({
             value: priceHigh,
             firstIndex,
             lastIndex,
+            firstTime: candles[firstIndex]?.time,
+            lastTime: candles[lastIndex]?.time,
             priceHigh,
             priceLow,
           });
@@ -1663,6 +1786,8 @@ export function ChartCanvas({
           useChartStore.getState().setCustomProfileRange(panelId, {
             firstIndex,
             lastIndex,
+            firstTime: candles[firstIndex]?.time,
+            lastTime: candles[lastIndex]?.time,
             priceHigh,
             priceLow
           });

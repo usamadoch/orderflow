@@ -72,11 +72,11 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 ### Layout / UI Components
 
 - `components/layout/Header.tsx` → Top toolbar, layout controls, connection/settings access, outside-click-managed settings dropdown toggle, and indicator-label settings open requests.
-- `components/layout/Sidebar.tsx` → Active panel settings, market/session stats, and signal summaries.
+- `components/layout/Sidebar.tsx` → Thin fixed tools sidebar with active-panel context and compact chart/tool status icons.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection indicator.
-- `components/ui/PanelToolbar.tsx` → Per-panel controls for pair, timeframe, chart mode, liquidity quick toggle, and whole-layout focus toggle.
+- `components/ui/PanelToolbar.tsx` → Per-panel controls for pair, timeframe, chart mode, and whole-layout focus toggle.
 - `components/ui/DrawingFavoritesToolbar.tsx` → Draggable panel-bounded icon-only floating toolbar for Profile, Measure, and favorite line/box drawing tool selection using existing drawing state.
-- `components/ui/ChartSettingsDropdown.tsx` → Draggable, resizable wider settings window with persisted height, internal scrolling, dedicated Indicators tab for sessions/CVD/bubbles/Volume Profile with direct section focus, compact signal toggles/settings, single/combined liquidity depth source, real orderbook heatmap visual controls, responsive label visibility/detail/min-quantity controls, and related controls.
+- `components/ui/ChartSettingsDropdown.tsx` → Draggable, resizable wider settings window with persisted height, internal scrolling, chart aggregation/global tick-size controls, dedicated Indicators tab for sessions/CVD/bubbles/Volume Profile/heatmap/liquidity map with direct section focus, compact signal toggles/settings, single/combined liquidity depth source, real orderbook heatmap visual controls, responsive label visibility/detail/min-quantity controls, and related controls.
 - `components/ui/PairSelector.tsx` → Panel-scoped pair switcher.
 - `components/ui/TimeframeSelector.tsx` → Panel-scoped timeframe switcher.
 - `components/ui/ChartModeToggle.tsx` → Candle/footprint mode toggle.
@@ -90,8 +90,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 ### Chart Rendering
 
 - `components/chart/ChartPanel.tsx` → Panel state bridge from Zustand/context into chart, indicator labels, and CVD canvases, including orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
-- `components/chart/IndicatorLabels.tsx` → TradingView-style top-left chart indicator labels for Bubbles, CVD, Sessions, and VOP with a compact collapsible text-first layout, smaller icon/text sizing, darker hover reveal, per-panel eye toggles, and settings-section jump buttons.
-- `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order, hit-testing, drawing placement, custom profile interactions, render metrics, and visible footprint/profile/CVD wiring.
+- `components/chart/IndicatorLabels.tsx` → TradingView-style top-left chart indicator labels for Bubbles, CVD, Sessions, VOP, Heatmap, and Liquidity with per-panel persisted collapse state, compact text-first layout, per-panel eye toggles, and settings-section jump buttons.
+- `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order, hit-testing, time-anchored drawing placement, custom profile interactions, render metrics, and visible footprint/profile/CVD wiring.
 - `components/chart/CvdPanel.tsx` → Attached CVD canvas with synced horizontal geometry, vertical scaling, memoized CVD series/divergence, and render metrics.
 - `components/chart/useCoordinates.ts` → Coordinate math for price/time/index mapping, visible range, and drawable width.
 - `components/chart/usePanZoom.ts` → Shared pan/zoom hook with anchored zoom, drag handling, crosshair interaction, and sibling canvas sync.
@@ -125,7 +125,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Zustand panel state, persisted settings, candles, drawing tools/overlays, draggable drawing toolbar positions, signals, sessions, CVD, profiles, real orderbook heatmap visual/window/responsive-label controls, contract/trade/single-or-combined depth source modes, plus global focus-mode, settings-window UI state, and transient indicator settings open requests.
+- `lib/store/chart.ts` → Zustand panel state, persisted settings, candles, time-anchored drawing tools/overlays, draggable drawing toolbar positions, signals, sessions, CVD, profiles, per-panel indicator-label collapse state, real orderbook heatmap visual/window/responsive-label controls, contract/trade/single-or-combined depth source modes, plus global focus-mode, settings-window UI state, and transient indicator settings open requests.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcuts for chart modes, tools, sessions, liquidity, signal toggles, focus mode, and active panel targeting.
 
 ### Feeds / Shared Live Data
@@ -219,6 +219,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `artifacts/rendering_performance_audit.md` → Audit of canvas redraw triggers, throttling, visible-range work, expensive layers, React render risks, and recommended fixes.
 - `artifacts/liquidity_heatmap_audit.md` → Audit of the spot-only liquidity/orderbook path, far-level zone selection, right-side heatmap strip, root causes, and rebuild plan.
 - `artifacts/volume_profile_rendering_audit.md` -> Audit of custom/default Volume Profile row sizing, normalization, clamping, POC/VA/LVN behavior, visual noise causes, and fix order.
+- `artifacts/drawing_anchor_shift_audit.md` -> Audit of drawing/custom profile candle-index anchoring, rolling-window drift root cause, and timestamp-anchor fix direction.
 - `artifacts/collector_persistence_audit.md` -> Audit of current website-side footprint and fine Volume Profile persistence flow for future collector migration.
 - `artifacts/node_collector_design.md` -> Design for a standalone Node.js collector that persists canonical footprint and fine Volume Profile rows to MongoDB.
 - `skills/map.md` → Compact source-of-truth file responsibility map. Update existing lines only; do not append chronological task history.
