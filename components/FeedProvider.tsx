@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useChartStore, PanelId } from '../lib/store/chart';
+import { useChartStore, PanelId, type HistoryRestoreStatus } from '../lib/store/chart';
 import {
   AggregationEngine,
   BASE_FOOTPRINT_BUCKET_SIZE,
@@ -248,6 +248,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const setConnected = useChartStore(s => s.setConnected);
   const pushAllCandles = useChartStore(s => s.pushAllCandles);
   const setLoadingHistory = useChartStore(s => s.setLoadingHistory);
+  const setHistoryRestoreStatus = useChartStore(s => s.setHistoryRestoreStatus);
   const triggerFootprintRedraw = useChartStore(s => s.triggerFootprintRedraw);
   const setComputedBucketSize = useChartStore(s => s.setComputedBucketSize);
   const setAbsorptionMap = useChartStore(s => s.setAbsorptionMap);
@@ -479,11 +480,32 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const shouldHydrateStoredFineProfiles = true;
     const shouldHydrateRawTrades = contractType === 'spot' && dataSourceMode === 'spot';
     const fineProfileStorageTimeframe = FINE_PROFILE_STORAGE_TIMEFRAME;
+    const restoreStartedAt = Date.now();
     const candleCache = getSharedCandleCache({
       symbol: pair,
       contractType,
       timeframe,
     });
+
+    const publishRestoreStatus = (status: Partial<HistoryRestoreStatus> & Pick<HistoryRestoreStatus, 'stage' | 'message'>) => {
+      if (!active) return;
+
+      setHistoryRestoreStatus(panelId, {
+        startedAt: restoreStartedAt,
+        updatedAt: Date.now(),
+        liveConnected: connectedRef.current,
+        candleCount: 0,
+        storedCandleCount: 0,
+        binanceCandleCount: 0,
+        profileRowCount: 0,
+        profileCandleCount: 0,
+        footprintRowCount: 0,
+        footprintCellCount: 0,
+        footprintCandleCount: 0,
+        rawTradeCount: 0,
+        ...status,
+      });
+    };
 
     const getFirstFullyCoveredCandleTime = () => {
       const coverageTimes = activeTradeSources.map((source) => firstFullyCoveredCandleTimeRef.current[source]);
@@ -535,6 +557,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (connectedRef.current) return;
       connectedRef.current = true;
       setConnected(panelId, true);
+
+      const currentStatus = useChartStore.getState().panels[panelId].historyRestoreStatus;
+      if (currentStatus && currentStatus.stage !== 'complete' && currentStatus.stage !== 'error') {
+        setHistoryRestoreStatus(panelId, {
+          ...currentStatus,
+          liveConnected: true,
+          updatedAt: Date.now(),
+        });
+      }
     };
 
     const recomputeSignalState = () => {
@@ -1498,6 +1529,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     const init = async () => {
       try {
+        publishRestoreStatus({
+          stage: 'connecting',
+          message: 'Connecting live feed...',
+        });
         console.log(`[PanelFeed:${panelId}] Connecting ${contractType} candles and ${dataSourceMode} aggTrades for ${pair} ${timeframe}...`);
         feedUnsubscribers.push(candleCache.subscribe((snapshot) => {
           if (!active) return;
@@ -1542,6 +1577,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
 
         setLoadingHistory(panelId, true);
+        publishRestoreStatus({
+          stage: 'candles',
+          message: 'Restoring candles...',
+        });
         console.log(`[PanelFeed:${panelId}] Restoring stored history for ${pair} ${timeframe} in background...`);
         const historyResult: CandleHistoryRestoreResult = await candleCache.restoreHistory(async () => {
           let restoredHistory: Candle[] = [];
@@ -1551,10 +1590,23 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
           if (shouldUseStoredHistory) {
             try {
+              publishRestoreStatus({
+                stage: 'candles',
+                message: 'Restoring candles from storage...',
+              });
               storedHistory = await fetchStoredHistory();
               if (storedHistory.length > 0) {
                 restoredHistory = storedHistory;
                 source = 'stored';
+                pushAllCandles(panelId, storedHistory);
+                publishRestoreStatus({
+                  stage: 'candles',
+                  message: `Restored ${storedHistory.length} stored candles`,
+                  candleCount: storedHistory.length,
+                  storedCandleCount: storedHistory.length,
+                  source,
+                });
+                await yieldToBrowser();
               }
             } catch (err) {
               console.warn('[History] Could not load stored candles:', err);
@@ -1562,6 +1614,13 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           }
 
           console.log(`[PanelFeed:${panelId}] Fetching Binance ${contractType} history for ${pair} ${timeframe} in background...`);
+          publishRestoreStatus({
+            stage: 'candles',
+            message: storedHistory.length > 0 ? 'Merging exchange candles...' : 'Fetching recent exchange candles...',
+            candleCount: restoredHistory.length,
+            storedCandleCount: storedHistory.length,
+            source,
+          });
           try {
             binanceHistory = await fetchSharedHistory(contractType, pair, timeframe);
           } catch (err) {
@@ -1571,6 +1630,16 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           if (binanceHistory.length > 0) {
             restoredHistory = mergeHistoryCandles(restoredHistory, binanceHistory);
             source = storedHistory.length > 0 ? 'stored+Binance' : 'Binance';
+            pushAllCandles(panelId, restoredHistory);
+            publishRestoreStatus({
+              stage: 'candles',
+              message: `Restored ${restoredHistory.length} candles`,
+              candleCount: restoredHistory.length,
+              storedCandleCount: storedHistory.length,
+              binanceCandleCount: binanceHistory.length,
+              source,
+            });
+            await yieldToBrowser();
           }
 
           return {
@@ -1582,6 +1651,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         });
         const history = historyResult.candles;
         const historySource = historyResult.source;
+        publishRestoreStatus({
+          stage: 'candles',
+          message: `Restored ${history.length} candles`,
+          candleCount: history.length,
+          storedCandleCount: historyResult.storedCandles ?? 0,
+          binanceCandleCount: historyResult.binanceCandles ?? 0,
+          source: historySource,
+        });
         console.log(`[CANDLE_CACHE_VERIFY:${panelId}] restore result`, {
           candleCacheKey: candleCache.key,
           pair,
@@ -1621,9 +1698,27 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           }
 
           history.forEach(c => engineRef.current.ingestCandle(c));
+          publishRestoreStatus({
+            stage: 'volumeProfile',
+            message: 'Restoring Volume Profile...',
+            candleCount: history.length,
+            storedCandleCount: historyResult.storedCandles ?? 0,
+            binanceCandleCount: historyResult.binanceCandles ?? 0,
+            source: historySource,
+          });
           const fineProfileStats = shouldHydrateStoredFineProfiles
             ? await hydrateStoredFineProfileRows(history)
             : { rowsFetched: 0, candlesHydrated: 0 };
+          publishRestoreStatus({
+            stage: shouldHydrateRawTrades ? 'rawTrades' : 'footprint',
+            message: shouldHydrateRawTrades ? 'Restoring raw trades...' : 'Restoring footprint...',
+            candleCount: history.length,
+            storedCandleCount: historyResult.storedCandles ?? 0,
+            binanceCandleCount: historyResult.binanceCandles ?? 0,
+            profileRowCount: fineProfileStats.rowsFetched,
+            profileCandleCount: fineProfileStats.candlesHydrated,
+            source: historySource,
+          });
           const rawStats = shouldHydrateRawTrades
             ? await hydrateStoredRawTrades(history)
             : {
@@ -1635,6 +1730,17 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               reachedStart: false,
               hydratedCandleTimes: new Set<number>(),
             };
+          publishRestoreStatus({
+            stage: 'footprint',
+            message: 'Restoring footprint...',
+            candleCount: history.length,
+            storedCandleCount: historyResult.storedCandles ?? 0,
+            binanceCandleCount: historyResult.binanceCandles ?? 0,
+            profileRowCount: fineProfileStats.rowsFetched,
+            profileCandleCount: fineProfileStats.candlesHydrated,
+            rawTradeCount: rawStats.hydrated,
+            source: historySource,
+          });
           const footprintStats = shouldHydrateStoredFootprints
             ? await hydrateStoredFootprints(history)
             : {
@@ -1644,6 +1750,20 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               bucketMatches: 0,
               bucketMisses: 0,
             };
+          publishRestoreStatus({
+            stage: 'footprint',
+            message: `Restored ${footprintStats.rowsFetched} footprint rows`,
+            candleCount: history.length,
+            storedCandleCount: historyResult.storedCandles ?? 0,
+            binanceCandleCount: historyResult.binanceCandles ?? 0,
+            profileRowCount: fineProfileStats.rowsFetched,
+            profileCandleCount: fineProfileStats.candlesHydrated,
+            rawTradeCount: rawStats.hydrated,
+            footprintRowCount: footprintStats.rowsFetched,
+            footprintCellCount: footprintStats.cellsHydrated,
+            footprintCandleCount: footprintStats.candlesHydrated,
+            source: historySource,
+          });
           if (!active) return;
 
           recomputeSignalState();
@@ -1706,10 +1826,31 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
 
         console.log(`[PanelFeed:${panelId}] ${historySource} history merged (${history.length} candles). Live streams already running.`);
+        const latestRestoreStatus = useChartStore.getState().panels[panelId].historyRestoreStatus;
+        publishRestoreStatus({
+          stage: 'complete',
+          message: `Restored ${history.length} candles`,
+          candleCount: history.length,
+          storedCandleCount: historyResult.storedCandles ?? 0,
+          binanceCandleCount: historyResult.binanceCandles ?? 0,
+          profileRowCount: latestRestoreStatus?.profileRowCount ?? 0,
+          profileCandleCount: latestRestoreStatus?.profileCandleCount ?? 0,
+          rawTradeCount: latestRestoreStatus?.rawTradeCount ?? 0,
+          footprintRowCount: latestRestoreStatus?.footprintRowCount ?? 0,
+          footprintCellCount: latestRestoreStatus?.footprintCellCount ?? 0,
+          footprintCandleCount: latestRestoreStatus?.footprintCandleCount ?? 0,
+          source: historySource,
+        });
         setLoadingHistory(panelId, false);
       } catch (err) {
         console.error(`[PanelFeed:${panelId}] Initialization failed:`, err);
-        if (active) setLoadingHistory(panelId, false);
+        if (active) {
+          publishRestoreStatus({
+            stage: 'error',
+            message: 'History restore failed',
+          });
+          setLoadingHistory(panelId, false);
+        }
       }
     };
 
@@ -1798,11 +1939,13 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       obManager.reset();
       setLiquidityZones(panelId, []);
       setConnected(panelId, false);
+      setLoadingHistory(panelId, false);
+      setHistoryRestoreStatus(panelId, null);
       connectedRef.current = false;
       footprintEngine.releaseSharedBaseCache();
       volumeProfileEngine.releaseSharedBaseCache();
     };
-  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, rebuildLiquidityVacuumZones]);
+  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, rebuildLiquidityVacuumZones]);
 
   // Temporary Verification Hotkey
   useEffect(() => {

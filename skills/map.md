@@ -84,12 +84,12 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Feed / Engine Context
 
-- `components/FeedProvider.tsx` → Panel feed lifecycle, live-first streaming, background history restore, snapshot-buffered depth synchronization with gap resync, safe single/combined ready-source orderbook merging, settings-driven fixed-cadence orderbook heatmap sampling/windowing, engine/cache attachment, raw/fine/profile/footprint hydration, canonical minimum-1.5 fine profile restore/live cache promotion, source-scoped candle/raw-trade storage, default-off browser footprint/profile persistence behind `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES`, and restore/write diagnostics.
+- `components/FeedProvider.tsx` → Panel feed lifecycle, live-first streaming, progressive background history restore/status publishing, snapshot-buffered depth synchronization with gap resync, safe single/combined ready-source orderbook merging, settings-driven fixed-cadence orderbook heatmap sampling/windowing, engine/cache attachment, raw/fine/profile/footprint hydration, canonical minimum-1.5 fine profile restore/live cache promotion, source-scoped candle/raw-trade storage, default-off browser footprint/profile persistence behind `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES`, and restore/write diagnostics.
 - `components/ChartEngineContext.tsx` → React context exposing the panel aggregation engine, liquidity history, orderbook heatmap engine, fine Volume Profile source, and redraw revision wiring.
 
 ### Chart Rendering
 
-- `components/chart/ChartPanel.tsx` → Panel state bridge from Zustand/context into chart, indicator labels, and CVD canvases, including orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
+- `components/chart/ChartPanel.tsx` → Panel state bridge from Zustand/context into chart, dismissible restore-status badge, indicator labels, and CVD canvases, including orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
 - `components/chart/IndicatorLabels.tsx` → TradingView-style top-left chart indicator labels for Bubbles, CVD, Sessions, VOP, Heatmap, and Liquidity with per-panel persisted collapse state, compact text-first layout, per-panel eye toggles, and settings-section jump buttons.
 - `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order, hit-testing, time-anchored drawing placement, custom profile interactions, render metrics, and visible footprint/profile/CVD wiring.
 - `components/chart/CvdPanel.tsx` → Attached CVD canvas with synced horizontal geometry, vertical scaling, memoized CVD series/divergence, and render metrics.
@@ -125,7 +125,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Zustand panel state, persisted settings, candles, time-anchored drawing tools/overlays, draggable drawing toolbar positions, signals, sessions, CVD, profiles, per-panel indicator-label collapse state, real orderbook heatmap visual/window/responsive-label controls, contract/trade/single-or-combined depth source modes, plus global focus-mode, settings-window UI state, and transient indicator settings open requests.
+- `lib/store/chart.ts` → Zustand panel state, transient history restore status, persisted settings, candles, time-anchored drawing tools/overlays, draggable drawing toolbar positions, signals, sessions, CVD, profiles, per-panel indicator-label collapse state, real orderbook heatmap visual/window/responsive-label controls, contract/trade/single-or-combined depth source modes, plus global focus-mode, settings-window UI state, and transient indicator settings open requests.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcuts for chart modes, tools, sessions, liquidity, signal toggles, focus mode, and active panel targeting.
 
 ### Feeds / Shared Live Data

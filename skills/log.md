@@ -1,5 +1,28 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-03] - UI: Dismiss History Restore Badge
+- **What changed**:
+  - Added an icon-only close button to the chart history restore status badge.
+  - Auto-dismissed the badge a few seconds after a successful restore completes.
+- **Why it changed**:
+  - The restore status badge remained visible after restore completed and could cover chart content.
+- **Impact summary**:
+  - Restore progress remains visible while loading, but the completed status no longer stays on-screen indefinitely.
+  - No feed, storage, collector, MongoDB, market calculation, footprint/profile, heatmap, or drawing behavior changed.
+
+## [2026-06-02] - UI: History Restore Progress Status
+- **What changed**:
+  - Added transient per-panel history restore status to the chart store.
+  - Published restore stages from `FeedProvider` for connecting, candles, Volume Profile, raw trades, footprint, completion, and failure.
+  - Pushed stored candles to the panel immediately after the stored-candle request returns, before waiting for exchange merge or footprint/profile hydration.
+  - Added a compact top-right chart badge showing restore status, live-feed state, candle counts, footprint rows, and profile rows.
+- **Why it changed**:
+  - History restore could be working but look idle while larger footprint/profile windows hydrated after refresh.
+- **Impact summary**:
+  - Recent candles become visible earlier during refresh restore.
+  - Users can see which restore stage is active and whether the live feed is connected.
+  - No collector, MongoDB schema, storage write behavior, market calculations, footprint/profile math, heatmap/liquidity, or drawing tool behavior changed.
+
 ## [2026-06-02] - Fix: Time-Anchored Chart Drawings
 - **What changed**:
   - Added timestamp anchors for vertical lines, horizontal rays, boxes, and custom Volume Profile selections while keeping legacy index fields as fallback.

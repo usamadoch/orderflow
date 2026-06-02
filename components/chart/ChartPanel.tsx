@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
 import { useChartStore, PanelId } from '@/lib/store/chart';
 import { buildCvdSeries } from '@/lib/utils/delta';
 import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine } from '../ChartEngineContext';
@@ -16,6 +16,10 @@ interface ChartPanelProps {
   panelId: PanelId;
 }
 
+function formatCount(value: number) {
+  return value.toLocaleString('en-US');
+}
+
 export function ChartPanel({ panelId }: ChartPanelProps) {
   const panel = useChartStore(s => s.panels[panelId]);
   const setActivePanel = useChartStore(s => s.setActivePanel);
@@ -23,6 +27,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const setScrollOffset = useChartStore(s => s.setScrollOffset);
   const setCvdPanelHeightPct = useChartStore(s => s.setCvdPanelHeightPct);
   const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
+  const setHistoryRestoreStatus = useChartStore(s => s.setHistoryRestoreStatus);
   const tickSize = useChartStore(s => s.tickSize);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
@@ -39,6 +44,36 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
     })
     : [];
   const latestCvdValue = compactCvdPoints[compactCvdPoints.length - 1]?.close ?? 0;
+  const restoreStatus = panel.historyRestoreStatus;
+  const showRestoreStatus = restoreStatus !== null && (
+    panel.isLoadingHistory
+    || restoreStatus.stage === 'complete'
+    || restoreStatus.stage === 'error'
+  );
+  const restoreStatusTone = restoreStatus?.stage === 'error'
+    ? 'border-red-500/40 bg-red-950/80 text-red-100'
+    : restoreStatus?.stage === 'complete'
+      ? 'border-emerald-500/30 bg-[#071311]/90 text-emerald-100'
+      : 'border-accent/30 bg-[#0B1014]/90 text-main';
+  const restoreDetails = restoreStatus ? [
+    restoreStatus.liveConnected ? 'Live feed connected' : 'Live feed connecting',
+    restoreStatus.candleCount > 0 ? `${formatCount(restoreStatus.candleCount)} candles` : null,
+    restoreStatus.footprintRowCount > 0 ? `${formatCount(restoreStatus.footprintRowCount)} footprint rows` : null,
+    restoreStatus.profileRowCount > 0 ? `${formatCount(restoreStatus.profileRowCount)} profile rows` : null,
+  ].filter((detail): detail is string => Boolean(detail)) : [];
+
+  React.useEffect(() => {
+    if (restoreStatus?.stage !== 'complete') return;
+
+    const timeout = window.setTimeout(() => {
+      const currentStatus = useChartStore.getState().panels[panelId].historyRestoreStatus;
+      if (currentStatus?.updatedAt === restoreStatus.updatedAt && currentStatus.stage === 'complete') {
+        setHistoryRestoreStatus(panelId, null);
+      }
+    }, 4500);
+
+    return () => window.clearTimeout(timeout);
+  }, [panelId, restoreStatus?.stage, restoreStatus?.updatedAt, setHistoryRestoreStatus]);
 
   const startCvdResize = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -164,6 +199,42 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
           />
           <IndicatorLabels panelId={panelId} />
+          {showRestoreStatus && restoreStatus && (
+            <div
+              className={`absolute right-3 top-3 z-40 max-w-[min(360px,calc(100%-24px))] rounded-md border px-3 py-2 shadow-lg backdrop-blur ${restoreStatusTone}`}
+              title={restoreStatus.message}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {restoreStatus.stage === 'error' ? (
+                  <AlertTriangle size={14} strokeWidth={2.4} className="shrink-0 text-red-300" />
+                ) : restoreStatus.stage === 'complete' ? (
+                  <CheckCircle2 size={14} strokeWidth={2.4} className="shrink-0 text-emerald-300" />
+                ) : (
+                  <Loader2 size={14} strokeWidth={2.4} className="shrink-0 animate-spin text-accent" />
+                )}
+                <span className="truncate text-[11px] font-bold">{restoreStatus.message}</span>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setHistoryRestoreStatus(panelId, null);
+                  }}
+                  className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-white/10 text-text-dim transition-colors hover:border-white/25 hover:text-main"
+                  title="Hide restore status"
+                  aria-label="Hide restore status"
+                >
+                  <X size={12} strokeWidth={2.5} />
+                </button>
+              </div>
+              {restoreDetails.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] font-medium text-text-dim">
+                  {restoreDetails.map((detail) => (
+                    <span key={detail}>{detail}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {isCvdCompact && (
             <button
               onClick={() => setCvdMinimized(panelId, false)}

@@ -26,6 +26,25 @@ export type CvdScaleMode = 'auto' | 'fixed';
 export type ContractType = 'spot' | 'futures';
 export type DataSourceMode = 'spot' | 'futures' | 'both';
 export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeProfile' | 'heatmap' | 'liquidityMap';
+export type HistoryRestoreStage = 'idle' | 'connecting' | 'candles' | 'volumeProfile' | 'rawTrades' | 'footprint' | 'complete' | 'error';
+
+export interface HistoryRestoreStatus {
+  stage: HistoryRestoreStage;
+  message: string;
+  startedAt: number;
+  updatedAt: number;
+  source?: 'Binance' | 'stored' | 'stored+Binance' | 'cache' | 'none';
+  liveConnected: boolean;
+  candleCount: number;
+  storedCandleCount: number;
+  binanceCandleCount: number;
+  profileRowCount: number;
+  profileCandleCount: number;
+  footprintRowCount: number;
+  footprintCellCount: number;
+  footprintCandleCount: number;
+  rawTradeCount: number;
+}
 
 export interface SettingsOpenRequest {
   panelId: PanelId;
@@ -138,6 +157,7 @@ export interface PanelState {
   trades: Trade[];
   connected: boolean;
   isLoadingHistory: boolean;
+  historyRestoreStatus: HistoryRestoreStatus | null;
   contractType: ContractType;
   dataSourceMode: DataSourceMode;
   footprintTrigger: number;
@@ -271,6 +291,7 @@ interface ChartState {
   setScrollOffset: (panelId: PanelId, offset: number) => void;
   setConnected: (panelId: PanelId, connected: boolean) => void;
   setLoadingHistory: (panelId: PanelId, v: boolean) => void;
+  setHistoryRestoreStatus: (panelId: PanelId, status: HistoryRestoreStatus | null) => void;
   setContractType: (panelId: PanelId, contractType: ContractType) => void;
   setDataSourceMode: (panelId: PanelId, mode: DataSourceMode) => void;
   pushCandle: (panelId: PanelId, candle: Candle) => void;
@@ -403,6 +424,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     trades: [],
     connected: false,
     isLoadingHistory: false,
+    historyRestoreStatus: null,
     contractType: 'spot',
     dataSourceMode: 'both',
     footprintTrigger: 0,
@@ -641,7 +663,7 @@ export const useChartStore = create<ChartState>()(
 
       // Per-panel actions
       setPair: (panelId, pair) =>
-        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], icebergLevels: [], liquidityVacuumZones: [] })),
+        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], historyRestoreStatus: null, icebergLevels: [], liquidityVacuumZones: [] })),
 
       setTimeframe: (panelId, timeframe) =>
         set((state) => {
@@ -651,6 +673,7 @@ export const useChartStore = create<ChartState>()(
             timeframe, 
             candles: [], 
             trades: [],
+            historyRestoreStatus: null,
             icebergLevels: [],
             liquidityVacuumZones: [],
             ...savedSettings
@@ -684,11 +707,14 @@ export const useChartStore = create<ChartState>()(
       setLoadingHistory: (panelId, isLoadingHistory) =>
         set((state) => updatePanel(state, panelId, { isLoadingHistory })),
 
+      setHistoryRestoreStatus: (panelId, historyRestoreStatus) =>
+        set((state) => updatePanel(state, panelId, { historyRestoreStatus })),
+
       setContractType: (panelId, contractType) =>
-        set((state) => updatePanel(state, panelId, { contractType, candles: [], trades: [], icebergLevels: [], liquidityVacuumZones: [] })),
+        set((state) => updatePanel(state, panelId, { contractType, candles: [], trades: [], historyRestoreStatus: null, icebergLevels: [], liquidityVacuumZones: [] })),
 
       setDataSourceMode: (panelId, dataSourceMode) =>
-        set((state) => updatePanel(state, panelId, { dataSourceMode })),
+        set((state) => updatePanel(state, panelId, { dataSourceMode, historyRestoreStatus: null })),
 
       triggerFootprintRedraw: (panelId) =>
         set((state) => updatePanel(state, panelId, { footprintTrigger: Date.now() })),
