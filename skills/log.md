@@ -1,5 +1,36 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-02] - Website: Disable Browser Footprint/Profile Writes
+- **What changed**:
+  - Added a default-off `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES` gate around website-side footprint and fine Volume Profile persistence in `components/FeedProvider.tsx`.
+  - Stopped browser fine profile row queueing/flushing and stopped browser base footprint write requests unless the flag is explicitly set to `true`.
+  - Kept live footprint aggregation, live Volume Profile cache promotion, candle/raw-trade storage, and footprint/profile restore paths active.
+- **Why it changed**:
+  - The standalone BTCUSDT collector is now responsible for writing canonical footprint and profile rows to MongoDB, so the website should not duplicate those writes.
+- **Impact summary**:
+  - Refresh restore still reads collector-written footprint/profile history from MongoDB.
+  - Live browser rendering still updates from WebSocket trade/candle data.
+  - The old website persistence code remains available for emergency/debug re-enable via `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES=true`.
+
+## [2026-06-02] - Collector: BTCUSDT Footprint And Profile Persistence
+- **What changed**:
+  - Added `scripts/collector/btcusdtCollector.mjs`, a standalone Node.js collector for BTCUSDT Binance spot/futures aggTrade streams.
+  - Added `npm run collector:btc` to start the collector.
+  - The collector writes canonical `1m/$5` footprint rows and `1m` fine Volume Profile rows with `baseBucketSize = 1.5` across spot/futures/both source identities.
+- **Why it changed**:
+  - Footprint and Volume Profile persistence need to move toward an always-on server process before website-side writes are disabled later.
+- **Impact summary**:
+  - Website persistence was not disabled. UI/rendering, heatmap/liquidity, raw trades, and Mongo schema were not changed.
+
+## [2026-06-02] - Design: Node Collector Persistence
+- **What changed**:
+  - Added `artifacts/node_collector_design.md` for a standalone Node.js collector that persists canonical footprint and fine Volume Profile rows to MongoDB.
+  - Updated `skills/map.md` with the collector persistence audit and design artifacts.
+- **Why it changed**:
+  - Footprint and Volume Profile persistence need a documented plan before moving writes out of the website.
+- **Impact summary**:
+  - Documentation only. Website runtime code, storage writes, MongoDB adapters, feeds, heatmap/liquidity, and UI/rendering were not changed.
+
 ## [2026-06-01] - UI: Indicator Label Size And Hover Contrast
 - **What changed**:
   - Reduced the indicator label text, icon, and collapse-button sizing slightly.

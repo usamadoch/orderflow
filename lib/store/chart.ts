@@ -10,6 +10,7 @@ import { IcebergLevel } from '../../types/iceberg';
 import { LiquidityVacuumZone } from '../../types/liquidityVacuum';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
 import { LiquidityZone } from '../../types/liquidity';
+import { getMinimumFineProfileResolutionTicks } from '../config/markets';
 
 export type ChartMode = 'candle' | 'footprint';
 export type PanelId = 'left' | 'right';
@@ -436,7 +437,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     liquidityVacuumZones: [],
     profileWidthPct: 70,
     defaultProfileEnabled: true,
-    profileResolutionTicks: 1,
+    profileResolutionTicks: getMinimumFineProfileResolutionTicks(0.5),
     profileMinRowHeight: 1,
     profileOpacity: 0.4,
     profileMinRowWidth: 2,
@@ -502,6 +503,38 @@ function createDefaultPanel(id: PanelId): PanelState {
     liquidityHeatmapShowCurrentLabel: true,
     liquidityHeatmapProfileSync: false,
   };
+}
+
+function clampProfileResolutionTicks(profileResolutionTicks: unknown, tickSize: number) {
+  const ticks = Number(profileResolutionTicks);
+  const safeTicks = Number.isFinite(ticks) ? ticks : getMinimumFineProfileResolutionTicks(tickSize);
+  return Math.max(
+    getMinimumFineProfileResolutionTicks(tickSize),
+    Math.min(100, Math.round(safeTicks)),
+  );
+}
+
+function clampTimeframeSettings(settings: Partial<TimeframeSettings>, tickSize: number) {
+  if (settings.profileResolutionTicks === undefined) return settings;
+
+  return {
+    ...settings,
+    profileResolutionTicks: clampProfileResolutionTicks(settings.profileResolutionTicks, tickSize),
+  };
+}
+
+function clampSettingsByTimeframe(
+  settingsByTimeframe: Record<string, Partial<TimeframeSettings>> | undefined,
+  tickSize: number,
+) {
+  if (!settingsByTimeframe) return {};
+
+  return Object.fromEntries(
+    Object.entries(settingsByTimeframe).map(([timeframe, settings]) => [
+      timeframe,
+      clampTimeframeSettings(settings, tickSize),
+    ]),
+  );
 }
 
 function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<PanelState>): Partial<ChartState> {
@@ -604,7 +637,7 @@ export const useChartStore = create<ChartState>()(
       setTimeframe: (panelId, timeframe) =>
         set((state) => {
           const panel = state.panels[panelId];
-          const savedSettings = panel.settingsByTimeframe[timeframe] || {};
+          const savedSettings = clampTimeframeSettings(panel.settingsByTimeframe[timeframe] || {}, state.tickSize);
           return updatePanel(state, panelId, { 
             timeframe, 
             candles: [], 
@@ -813,7 +846,7 @@ export const useChartStore = create<ChartState>()(
         set((state) => updatePanel(state, panelId, { defaultProfileEnabled })),
 
       setProfileResolutionTicks: (panelId, profileResolutionTicks) =>
-        set((state) => updatePanel(state, panelId, { profileResolutionTicks: Math.max(1, Math.min(100, Math.round(profileResolutionTicks))) })),
+        set((state) => updatePanel(state, panelId, { profileResolutionTicks: clampProfileResolutionTicks(profileResolutionTicks, state.tickSize) })),
 
       setProfileMinRowHeight: (panelId, profileMinRowHeight) =>
         set((state) => updatePanel(state, panelId, { profileMinRowHeight: Math.max(0, Math.min(4, profileMinRowHeight)) })),
@@ -1022,7 +1055,21 @@ export const useChartStore = create<ChartState>()(
       setLayoutMode: (layoutMode) => set({ layoutMode }),
       setActivePanel: (activePanel) => set({ activePanel }),
       setSplitRatio: (splitRatio) => set({ splitRatio: Math.max(0.15, Math.min(0.85, splitRatio)) }),
-      setTickSize: (tickSize) => set({ tickSize }),
+      setTickSize: (tickSize) => set((state) => ({
+        tickSize,
+        panels: {
+          left: {
+            ...state.panels.left,
+            profileResolutionTicks: clampProfileResolutionTicks(state.panels.left.profileResolutionTicks, tickSize),
+            settingsByTimeframe: clampSettingsByTimeframe(state.panels.left.settingsByTimeframe, tickSize),
+          },
+          right: {
+            ...state.panels.right,
+            profileResolutionTicks: clampProfileResolutionTicks(state.panels.right.profileResolutionTicks, tickSize),
+            settingsByTimeframe: clampSettingsByTimeframe(state.panels.right.settingsByTimeframe, tickSize),
+          },
+        },
+      })),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setFocusMode: (focusMode) => set({ focusMode }),
       setSettingsDropdownHeight: (settingsDropdownHeight) =>
@@ -1057,7 +1104,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 28,
+      version: 29,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -1068,6 +1115,7 @@ export const useChartStore = create<ChartState>()(
           contractType === 'futures' ? 'futures' : 'spot';
         const ensureDataSourceMode = (mode: unknown): DataSourceMode =>
           mode === 'spot' || mode === 'futures' || mode === 'both' ? mode : 'both';
+        const tickSize = Number.isFinite(Number(persisted.tickSize)) ? Number(persisted.tickSize) : 0.5;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ensureDrawingToolbarPosition = (position: any): DrawingToolbarPosition => {
           const x = Number(position?.x);
@@ -1127,7 +1175,7 @@ export const useChartStore = create<ChartState>()(
             liquidityVacuumZones: [],
             profileWidthPct: p.profileWidthPct ?? 70,
             defaultProfileEnabled: p.defaultProfileEnabled ?? true,
-            profileResolutionTicks: p.profileResolutionTicks ?? 1,
+            profileResolutionTicks: clampProfileResolutionTicks(p.profileResolutionTicks, tickSize),
             profileMinRowHeight: p.profileMinRowHeight ?? 1,
             profileOpacity: p.profileOpacity ?? 0.4,
             profileMinRowWidth: p.profileMinRowWidth ?? 2,
@@ -1156,7 +1204,7 @@ export const useChartStore = create<ChartState>()(
               london: { enabled: true, startHour: 7, startMin: 0, endHour: 16, endMin: 0, color: '#4FC3F7' },
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
-            settingsByTimeframe: p.settingsByTimeframe ?? {},
+            settingsByTimeframe: clampSettingsByTimeframe(p.settingsByTimeframe, tickSize),
             // Liquidity Map (v13 & v14)
             liquidityEnabled: p.liquidityEnabled ?? true,
             liquidityBucketSize: p.liquidityBucketSize ?? 50,
@@ -1187,17 +1235,38 @@ export const useChartStore = create<ChartState>()(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       merge: (persistedState: any, currentState: ChartState) => {
         if (!persistedState) return currentState;
+        const tickSize = Number.isFinite(Number(persistedState.tickSize))
+          ? Number(persistedState.tickSize)
+          : currentState.tickSize;
+        const persistedLeft = persistedState.panels?.left || {};
+        const persistedRight = persistedState.panels?.right || {};
         return {
           ...currentState,
           ...persistedState,
           panels: {
             left: {
               ...currentState.panels.left,
-              ...(persistedState.panels?.left || {}),
+              ...persistedLeft,
+              profileResolutionTicks: clampProfileResolutionTicks(
+                persistedLeft.profileResolutionTicks ?? currentState.panels.left.profileResolutionTicks,
+                tickSize,
+              ),
+              settingsByTimeframe: clampSettingsByTimeframe(
+                persistedLeft.settingsByTimeframe ?? currentState.panels.left.settingsByTimeframe,
+                tickSize,
+              ),
             },
             right: {
               ...currentState.panels.right,
-              ...(persistedState.panels?.right || {}),
+              ...persistedRight,
+              profileResolutionTicks: clampProfileResolutionTicks(
+                persistedRight.profileResolutionTicks ?? currentState.panels.right.profileResolutionTicks,
+                tickSize,
+              ),
+              settingsByTimeframe: clampSettingsByTimeframe(
+                persistedRight.settingsByTimeframe ?? currentState.panels.right.settingsByTimeframe,
+                tickSize,
+              ),
             },
           },
         };

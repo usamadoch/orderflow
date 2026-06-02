@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, type RefObject } from 'react';
 import { Activity, BarChart2, Layers, Zap, X } from 'lucide-react';
 import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode, IndicatorSettingsSection } from '../../lib/store/chart';
+import { getMinimumFineProfileResolutionTicks } from '../../lib/config/markets';
 
 const SETTINGS_WIDTH = 544;
 const SETTINGS_MIN_HEIGHT = 350;
@@ -113,6 +114,10 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const [activeTab, setActiveTab] = useState<'chart' | 'indicators' | 'profiles' | 'signals'>('chart');
+  const minProfileResolutionTicks = getMinimumFineProfileResolutionTicks(tickSize);
+  const effectiveProfileResolutionTicks = Math.max(panel.profileResolutionTicks, minProfileResolutionTicks);
+  const effectiveProfileRowSize = tickSize > 0 ? effectiveProfileResolutionTicks * tickSize : 1.5;
+  const maxProfileResolutionTicks = Math.max(40, minProfileResolutionTicks);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const sessionsSectionRef = useRef<HTMLDivElement>(null);
   const cvdSectionRef = useRef<HTMLDivElement>(null);
@@ -687,15 +692,17 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
           <div className="flex justify-between items-center mb-1">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
             <span className="text-[12px] font-mono font-bold text-accent">
-              {panel.profileResolutionTicks}t / {(panel.profileResolutionTicks * tickSize).toFixed(2)}
+              {effectiveProfileResolutionTicks}t / {effectiveProfileRowSize.toFixed(2)}
             </span>
           </div>
           <input
             type="range"
-            value={panel.profileResolutionTicks}
+            value={effectiveProfileResolutionTicks}
             onChange={(e) => setProfileResolutionTicks(panelId, Number(e.target.value))}
             className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-            min="1" max="40" step="1"
+            min={minProfileResolutionTicks}
+            max={maxProfileResolutionTicks}
+            step="1"
           />
         </div>
 
@@ -1300,15 +1307,17 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
                         <span className="text-[12px] font-mono font-bold text-accent">
-                          {panel.profileResolutionTicks}t / {(panel.profileResolutionTicks * tickSize).toFixed(2)}
+                          {effectiveProfileResolutionTicks}t / {effectiveProfileRowSize.toFixed(2)}
                         </span>
                       </div>
                       <input
                         type="range"
-                        value={panel.profileResolutionTicks}
+                        value={effectiveProfileResolutionTicks}
                         onChange={(e) => setProfileResolutionTicks(panelId, Number(e.target.value))}
                         className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                        min="1" max="40" step="1"
+                        min={minProfileResolutionTicks}
+                        max={maxProfileResolutionTicks}
+                        step="1"
                       />
                     </div>
 

@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "collector:btc": "node scripts/collector/btcusdtCollector.mjs",
     "lint": "next lint"
   },
   "dependencies": {

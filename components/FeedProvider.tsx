@@ -49,6 +49,7 @@ const RAW_TRADE_HISTORY_PAGE_SIZE = 50000;
 const RAW_TRADE_HISTORY_MAX_PAGES = 10;
 const FINE_PROFILE_FLUSH_SIZE = 1000;
 const MAX_DEDUPE_KEYS = 100000;
+const ENABLE_BROWSER_MARKET_WRITES = process.env.NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES === 'true';
 
 const queuedRawTradeStorageKeys = new Set<string>();
 const closedCandleStorageKeys = new Set<string>();
@@ -591,6 +592,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     };
 
     const flushFineProfileRows = () => {
+      if (!ENABLE_BROWSER_MARKET_WRITES) {
+        fineProfileQueueRef.current = [];
+        return;
+      }
+
       if (fineProfileQueueRef.current.length === 0) return;
 
       const batch = fineProfileQueueRef.current.splice(0, FINE_PROFILE_FLUSH_SIZE);
@@ -725,19 +731,21 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             rowsSkippedPartial: stats.rowsSkippedPartial,
           });
         }
-        recordRestoreDiagnostic({
-          kind: 'storage',
-          key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
-          timestamp: Date.now(),
-          skippedRows: stats.rowsSkippedPartial,
-          details: {
-            panelId,
-            storageType: 'fineProfileRows',
-            reason,
-            skipReason: 'coverage-not-ready',
-            slicesBefore: stats.slicesBefore,
-          },
-        });
+        if (ENABLE_BROWSER_MARKET_WRITES) {
+          recordRestoreDiagnostic({
+            kind: 'storage',
+            key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+            timestamp: Date.now(),
+            skippedRows: stats.rowsSkippedPartial,
+            details: {
+              panelId,
+              storageType: 'fineProfileRows',
+              reason,
+              skipReason: 'coverage-not-ready',
+              slicesBefore: stats.slicesBefore,
+            },
+          });
+        }
         return stats;
       }
 
@@ -763,47 +771,51 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         liveFineProfileRowsRef.current.delete(candleTime);
         stats.slicesPersisted += 1;
 
-        const storableRows = rows.filter((row) => {
-          const claimed = claimFineProfileStorage(
-            pair,
-            contractType,
-            dataSourceMode,
-            fineProfileStorageTimeframe,
-            row.candleTime,
-            row.baseBucketSize,
-            row.bucketPrice,
-          );
-          if (!claimed) stats.rowsSkippedDuplicate += 1;
-          return claimed;
-        });
+        const storableRows = ENABLE_BROWSER_MARKET_WRITES
+          ? rows.filter((row) => {
+            const claimed = claimFineProfileStorage(
+              pair,
+              contractType,
+              dataSourceMode,
+              fineProfileStorageTimeframe,
+              row.candleTime,
+              row.baseBucketSize,
+              row.bucketPrice,
+            );
+            if (!claimed) stats.rowsSkippedDuplicate += 1;
+            return claimed;
+          })
+          : [];
 
-        if (storableRows.length > 0) {
+        if (ENABLE_BROWSER_MARKET_WRITES && storableRows.length > 0) {
           fineProfileQueueRef.current.push(...storableRows);
           stats.rowsQueued += storableRows.length;
         }
 
-        console.debug('[VPROFILE_DEBUG] Fine profile 1m slice eligible and queued', {
-          panelId,
-          reason,
-          pair,
-          contractType,
-          dataSourceMode,
-          timeframe: fineProfileStorageTimeframe,
-          baseCandleTime: candleTime,
-          currentStreamBaseTime: closedBeforeTime,
-          isClosed: candleTime < closedBeforeTime,
-          coverageStatus: candleTime >= coverageStart ? 'covered' : 'partial',
-          tickSize,
-          baseBucketSize: fineProfileBaseBucketSize,
-          rowsQueued: storableRows.length,
-          rowsSkippedDuplicate: rows.length - storableRows.length,
-        });
+        if (ENABLE_BROWSER_MARKET_WRITES) {
+          console.debug('[VPROFILE_DEBUG] Fine profile 1m slice eligible and queued', {
+            panelId,
+            reason,
+            pair,
+            contractType,
+            dataSourceMode,
+            timeframe: fineProfileStorageTimeframe,
+            baseCandleTime: candleTime,
+            currentStreamBaseTime: closedBeforeTime,
+            isClosed: candleTime < closedBeforeTime,
+            coverageStatus: candleTime >= coverageStart ? 'covered' : 'partial',
+            tickSize,
+            baseBucketSize: fineProfileBaseBucketSize,
+            rowsQueued: storableRows.length,
+            rowsSkippedDuplicate: rows.length - storableRows.length,
+          });
+        }
       }
 
       if (stats.slicesPersisted > 0) {
         pendingProfileRedrawRef.current = true;
 
-        if (fineProfileQueueRef.current.length >= FINE_PROFILE_FLUSH_SIZE) {
+        if (ENABLE_BROWSER_MARKET_WRITES && fineProfileQueueRef.current.length >= FINE_PROFILE_FLUSH_SIZE) {
           flushFineProfileRows();
         }
       }
@@ -827,7 +839,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         });
       }
 
-      if (stats.rowsQueued > 0 || stats.rowsSkippedDuplicate > 0 || stats.rowsSkippedPartial > 0 || stats.rowsSkippedOpen > 0) {
+      if (ENABLE_BROWSER_MARKET_WRITES && (stats.rowsQueued > 0 || stats.rowsSkippedDuplicate > 0 || stats.rowsSkippedPartial > 0 || stats.rowsSkippedOpen > 0)) {
         recordRestoreDiagnostic({
           kind: 'storage',
           key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
@@ -926,7 +938,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             });
         }
 
-        if (hasFullRealtimeFootprint) {
+        if (hasFullRealtimeFootprint && ENABLE_BROWSER_MARKET_WRITES) {
           for (const baseFootprint of baseFootprints) {
             if (baseFootprint.cells.size === 0) continue;
             if (!claimClosedCandleStorage(pair, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, baseFootprint.time, BASE_FOOTPRINT_BUCKET_SIZE)) {

@@ -40,6 +40,7 @@ import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } 
 import { MeasurementPanel } from './MeasurementPanel';
 import { HeatmapRow } from '@/types/liquidity';
 import { IcebergTooltip } from './IcebergTooltip';
+import { MIN_FINE_PROFILE_BASE_BUCKET_SIZE } from '@/lib/config/markets';
 
 type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
 type DrawingHitZone = 'hover' | 'move' | 'delete' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
@@ -434,9 +435,10 @@ export function ChartCanvas({
         visiblePriceMax: priceMax,
       };
 
-      const profileBucketSize = tickSize > 0
+      const requestedProfileBucketSize = tickSize > 0
         ? tickSize * Math.max(1, profileResolutionTicks)
         : Math.max(1, bucketSize / 4);
+      const profileBucketSize = Math.max(MIN_FINE_PROFILE_BASE_BUCKET_SIZE, requestedProfileBucketSize);
 
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
       const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);

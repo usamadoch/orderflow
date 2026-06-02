@@ -84,7 +84,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Feed / Engine Context
 
-- `components/FeedProvider.tsx` → Panel feed lifecycle, live-first streaming, background history restore, snapshot-buffered depth synchronization with gap resync, safe single/combined ready-source orderbook merging, settings-driven fixed-cadence orderbook heatmap sampling/windowing, engine/cache attachment, raw/fine/profile/footprint hydration, canonical minimum-1.5 fine profile base-bucket storage/restore, source-scoped storage, and restore/write diagnostics.
+- `components/FeedProvider.tsx` → Panel feed lifecycle, live-first streaming, background history restore, snapshot-buffered depth synchronization with gap resync, safe single/combined ready-source orderbook merging, settings-driven fixed-cadence orderbook heatmap sampling/windowing, engine/cache attachment, raw/fine/profile/footprint hydration, canonical minimum-1.5 fine profile restore/live cache promotion, source-scoped candle/raw-trade storage, default-off browser footprint/profile persistence behind `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES`, and restore/write diagnostics.
 - `components/ChartEngineContext.tsx` → React context exposing the panel aggregation engine, liquidity history, orderbook heatmap engine, fine Volume Profile source, and redraw revision wiring.
 
 ### Chart Rendering
@@ -186,6 +186,10 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `data/market.db` → Generated local libSQL database file for file-mode development.
 - `scripts/testDb.ts` → Local database verification script.
 
+### Scripts
+
+- `scripts/collector/btcusdtCollector.mjs` -> Standalone BTCUSDT Binance spot/futures aggTrade collector for canonical MongoDB footprint and fine Volume Profile rows across spot/futures/both source identities.
+
 ### Cache / Metrics / Config
 
 - `lib/cache/marketCachePolicy.ts` → Shared cache retention, cleanup interval, inactive grace, and max-size defaults/env overrides.
@@ -215,6 +219,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `artifacts/rendering_performance_audit.md` → Audit of canvas redraw triggers, throttling, visible-range work, expensive layers, React render risks, and recommended fixes.
 - `artifacts/liquidity_heatmap_audit.md` → Audit of the spot-only liquidity/orderbook path, far-level zone selection, right-side heatmap strip, root causes, and rebuild plan.
 - `artifacts/volume_profile_rendering_audit.md` -> Audit of custom/default Volume Profile row sizing, normalization, clamping, POC/VA/LVN behavior, visual noise causes, and fix order.
+- `artifacts/collector_persistence_audit.md` -> Audit of current website-side footprint and fine Volume Profile persistence flow for future collector migration.
+- `artifacts/node_collector_design.md` -> Design for a standalone Node.js collector that persists canonical footprint and fine Volume Profile rows to MongoDB.
 - `skills/map.md` → Compact source-of-truth file responsibility map. Update existing lines only; do not append chronological task history.
 - `skills/log.md` → Chronological change history for feature/fix context and impact summaries.
 

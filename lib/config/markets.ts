@@ -13,6 +13,11 @@ export function getFineProfileBaseBucketSize(tickSize: number) {
   return Math.max(MIN_FINE_PROFILE_BASE_BUCKET_SIZE, tickSize)
 }
 
+export function getMinimumFineProfileResolutionTicks(tickSize: number) {
+  if (!Number.isFinite(tickSize) || tickSize <= 0) return 1
+  return Math.max(1, Math.ceil(MIN_FINE_PROFILE_BASE_BUCKET_SIZE / tickSize))
+}
+
 export function isAllowedSymbol(symbol: string | null): symbol is AllowedSymbol {
   return ALLOWED_SYMBOLS.includes(symbol as AllowedSymbol)
 }
