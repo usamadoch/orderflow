@@ -10,6 +10,8 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+const MAX_PROFILE_RESTORE_RANGE_SECONDS = 6 * 60 * 60
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const symbol = searchParams.get('symbol')
@@ -37,6 +39,13 @@ export async function GET(request: NextRequest) {
     || baseBucketSize <= 0
   ) {
     return NextResponse.json({ error: 'Invalid start, end, or baseBucketSize' }, { status: 400 })
+  }
+
+  if (end - start > MAX_PROFILE_RESTORE_RANGE_SECONDS) {
+    return NextResponse.json(
+      { error: 'Profile history range is too large; request it in smaller chunks' },
+      { status: 413 },
+    )
   }
 
   const rows = await getMarketStorageAdapter().getFineProfileRows(

@@ -27,16 +27,48 @@ function clampSettingsHeight(nextHeight: number, top: number) {
 
 interface ChartSettingsDropdownProps {
   panelId: PanelId;
+  initialAnchor?: { x: number; y: number } | null;
   focusSection?: IndicatorSettingsSection | null;
   focusRequestId?: number;
   onClose: () => void;
 }
 
-export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 0, onClose }: ChartSettingsDropdownProps) {
+function clampSettingsPosition(nextPosition: { x: number; y: number }, height: number) {
+  if (typeof window === 'undefined') return nextPosition;
+
+  const maxX = Math.max(VIEWPORT_MARGIN / 2, window.innerWidth - SETTINGS_WIDTH - VIEWPORT_MARGIN);
+  const maxY = Math.max(VIEWPORT_MARGIN / 2, window.innerHeight - height - VIEWPORT_MARGIN);
+
+  return {
+    x: Math.max(VIEWPORT_MARGIN / 2, Math.min(nextPosition.x, maxX)),
+    y: Math.max(VIEWPORT_MARGIN / 2, Math.min(nextPosition.y, maxY)),
+  };
+}
+
+function getInitialSettingsPosition(initialAnchor: { x: number; y: number } | null | undefined, height: number) {
+  if (typeof window === 'undefined') {
+    return { x: -1, y: 48 };
+  }
+
+  if (initialAnchor) {
+    return clampSettingsPosition({
+      x: initialAnchor.x - SETTINGS_WIDTH,
+      y: initialAnchor.y,
+    }, height);
+  }
+
+  return clampSettingsPosition({
+    x: window.innerWidth - SETTINGS_WIDTH - VIEWPORT_MARGIN,
+    y: 48,
+  }, height);
+}
+
+export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, focusRequestId = 0, onClose }: ChartSettingsDropdownProps) {
   const panel = useChartStore(s => s.panels[panelId]);
   const settingsDropdownHeight = useChartStore(s => s.settingsDropdownHeight);
   const setSettingsDropdownHeight = useChartStore(s => s.setSettingsDropdownHeight);
   const tickSize = useChartStore(s => s.tickSize);
+  const setTickSize = useChartStore(s => s.setTickSize);
   const setFootprintMode = useChartStore(s => s.setFootprintMode);
   const setBucketSize = useChartStore(s => s.setBucketSize);
   const setContractType = useChartStore(s => s.setContractType);
@@ -114,18 +146,22 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const [activeTab, setActiveTab] = useState<'chart' | 'indicators' | 'profiles' | 'signals'>('chart');
-  const minProfileResolutionTicks = getMinimumFineProfileResolutionTicks(tickSize);
-  const effectiveProfileResolutionTicks = Math.max(panel.profileResolutionTicks, minProfileResolutionTicks);
-  const effectiveProfileRowSize = tickSize > 0 ? effectiveProfileResolutionTicks * tickSize : 1.5;
-  const maxProfileResolutionTicks = Math.max(40, minProfileResolutionTicks);
+  const minManualProfileResolutionTicks = getMinimumFineProfileResolutionTicks(tickSize);
+  const effectiveProfileRowSize = tickSize > 0 ? panel.profileResolutionTicks * tickSize : 0;
+  const maxProfileResolutionTicks = Math.max(40, minManualProfileResolutionTicks);
+  const profileRowSizeLabel = panel.profileResolutionTicks === 0
+    ? 'AUTO'
+    : `${panel.profileResolutionTicks}t / ${effectiveProfileRowSize.toFixed(2)}`;
   const dropdownRef = useRef<HTMLDivElement>(null);
   const sessionsSectionRef = useRef<HTMLDivElement>(null);
   const cvdSectionRef = useRef<HTMLDivElement>(null);
   const bubblesSectionRef = useRef<HTMLDivElement>(null);
   const volumeProfileSectionRef = useRef<HTMLDivElement>(null);
+  const heatmapSectionRef = useRef<HTMLDivElement>(null);
+  const liquidityMapSectionRef = useRef<HTMLDivElement>(null);
 
   // --- Draggable Logic ---
-  const [position, setPosition] = useState({ x: -1, y: 48 }); // -1 means initial center/right
+  const [position, setPosition] = useState(() => getInitialSettingsPosition(initialAnchor, settingsDropdownHeight || SETTINGS_DEFAULT_HEIGHT));
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [height, setHeight] = useState(settingsDropdownHeight || SETTINGS_DEFAULT_HEIGHT);
@@ -135,9 +171,9 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
   // Initialize position once on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && position.x === -1) {
-      setPosition({ x: window.innerWidth - SETTINGS_WIDTH - VIEWPORT_MARGIN, y: 48 });
+      setPosition(getInitialSettingsPosition(initialAnchor, height));
     }
-  }, [position.x]);
+  }, [height, initialAnchor, position.x]);
 
   useEffect(() => {
     setHeight(settingsDropdownHeight || SETTINGS_DEFAULT_HEIGHT);
@@ -153,6 +189,8 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
         cvd: cvdSectionRef,
         bubbles: bubblesSectionRef,
         volumeProfile: volumeProfileSectionRef,
+        heatmap: heatmapSectionRef,
+        liquidityMap: liquidityMapSectionRef,
       };
       sectionRefs[focusSection]?.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     });
@@ -163,8 +201,7 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
 
     const handleResize = () => {
       setHeight((currentHeight) => {
-        const top = position.y;
-        const nextHeight = clampSettingsHeight(currentHeight, top);
+        const nextHeight = clampSettingsHeight(currentHeight, position.y);
         if (nextHeight !== currentHeight) {
           setSettingsDropdownHeight(nextHeight);
         }
@@ -173,11 +210,7 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
 
       setPosition((currentPosition) => {
         const nextHeight = clampSettingsHeight(height, currentPosition.y);
-        const maxTop = Math.max(VIEWPORT_MARGIN / 2, window.innerHeight - nextHeight - VIEWPORT_MARGIN);
-        if (currentPosition.y > maxTop) {
-          return { ...currentPosition, y: maxTop };
-        }
-        return currentPosition;
+        return clampSettingsPosition(currentPosition, nextHeight);
       });
     };
 
@@ -200,13 +233,10 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
-        let newX = e.clientX - dragStart.x;
-        let newY = e.clientY - dragStart.y;
+        const newX = e.clientX - dragStart.x;
+        const newY = e.clientY - dragStart.y;
 
-        newX = Math.max(8, Math.min(newX, window.innerWidth - SETTINGS_WIDTH - 8));
-        newY = Math.max(8, Math.min(newY, window.innerHeight - height - 8));
-
-        setPosition({ x: newX, y: newY });
+        setPosition(clampSettingsPosition({ x: newX, y: newY }, height));
         return;
       }
 
@@ -256,6 +286,13 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
     if (!isNaN(val) && val >= 1) {
       setBubbleThreshold(panelId, val);
     }
+  };
+
+  const handleProfileResolutionChange = (value: number) => {
+    setProfileResolutionTicks(
+      panelId,
+      value <= 0 ? 0 : Math.max(minManualProfileResolutionTicks, value)
+    );
   };
 
   const bubbleSides: { label: string; value: BubbleSide }[] = [
@@ -676,6 +713,7 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
                 <button
                   key={m}
                   onClick={() => setProfileScaleMode(panelId, m)}
+                  title={m === 'linear' ? 'True proportions - best for shape reading' : 'Amplifies low volume - best for activity presence'}
                   className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.profileScaleMode === m
                     ? 'bg-[#1A1A1A] border-accent text-accent'
                     : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
@@ -692,15 +730,15 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
           <div className="flex justify-between items-center mb-1">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
             <span className="text-[12px] font-mono font-bold text-accent">
-              {effectiveProfileResolutionTicks}t / {effectiveProfileRowSize.toFixed(2)}
+              {profileRowSizeLabel}
             </span>
           </div>
           <input
             type="range"
-            value={effectiveProfileResolutionTicks}
-            onChange={(e) => setProfileResolutionTicks(panelId, Number(e.target.value))}
+            value={panel.profileResolutionTicks}
+            onChange={(e) => handleProfileResolutionChange(Number(e.target.value))}
             className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-            min={minProfileResolutionTicks}
+            min="0"
             max={maxProfileResolutionTicks}
             step="1"
           />
@@ -842,10 +880,200 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
     </div>
   );
 
+  const renderLiquidityMapSettings = () => (
+    <div ref={liquidityMapSectionRef} className="scroll-mt-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Liquidity Map</div>
+        <button
+          onClick={() => setLiquidityEnabled(panelId, !panel.liquidityEnabled)}
+          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.liquidityEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+            }`}
+        >
+          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.liquidityEnabled ? 'left-5' : 'left-1'
+            }`} />
+        </button>
+      </div>
+
+      {panel.liquidityEnabled && (
+        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityOpacity * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              value={panel.liquidityOpacity * 100}
+              onChange={(e) => setLiquidityOpacity(panelId, Number(e.target.value) / 100)}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="10" max="100" step="5"
+            />
+          </div>
+
+          <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bucket Size</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={panel.liquidityBucketSize}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (val >= 10) setLiquidityBucketSize(panelId, val);
+                }}
+                className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                min="10" max="500" step="10"
+              />
+              <span className="text-[9px] text-text-dim font-black uppercase">$</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Size</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={panel.minimumLiquidityThreshold}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  if (val >= 0.5) setMinimumLiquidityThreshold(panelId, val);
+                }}
+                className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                min="0.5" max="100" step="0.5"
+              />
+              <span className="text-[9px] text-text-dim font-black uppercase">BTC</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Range</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityRange}%</span>
+            </div>
+            <input
+              type="range"
+              value={panel.liquidityRange}
+              onChange={(e) => setLiquidityRange(panelId, Number(e.target.value))}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="5" max="20" step="1"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderHeatmapSettings = () => (
+    <div ref={heatmapSectionRef} className="scroll-mt-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Historical Heatmap</div>
+        <button
+          onClick={() => setLiquidityHeatmapEnabled(panelId, !panel.liquidityHeatmapEnabled)}
+          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.liquidityHeatmapEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+            }`}
+        >
+          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.liquidityHeatmapEnabled ? 'left-5' : 'left-1'
+            }`} />
+        </button>
+      </div>
+
+      {panel.liquidityHeatmapEnabled && (
+        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Base Opacity</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityHeatmapOpacity * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              value={panel.liquidityHeatmapOpacity * 100}
+              onChange={(e) => setLiquidityHeatmapOpacity(panelId, Number(e.target.value) / 100)}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="10" max="100" step="5"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Age Fade Factor</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityHeatmapAgeFade * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              value={panel.liquidityHeatmapAgeFade * 100}
+              onChange={(e) => setLiquidityHeatmapAgeFade(panelId, Number(e.target.value) / 100)}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="0" max="100" step="5"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Strip Width</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityHeatmapWidth}px</span>
+            </div>
+            <input
+              type="range"
+              value={panel.liquidityHeatmapWidth}
+              onChange={(e) => setLiquidityHeatmapWidth(panelId, Number(e.target.value))}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="30" max="120" step="5"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">History Depth</label>
+              <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityHistoryDepth} candles</span>
+            </div>
+            <input
+              type="range"
+              value={panel.liquidityHistoryDepth}
+              onChange={(e) => setLiquidityHistoryDepth(panelId, Number(e.target.value))}
+              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              min="50" max="500" step="50"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            {[
+              ['Show Pulled', panel.liquidityHeatmapShowPulled, () => setLiquidityHeatmapShowPulled(panelId, !panel.liquidityHeatmapShowPulled)],
+              ['Show Consumed', panel.liquidityHeatmapShowConsumed, () => setLiquidityHeatmapShowConsumed(panelId, !panel.liquidityHeatmapShowConsumed)],
+              ['Show CURRENT', panel.liquidityHeatmapShowCurrentLabel, () => setLiquidityHeatmapShowCurrentLabel(panelId, !panel.liquidityHeatmapShowCurrentLabel)],
+              ['Profile Sync', panel.liquidityHeatmapProfileSync, () => setLiquidityHeatmapProfileSync(panelId, !panel.liquidityHeatmapProfileSync)],
+            ].map(([label, enabled, onClick]) => (
+              <button
+                key={label as string}
+                onClick={onClick as () => void}
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${enabled
+                  ? 'bg-accent/5 border-accent text-accent'
+                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  }`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wider">{label as string}</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+              </button>
+            ))}
+
+            <button
+              onClick={() => setLiquidityHeatmapShowPersistence(panelId, !panel.liquidityHeatmapShowPersistence)}
+              className={`col-span-2 flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapShowPersistence
+                ? 'bg-accent/5 border-accent text-accent'
+                : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                }`}
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wider">Show Persistence Bars</span>
+              <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowPersistence ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       ref={dropdownRef}
-      className={`fixed w-[544px] bg-[#0D0D0D]/95 backdrop-blur-xl border border-[#1F1F1F] rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden transition-shadow duration-200 ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''}`}
+      className={`pointer-events-auto fixed z-[1000] flex w-[544px] flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#0D0D0D] shadow-2xl transition-shadow duration-200 ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''}`}
       style={{ 
         left: position.x === -1 ? 'auto' : position.x,
         top: position.y,
@@ -855,6 +1083,9 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
         maxHeight: getViewportMaxHeight(position.y),
         userSelect: isDragging ? 'none' : 'auto'
       }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
     >
       {/* Header / Drag Handle */}
       <div 
@@ -961,6 +1192,19 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
                 <div className="space-y-4">
                   <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Aggregation</div>
                   <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Tick Size</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={tickSize}
+                        onChange={(e) => setTickSize(parseFloat(e.target.value) || 0.5)}
+                        className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                      />
+                      <span className="text-[9px] text-text-dim font-black uppercase">Price</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
                     <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bucket Size</label>
                     <div className="flex items-center gap-2">
                       <button
@@ -1009,218 +1253,6 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
                   </div>
                 </div>
 
-                {/* Liquidity Map */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Liquidity Map</div>
-                    <button
-                      onClick={() => setLiquidityEnabled(panelId, !panel.liquidityEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.liquidityEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-                        }`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.liquidityEnabled ? 'left-5' : 'left-1'
-                        }`} />
-                    </button>
-                  </div>
-
-                  {panel.liquidityEnabled && (
-                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
-                          <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityOpacity * 100)}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          value={panel.liquidityOpacity * 100}
-                          onChange={(e) => setLiquidityOpacity(panelId, Number(e.target.value) / 100)}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                          min="10" max="100" step="5"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bucket Size</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={panel.liquidityBucketSize}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              if (val >= 10) setLiquidityBucketSize(panelId, val);
-                            }}
-                            className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                            min="10" max="500" step="10"
-                          />
-                          <span className="text-[9px] text-text-dim font-black uppercase">$</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Size</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            value={panel.minimumLiquidityThreshold}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              if (val >= 0.5) setMinimumLiquidityThreshold(panelId, val);
-                            }}
-                            className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                            min="0.5" max="100" step="0.5"
-                          />
-                          <span className="text-[9px] text-text-dim font-black uppercase">BTC</span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Range</label>
-                          <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityRange}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          value={panel.liquidityRange}
-                          onChange={(e) => setLiquidityRange(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                          min="5" max="20" step="1"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Liquidity Heatmap */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Historical Heatmap</div>
-                    <button
-                      onClick={() => setLiquidityHeatmapEnabled(panelId, !panel.liquidityHeatmapEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.liquidityHeatmapEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-                        }`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.liquidityHeatmapEnabled ? 'left-5' : 'left-1'
-                        }`} />
-                    </button>
-                  </div>
-
-                  {panel.liquidityHeatmapEnabled && (
-                    <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Base Opacity</label>
-                          <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityHeatmapOpacity * 100)}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          value={panel.liquidityHeatmapOpacity * 100}
-                          onChange={(e) => setLiquidityHeatmapOpacity(panelId, Number(e.target.value) / 100)}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                          min="10" max="100" step="5"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Age Fade Factor</label>
-                          <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityHeatmapAgeFade * 100)}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          value={panel.liquidityHeatmapAgeFade * 100}
-                          onChange={(e) => setLiquidityHeatmapAgeFade(panelId, Number(e.target.value) / 100)}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                          min="0" max="100" step="5"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Strip Width</label>
-                          <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityHeatmapWidth}px</span>
-                        </div>
-                        <input
-                          type="range"
-                          value={panel.liquidityHeatmapWidth}
-                          onChange={(e) => setLiquidityHeatmapWidth(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                          min="30" max="120" step="5"
-                        />
-                      </div>
-
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">History Depth</label>
-                          <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityHistoryDepth} candles</span>
-                        </div>
-                        <input
-                          type="range"
-                          value={panel.liquidityHistoryDepth}
-                          onChange={(e) => setLiquidityHistoryDepth(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                          min="50" max="500" step="50"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <button
-                          onClick={() => setLiquidityHeatmapShowPulled(panelId, !panel.liquidityHeatmapShowPulled)}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapShowPulled
-                            ? 'bg-accent/5 border-accent text-accent'
-                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                            }`}
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Show Pulled</span>
-                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowPulled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                        </button>
-
-                        <button
-                          onClick={() => setLiquidityHeatmapShowConsumed(panelId, !panel.liquidityHeatmapShowConsumed)}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapShowConsumed
-                            ? 'bg-accent/5 border-accent text-accent'
-                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                            }`}
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Show Consumed</span>
-                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowConsumed ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                        </button>
-
-                        <button
-                          onClick={() => setLiquidityHeatmapShowPersistence(panelId, !panel.liquidityHeatmapShowPersistence)}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 col-span-2 ${panel.liquidityHeatmapShowPersistence
-                            ? 'bg-accent/5 border-accent text-accent'
-                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                            }`}
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Show Persistence Bars</span>
-                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowPersistence ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                        </button>
-
-                        <button
-                          onClick={() => setLiquidityHeatmapShowCurrentLabel(panelId, !panel.liquidityHeatmapShowCurrentLabel)}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapShowCurrentLabel
-                            ? 'bg-accent/5 border-accent text-accent'
-                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                            }`}
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Show CURRENT</span>
-                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapShowCurrentLabel ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                        </button>
-
-                        <button
-                          onClick={() => setLiquidityHeatmapProfileSync(panelId, !panel.liquidityHeatmapProfileSync)}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapProfileSync
-                            ? 'bg-accent/5 border-accent text-accent'
-                            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                            }`}
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Profile Sync</span>
-                          <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityHeatmapProfileSync ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
               </>
             )}
 
@@ -1231,6 +1263,8 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
                 {renderCvdSettings()}
                 {renderBubbleSettings()}
                 {renderVolumeProfileSettings()}
+                {renderHeatmapSettings()}
+                {renderLiquidityMapSettings()}
               </>
             )}
 
@@ -1291,6 +1325,7 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
                             <button
                               key={m}
                               onClick={() => setProfileScaleMode(panelId, m)}
+                              title={m === 'linear' ? 'True proportions - best for shape reading' : 'Amplifies low volume - best for activity presence'}
                               className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.profileScaleMode === m
                                 ? 'bg-[#1A1A1A] border-accent text-accent'
                                 : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
@@ -1307,15 +1342,15 @@ export function ChartSettingsDropdown({ panelId, focusSection, focusRequestId = 
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
                         <span className="text-[12px] font-mono font-bold text-accent">
-                          {effectiveProfileResolutionTicks}t / {effectiveProfileRowSize.toFixed(2)}
+                          {profileRowSizeLabel}
                         </span>
                       </div>
                       <input
                         type="range"
-                        value={effectiveProfileResolutionTicks}
-                        onChange={(e) => setProfileResolutionTicks(panelId, Number(e.target.value))}
+                        value={panel.profileResolutionTicks}
+                        onChange={(e) => handleProfileResolutionChange(Number(e.target.value))}
                         className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
-                        min={minProfileResolutionTicks}
+                        min="0"
                         max={maxProfileResolutionTicks}
                         step="1"
                       />

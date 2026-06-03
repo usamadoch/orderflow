@@ -1,6 +1,8 @@
 import { VolumeProfile } from '@/lib/utils/volumeProfile';
 import { HeatmapRow } from '@/types/liquidity';
 
+const MIN_PROFILE_ROW_OPACITY = 0.15;
+
 /**
  * Draw horizontal volume profile bars, POC line, VA lines, and labels.
  */
@@ -31,8 +33,8 @@ export function drawVolumeProfile(
 
   const profileStartX = chartRight - effectiveWidth;
 
-  const barOpacity = isCustomActive ? profileOpacity * 0.4 : profileOpacity;
   const lineOpacity = isCustomActive ? 0.3 : 1;
+  const sortedRows = [...profile.rows].sort((a, b) => b.price - a.price);
 
   // ── Step 0: VA Background Fill ──
   if (showVaFill) {
@@ -43,8 +45,9 @@ export function drawVolumeProfile(
   }
 
   // ── Step 1: Profile Bars ──
-  for (const row of profile.rows) {
-    const yRange = getProfileRowYRange(row.price, profileBucketSize, priceToY, profileMinRowHeight);
+  for (let i = 0; i < sortedRows.length; i += 1) {
+    const row = sortedRows[i];
+    const yRange = getProfileRowYRange(sortedRows, i, profileBucketSize, priceToY, profileMinRowHeight);
     if (!yRange) continue;
 
     const { yTop, rowHeight } = yRange;
@@ -67,17 +70,19 @@ export function drawVolumeProfile(
     if (calculatedBarWidth < 0.5) continue;
 
     const barX = chartRight - calculatedBarWidth;
+    const rowOpacity = getProfileRowOpacity(row.totalVol, profile.maxVol);
 
     // Unified muted amber/orange color for institutional look
-    ctx.fillStyle = `rgba(217, 119, 6, ${barOpacity})`;
+    ctx.fillStyle = `rgba(217, 119, 6, ${rowOpacity})`;
     ctx.fillRect(barX, yTop, calculatedBarWidth, rowHeight);
   }
 
   // ── Step 1.5: POC Row Highlight ──
   if (showPocHighlight) {
-    const pocRow = profile.rows.find(r => r.price === profile.poc);
-    if (pocRow) {
-      const yRange = getProfileRowYRange(pocRow.price, profileBucketSize, priceToY, profileMinRowHeight);
+    const pocRowIndex = sortedRows.findIndex(r => r.price === profile.poc);
+    if (pocRowIndex >= 0) {
+      const pocRow = sortedRows[pocRowIndex];
+      const yRange = getProfileRowYRange(sortedRows, pocRowIndex, profileBucketSize, priceToY, profileMinRowHeight);
       if (yRange) {
         const { yTop, rowHeight } = yRange;
 
@@ -88,7 +93,7 @@ export function drawVolumeProfile(
 
         if (barW >= 0.5) {
           const barX = chartRight - barW;
-          const highlightOpacity = Math.min(1.0, barOpacity + 0.2);
+          const highlightOpacity = Math.max(getProfileRowOpacity(pocRow.totalVol, profile.maxVol), profileOpacity);
 
           // Re-draw with higher brightness
           ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
@@ -211,13 +216,17 @@ export function drawVolumeProfile(
 }
 
 function getProfileRowYRange(
-  price: number,
+  rows: VolumeProfile['rows'],
+  rowIndex: number,
   profileBucketSize: number,
   priceToY: (price: number) => number,
   minRowHeight: number,
 ) {
-  let yTop = priceToY(price + profileBucketSize);
-  let yBot = priceToY(price);
+  const row = rows[rowIndex];
+  if (!row) return null;
+
+  let yTop = priceToY(row.price + profileBucketSize);
+  let yBot = getProfileRowBottomY(rows, rowIndex, profileBucketSize, priceToY);
   let rowHeight = yBot - yTop;
 
   if (rowHeight <= 0) return null;
@@ -229,4 +238,31 @@ function getProfileRowYRange(
   }
 
   return { yTop, yBot, rowHeight };
+}
+
+function getProfileRowBottomY(
+  rows: VolumeProfile['rows'],
+  rowIndex: number,
+  profileBucketSize: number,
+  priceToY: (price: number) => number,
+) {
+  const row = rows[rowIndex];
+  const nextRow = rows[rowIndex + 1];
+  if (!row) return 0;
+
+  if (nextRow && areAdjacentRows(row.price, nextRow.price, profileBucketSize)) {
+    return priceToY(nextRow.price + profileBucketSize);
+  }
+
+  return priceToY(row.price);
+}
+
+function areAdjacentRows(currentPrice: number, nextPrice: number, profileBucketSize: number) {
+  const tolerance = Math.max(1e-9, profileBucketSize * 1e-6);
+  return Math.abs(nextPrice - (currentPrice - profileBucketSize)) <= tolerance;
+}
+
+function getProfileRowOpacity(totalVol: number, maxVol: number) {
+  const volumeRatio = maxVol > 0 ? Math.max(0, Math.min(1, totalVol / maxVol)) : 0;
+  return MIN_PROFILE_ROW_OPACITY + (1 - MIN_PROFILE_ROW_OPACITY) * volumeRatio;
 }

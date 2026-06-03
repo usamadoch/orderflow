@@ -48,6 +48,10 @@ const HYDRATION_CHUNK_SIZE = 1000;
 const RAW_TRADE_HISTORY_PAGE_SIZE = 50000;
 const RAW_TRADE_HISTORY_MAX_PAGES = 10;
 const FINE_PROFILE_FLUSH_SIZE = 1000;
+const FINE_PROFILE_DEFAULT_RESTORE_SECONDS = 4 * 60 * 60;
+const FINE_PROFILE_RESTORE_CHUNK_SECONDS = 2 * 60 * 60;
+const FINE_PROFILE_LAZY_VISIBLE_BARS = 160;
+const FINE_PROFILE_LAZY_SCROLL_THRESHOLD_BARS = 20;
 const MAX_DEDUPE_KEYS = 100000;
 const ENABLE_BROWSER_MARKET_WRITES = process.env.NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES === 'true';
 
@@ -150,6 +154,8 @@ interface FootprintHydrationStats {
 interface FineProfileHydrationStats {
   rowsFetched: number;
   candlesHydrated: number;
+  chunksFetched?: number;
+  chunksSkipped?: number;
 }
 
 function cloneFineProfileRows(rows: Iterable<FineProfileRow>) {
@@ -233,6 +239,31 @@ function formatSeconds(seconds: number | null) {
 
 function formatMilliseconds(milliseconds: number | null) {
   return milliseconds == null ? 'n/a' : new Date(milliseconds).toISOString();
+}
+
+function alignFineProfileRange(startSeconds: number, endSeconds: number) {
+  return {
+    startSeconds: Math.floor(startSeconds / 60) * 60,
+    endSeconds: Math.ceil(endSeconds / 60) * 60,
+  };
+}
+
+function getFineProfileRestoreChunks(startSeconds: number, endSeconds: number) {
+  const aligned = alignFineProfileRange(startSeconds, endSeconds);
+  const chunks: Array<{ startSeconds: number; endSeconds: number }> = [];
+
+  for (
+    let chunkStart = aligned.startSeconds;
+    chunkStart < aligned.endSeconds;
+    chunkStart += FINE_PROFILE_RESTORE_CHUNK_SECONDS
+  ) {
+    chunks.push({
+      startSeconds: chunkStart,
+      endSeconds: Math.min(aligned.endSeconds, chunkStart + FINE_PROFILE_RESTORE_CHUNK_SECONDS),
+    });
+  }
+
+  return chunks;
 }
 
 export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps) {
@@ -1386,143 +1417,258 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       return restoredStats;
     };
 
-    const hydrateStoredFineProfileRows = async (candles: Candle[]): Promise<FineProfileHydrationStats> => {
+    const hydrateStoredFineProfileRange = async (
+      startSeconds: number,
+      endSeconds: number,
+      reason: 'default' | 'lazy' | 'custom',
+    ): Promise<FineProfileHydrationStats> => {
       const stats: FineProfileHydrationStats = {
         rowsFetched: 0,
         candlesHydrated: 0,
+        chunksFetched: 0,
+        chunksSkipped: 0,
       };
-      const window = getHistoryWindow(candles, timeframeSeconds);
-      if (!window || fineProfileBaseBucketSize <= 0) return stats;
+      if (endSeconds <= startSeconds || fineProfileBaseBucketSize <= 0) return stats;
 
       const profileCache = volumeProfileEngineRef.current.getBaseCache();
-      const candidateTimes = profileCache.getMissingBaseCandleTimes(window.startSeconds, window.endSeconds);
-      if (candidateTimes.length === 0) {
-        recordRestoreDiagnostic({
-          kind: 'volumeProfile',
-          key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
-          timestamp: Date.now(),
-          rowsFetched: 0,
-          distinctCandleTimeCount: 0,
-          details: {
-            panelId,
-            status: 'cache-covered',
-            sourceKey: profileCache.key,
-            start: window.startSeconds,
-            end: window.endSeconds,
-            tickSize,
-            baseBucketSize: fineProfileBaseBucketSize,
-          },
-        });
-        console.debug('[VPROFILE_CACHE] Fine profile restore skipped because shared base cache already covers range', {
-          panelId,
-          pair,
-          contractType,
-          dataSourceMode,
-          sourceKey: profileCache.key,
-          requestedChartTimeframe: timeframe,
-          storageTimeframe: fineProfileStorageTimeframe,
-          tickSize,
-          baseBucketSize: fineProfileBaseBucketSize,
-          start: window.startSeconds,
-          end: window.endSeconds,
-          rowCount: profileCache.rowCount,
-          coverageRange: profileCache.getLoadedRanges(),
-        });
-        return stats;
-      }
+      const chunks = getFineProfileRestoreChunks(startSeconds, endSeconds);
+      const hydratedCandleTimes = new Set<number>();
 
-      const restoredStats = await profileCache.runRestoreOnce(window.startSeconds, window.endSeconds, async () => {
-        const params = new URLSearchParams({
-          symbol: pair,
-          timeframe: fineProfileStorageTimeframe,
-          contractType,
-          dataSourceMode,
-          start: String(window.startSeconds),
-          end: String(window.endSeconds),
-          baseBucketSize: String(fineProfileBaseBucketSize),
-        });
-        const response = await fetch(`/api/history/profile?${params.toString()}`, {
-          cache: 'no-store',
-        });
+      for (let index = 0; index < chunks.length; index += 1) {
+        if (!active) break;
 
-        if (!response.ok) {
+        const chunk = chunks[index];
+        const candidateTimes = profileCache.getMissingBaseCandleTimes(chunk.startSeconds, chunk.endSeconds);
+        if (candidateTimes.length === 0) {
+          stats.chunksSkipped = (stats.chunksSkipped ?? 0) + 1;
           recordRestoreDiagnostic({
             kind: 'volumeProfile',
             key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
             timestamp: Date.now(),
-            failedRows: candidateTimes.length,
+            rowsFetched: 0,
+            distinctCandleTimeCount: 0,
             details: {
               panelId,
-              status: response.status,
+              status: 'cache-covered',
+              reason,
               sourceKey: profileCache.key,
-              start: window.startSeconds,
-              end: window.endSeconds,
+              start: chunk.startSeconds,
+              end: chunk.endSeconds,
               tickSize,
               baseBucketSize: fineProfileBaseBucketSize,
             },
           });
-          console.warn(`[HistoryRestore:${panelId}] Fine profile row restore failed with ${response.status}`);
-          return stats;
+          continue;
         }
 
-        const rows = await response.json() as FineProfileRow[];
-        stats.rowsFetched = rows.length;
-        stats.candlesHydrated = new Set(rows.map((row) => row.candleTime)).size;
-
-        if (rows.length > 0) {
-          volumeProfileEngineRef.current.hydrateProfileRows(rows, 'restore');
-          pendingProfileRedrawRef.current = true;
-        }
-
-        console.debug('[VPROFILE_CACHE] Fine profile restore hydrated in shared cache', {
-          panelId,
-          pair,
-          contractType,
-          dataSourceMode,
-          sourceKey: profileCache.key,
-          requestedChartTimeframe: timeframe,
-          storageTimeframe: fineProfileStorageTimeframe,
-          tickSize,
-          baseBucketSize: fineProfileBaseBucketSize,
-          start: window.startSeconds,
-          end: window.endSeconds,
-          candidateCandles: candidateTimes.length,
-          rowsFetched: stats.rowsFetched,
-          distinctCandleTimes: stats.candlesHydrated,
-          minCandleTime: rows.length > 0 ? Math.min(...rows.map((row) => row.candleTime)) : null,
-          maxCandleTime: rows.length > 0 ? Math.max(...rows.map((row) => row.candleTime)) : null,
-          rowCount: profileCache.rowCount,
-          coverageRange: profileCache.getLoadedRanges(),
+        const chunkLabel = chunks.length > 1 ? ` ${index + 1}/${chunks.length}` : '';
+        publishRestoreStatus({
+          stage: 'volumeProfile',
+          message: reason === 'custom'
+            ? `Loading custom profile${chunkLabel}...`
+            : `Loading profile history${chunkLabel}...`,
+          candleCount: useChartStore.getState().panels[panelId].candles.length,
+          profileRowCount: stats.rowsFetched,
+          profileCandleCount: stats.candlesHydrated,
         });
 
-        recordRestoreDiagnostic({
-          kind: 'volumeProfile',
-          key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
-          timestamp: Date.now(),
-          rowsFetched: stats.rowsFetched,
-          distinctCandleTimeCount: stats.candlesHydrated,
-          skippedRows: Math.max(0, candidateTimes.length - stats.candlesHydrated),
-          details: {
+        const restoredChunkStats = await profileCache.runRestoreOnce(chunk.startSeconds, chunk.endSeconds, async () => {
+          const params = new URLSearchParams({
+            symbol: pair,
+            timeframe: fineProfileStorageTimeframe,
+            contractType,
+            dataSourceMode,
+            start: String(chunk.startSeconds),
+            end: String(chunk.endSeconds),
+            baseBucketSize: String(fineProfileBaseBucketSize),
+          });
+          const response = await fetch(`/api/history/profile?${params.toString()}`, {
+            cache: 'no-store',
+          });
+
+          if (!response.ok) {
+            recordRestoreDiagnostic({
+              kind: 'volumeProfile',
+              key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+              timestamp: Date.now(),
+              failedRows: candidateTimes.length,
+              details: {
+                panelId,
+                status: response.status,
+                reason,
+                sourceKey: profileCache.key,
+                start: chunk.startSeconds,
+                end: chunk.endSeconds,
+                tickSize,
+                baseBucketSize: fineProfileBaseBucketSize,
+              },
+            });
+            throw new Error(`Fine profile row restore failed with ${response.status}`);
+          }
+
+          const rows = await response.json() as FineProfileRow[];
+          const chunkCandleTimes = new Set(rows.map((row) => row.candleTime));
+
+          if (rows.length > 0) {
+            volumeProfileEngineRef.current.hydrateProfileRows(rows, 'restore');
+            pendingProfileRedrawRef.current = true;
+            rows.forEach((row) => hydratedCandleTimes.add(row.candleTime));
+          }
+
+          console.debug('[VPROFILE_CACHE] Fine profile restore chunk hydrated in shared cache', {
             panelId,
+            pair,
+            contractType,
+            dataSourceMode,
+            reason,
             sourceKey: profileCache.key,
-            start: window.startSeconds,
-            end: window.endSeconds,
-            candidateCandles: candidateTimes.length,
+            requestedChartTimeframe: timeframe,
+            storageTimeframe: fineProfileStorageTimeframe,
             tickSize,
             baseBucketSize: fineProfileBaseBucketSize,
+            start: chunk.startSeconds,
+            end: chunk.endSeconds,
+            candidateCandles: candidateTimes.length,
+            rowsFetched: rows.length,
+            distinctCandleTimes: chunkCandleTimes.size,
             minCandleTime: rows.length > 0 ? Math.min(...rows.map((row) => row.candleTime)) : null,
             maxCandleTime: rows.length > 0 ? Math.max(...rows.map((row) => row.candleTime)) : null,
-          },
+            rowCount: profileCache.rowCount,
+            coverageRange: profileCache.getLoadedRanges(),
+          });
+
+          recordRestoreDiagnostic({
+            kind: 'volumeProfile',
+            key: `${pair}:${contractType}:${dataSourceMode}:${fineProfileStorageTimeframe}:fineProfile`,
+            timestamp: Date.now(),
+            rowsFetched: rows.length,
+            distinctCandleTimeCount: chunkCandleTimes.size,
+            skippedRows: Math.max(0, candidateTimes.length - chunkCandleTimes.size),
+            details: {
+              panelId,
+              reason,
+              sourceKey: profileCache.key,
+              start: chunk.startSeconds,
+              end: chunk.endSeconds,
+              candidateCandles: candidateTimes.length,
+              tickSize,
+              baseBucketSize: fineProfileBaseBucketSize,
+              minCandleTime: rows.length > 0 ? Math.min(...rows.map((row) => row.candleTime)) : null,
+              maxCandleTime: rows.length > 0 ? Math.max(...rows.map((row) => row.candleTime)) : null,
+            },
+          });
+
+          return {
+            rowsFetched: rows.length,
+            candlesHydrated: chunkCandleTimes.size,
+            chunksFetched: 1,
+            chunksSkipped: 0,
+          };
         });
 
-        return stats;
-      });
+        stats.rowsFetched += restoredChunkStats.rowsFetched;
+        stats.candlesHydrated = hydratedCandleTimes.size || stats.candlesHydrated + restoredChunkStats.candlesHydrated;
+        stats.chunksFetched = (stats.chunksFetched ?? 0) + (restoredChunkStats.chunksFetched ?? 0);
 
-      if (restoredStats.candlesHydrated > 0) {
+        if ((stats.chunksFetched ?? 0) % 2 === 0) {
+          await yieldToBrowser();
+        }
+      }
+
+      if (stats.candlesHydrated > 0) {
         pendingProfileRedrawRef.current = true;
       }
 
-      return restoredStats;
+      return stats;
+    };
+
+    const hydrateStoredFineProfileRows = async (candles: Candle[]): Promise<FineProfileHydrationStats> => {
+      const window = getHistoryWindow(candles, timeframeSeconds);
+      if (!window) {
+        return {
+          rowsFetched: 0,
+          candlesHydrated: 0,
+          chunksFetched: 0,
+          chunksSkipped: 0,
+        };
+      }
+
+      const recentEnd = window.endSeconds;
+      const recentStart = Math.max(window.startSeconds, recentEnd - FINE_PROFILE_DEFAULT_RESTORE_SECONDS);
+      return hydrateStoredFineProfileRange(recentStart, recentEnd, 'default');
+    };
+
+    let lazyProfileRestoreRunning = false;
+    let lastLazyProfileRestoreKey = '';
+
+    const getCustomProfileRestoreWindow = () => {
+      const panel = useChartStore.getState().panels[panelId];
+      const range = panel.customProfileRange;
+      const candles = panel.candles;
+      if (!range || candles.length === 0) return null;
+
+      const firstTime = range.firstTime ?? candles[range.firstIndex]?.time;
+      const lastTime = range.lastTime ?? candles[range.lastIndex]?.time;
+      if (firstTime === undefined || lastTime === undefined) return null;
+
+      return alignFineProfileRange(
+        Math.min(firstTime, lastTime),
+        Math.max(firstTime, lastTime) + timeframeSeconds,
+      );
+    };
+
+    const getScrolledProfileRestoreWindow = () => {
+      const panel = useChartStore.getState().panels[panelId];
+      const candles = panel.candles;
+      if (!panel.defaultProfileEnabled || candles.length === 0) return null;
+
+      const safeBarWidth = Math.max(1, Number.isFinite(panel.barWidth) ? panel.barWidth : 1);
+      const barsFromLatest = Math.max(0, Math.floor(panel.scrollOffset / safeBarWidth));
+      if (barsFromLatest < FINE_PROFILE_LAZY_SCROLL_THRESHOLD_BARS) return null;
+
+      const rightIndex = Math.max(0, candles.length - 1 - barsFromLatest);
+      const leftIndex = Math.max(0, rightIndex - FINE_PROFILE_LAZY_VISIBLE_BARS);
+      const firstTime = candles[leftIndex]?.time;
+      const lastTime = candles[rightIndex]?.time;
+      if (firstTime === undefined || lastTime === undefined) return null;
+
+      return alignFineProfileRange(firstTime, lastTime + timeframeSeconds);
+    };
+
+    const restoreLazyProfileRange = async (
+      range: { startSeconds: number; endSeconds: number },
+      reason: 'lazy' | 'custom',
+    ) => {
+      if (lazyProfileRestoreRunning || range.endSeconds <= range.startSeconds) return;
+
+      const restoreKey = `${reason}:${range.startSeconds}:${range.endSeconds}`;
+      if (restoreKey === lastLazyProfileRestoreKey) return;
+
+      lazyProfileRestoreRunning = true;
+      try {
+        const stats = await hydrateStoredFineProfileRange(range.startSeconds, range.endSeconds, reason);
+        lastLazyProfileRestoreKey = restoreKey;
+
+        if (!active) return;
+        if ((stats.chunksFetched ?? 0) > 0) {
+          publishRestoreStatus({
+            stage: 'complete',
+            message: reason === 'custom' ? 'Loaded custom profile' : 'Loaded profile history',
+            candleCount: useChartStore.getState().panels[panelId].candles.length,
+            profileRowCount: stats.rowsFetched,
+            profileCandleCount: stats.candlesHydrated,
+          });
+        }
+      } catch (error) {
+        console.warn(`[HistoryRestore:${panelId}] ${reason} fine profile restore failed`, error);
+        publishRestoreStatus({
+          stage: 'error',
+          message: reason === 'custom' ? 'Custom profile load failed' : 'Profile history load failed',
+          candleCount: useChartStore.getState().panels[panelId].candles.length,
+        });
+      } finally {
+        lazyProfileRestoreRunning = false;
+      }
     };
 
     const feedUnsubscribers: Array<() => void> = [];
@@ -1862,6 +2008,18 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       flushRawTrades();
       flushFineProfileRows();
     }, RAW_TRADE_FLUSH_MS);
+    const lazyProfileRestoreInterval = setInterval(() => {
+      const customRange = getCustomProfileRestoreWindow();
+      if (customRange) {
+        void restoreLazyProfileRange(customRange, 'custom');
+        return;
+      }
+
+      const scrolledRange = getScrolledProfileRestoreWindow();
+      if (scrolledRange) {
+        void restoreLazyProfileRange(scrolledRange, 'lazy');
+      }
+    }, 1200);
     const obManager = orderbookRef.current;
 
     const initOrderbook = async () => {
@@ -1935,6 +2093,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       flushRawTrades();
       flushFineProfileRows();
       clearInterval(rawTradeFlushInterval);
+      clearInterval(lazyProfileRestoreInterval);
       if (aggregationInterval) clearInterval(aggregationInterval);
       obManager.reset();
       setLiquidityZones(panelId, []);

@@ -47,6 +47,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const restoreStatus = panel.historyRestoreStatus;
   const showRestoreStatus = restoreStatus !== null && (
     panel.isLoadingHistory
+    || restoreStatus.stage === 'volumeProfile'
     || restoreStatus.stage === 'complete'
     || restoreStatus.stage === 'error'
   );

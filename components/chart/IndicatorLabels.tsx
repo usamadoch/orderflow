@@ -1,7 +1,6 @@
 'use client';
 
 import { ChevronRight, ChevronDown, Eye, EyeOff, Settings } from 'lucide-react';
-import { useState } from 'react';
 import { useChartStore, type PanelId, type IndicatorSettingsSection } from '@/lib/store/chart';
 
 interface IndicatorLabelsProps {
@@ -16,12 +15,15 @@ interface IndicatorLabelConfig {
 }
 
 export function IndicatorLabels({ panelId }: IndicatorLabelsProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useChartStore(s => s.panels[panelId].indicatorLabelsCollapsed);
+  const setCollapsed = useChartStore(s => s.setIndicatorLabelsCollapsed);
   const panel = useChartStore(s => s.panels[panelId]);
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
   const setCvdEnabled = useChartStore(s => s.setCvdEnabled);
   const setSessionsEnabled = useChartStore(s => s.setSessionsEnabled);
   const setDefaultProfileEnabled = useChartStore(s => s.setDefaultProfileEnabled);
+  const setLiquidityEnabled = useChartStore(s => s.setLiquidityEnabled);
+  const setLiquidityHeatmapEnabled = useChartStore(s => s.setLiquidityHeatmapEnabled);
   const openIndicatorSettings = useChartStore(s => s.openIndicatorSettings);
 
   const indicators: IndicatorLabelConfig[] = [
@@ -49,6 +51,18 @@ export function IndicatorLabels({ panelId }: IndicatorLabelsProps) {
       enabled: panel.defaultProfileEnabled,
       onToggle: () => setDefaultProfileEnabled(panelId, !panel.defaultProfileEnabled),
     },
+    {
+      id: 'heatmap',
+      label: 'Heatmap',
+      enabled: panel.liquidityHeatmapEnabled,
+      onToggle: () => setLiquidityHeatmapEnabled(panelId, !panel.liquidityHeatmapEnabled),
+    },
+    {
+      id: 'liquidityMap',
+      label: 'Liquidity',
+      enabled: panel.liquidityEnabled,
+      onToggle: () => setLiquidityEnabled(panelId, !panel.liquidityEnabled),
+    },
   ];
 
   return (
@@ -60,7 +74,7 @@ export function IndicatorLabels({ panelId }: IndicatorLabelsProps) {
     >
       <button
         type="button"
-        onClick={() => setCollapsed((value) => !value)}
+        onClick={() => setCollapsed(panelId, !collapsed)}
         className="flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#060606] text-[#8B949E] transition-colors hover:bg-[#111111] hover:text-[#E8E8E8]"
         title={collapsed ? 'Expand indicator labels' : 'Collapse indicator labels'}
         aria-label={collapsed ? 'Expand indicator labels' : 'Collapse indicator labels'}

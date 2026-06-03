@@ -1,5 +1,7 @@
 import { VolumeProfile } from '@/lib/utils/volumeProfile';
 
+const MIN_PROFILE_ROW_OPACITY = 0.15;
+
 /**
  * Draws the background tint for the custom range selection.
  * Called early in the draw stack (behind candles).
@@ -109,6 +111,7 @@ export function drawCustomProfile(
   if (profile) {
     const barAnchorX = Math.min(x1, x2);
     const barMaxWidth = Math.max(0, rectWidth * (profileWidthPct / 100));
+    const sortedRows = [...profile.rows].sort((a, b) => b.price - a.price);
 
     // VA Area Fill
     if (showVaFill) {
@@ -122,8 +125,9 @@ export function drawCustomProfile(
       }
     }
 
-    for (const row of profile.rows) {
-      const yRange = getCustomProfileRowYRange(row.price, profileBucketSize, priceToY, profileMinRowHeight, rectY, rectHeight);
+    for (let i = 0; i < sortedRows.length; i += 1) {
+      const row = sortedRows[i];
+      const yRange = getCustomProfileRowYRange(sortedRows, i, profileBucketSize, priceToY, profileMinRowHeight, rectY, rectHeight);
       if (!yRange) continue;
 
       const { drawTopY, drawHeight } = yRange;
@@ -144,16 +148,19 @@ export function drawCustomProfile(
 
       if (barWidthPx < 0.5) continue;
 
+      const rowOpacity = getProfileRowOpacity(row.totalVol, profile.maxVol);
+
       // Unified muted amber/orange color
-      ctx.fillStyle = `rgba(217, 119, 6, ${profileOpacity})`;
+      ctx.fillStyle = `rgba(217, 119, 6, ${rowOpacity})`;
       ctx.fillRect(barAnchorX, drawTopY, barWidthPx, drawHeight);
     }
 
     // POC Highlight
     if (showPocHighlight) {
-      const pocRow = profile.rows.find(r => r.price === profile.poc);
-      if (pocRow) {
-        const yRange = getCustomProfileRowYRange(pocRow.price, profileBucketSize, priceToY, profileMinRowHeight, rectY, rectHeight);
+      const pocRowIndex = sortedRows.findIndex(r => r.price === profile.poc);
+      if (pocRowIndex >= 0) {
+        const pocRow = sortedRows[pocRowIndex];
+        const yRange = getCustomProfileRowYRange(sortedRows, pocRowIndex, profileBucketSize, priceToY, profileMinRowHeight, rectY, rectHeight);
 
         if (yRange) {
           const { drawTopY, drawHeight } = yRange;
@@ -163,7 +170,7 @@ export function drawCustomProfile(
           barW = Math.min(barMaxWidth, barW);
 
           if (barW >= 0.5) {
-            const highlightOpacity = Math.min(1.0, profileOpacity + 0.2);
+            const highlightOpacity = Math.max(getProfileRowOpacity(pocRow.totalVol, profile.maxVol), profileOpacity);
             ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
             ctx.fillRect(barAnchorX, drawTopY, barW, drawHeight);
 
@@ -257,15 +264,19 @@ export function drawCustomProfile(
 }
 
 function getCustomProfileRowYRange(
-  price: number,
+  rows: VolumeProfile['rows'],
+  rowIndex: number,
   profileBucketSize: number,
   priceToY: (price: number) => number,
   minRowHeight: number,
   rectY: number,
   rectHeight: number,
 ) {
-  let rowTopY = priceToY(price + profileBucketSize);
-  let rowBotY = priceToY(price);
+  const row = rows[rowIndex];
+  if (!row) return null;
+
+  let rowTopY = priceToY(row.price + profileBucketSize);
+  let rowBotY = getProfileRowBottomY(rows, rowIndex, profileBucketSize, priceToY);
   const rowHeight = rowBotY - rowTopY;
 
   if (rowHeight <= 0) return null;
@@ -282,4 +293,31 @@ function getCustomProfileRowYRange(
   if (drawHeight <= 0) return null;
 
   return { drawTopY, drawBotY, drawHeight };
+}
+
+function getProfileRowBottomY(
+  rows: VolumeProfile['rows'],
+  rowIndex: number,
+  profileBucketSize: number,
+  priceToY: (price: number) => number,
+) {
+  const row = rows[rowIndex];
+  const nextRow = rows[rowIndex + 1];
+  if (!row) return 0;
+
+  if (nextRow && areAdjacentRows(row.price, nextRow.price, profileBucketSize)) {
+    return priceToY(nextRow.price + profileBucketSize);
+  }
+
+  return priceToY(row.price);
+}
+
+function areAdjacentRows(currentPrice: number, nextPrice: number, profileBucketSize: number) {
+  const tolerance = Math.max(1e-9, profileBucketSize * 1e-6);
+  return Math.abs(nextPrice - (currentPrice - profileBucketSize)) <= tolerance;
+}
+
+function getProfileRowOpacity(totalVol: number, maxVol: number) {
+  const volumeRatio = maxVol > 0 ? Math.max(0, Math.min(1, totalVol / maxVol)) : 0;
+  return MIN_PROFILE_ROW_OPACITY + (1 - MIN_PROFILE_ROW_OPACITY) * volumeRatio;
 }

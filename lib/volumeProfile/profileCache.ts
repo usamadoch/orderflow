@@ -456,7 +456,7 @@ export class VolumeProfileBaseCache {
       time += BASE_PROFILE_TIMEFRAME_SECONDS
     ) {
       const rows = this.fineRowsByCandle.get(time);
-      if (!rows || rows.size === 0) {
+      if ((!rows || rows.size === 0) && !this.isLoadedBaseTime(time)) {
         missing.push(time);
       }
     }
@@ -613,14 +613,34 @@ export class VolumeProfileBaseCache {
   }
 
   private rememberLoadedRange(startTime: number, endTime: number) {
-    this.loadedRanges.push({
+    const nextRange = {
       startTime: normalizeProfileBaseCandleTime(startTime),
       endTime: normalizeProfileBaseCandleTime(endTime),
-    });
+    };
+    const ranges = [...this.loadedRanges, nextRange]
+      .filter((range) => range.endTime > range.startTime)
+      .sort((a, b) => a.startTime - b.startTime || a.endTime - b.endTime);
+
+    const merged: Array<{ startTime: number; endTime: number }> = [];
+    for (const range of ranges) {
+      const previous = merged[merged.length - 1];
+      if (!previous || range.startTime > previous.endTime) {
+        merged.push({ ...range });
+        continue;
+      }
+
+      previous.endTime = Math.max(previous.endTime, range.endTime);
+    }
+
+    this.loadedRanges = merged;
 
     if (this.loadedRanges.length > 100) {
       this.loadedRanges = this.loadedRanges.slice(-100);
     }
+  }
+
+  private isLoadedBaseTime(time: number) {
+    return this.loadedRanges.some((range) => time >= range.startTime && time < range.endTime);
   }
 
   private deleteRowsBefore(timeSeconds: number, preservedTime: number | null) {

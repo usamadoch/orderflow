@@ -1,5 +1,18 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-04] - UI: Panel Settings And Fine Profile Restore
+- **What changed**:
+  - Removed the global chart-settings launcher from the header and turned the sidebar into a compact icon rail with active-panel context.
+  - Anchored the settings window near the clicked panel button, moved Heatmap and Liquidity Map controls into the Indicators tab, and added clearer Volume Profile auto/manual row-size handling with scaling hints.
+  - Changed fine Volume Profile restore to load the most recent 4 hours first, request history in 2-hour chunks, and lazily backfill custom or scrolled ranges while guarding `/api/history/profile` to a 6-hour maximum window.
+  - Kept the chart restore badge visible during `volumeProfile` hydration and tightened profile row rendering plus loaded-range coverage so chunked restore does not loop on already-covered spans.
+  - Updated `skills/map.md` for the revised responsibilities.
+- **Why it changed**:
+  - The settings UI needed to be panel-local and less cluttered, and fine profile restore needed bounded requests plus faster initial hydration.
+- **Impact summary**:
+  - Market data, signal calculations, and storage semantics were unchanged.
+  - Profile renderer visuals, indicator toggles, and restore flows improved without changing the underlying profile math or live feed behavior.
+
 ## [2026-06-04] - UI: Position Tool Border And Toolbar Spacing
 - **What changed**:
   - Removed the outer red/green stroke around Long/Short Position boxes and kept the 1px white entry separator between risk and reward zones.

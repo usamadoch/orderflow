@@ -876,6 +876,19 @@ export const mongoMarketStorageAdapter: MarketStorageAdapter = {
       const cursor = collection
         .find(filter)
         .hint(PROFILE_QUERY_INDEX)
+        .project<MongoProfileRowDocument>({
+          time: 1,
+          meta: 1,
+          candleTimeSec: 1,
+          baseBucketSize: 1,
+          bucketPrice: 1,
+          bucketPriceKey: 1,
+          bidVol: 1,
+          askVol: 1,
+          totalVol: 1,
+          tradeCount: 1,
+          storedAt: 1,
+        })
         .sort({ time: 1, bucketPriceKey: 1 })
 
       return (allowDiskUse ? cursor.allowDiskUse(true) : cursor).toArray()
