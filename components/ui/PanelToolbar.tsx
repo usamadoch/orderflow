@@ -1,7 +1,9 @@
 'use client';
 
-import { Maximize2, Minimize2 } from 'lucide-react';
-import { useChartStore, PanelId } from '../../lib/store/chart';
+import React from 'react';
+import { Maximize2, Minimize2, Settings, TrendingDown, TrendingUp } from 'lucide-react';
+import { useChartStore, PanelId, type SettingsOpenRequest } from '../../lib/store/chart';
+import { ChartSettingsDropdown } from './ChartSettingsDropdown';
 
 const PAIRS = ['BTCUSDT', 'ETHUSDT'];
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h'];
@@ -15,8 +17,56 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setPair = useChartStore(s => s.setPair);
   const setTimeframe = useChartStore(s => s.setTimeframe);
   const setChartMode = useChartStore(s => s.setChartMode);
+  const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
   const focusMode = useChartStore(s => s.focusMode);
   const setFocusMode = useChartStore(s => s.setFocusMode);
+  const setActivePanel = useChartStore(s => s.setActivePanel);
+  const settingsOpenRequest = useChartStore(s => s.settingsOpenRequest);
+  const [showSettings, setShowSettings] = React.useState(false);
+  const [settingsAnchor, setSettingsAnchor] = React.useState<{ x: number; y: number } | null>(null);
+  const [settingsFocusRequest, setSettingsFocusRequest] = React.useState<SettingsOpenRequest | null>(null);
+  const settingsContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const settingsButtonRef = React.useRef<HTMLButtonElement | null>(null);
+
+  const selectPositionTool = React.useCallback((mode: 'long-position' | 'short-position') => {
+    setActivePanel(panelId);
+    setLineDrawMode(panelId, panel.lineDrawMode === mode ? 'none' : mode);
+  }, [panel.lineDrawMode, panelId, setActivePanel, setLineDrawMode]);
+
+  const getSettingsAnchor = React.useCallback(() => {
+    const rect = settingsButtonRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+
+    return {
+      x: rect.right,
+      y: rect.bottom + 6,
+    };
+  }, []);
+
+  const openSettings = React.useCallback((focusRequest: SettingsOpenRequest | null = null) => {
+    setActivePanel(panelId);
+    setSettingsAnchor(getSettingsAnchor());
+    setSettingsFocusRequest(focusRequest);
+    setShowSettings(true);
+  }, [getSettingsAnchor, panelId, setActivePanel]);
+
+  React.useEffect(() => {
+    if (!showSettings) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (settingsContainerRef.current && !settingsContainerRef.current.contains(event.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    return () => window.removeEventListener('pointerdown', handlePointerDown);
+  }, [showSettings]);
+
+  React.useEffect(() => {
+    if (settingsOpenRequest?.panelId !== panelId) return;
+    openSettings(settingsOpenRequest);
+  }, [openSettings, panelId, settingsOpenRequest]);
 
   return (
     <div className="font-sans h-8 bg-[#0D0D0D] border-b border-[#1F1F1F] flex items-center px-3 gap-2 shrink-0 overflow-visible">
@@ -75,21 +125,66 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         </button>
       </div>
 
-      {/* Liquidity Quick Toggle */}
-      <div className="flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
+      <div className="flex gap-0.5 bg-[#080808] p-0.5 rounded-md border border-[#1A1A1A]">
         <button
-          onClick={() => useChartStore.getState().setLiquidityEnabled(panelId, !panel.liquidityEnabled)}
-          className={`h-5 w-6 flex items-center justify-center rounded text-[11px] font-black transition-all duration-200 ${panel.liquidityEnabled
-            ? 'bg-[#1F1F1F] border border-[#3D7EFF] text-[#E8E8E8]'
-            : 'bg-transparent text-[#4A4A4A] hover:text-[#777]'
-            }`}
-          title="Toggle Liquidity Map (Q)"
+          type="button"
+          onClick={() => selectPositionTool('long-position')}
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
+            panel.lineDrawMode === 'long-position'
+              ? 'bg-[#089981] text-white shadow-sm shadow-[#089981]/20'
+              : 'text-text-dim hover:text-main hover:bg-[#151515]'
+          }`}
+          title="Long Position"
+          aria-pressed={panel.lineDrawMode === 'long-position'}
+          aria-label="Long Position"
         >
-          Q
+          <TrendingUp size={11} strokeWidth={2.5} />
+          Long
+        </button>
+        <button
+          type="button"
+          onClick={() => selectPositionTool('short-position')}
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
+            panel.lineDrawMode === 'short-position'
+              ? 'bg-[#F23645] text-white shadow-sm shadow-[#F23645]/20'
+              : 'text-text-dim hover:text-main hover:bg-[#151515]'
+          }`}
+          title="Short Position"
+          aria-pressed={panel.lineDrawMode === 'short-position'}
+          aria-label="Short Position"
+        >
+          <TrendingDown size={11} strokeWidth={2.5} />
+          Short
         </button>
       </div>
 
-      <div className="ml-auto flex items-center border-l border-[#1A1A1A] pl-3 h-5">
+      <div className="ml-auto flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
+        <div ref={settingsContainerRef} className="relative">
+          <button
+            ref={settingsButtonRef}
+            onClick={() => (showSettings ? setShowSettings(false) : openSettings())}
+            className={`h-6 w-6 flex items-center justify-center rounded border transition-all duration-200 ${
+              showSettings
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-[#1A1A1A] bg-[#080808] text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8]'
+            }`}
+            title={`${panelId === 'left' ? 'Left' : 'Right'} panel settings`}
+            aria-label={`${panelId === 'left' ? 'Left' : 'Right'} panel settings`}
+          >
+            <Settings size={12} strokeWidth={2.5} />
+          </button>
+
+          {showSettings && (
+            <ChartSettingsDropdown
+              panelId={panelId}
+              initialAnchor={settingsAnchor}
+              focusSection={settingsFocusRequest?.section ?? null}
+              focusRequestId={settingsFocusRequest?.requestId ?? 0}
+              onClose={() => setShowSettings(false)}
+            />
+          )}
+        </div>
+
         <button
           onClick={() => setFocusMode(!focusMode)}
           className="h-6 w-6 flex items-center justify-center rounded border border-[#1A1A1A] bg-[#080808] text-[#787B86] transition-all duration-200 hover:border-accent/60 hover:text-[#E8E8E8]"

@@ -1,5 +1,75 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-04] - UI: Position Tool Border And Toolbar Spacing
+- **What changed**:
+  - Removed the outer red/green stroke around Long/Short Position boxes and kept the 1px white entry separator between risk and reward zones.
+  - Added extra selected-drawing toolbar offset for Long/Short Position drawings so the style toolbar no longer overlaps the active position labels.
+  - Updated `skills/map.md` for the adjusted renderer and toolbar-position responsibilities.
+- **Why it changed**:
+  - The position boxes needed a cleaner TradingView-like surface, and the selected drawing toolbar could cover the target/entry info labels.
+- **Impact summary**:
+  - Position behavior, calculations, drag/resize handles, persistence, and visual-only trade independence were not changed.
+  - Market data, feeds, storage, Volume Profile, footprint, heatmap, and signal calculations were not changed.
+
+## [2026-06-04] - Fix: Position Tool Layering And Label Design
+- **What changed**:
+  - Moved Long/Short Position drawings into a later chart drawing pass so they render above candles, footprint cells, bubbles, order-flow overlays, Volume Profile, and the heatmap strip while remaining below React UI overlays.
+  - Added darker candle-overlap shading inside risk/reward zones by intersecting each visible candle high/low range with the position box price ranges.
+  - Replaced the black details box with selected/hover-only colored rounded labels for target, stop, and main entry/risk-reward details.
+  - Removed always-on position price labels from the generic drawing price-label pass so inactive position drawings stay visually clean.
+  - Updated `skills/map.md` for the adjusted renderer responsibilities.
+- **Why it changed**:
+  - The position drawing needed to read like a TradingView-style drawing object on top of chart content, with clearer price-action overlap styling and cleaner active-only detail labels.
+- **Impact summary**:
+  - Position creation, risk-first drag behavior, reward creation, drag/resize handles, live calculations, persistence, locking, styling, and deletion remain on the existing implementation.
+  - Position drawings remain visual-only and are not connected to live trades, current market price, or open positions.
+  - Market data, feeds, storage, order placement, Volume Profile calculations, footprint calculations, heatmap collection, and signal calculations were not changed.
+  - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
+
+## [2026-06-04] - Fix: Position Tool Risk-First Preview And Details
+- **What changed**:
+  - Changed Long/Short Position drag preview to render only the red risk/stop-loss zone while the pointer is down.
+  - Changed initial entry/stop assignment so the user-drawn risk box becomes the actual stop zone: long uses the upper edge as entry and lower edge as stop, short uses the lower edge as entry and upper edge as stop.
+  - Changed finalized drawings to create a smaller default reward box on the opposite side after release.
+  - Hid detailed position metrics unless the drawing is selected or hovered; non-active drawings keep the joined boxes and basic price labels.
+  - Updated `skills/map.md` for the adjusted drawing responsibilities.
+- **Why it changed**:
+  - The first implementation showed the reward zone during drag and kept the detailed info panel always visible, which made the tool feel unlike TradingView's visual position drawings.
+- **Impact summary**:
+  - Position tools remain visual-only drawings and stay disconnected from live trades, current market price, and open positions.
+  - Existing selection, lock, style, delete, persistence, and entry/stop/target dragging behavior remains in the current drawing system.
+  - Market data, feeds, storage, order placement, Volume Profile, footprint, heatmap, and signal calculations were not changed.
+  - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
+
+## [2026-06-04] - Feature: Long/Short Position Drawing Tools
+- **What changed**:
+  - Added Long Position and Short Position buttons to each panel header.
+  - Added persisted `long-position` and `short-position` drawing variants with entry, stop, and target levels.
+  - Added risk-first click-drag creation, preview rendering, selectable whole-drawing movement, width resizing, and draggable entry/stop/target handles.
+  - Added red risk zones, green reward zones, entry separator lines, price labels, and live risk/reward, price-move, percent-move, and point-distance metrics.
+  - Updated `skills/map.md` for the touched file responsibilities.
+- **Why it changed**:
+  - The chart needed TradingView-style visual position measurement tools that users can draw anywhere without creating orders or binding to current price/open positions.
+- **Impact summary**:
+  - Position drawings behave like existing drawings for selection, locking, styling, deletion, and persistence.
+  - Long drawings keep stop/risk below entry and target/reward above entry; short drawings keep stop/risk above entry and target/reward below entry.
+  - Market data, feeds, storage, order placement, live positions, Volume Profile, footprint, heatmap, and signal calculations were not changed.
+  - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
+
+## [2026-06-03] - Fix: Volume Profile Phase 1 Rendering
+- **What changed**:
+  - Task 1: Added auto profile row sizing in `components/chart/ChartCanvas.tsx` for default and custom Volume Profile builds, with `profileResolutionTicks = 0` as auto mode in `lib/store/chart.ts`.
+  - Task 2: Added per-row volume-strength opacity gradients to `components/chart/drawVolumeProfile.ts` and `components/chart/drawSelectionRect.ts`, while keeping VA fills and POC/VA/LVN lines separate.
+  - Task 3: Changed default and custom profile row rendering to reuse adjacent row boundaries for continuous fills without hairline gaps.
+  - Task 4: Changed fresh Volume Profile scaling default from `sqrt` to `linear` and added LINEAR/SQRT setting tooltips in `components/ui/ChartSettingsDropdown.tsx`.
+  - Updated `skills/map.md` for the touched file responsibilities.
+- **Why it changed**:
+  - Fixed noisy sub-pixel fixed row sizing, uniform weak-row opacity, and floating-point row seams so Volume Profile shape reads more clearly by default.
+- **Impact summary**:
+  - Fresh panels start in auto row sizing and linear scaling; positive manual row sizes remain supported.
+  - Default and custom profiles now share the same bucket sizing, opacity gradient, and continuous row-fill behavior.
+  - Profile engine internals, cache keys, fine-row aggregation, feeds, storage, heatmap, drawings, and signal logic were not changed.
+
 ## [2026-06-03] - Fix: Horizontal And Vertical Drawing Drag
 - **What changed**:
   - Made selected horizontal lines draggable up/down by updating their price value.

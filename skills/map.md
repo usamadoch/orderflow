@@ -74,9 +74,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/layout/Header.tsx` → Top toolbar, layout controls, connection status, and premium unlock controls.
 - `components/layout/Sidebar.tsx` → Thin fixed tools sidebar with active-panel context and compact chart/tool status icons.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection indicator.
-- `components/ui/PanelToolbar.tsx` → Per-panel controls for pair, timeframe, chart mode, panel-targeted settings access, and whole-layout focus toggle.
+- `components/ui/PanelToolbar.tsx` → Per-panel controls for pair, timeframe, chart mode, Long/Short Position drawing tool selection, panel-targeted settings access, and whole-layout focus toggle.
 - `components/ui/DrawingFavoritesToolbar.tsx` → Draggable panel-bounded icon-only floating toolbar for Profile, Measure, and favorite line/box drawing tool selection using existing drawing state.
-- `components/ui/ChartSettingsDropdown.tsx` → Draggable, resizable top-layer settings window with panel-button anchored opening, persisted height, internal scrolling, chart aggregation/global tick-size controls, dedicated Indicators tab for sessions/CVD/bubbles/Volume Profile/heatmap/liquidity map with direct section focus, compact signal toggles/settings, single/combined liquidity depth source, real orderbook heatmap visual controls, responsive label visibility/detail/min-quantity controls, and related controls.
+- `components/ui/ChartSettingsDropdown.tsx` → Draggable, resizable top-layer settings window with panel-button anchored opening, persisted height, internal scrolling, chart aggregation/global tick-size controls, dedicated Indicators tab for sessions/CVD/bubbles/Volume Profile/heatmap/liquidity map with direct section focus, Volume Profile auto/manual row-size display and linear/sqrt hints, compact signal toggles/settings, single/combined liquidity depth source, real orderbook heatmap visual controls, responsive label visibility/detail/min-quantity controls, and related controls.
 - `components/ui/PairSelector.tsx` → Panel-scoped pair switcher.
 - `components/ui/TimeframeSelector.tsx` → Panel-scoped timeframe switcher.
 - `components/ui/ChartModeToggle.tsx` → Candle/footprint mode toggle.
@@ -91,7 +91,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 - `components/chart/ChartPanel.tsx` → Panel state bridge from Zustand/context into chart, dismissible restore-status badge including profile-only restore progress, indicator labels, and CVD canvases, including orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
 - `components/chart/IndicatorLabels.tsx` → TradingView-style top-left chart indicator labels for Bubbles, CVD, Sessions, VOP, Heatmap, and Liquidity with per-panel persisted collapse state, compact text-first layout, per-panel eye toggles, and settings-section jump buttons.
-- `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order, hit-testing, time-anchored drawing placement and movement, selectable drawing toolbar with style/lock/delete controls, custom profile interactions, render metrics, and visible footprint/profile/CVD wiring.
+- `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, auto-sized Volume Profile bucket selection for default and custom profiles, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order, hit-testing, time-anchored drawing placement and movement including Long/Short Position risk-only preview, finalized default target creation, top-layer drawing pass, position-aware toolbar spacing, and entry/stop/target dragging, selectable drawing toolbar with style/lock/delete controls, custom profile interactions, render metrics, and visible footprint/profile/CVD wiring.
 - `components/chart/CvdPanel.tsx` → Attached CVD canvas with synced horizontal geometry, vertical scaling, memoized CVD series/divergence, and render metrics.
 - `components/chart/useCoordinates.ts` → Coordinate math for price/time/index mapping, visible range, and drawable width.
 - `components/chart/usePanZoom.ts` → Shared pan/zoom hook with anchored zoom, drag handling, crosshair interaction, and sibling canvas sync.
@@ -99,9 +99,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawCvd.ts` → CVD renderer for candle, bar, line, histogram, labels, compact values, and divergence markers.
 - `components/chart/drawFootprint.ts` → Footprint renderer with visible-range drawing, normalized scaling, and per-redraw footprint resolution support.
 - `components/chart/drawBubbles.ts` → Volume bubble overlay renderer using footprint data and robust percentile scaling.
-- `components/chart/drawVolumeProfile.ts` → Default Volume Profile renderer with bar/filled modes, POC, VA, LVN, HVN-style accents, width clamping, and row readability options.
-- `components/chart/drawSelectionRect.ts` → Custom profile selection rectangle/profile renderer with handles, filled/bar profile modes, POC/VA/LVN accents, and resize/move support.
-- `components/chart/drawLines.ts` → Horizontal/vertical line, ray, box, handle, delete-dot, price-label, selected-state, and backward-compatible drawing style renderer.
+- `components/chart/drawVolumeProfile.ts` → Default Volume Profile renderer with bar/filled modes, POC, VA, LVN, HVN-style accents, width clamping, per-row volume opacity, continuous adjacent row boundaries, and row readability options.
+- `components/chart/drawSelectionRect.ts` → Custom profile selection rectangle/profile renderer with handles, filled/bar profile modes, POC/VA/LVN accents, per-row volume opacity, continuous adjacent row boundaries, and resize/move support.
+- `components/chart/drawLines.ts` → Horizontal/vertical line, ray, box, Long/Short Position risk/reward zones with white entry separator, candle-overlap shading, conditional TradingView-style metric labels, handle, delete-dot, price-label, selected-state, and backward-compatible drawing style renderer.
 - `components/chart/drawAxes.ts` → Price/time axis renderers.
 - `components/chart/drawPriceLine.ts` → Live price line, badge, countdown, and direction coloring.
 - `components/chart/drawCrosshair.ts` → Crosshair and axis-label renderer.
@@ -125,7 +125,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Zustand panel state, transient history restore status, persisted settings, candles, time-anchored drawing tools/overlays with optional drawing style and lock fields, draggable drawing toolbar positions, signals, sessions, CVD, profiles, per-panel indicator-label collapse state, real orderbook heatmap visual/window/responsive-label controls, contract/trade/single-or-combined depth source modes, plus global focus-mode, settings-window UI state, and transient indicator settings open requests.
+- `lib/store/chart.ts` → Zustand panel state, transient history restore status, persisted settings, candles, time-anchored drawing tools/overlays including Long/Short Position drawings with optional drawing style and lock fields, draggable drawing toolbar positions, signals, sessions, CVD, Volume Profile auto/manual row sizing and linear default scaling, per-panel indicator-label collapse state, real orderbook heatmap visual/window/responsive-label controls, contract/trade/single-or-combined depth source modes, plus global focus-mode, settings-window UI state, and transient indicator settings open requests.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcuts for chart modes, tools, sessions, liquidity, signal toggles, focus mode, and active panel targeting.
 
 ### Feeds / Shared Live Data

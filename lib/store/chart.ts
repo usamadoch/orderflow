@@ -18,7 +18,7 @@ export type LayoutMode = 'single' | 'dual';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type { BubbleSide };
 export type ExhaustionSide = 'both' | 'buyer' | 'seller';
-export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box';
+export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box' | 'long-position' | 'short-position';
 export type DrawingStrokeWidth = 1 | 2 | 3 | 4;
 export type SessionId = 'tokyo' | 'london' | 'newYork';
 export type CvdMode = 'candles' | 'bars' | 'line' | 'histogram';
@@ -131,7 +131,7 @@ export interface Measurement {
 
 export interface DrawnLine {
   id: string;
-  type: 'horizontal' | 'vertical' | 'horizontal-ray' | 'box';
+  type: 'horizontal' | 'vertical' | 'horizontal-ray' | 'box' | 'long-position' | 'short-position';
   value: number; // price for horizontal/ray, legacy candle index for vertical, top price fallback for box
   color?: string;
   strokeWidth?: DrawingStrokeWidth;
@@ -145,6 +145,8 @@ export interface DrawnLine {
   lastIndex?: number;
   priceHigh?: number;
   priceLow?: number;
+  stopPrice?: number;
+  targetPrice?: number;
 }
 
 export interface PanelState {
@@ -472,11 +474,11 @@ function createDefaultPanel(id: PanelId): PanelState {
     indicatorLabelsCollapsed: false,
     profileWidthPct: 70,
     defaultProfileEnabled: true,
-    profileResolutionTicks: getMinimumFineProfileResolutionTicks(0.5),
+    profileResolutionTicks: 0,
     profileMinRowHeight: 1,
     profileOpacity: 0.4,
     profileMinRowWidth: 2,
-    profileScaleMode: 'sqrt',
+    profileScaleMode: 'linear',
     profileShowPocHighlight: true,
     profileShowVaFill: true,
     profileShowPocLine: true,
@@ -542,10 +544,11 @@ function createDefaultPanel(id: PanelId): PanelState {
 
 function clampProfileResolutionTicks(profileResolutionTicks: unknown, tickSize: number) {
   const ticks = Number(profileResolutionTicks);
-  const safeTicks = Number.isFinite(ticks) ? ticks : getMinimumFineProfileResolutionTicks(tickSize);
+  if (!Number.isFinite(ticks) || ticks <= 0) return 0;
+
   return Math.max(
     getMinimumFineProfileResolutionTicks(tickSize),
-    Math.min(100, Math.round(safeTicks)),
+    Math.min(100, Math.round(ticks)),
   );
 }
 
@@ -1221,7 +1224,7 @@ export const useChartStore = create<ChartState>()(
             profileMinRowHeight: p.profileMinRowHeight ?? 1,
             profileOpacity: p.profileOpacity ?? 0.4,
             profileMinRowWidth: p.profileMinRowWidth ?? 2,
-            profileScaleMode: p.profileScaleMode || 'sqrt',
+            profileScaleMode: p.profileScaleMode || 'linear',
             profileShowPocHighlight: p.profileShowPocHighlight ?? true,
             profileShowVaFill: p.profileShowVaFill ?? true,
             profileShowPocLine: p.profileShowPocLine ?? true,
