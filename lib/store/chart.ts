@@ -19,6 +19,7 @@ export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type { BubbleSide };
 export type ExhaustionSide = 'both' | 'buyer' | 'seller';
 export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box';
+export type DrawingStrokeWidth = 1 | 2 | 3 | 4;
 export type SessionId = 'tokyo' | 'london' | 'newYork';
 export type CvdMode = 'candles' | 'bars' | 'line' | 'histogram';
 export type CvdResetMode = 'none' | 'daily' | 'session';
@@ -132,6 +133,9 @@ export interface DrawnLine {
   id: string;
   type: 'horizontal' | 'vertical' | 'horizontal-ray' | 'box';
   value: number; // price for horizontal/ray, legacy candle index for vertical, top price fallback for box
+  color?: string;
+  strokeWidth?: DrawingStrokeWidth;
+  locked?: boolean;
   time?: number;
   startTime?: number;
   startIndex?: number;

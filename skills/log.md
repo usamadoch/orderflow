@@ -1,5 +1,59 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-03] - Fix: Horizontal And Vertical Drawing Drag
+- **What changed**:
+  - Made selected horizontal lines draggable up/down by updating their price value.
+  - Made selected vertical lines draggable left/right by updating their candle index and timestamp anchor.
+- **Why it changed**:
+  - The selected drawing toolbar worked, but horizontal and vertical lines still only selected because their hit zones did not enter the existing drawing drag path.
+- **Impact summary**:
+  - Locked horizontal and vertical lines remain selectable but cannot move.
+  - Vertical lines keep timestamp anchors after dragging, so retained candles and new live candles do not make them drift.
+  - Styling toolbar, delete, color, width, ray, box, market data, feeds, storage, footprint, Volume Profile, heatmap, indicators, and collector behavior were not changed.
+
+## [2026-06-03] - UI: Selectable Drawing Styling Toolbar
+- **What changed**:
+  - Added click selection for existing horizontal lines, vertical lines, right-extending rays, and boxes.
+  - Added a floating selected-drawing toolbar with delete, lock/unlock, 1-4 px stroke width, and the required drawing color swatches.
+  - Added optional `color`, `strokeWidth`, and `locked` fields to drawn lines and boxes.
+  - Updated drawing rendering so selected/hovered drawings show active handles/delete dots while preserving each drawing's configured stroke style.
+- **Why it changed**:
+  - Existing drawing tools could create and edit some drawing shapes, but they lacked TradingView-style selection and direct styling controls.
+- **Impact summary**:
+  - Drawing creation still uses the existing line/box drawing logic and timestamp anchor resolution.
+  - Locked drawings remain selectable and deletable, but movement/resizing and style controls are disabled until unlocked.
+  - Existing saved drawings without style fields render with default color and width, so persisted drawing state remains backward-compatible.
+  - Market data, feeds, MongoDB/storage, footprint, Volume Profile, heatmap, indicators, and collector code were not changed.
+
+## [2026-06-03] - Fix: Chunked Volume Profile Restore
+- **What changed**:
+  - Changed default fine Volume Profile restore to load only the most recent four hours first, split into two-hour `/api/history/profile` chunks.
+  - Added lazy fine-profile backfill for scrolled-back chart ranges and custom profile selections, using the same chunked fetch/hydrate path.
+  - Made profile-only and custom-profile restore progress visible in the existing chart restore badge.
+  - Updated the shared Volume Profile cache so loaded ranges are merged and empty restored chunks prevent duplicate fetch loops.
+  - Added a six-hour profile history API request cap and kept MongoDB profile reads on the source/timeframe/base-bucket/time compound index with a projected result set and disk-sort fallback only for code-292 failures.
+- **Why it changed**:
+  - Refresh restore could request one or more days of `profile_rows_ts` at once after the collector had been running for many hours, causing MongoDB to exceed the in-memory sort limit before the chart became usable.
+- **Impact summary**:
+  - Recent Volume Profile rows hydrate first and the live feed is not blocked by older profile history.
+  - Older/default profile rows load only when the user scrolls back, and custom profiles fetch their selected time range in bounded chunks.
+  - Sparse or empty profile ranges no longer trigger repeated restore loops.
+  - Collector scripts, footprint restore, candle restore, heatmap/liquidity, and Volume Profile calculation/rendering math were not changed.
+
+## [2026-06-03] - UI: Panel-Scoped Settings Layering
+- **What changed**:
+  - Removed the chart settings button/dropdown ownership from the global header.
+  - Added a settings button to each chart panel header next to the Focus button.
+  - Opening settings from a panel now immediately targets that panel and anchors the window near that panel's header button.
+  - Kept indicator-label settings jumps working by routing them through the owning panel toolbar.
+  - Raised the settings window above chart overlays, made its background solid, and stopped pointer events from bubbling through it.
+- **Why it changed**:
+  - The global settings launcher could target the wrong panel in split-screen layouts and the settings window could visually compete with chart overlays/toolbars.
+- **Impact summary**:
+  - Split-screen settings now open against the clicked left/right panel without relying on hover-selected active panel state.
+  - Signal tooltips, indicator labels, restore badges, the floating drawing toolbar, and canvas overlays remain below the settings window.
+  - Settings content, market data, feeds, storage, footprint, Volume Profile, heatmap calculations, and drawing tool logic were not changed.
+
 ## [2026-06-03] - UI: Dismiss History Restore Badge
 - **What changed**:
   - Added an icon-only close button to the chart history restore status badge.

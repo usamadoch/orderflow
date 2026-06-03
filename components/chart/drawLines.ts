@@ -3,6 +3,9 @@
 import { DrawnLine } from "@/lib/store/chart";
 import { formatPrice } from "@/lib/utils/format";
 
+const DEFAULT_DRAWING_COLOR = '#787B86';
+const DEFAULT_DRAWING_STROKE_WIDTH = 2;
+
 export function drawLines(
   ctx: CanvasRenderingContext2D,
   drawnLines: DrawnLine[],
@@ -14,6 +17,7 @@ export function drawLines(
   priceAxisWidth: number,
   barWidth: number,
   hoveredLineId: string | null,
+  selectedLineId: string | null,
   isHoveringDeleteDot: boolean
 ) {
   const drawableWidth = canvasWidth - priceAxisWidth;
@@ -21,13 +25,19 @@ export function drawLines(
 
   drawnLines.forEach((line) => {
     const isHovered = line.id === hoveredLineId;
-    ctx.lineWidth = 2;
+    const isSelected = line.id === selectedLineId;
+    const isActive = isHovered || isSelected;
+    ctx.save();
+    ctx.lineWidth = line.strokeWidth ?? DEFAULT_DRAWING_STROKE_WIDTH;
     ctx.setLineDash([]);
-    ctx.strokeStyle = isHovered ? '#3D7EFF' : '#787B86';
+    ctx.strokeStyle = line.color ?? DEFAULT_DRAWING_COLOR;
 
     if (line.type === 'horizontal') {
       const y = priceToY(line.value);
-      if (y < 0 || y > drawableHeight) return;
+      if (y < 0 || y > drawableHeight) {
+        ctx.restore();
+        return;
+      }
 
       // Draw Line
       ctx.beginPath();
@@ -36,14 +46,17 @@ export function drawLines(
       ctx.stroke();
 
       // Draw Delete Dot if hovered
-      if (isHovered) {
+      if (isActive) {
         const dotX = drawableWidth - 6;
         const dotY = y;
         drawDeleteDot(ctx, dotX, dotY, isHoveringDeleteDot);
       }
     } else if (line.type === 'vertical') {
       const x = indexToX(line.value);
-      if (x === null || x < 0 || x > drawableWidth) return;
+      if (x === null || x < 0 || x > drawableWidth) {
+        ctx.restore();
+        return;
+      }
 
       // Draw Line
       ctx.beginPath();
@@ -52,7 +65,7 @@ export function drawLines(
       ctx.stroke();
 
       // Draw Delete Dot if hovered
-      if (isHovered) {
+      if (isActive) {
         const dotX = x;
         const dotY = 10;
         drawDeleteDot(ctx, dotX, dotY, isHoveringDeleteDot);
@@ -61,7 +74,10 @@ export function drawLines(
       const startIndex = line.startIndex ?? 0;
       const x = indexToX(startIndex);
       const y = priceToY(line.value);
-      if (x === null || x > drawableWidth || y < 0 || y > drawableHeight) return;
+      if (x === null || x > drawableWidth || y < 0 || y > drawableHeight) {
+        ctx.restore();
+        return;
+      }
 
       const startX = Math.max(0, x);
       ctx.beginPath();
@@ -69,7 +85,7 @@ export function drawLines(
       ctx.lineTo(drawableWidth, y);
       ctx.stroke();
 
-      if (isHovered) {
+      if (isActive) {
         drawHandle(ctx, startX, y);
         drawDeleteDot(ctx, drawableWidth - 6, y, isHoveringDeleteDot);
       }
@@ -80,27 +96,34 @@ export function drawLines(
         line.priceHigh === undefined ||
         line.priceLow === undefined
       ) {
+        ctx.restore();
         return;
       }
 
       const x1 = indexToX(line.firstIndex);
       const x2 = indexToX(line.lastIndex);
-      if (x1 === null || x2 === null) return;
+      if (x1 === null || x2 === null) {
+        ctx.restore();
+        return;
+      }
 
       const left = Math.max(0, Math.min(x1, x2) - barWidth / 2);
       const right = Math.min(drawableWidth, Math.max(x1, x2) + barWidth / 2);
       const top = priceToY(line.priceHigh);
       const bottom = priceToY(line.priceLow);
-      if (right < 0 || left > drawableWidth || bottom < 0 || top > drawableHeight) return;
+      if (right < 0 || left > drawableWidth || bottom < 0 || top > drawableHeight) {
+        ctx.restore();
+        return;
+      }
 
       const rectTop = Math.max(0, Math.min(top, bottom));
       const rectBottom = Math.min(drawableHeight, Math.max(top, bottom));
 
-      ctx.fillStyle = isHovered ? 'rgba(61, 126, 255, 0.10)' : 'rgba(120, 123, 134, 0.08)';
+      ctx.fillStyle = isActive ? 'rgba(61, 126, 255, 0.10)' : 'rgba(120, 123, 134, 0.08)';
       ctx.fillRect(left, rectTop, Math.max(1, right - left), Math.max(1, rectBottom - rectTop));
       ctx.strokeRect(left, rectTop, Math.max(1, right - left), Math.max(1, rectBottom - rectTop));
 
-      if (isHovered) {
+      if (isActive) {
         drawHandle(ctx, left, rectTop);
         drawHandle(ctx, right, rectTop);
         drawHandle(ctx, left, rectBottom);
@@ -108,6 +131,7 @@ export function drawLines(
         drawDeleteDot(ctx, right, rectTop, isHoveringDeleteDot);
       }
     }
+    ctx.restore();
   });
 }
 

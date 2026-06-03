@@ -2,7 +2,7 @@
 
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Lock, Unlock, X } from 'lucide-react';
-import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide, Measurement, DrawnLine } from '@/lib/store/chart';
+import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide, Measurement, DrawnLine, DrawingStrokeWidth } from '@/lib/store/chart';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import type { VolumeProfileSource } from '@/lib/volumeProfile/profileEngine';
@@ -45,6 +45,19 @@ import { MIN_FINE_PROFILE_BASE_BUCKET_SIZE } from '@/lib/config/markets';
 type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
 type DrawingHitZone = 'hover' | 'move' | 'delete' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
 type CustomProfileRange = NonNullable<PanelState['customProfileRange']>;
+
+const DRAWING_COLORS = [
+  '#F23645',
+  '#FF9801',
+  '#FFEB3B',
+  '#4CAF50',
+  '#089981',
+  '#00BCD4',
+  '#2962FF',
+  '#673AB7',
+  '#E91E63',
+] as const;
+const DEFAULT_DRAWING_STROKE_WIDTH: DrawingStrokeWidth = 2;
 
 function findExactTimeIndex(time: number, candles: Candle[]) {
   let left = 0;
@@ -128,7 +141,7 @@ function getDrawingHitZone(
   if (line.type === 'horizontal') {
     const ly = priceToY(line.value);
     if (Math.abs(y - ly) < 6 && x <= chartWidth) {
-      return Math.abs(x - (chartWidth - 6)) < 8 && Math.abs(y - ly) < 8 ? 'delete' : 'hover';
+      return Math.abs(x - (chartWidth - 6)) < 8 && Math.abs(y - ly) < 8 ? 'delete' : 'move';
     }
     return null;
   }
@@ -136,7 +149,7 @@ function getDrawingHitZone(
   if (line.type === 'vertical') {
     const lx = indexToX(line.value);
     if (lx !== null && Math.abs(x - lx) < 6 && y <= chartHeight) {
-      return Math.abs(x - lx) < 8 && Math.abs(y - 10) < 8 ? 'delete' : 'hover';
+      return Math.abs(x - lx) < 8 && Math.abs(y - 10) < 8 ? 'delete' : 'move';
     }
     return null;
   }
@@ -179,6 +192,54 @@ function getDrawingHitZone(
     if (Math.abs(y - minY) <= pad) return 'resize-top';
     if (Math.abs(y - maxY) <= pad) return 'resize-bottom';
     return 'move';
+  }
+
+  return null;
+}
+
+function getDrawingToolbarAnchor(
+  line: DrawnLine,
+  indexToX: (index: number) => number | null,
+  priceToY: (price: number) => number,
+  chartWidth: number,
+  chartHeight: number,
+  barWidth: number
+) {
+  if (line.type === 'horizontal') {
+    const y = priceToY(line.value);
+    if (y < 0 || y > chartHeight) return null;
+    return { x: chartWidth - 120, y };
+  }
+
+  if (line.type === 'vertical') {
+    const x = indexToX(line.value);
+    if (x === null || x < 0 || x > chartWidth) return null;
+    return { x, y: 28 };
+  }
+
+  if (line.type === 'horizontal-ray') {
+    const x = indexToX(line.startIndex ?? 0);
+    const y = priceToY(line.value);
+    if (x === null || x > chartWidth || y < 0 || y > chartHeight) return null;
+    return { x: Math.max(0, x), y };
+  }
+
+  if (
+    line.type === 'box' &&
+    line.firstIndex !== undefined &&
+    line.lastIndex !== undefined &&
+    line.priceHigh !== undefined &&
+    line.priceLow !== undefined
+  ) {
+    const x1 = indexToX(line.firstIndex);
+    const x2 = indexToX(line.lastIndex);
+    if (x1 === null || x2 === null) return null;
+    const right = Math.max(x1, x2) + barWidth / 2;
+    const top = priceToY(line.priceHigh);
+    const bottom = priceToY(line.priceLow);
+    const y = Math.min(top, bottom);
+    if (right < 0 || y > chartHeight || Math.max(top, bottom) < 0) return null;
+    return { x: right, y };
   }
 
   return null;
@@ -433,6 +494,7 @@ export function ChartCanvas({
   const [hoveredAbs, setHoveredAbs] = React.useState<{ result: AbsorptionResult, x: number, y: number } | null>(null);
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
   const [hoveredIceberg, setHoveredIceberg] = React.useState<{ level: IcebergLevel, x: number, y: number } | null>(null);
+  const [selectedDrawingId, setSelectedDrawingId] = React.useState<string | null>(null);
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
@@ -519,7 +581,7 @@ export function ChartCanvas({
       const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
       const indexToX = (index: number) => calcIndexToX(index, candles.length, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
 
-      drawLines(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, hoveredLineId.current, isHoveringDeleteDot.current);
+      drawLines(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, hoveredLineId.current, selectedDrawingId, isHoveringDeleteDot.current);
 
       drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
@@ -773,6 +835,7 @@ export function ChartCanvas({
           priceAxisWidth,
           currentBarWidth,
           'active-box',
+          null,
           false
         );
       }
@@ -853,7 +916,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, showTimeAxis]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleThreshold, bubbleMinRadius, bubbleMaxRadius, bubbleSide, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, showTimeAxis]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1059,6 +1122,16 @@ export function ChartCanvas({
     redraw();
   }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, volumeProfileRevision, redraw, isLoadingHistory, drawnLines, lineDrawMode, showTimeAxis]);
 
+  useEffect(() => {
+    if (selectedDrawingId && !drawnLines.some((line) => line.id === selectedDrawingId)) {
+      setSelectedDrawingId(null);
+    }
+  }, [drawnLines, selectedDrawingId]);
+
+  useEffect(() => {
+    redraw();
+  }, [selectedDrawingId, redraw]);
+
   // Real-time countdown timer
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1092,6 +1165,36 @@ export function ChartCanvas({
     };
   }, [customProfileRange, containerSize, candles, priceAxisWidth, timeAxisHeight, profileWidth, scrollOffset, barWidth, priceCenter, priceRange]);
 
+  const selectedDrawing = useMemo(() => {
+    if (!selectedDrawingId) return null;
+    return drawnLines.find((line) => line.id === selectedDrawingId) ?? null;
+  }, [drawnLines, selectedDrawingId]);
+
+  const selectedDrawingControls = (() => {
+    if (!selectedDrawing || containerSize.width === 0) return null;
+    const resolvedDrawing = resolveLineForRender(selectedDrawing, candles);
+    if (!resolvedDrawing) return null;
+
+    const chartWidth = containerSize.width - priceAxisWidth;
+    const chartHeight = containerSize.height - timeAxisHeight;
+    if (chartWidth <= 0 || chartHeight <= 0) return null;
+
+    const pCenter = priceCenter.current ?? 0;
+    const pRange = priceRange.current ?? 100;
+    const priceMin = pCenter - pRange / 2;
+    const priceMax = pCenter + pRange / 2;
+    const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
+    const indexToX = (index: number) => calcIndexToX(index, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+    const anchor = getDrawingToolbarAnchor(resolvedDrawing, indexToX, priceToY, chartWidth, chartHeight, barWidth.current);
+    if (!anchor) return null;
+
+    const overlayWidth = 232;
+    return {
+      top: Math.max(4, Math.min(chartHeight - 44, anchor.y - 44)),
+      left: Math.max(4, Math.min(chartWidth - overlayWidth - 4, anchor.x - overlayWidth / 2)),
+    };
+  })();
+
   // Drawing Interaction Logic
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1102,9 +1205,12 @@ export function ChartCanvas({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // 0. Line Drawing, Deletion, and Drawing Movement
+      // 0. Line Drawing, Deletion, Selection, and Drawing Movement
       if (hoveredLineId.current && isHoveringDeleteDot.current) {
         useChartStore.getState().removeLine(panelId, hoveredLineId.current);
+        if (selectedDrawingId === hoveredLineId.current) {
+          setSelectedDrawingId(null);
+        }
         hoveredLineId.current = null;
         isHoveringDeleteDot.current = false;
         hoveredDrawingZone.current = null;
@@ -1112,13 +1218,18 @@ export function ChartCanvas({
         return;
       }
 
-      if (hoveredLineId.current && hoveredDrawingZone.current && hoveredDrawingZone.current !== 'hover') {
+      if (hoveredLineId.current && hoveredDrawingZone.current) {
         const targetLine = useChartStore.getState().panels[panelId].drawnLines.find((line) => line.id === hoveredLineId.current);
         if (targetLine) {
-          dragAnchor.current = { x, y };
-          drawingSnapshot.current = targetLine;
-          drawingDragZone.current = hoveredDrawingZone.current;
-          isDraggingDrawing.current = true;
+          setSelectedDrawingId(targetLine.id);
+          useChartStore.getState().setProfileSelected(panelId, false);
+          if (!targetLine.locked && hoveredDrawingZone.current !== 'hover') {
+            dragAnchor.current = { x, y };
+            drawingSnapshot.current = targetLine;
+            drawingDragZone.current = hoveredDrawingZone.current;
+            isDraggingDrawing.current = true;
+          }
+          redraw();
           return;
         }
       }
@@ -1208,6 +1319,7 @@ export function ChartCanvas({
       hoverZone.current = profileHitZone;
 
       if (profileHitZone && !currentPanel.customProfileLocked) {
+        setSelectedDrawingId(null);
         dragAnchor.current = { x, y };
         profileSnapshot.current = resolvedCurrentProfileRange;
 
@@ -1223,12 +1335,14 @@ export function ChartCanvas({
 
       // 5. Select Profile (if clicked inside while locked)
       if (profileHitZone) {
+        setSelectedDrawingId(null);
         useChartStore.getState().setProfileSelected(panelId, true);
         redraw();
         return;
       }
 
-      // 6. Click outside -> deselect profile
+      // 6. Click outside -> deselect profile and drawing
+      setSelectedDrawingId(null);
       useChartStore.getState().setProfileSelected(panelId, false);
       redraw();
     };
@@ -1329,7 +1443,8 @@ export function ChartCanvas({
                 hoveredLineId.current = line.id;
                 hoveredDrawingZone.current = hitZone;
                 isHoveringDeleteDot.current = hitZone === 'delete';
-                if (hitZone === 'move') cursor = 'grab';
+                if (line.locked && hitZone !== 'delete') cursor = 'pointer';
+                else if (hitZone === 'move') cursor = 'grab';
                 else if (hitZone === 'resize-left' || hitZone === 'resize-right') cursor = 'ew-resize';
                 else if (hitZone === 'resize-top' || hitZone === 'resize-bottom') cursor = 'ns-resize';
                 else cursor = 'pointer';
@@ -1495,7 +1610,25 @@ export function ChartCanvas({
         const snapshot = drawingSnapshot.current;
         const zone = drawingDragZone.current;
 
-        if (snapshot.type === 'horizontal-ray') {
+        if (snapshot.type === 'horizontal') {
+          if (zone === 'move') {
+            const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
+            const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
+            useChartStore.getState().updateLine(panelId, snapshot.id, {
+              value: snapshot.value + (priceAtCurrent - priceAtAnchor),
+            });
+          }
+          redraw();
+        } else if (snapshot.type === 'vertical') {
+          if (zone === 'move') {
+            const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+            useChartStore.getState().updateLine(panelId, snapshot.id, {
+              value: index,
+              time: candles[index]?.time,
+            });
+          }
+          redraw();
+        } else if (snapshot.type === 'horizontal-ray') {
           const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
           const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
           const priceDelta = priceAtCurrent - priceAtAnchor;
@@ -1814,6 +1947,7 @@ export function ChartCanvas({
         isDraggingDrawing.current = false;
         drawingSnapshot.current = null;
         drawingDragZone.current = null;
+        setSelectedDrawingId(null);
         useChartStore.getState().setCustomProfileRange(panelId, null);
         redraw();
       }
@@ -1830,7 +1964,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe]);
+  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId]);
 
 
   return (
@@ -1866,6 +2000,83 @@ export function ChartCanvas({
         measurement={activeMeasurement}
         canvasRect={canvasRef.current?.getBoundingClientRect() || null}
       />
+
+      {selectedDrawing && selectedDrawingControls && (
+        <div
+          className="absolute flex items-center gap-1 rounded border border-[#333] bg-[#1A1A1A]/95 p-1 shadow-xl backdrop-blur-sm z-30"
+          style={{
+            top: `${selectedDrawingControls.top}px`,
+            left: `${selectedDrawingControls.left}px`,
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              useChartStore.getState().updateLine(panelId, selectedDrawing.id, { locked: !selectedDrawing.locked });
+              redraw();
+            }}
+            className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${selectedDrawing.locked ? 'text-[#3D7EFF] hover:bg-[#2A2A2A]' : 'text-gray-400 hover:bg-[#2A2A2A] hover:text-[#E8E8E8]'}`}
+            title={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
+            aria-label={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
+          >
+            {selectedDrawing.locked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
+          </button>
+          <select
+            value={selectedDrawing.strokeWidth ?? DEFAULT_DRAWING_STROKE_WIDTH}
+            onChange={(event) => {
+              useChartStore.getState().updateLine(panelId, selectedDrawing.id, {
+                strokeWidth: Number(event.target.value) as DrawingStrokeWidth,
+              });
+              redraw();
+            }}
+            disabled={selectedDrawing.locked}
+            className="h-7 rounded border border-[#333] bg-[#101010] px-1 text-[11px] font-bold text-[#E8E8E8] outline-none transition-colors hover:border-[#555] disabled:cursor-not-allowed disabled:opacity-45"
+            title="Stroke width"
+            aria-label="Stroke width"
+          >
+            {[1, 2, 3, 4].map((width) => (
+              <option key={width} value={width}>{width}px</option>
+            ))}
+          </select>
+          <div className="mx-0.5 h-5 w-px bg-[#333]" />
+          <div className="flex items-center gap-0.5" title="Drawing color">
+            {DRAWING_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => {
+                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { color });
+                  redraw();
+                }}
+                disabled={selectedDrawing.locked}
+                className="flex h-7 w-5 items-center justify-center rounded hover:bg-[#2A2A2A] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+                title={color}
+                aria-label={`Set drawing color ${color}`}
+              >
+                <span
+                  className={`block h-3.5 w-3.5 rounded-full border ${selectedDrawing.color === color ? 'border-white' : 'border-black/40'}`}
+                  style={{ backgroundColor: color }}
+                />
+              </button>
+            ))}
+          </div>
+          <div className="mx-0.5 h-5 w-px bg-[#333]" />
+          <button
+            type="button"
+            onClick={() => {
+              useChartStore.getState().removeLine(panelId, selectedDrawing.id);
+              setSelectedDrawingId(null);
+              redraw();
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-red-500/10 hover:text-red-500"
+            title="Delete drawing"
+            aria-label="Delete drawing"
+          >
+            <X size={15} strokeWidth={2.5} />
+          </button>
+        </div>
+      )}
 
       {/* Custom Profile Controls Overlay */}
       {customProfileRange && customProfileControls && (
