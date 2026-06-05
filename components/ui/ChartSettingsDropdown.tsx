@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef, type RefObject } from 'react';
-import { Activity, BarChart2, Layers, Zap, X } from 'lucide-react';
-import { useChartStore, PanelId, BubbleSide, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode, IndicatorSettingsSection } from '../../lib/store/chart';
+import { useState, useEffect, useRef } from 'react';
+import { BarChart2, Layers, Zap, X } from 'lucide-react';
+import { useChartStore, PanelId, AggregateBubbleMarketSource, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode, IndicatorSettingsSection, SettingsFocusSection } from '../../lib/store/chart';
 import { getMinimumFineProfileResolutionTicks } from '../../lib/config/markets';
 
 const SETTINGS_WIDTH = 544;
 const SETTINGS_MIN_HEIGHT = 350;
 const SETTINGS_DEFAULT_HEIGHT = 500;
 const VIEWPORT_MARGIN = 16;
+const INDICATOR_DIALOG_WIDTH = 440;
 
 function getViewportMaxHeight(top: number) {
   if (typeof window === 'undefined') {
@@ -28,8 +29,10 @@ function clampSettingsHeight(nextHeight: number, top: number) {
 interface ChartSettingsDropdownProps {
   panelId: PanelId;
   initialAnchor?: { x: number; y: number } | null;
-  focusSection?: IndicatorSettingsSection | null;
+  focusSection?: SettingsFocusSection | null;
   focusRequestId?: number;
+  indicatorSection?: IndicatorSettingsSection | null;
+  indicatorTitle?: string;
   onClose: () => void;
 }
 
@@ -63,7 +66,15 @@ function getInitialSettingsPosition(initialAnchor: { x: number; y: number } | nu
   }, height);
 }
 
-export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, focusRequestId = 0, onClose }: ChartSettingsDropdownProps) {
+export function ChartSettingsDropdown({
+  panelId,
+  initialAnchor,
+  focusSection,
+  focusRequestId = 0,
+  indicatorSection = null,
+  indicatorTitle,
+  onClose,
+}: ChartSettingsDropdownProps) {
   const panel = useChartStore(s => s.panels[panelId]);
   const settingsDropdownHeight = useChartStore(s => s.settingsDropdownHeight);
   const setSettingsDropdownHeight = useChartStore(s => s.setSettingsDropdownHeight);
@@ -74,9 +85,16 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
   const setContractType = useChartStore(s => s.setContractType);
   const setDataSourceMode = useChartStore(s => s.setDataSourceMode);
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
+  const setBubbleSource = useChartStore(s => s.setBubbleSource);
+  const setBubbleSizeBy = useChartStore(s => s.setBubbleSizeBy);
+  const setAggregateBubbleMarketSource = useChartStore(s => s.setAggregateBubbleMarketSource);
   const setBubbleThreshold = useChartStore(s => s.setBubbleThreshold);
   const setBubbleThresholdMode = useChartStore(s => s.setBubbleThresholdMode);
+  const setBubbleMinOrders = useChartStore(s => s.setBubbleMinOrders);
+  const setBubbleMinRadius = useChartStore(s => s.setBubbleMinRadius);
+  const setBubbleMaxRadius = useChartStore(s => s.setBubbleMaxRadius);
   const setBubbleSide = useChartStore(s => s.setBubbleSide);
+  const setBubbleScaleMode = useChartStore(s => s.setBubbleScaleMode);
   const setExhaustionEnabled = useChartStore(s => s.setExhaustionEnabled);
   const setExhaustionMinScore = useChartStore(s => s.setExhaustionMinScore);
   const setExhaustionSide = useChartStore(s => s.setExhaustionSide);
@@ -145,7 +163,7 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
   const setLiquidityHeatmapProfileSync = useChartStore(s => s.setLiquidityHeatmapProfileSync);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
-  const [activeTab, setActiveTab] = useState<'chart' | 'indicators' | 'profiles' | 'signals'>('chart');
+  const [activeTab, setActiveTab] = useState<'chart' | 'profiles' | 'signals'>('chart');
   const minManualProfileResolutionTicks = getMinimumFineProfileResolutionTicks(tickSize);
   const effectiveProfileRowSize = tickSize > 0 ? panel.profileResolutionTicks * tickSize : 0;
   const maxProfileResolutionTicks = Math.max(40, minManualProfileResolutionTicks);
@@ -159,6 +177,13 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
   const volumeProfileSectionRef = useRef<HTMLDivElement>(null);
   const heatmapSectionRef = useRef<HTMLDivElement>(null);
   const liquidityMapSectionRef = useRef<HTMLDivElement>(null);
+  const indicatorDialogTitles: Record<IndicatorSettingsSection, string> = {
+    sessions: 'Sessions',
+    cvd: 'CVD',
+    bubbles: 'Volume Bubbles',
+    heatmap: 'Heatmap',
+    liquidityMap: 'Liquidity Map',
+  };
 
   // --- Draggable Logic ---
   const [position, setPosition] = useState(() => getInitialSettingsPosition(initialAnchor, settingsDropdownHeight || SETTINGS_DEFAULT_HEIGHT));
@@ -180,20 +205,24 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
   }, [settingsDropdownHeight]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
     if (!focusSection || focusRequestId <= 0) return;
 
-    setActiveTab('indicators');
-    window.requestAnimationFrame(() => {
-      const sectionRefs: Record<IndicatorSettingsSection, RefObject<HTMLDivElement>> = {
-        sessions: sessionsSectionRef,
-        cvd: cvdSectionRef,
-        bubbles: bubblesSectionRef,
-        volumeProfile: volumeProfileSectionRef,
-        heatmap: heatmapSectionRef,
-        liquidityMap: liquidityMapSectionRef,
-      };
-      sectionRefs[focusSection]?.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    });
+    if (focusSection === 'profiles') {
+      setActiveTab('profiles');
+    }
   }, [focusRequestId, focusSection]);
 
   useEffect(() => {
@@ -300,6 +329,27 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
     { label: 'Sell', value: 'sell' },
     { label: 'Both', value: 'both' },
   ];
+  const bubbleSources: { label: string; shortLabel: string; value: BubbleSource }[] = [
+    { label: 'Footprint Cells', shortLabel: 'Footprint', value: 'footprintCells' },
+    { label: 'Aggregate Trades', shortLabel: 'Agg Trades', value: 'aggregateTrades' },
+  ];
+  const bubbleSizeModes: { label: string; value: BubbleSizeBy }[] = [
+    { label: 'Volume', value: 'volume' },
+    { label: 'Orders', value: 'orders' },
+  ];
+  const aggregateBubbleMarketSources: { label: string; shortLabel: string; value: AggregateBubbleMarketSource }[] = [
+    { label: 'Active Chart', shortLabel: 'Active', value: 'active' },
+    { label: 'Spot', shortLabel: 'Spot', value: 'spot' },
+    { label: 'Futures', shortLabel: 'Futures', value: 'futures' },
+    { label: 'Both', shortLabel: 'Both', value: 'both' },
+  ];
+  const bubbleScaleModes: { label: string; value: BubbleScaleMode; title: string }[] = [
+    { label: 'Linear', value: 'linear', title: 'Direct value proportion' },
+    { label: 'SQRT', value: 'sqrt', title: 'Compresses outliers while preserving relative size' },
+    { label: 'Log', value: 'log', title: 'Strongest compression for very uneven values' },
+  ];
+  const isAggregateBubbleSource = panel.bubbleSource === 'aggregateTrades';
+  const showOrderBubbleControls = isAggregateBubbleSource && panel.bubbleSizeBy === 'orders';
   const dataSourceModes: { label: string; value: DataSourceMode }[] = [
     { label: 'Spot', value: 'spot' },
     { label: 'Futures', value: 'futures' },
@@ -327,7 +377,6 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
 
   const tabs = [
     { id: 'chart', label: 'Chart', icon: BarChart2 },
-    { id: 'indicators', label: 'Indicators', icon: Activity },
     { id: 'profiles', label: 'Profiles', icon: Layers },
     { id: 'signals', label: 'Signals', icon: Zap },
   ] as const;
@@ -647,25 +696,124 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
 
       {panel.bubblesEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Volume</label>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setBubbleThresholdMode(panelId, panel.bubbleThresholdMode === 'absolute' ? 'relative' : 'absolute')}
-                className="px-2 py-1 bg-[#1A1A1A] border border-[#1F1F1F] rounded text-[10px] font-black text-text-dim hover:text-main transition-colors uppercase"
-              >
-                {panel.bubbleThresholdMode === 'absolute' ? 'Fixed (BTC)' : 'Adaptive (x Avg)'}
-              </button>
-              <input
-                type="number"
-                value={localThreshold}
-                onChange={handleThresholdChange}
-                step={panel.bubbleThresholdMode === 'relative' ? "0.5" : "1"}
-                className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                min="0.1"
-              />
+          <div className="space-y-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bubble Source</label>
+              <span className="text-[11px] font-mono font-bold text-accent">
+                {bubbleSources.find((source) => source.value === panel.bubbleSource)?.label ?? 'Footprint Cells'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {bubbleSources.map(({ label, shortLabel, value }) => (
+                <button
+                  key={value}
+                  type="button"
+                  title={label}
+                  onClick={() => setBubbleSource(panelId, value)}
+                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
+                    panel.bubbleSource === value
+                      ? 'bg-[#1A1A1A] border-accent text-accent'
+                      : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  }`}
+                >
+                  {shortLabel}
+                </button>
+              ))}
             </div>
           </div>
+
+          {isAggregateBubbleSource && (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Market Source</label>
+                <div className="grid grid-cols-4 gap-1">
+                  {aggregateBubbleMarketSources.map(({ label, shortLabel, value }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      title={label}
+                      onClick={() => setAggregateBubbleMarketSource(panelId, value)}
+                      className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
+                        panel.aggregateBubbleMarketSource === value
+                          ? 'bg-[#1A1A1A] border-accent text-accent'
+                          : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                      }`}
+                    >
+                      {shortLabel}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Size By</label>
+                <div className="grid grid-cols-2 gap-1">
+                  {bubbleSizeModes.map(({ label, value }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setBubbleSizeBy(panelId, value)}
+                      className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
+                        panel.bubbleSizeBy === value
+                          ? 'bg-[#1A1A1A] border-accent text-accent'
+                          : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!showOrderBubbleControls && (
+            <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Volume</label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setBubbleThresholdMode(panelId, panel.bubbleThresholdMode === 'absolute' ? 'relative' : 'absolute')}
+                  className="px-2 py-1 bg-[#1A1A1A] border border-[#1F1F1F] rounded text-[10px] font-black text-text-dim hover:text-main transition-colors uppercase"
+                >
+                  {panel.bubbleThresholdMode === 'absolute' ? 'Fixed (BTC)' : 'Adaptive (x Avg)'}
+                </button>
+                <input
+                  type="number"
+                  value={localThreshold}
+                  onChange={handleThresholdChange}
+                  step={panel.bubbleThresholdMode === 'relative' ? "0.5" : "1"}
+                  className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                  min="0.1"
+                />
+              </div>
+            </div>
+          )}
+
+          {showOrderBubbleControls && (
+            <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Orders</label>
+                <input
+                  type="number"
+                  value={panel.bubbleMinOrders}
+                  onChange={(e) => setBubbleMinOrders(panelId, Number(e.target.value))}
+                  className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                  min="1"
+                  max="1000"
+                  step="1"
+                />
+              </div>
+              <input
+                type="range"
+                value={panel.bubbleMinOrders}
+                onChange={(e) => setBubbleMinOrders(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="1"
+                max="1000"
+                step="1"
+              />
+            </div>
+          )}
 
           <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
@@ -682,6 +830,62 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
                   {label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scale Mode</label>
+              <div className="flex gap-1 w-36">
+                {bubbleScaleModes.map(({ label, value, title }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    title={title}
+                    onClick={() => setBubbleScaleMode(panelId, value)}
+                    className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.bubbleScaleMode === value
+                      ? 'bg-[#1A1A1A] border-accent text-accent'
+                      : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                      }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Radius</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{panel.bubbleMinRadius}px</span>
+              </div>
+              <input
+                type="range"
+                value={panel.bubbleMinRadius}
+                onChange={(e) => setBubbleMinRadius(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="1"
+                max={Math.max(1, Math.min(20, panel.bubbleMaxRadius - 1))}
+                step="1"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Max Radius</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{panel.bubbleMaxRadius}px</span>
+              </div>
+              <input
+                type="range"
+                value={panel.bubbleMaxRadius}
+                onChange={(e) => setBubbleMaxRadius(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min={Math.max(5, panel.bubbleMinRadius + 1)}
+                max="60"
+                step="1"
+              />
             </div>
           </div>
         </div>
@@ -1070,6 +1274,65 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
     </div>
   );
 
+  const renderIndicatorSettingsContent = (section: IndicatorSettingsSection) => {
+    switch (section) {
+      case 'sessions':
+        return renderSessionsSettings();
+      case 'cvd':
+        return renderCvdSettings();
+      case 'bubbles':
+        return renderBubbleSettings();
+      case 'heatmap':
+        return renderHeatmapSettings();
+      case 'liquidityMap':
+        return renderLiquidityMapSettings();
+      default:
+        return null;
+    }
+  };
+
+  if (indicatorSection) {
+    return (
+      <div
+        className="pointer-events-auto fixed inset-0 z-[1000] flex items-center justify-center bg-black/20 px-3 py-6"
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          if (event.target === event.currentTarget) {
+            onClose();
+          }
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          className="flex max-h-[min(720px,calc(100vh-48px))] w-full flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#0D0D0D] shadow-2xl"
+          style={{ maxWidth: INDICATOR_DIALOG_WIDTH }}
+        >
+          <div className="flex items-center justify-between border-b border-[#1F1F1F] bg-[#080808]/50 p-4">
+            <div className="flex flex-col">
+              <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-accent">
+                {indicatorTitle ?? indicatorDialogTitles[indicatorSection]}
+              </h3>
+              <span className="text-[9px] font-bold text-text-dim/60 uppercase tracking-tighter">{panelId} Panel</span>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 text-text-dim transition-colors hover:text-main"
+              title="Close"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="overflow-y-auto p-5 custom-scrollbar">
+            {renderIndicatorSettingsContent(indicatorSection)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={dropdownRef}
@@ -1253,18 +1516,6 @@ export function ChartSettingsDropdown({ panelId, initialAnchor, focusSection, fo
                   </div>
                 </div>
 
-              </>
-            )}
-
-            {/* Tab: Indicators */}
-            {activeTab === 'indicators' && (
-              <>
-                {renderSessionsSettings()}
-                {renderCvdSettings()}
-                {renderBubbleSettings()}
-                {renderVolumeProfileSettings()}
-                {renderHeatmapSettings()}
-                {renderLiquidityMapSettings()}
               </>
             )}
 
