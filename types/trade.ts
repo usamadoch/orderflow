@@ -1,5 +1,7 @@
 export interface Trade {
   id?: number;
+  firstTradeId?: number;
+  lastTradeId?: number;
   time: number;
   price: number;
   quantity: number;

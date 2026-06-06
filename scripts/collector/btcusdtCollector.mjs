@@ -17,11 +17,16 @@ const DEFAULT_MAX_DEDUPE_KEYS = 100000
 const DEFAULT_RECONNECT_MIN_MS = 1000
 const DEFAULT_RECONNECT_MAX_MS = 30000
 const DEFAULT_HEARTBEAT_MS = 30000
+const DEFAULT_AGG_BUBBLE_MIN_VOLUME_BTC = 15
+const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT = 75
+const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC = 3
+const DEFAULT_AGG_BUBBLE_FLUSH_SIZE = 1000
 
 const COLLECTIONS = {
   footprint: 'footprint_cells_ts',
   profile: 'profile_rows_ts',
   collectorMeta: 'collector_meta',
+  aggregateBubbles: 'aggregate_bubble_events',
 }
 
 const SOURCES = ['spot', 'futures']
@@ -51,10 +56,22 @@ const metrics = {
   profileRowsInserted: 0,
   profileRowsSkipped: 0,
   writeFailures: 0,
+  aggregateBubbles: {
+    received: { spot: 0, futures: 0 },
+    qualified: 0,
+    skippedBelowThreshold: 0,
+    skippedMissingAggregateTradeId: 0,
+    skippedInvalidTradeRange: 0,
+    duplicatesSkipped: 0,
+    inserted: 0,
+    insertFailed: 0,
+  },
 }
 
 let mongoClient = null
 let mongoDb = null
+let bubbleMongoClient = null
+let bubbleMongoDb = null
 let shuttingDown = false
 let persistPromise = null
 
@@ -65,6 +82,8 @@ const priceReferences = {
 
 let runtimes = []
 const streamClients = []
+const queuedAggregateBubbleEvents = []
+const queuedAggregateBubbleKeys = new Set()
 
 main().catch((error) => {
   logger.error('collector fatal error', { error: getErrorMessage(error) })
@@ -74,6 +93,9 @@ main().catch((error) => {
 async function main() {
   assertRuntimeSupport()
   await initMongo()
+  if (config.enableWrites && !config.dryRun) {
+    await initBubbleMongo()
+  }
   runtimes = TARGETS.map((target) => createRuntime(target))
 
   logger.info('active aggregation identities', {
@@ -81,6 +103,11 @@ async function main() {
     identities: runtimes.map((runtime) => runtime.identity),
     footprintBucketSize: FOOTPRINT_BUCKET_SIZE,
     profileBaseBucketSize: config.profileBaseBucketSize,
+    aggregateBubbleThresholds: {
+      minVolume: config.aggregateBubbleMinVolume,
+      minTradeCount: config.aggregateBubbleMinTradeCount,
+      minTradeCountVolume: config.aggregateBubbleMinTradeCountVolume,
+    },
     writesEnabled: config.enableWrites,
     dryRun: config.dryRun,
   })
@@ -127,10 +154,16 @@ function loadConfig() {
   return {
     mongoUri: process.env.MONGODB_URI ?? '',
     mongoDbName: process.env.MONGODB_DB_NAME ?? process.env.MONGODB_DB ?? 'orderflow',
+    bubblesMongoUri: process.env.BUBBLES_MONGODB_URI ?? '',
+    bubblesMongoDbName: process.env.BUBBLES_MONGODB_DB_NAME ?? '',
     retentionSeconds: Math.floor(getNumberEnv('MARKET_DATA_RETENTION_DAYS', DEFAULT_RETENTION_DAYS) * 24 * 60 * 60),
     flushIntervalMs: getIntegerEnv('COLLECTOR_FLUSH_INTERVAL_MS', DEFAULT_FLUSH_INTERVAL_MS),
     statusIntervalMs: getIntegerEnv('COLLECTOR_STATUS_INTERVAL_MS', DEFAULT_STATUS_INTERVAL_MS),
     maxDedupeKeys: getIntegerEnv('COLLECTOR_MAX_DEDUPE_KEYS', DEFAULT_MAX_DEDUPE_KEYS),
+    aggregateBubbleFlushSize: getIntegerEnv('COLLECTOR_AGG_BUBBLE_FLUSH_SIZE', DEFAULT_AGG_BUBBLE_FLUSH_SIZE),
+    aggregateBubbleMinVolume: getNumberEnv('COLLECTOR_AGG_BUBBLE_MIN_VOLUME_BTC', DEFAULT_AGG_BUBBLE_MIN_VOLUME_BTC),
+    aggregateBubbleMinTradeCount: getIntegerEnv('COLLECTOR_AGG_BUBBLE_MIN_TRADE_COUNT', DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT),
+    aggregateBubbleMinTradeCountVolume: getNumberEnv('COLLECTOR_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC', DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC),
     reconnectMinMs: getIntegerEnv('COLLECTOR_RECONNECT_MIN_MS', DEFAULT_RECONNECT_MIN_MS),
     reconnectMaxMs: getIntegerEnv('COLLECTOR_RECONNECT_MAX_MS', DEFAULT_RECONNECT_MAX_MS),
     heartbeatMs: getIntegerEnv('COLLECTOR_HEARTBEAT_MS', DEFAULT_HEARTBEAT_MS),
@@ -189,6 +222,16 @@ function assertRuntimeSupport() {
     throw new Error('MONGODB_URI is required for the BTCUSDT collector')
   }
 
+  if (config.enableWrites && !config.dryRun) {
+    if (!config.bubblesMongoUri) {
+      throw new Error('BUBBLES_MONGODB_URI is required for Aggregate Bubble persistence when collector writes are enabled')
+    }
+
+    if (!config.bubblesMongoDbName) {
+      throw new Error('BUBBLES_MONGODB_DB_NAME is required for Aggregate Bubble persistence when collector writes are enabled')
+    }
+  }
+
   if (typeof WebSocket === 'undefined') {
     throw new Error('Global WebSocket is unavailable. Run this collector with Node.js 22+ or a Node runtime that provides WebSocket.')
   }
@@ -204,6 +247,19 @@ async function initMongo() {
     dbName: mongoDb.databaseName,
     footprintCollection: COLLECTIONS.footprint,
     profileCollection: COLLECTIONS.profile,
+  })
+}
+
+async function initBubbleMongo() {
+  bubbleMongoClient = new MongoClient(config.bubblesMongoUri)
+  await bubbleMongoClient.connect()
+  bubbleMongoDb = bubbleMongoClient.db(config.bubblesMongoDbName)
+  await bubbleMongoDb.command({ ping: 1 })
+  await ensureAggregateBubbleCollection()
+  logger.info('aggregate bubble mongodb connected', {
+    dbName: bubbleMongoDb.databaseName,
+    collection: COLLECTIONS.aggregateBubbles,
+    retentionSeconds: config.retentionSeconds,
   })
 }
 
@@ -237,6 +293,36 @@ async function ensureCollections() {
   await mongoDb.collection(COLLECTIONS.collectorMeta).createIndex(
     { key: 1 },
     { unique: true, name: 'idx_collector_meta_key' },
+  )
+}
+
+async function ensureAggregateBubbleCollection() {
+  const existing = await bubbleMongoDb.listCollections({ name: COLLECTIONS.aggregateBubbles }).toArray()
+
+  if (existing.length === 0) {
+    await bubbleMongoDb.createCollection(COLLECTIONS.aggregateBubbles)
+  } else if (existing[0].type === 'timeseries') {
+    throw new Error(`${COLLECTIONS.aggregateBubbles} must be a regular MongoDB collection for aggregate trade id deduplication`)
+  }
+
+  const collection = bubbleMongoDb.collection(COLLECTIONS.aggregateBubbles)
+  await collection.createIndex(
+    { symbol: 1, contractType: 1, aggregateTradeId: 1 },
+    { unique: true, name: 'uniq_aggregate_bubbles_source_id' },
+  )
+  await collection.createIndex(
+    { symbol: 1, contractType: 1, eventTime: 1 },
+    { name: 'idx_aggregate_bubbles_restore' },
+  )
+
+  const indexes = await collection.indexes()
+  const existingTtl = indexes.find((index) => index.name === 'ttl_aggregate_bubbles_event_time')
+  if (existingTtl && existingTtl.expireAfterSeconds !== config.retentionSeconds) {
+    await collection.dropIndex('ttl_aggregate_bubbles_event_time')
+  }
+  await collection.createIndex(
+    { eventTime: 1 },
+    { expireAfterSeconds: config.retentionSeconds, name: 'ttl_aggregate_bubbles_event_time' },
   )
 }
 
@@ -389,6 +475,8 @@ async function handleStreamMessage(source, raw) {
   const trade = {
     source,
     id: Number.isFinite(Number(data.a)) ? Number(data.a) : undefined,
+    firstTradeId: Number.isFinite(Number(data.f)) ? Number(data.f) : undefined,
+    lastTradeId: Number.isFinite(Number(data.l)) ? Number(data.l) : undefined,
     time: Number(data.T),
     price: Number(data.p),
     quantity: Number(data.q),
@@ -398,10 +486,80 @@ async function handleStreamMessage(source, raw) {
   if (!isValidTrade(trade)) return
 
   metrics.tradesReceived[source] += 1
+  queueAggregateBubbleCandidate(trade)
   for (const runtime of runtimes) {
     if (!runtime.activeSources.includes(source)) continue
     ingestTrade(runtime, trade)
   }
+}
+
+function getAggregateTradeCount(trade) {
+  const firstTradeId = Number(trade.firstTradeId)
+  const lastTradeId = Number(trade.lastTradeId)
+
+  if (!Number.isFinite(firstTradeId) || !Number.isFinite(lastTradeId) || lastTradeId < firstTradeId) {
+    return null
+  }
+
+  return Math.floor(lastTradeId - firstTradeId + 1)
+}
+
+function queueAggregateBubbleCandidate(trade) {
+  metrics.aggregateBubbles.received[trade.source] += 1
+
+  if (!Number.isFinite(trade.id)) {
+    metrics.aggregateBubbles.skippedMissingAggregateTradeId += 1
+    return
+  }
+
+  const tradeCount = getAggregateTradeCount(trade)
+  if (tradeCount === null) {
+    metrics.aggregateBubbles.skippedInvalidTradeRange += 1
+    return
+  }
+
+  const key = `${SYMBOL}:${trade.source}:${trade.id}`
+  if (queuedAggregateBubbleKeys.has(key)) {
+    metrics.aggregateBubbles.duplicatesSkipped += 1
+    return
+  }
+  rememberBoundedSet(queuedAggregateBubbleKeys, key, config.maxDedupeKeys)
+
+  const qualifiedBy = []
+  if (trade.quantity >= config.aggregateBubbleMinVolume) {
+    qualifiedBy.push('volume')
+  }
+  if (
+    tradeCount >= config.aggregateBubbleMinTradeCount
+    && trade.quantity >= config.aggregateBubbleMinTradeCountVolume
+  ) {
+    qualifiedBy.push('tradeCount')
+  }
+
+  if (qualifiedBy.length === 0) {
+    metrics.aggregateBubbles.skippedBelowThreshold += 1
+    return
+  }
+
+  queuedAggregateBubbleEvents.push({
+    symbol: SYMBOL,
+    contractType: trade.source,
+    aggregateTradeId: Math.floor(trade.id),
+    eventTime: new Date(trade.time),
+    eventTimeMs: trade.time,
+    price: toStoredNumber(trade.price),
+    side: trade.isBuyerMaker ? 'sell' : 'buy',
+    volume: toStoredNumber(trade.quantity),
+    tradeCount,
+    firstTradeId: Math.floor(trade.firstTradeId),
+    lastTradeId: Math.floor(trade.lastTradeId),
+    createdAt: new Date(),
+    storageVersion: 1,
+    qualifiedBy,
+    minVolumeAtIngest: toStoredNumber(config.aggregateBubbleMinVolume),
+    minTradeCountAtIngest: config.aggregateBubbleMinTradeCount,
+  })
+  metrics.aggregateBubbles.qualified += 1
 }
 
 function ingestTrade(runtime, trade) {
@@ -480,6 +638,8 @@ function aggregateProfile(runtime, baseTime, price, trade) {
 
 async function persistAllEligibleSlices(reason) {
   if (shuttingDown && reason !== 'shutdown') return
+
+  await persistAggregateBubbleEvents(reason)
 
   for (const runtime of runtimes) {
     await persistRuntimeEligibleSlices(runtime, reason)
@@ -599,6 +759,62 @@ async function writeClosedSlice(runtime, sliceTime, footprintRows, profileRows) 
   })
 
   return { footprint, profile }
+}
+
+async function persistAggregateBubbleEvents(reason) {
+  if (queuedAggregateBubbleEvents.length === 0) return
+
+  const batch = queuedAggregateBubbleEvents.slice(0, config.aggregateBubbleFlushSize)
+
+  if (config.dryRun || !config.enableWrites) {
+    queuedAggregateBubbleEvents.splice(0, batch.length)
+    logger.info('dry-run aggregate bubble candidate write', {
+      reason,
+      rows: batch.length,
+      writesEnabled: config.enableWrites,
+      dryRun: config.dryRun,
+      thresholds: {
+        minVolume: config.aggregateBubbleMinVolume,
+        minTradeCount: config.aggregateBubbleMinTradeCount,
+        minTradeCountVolume: config.aggregateBubbleMinTradeCountVolume,
+      },
+    })
+    return
+  }
+
+  try {
+    const result = await insertAggregateBubbleDocuments(batch)
+    queuedAggregateBubbleEvents.splice(0, batch.length)
+    metrics.aggregateBubbles.inserted += result.inserted
+    metrics.aggregateBubbles.duplicatesSkipped += result.duplicatesSkipped
+
+    if (result.inserted > 0 || result.duplicatesSkipped > 0) {
+      await updateCollectorMeta({
+        last_aggregate_bubbles_stored: result.inserted > 0 ? new Date().toISOString() : undefined,
+        aggregate_bubble_thresholds: JSON.stringify({
+          minVolume: config.aggregateBubbleMinVolume,
+          minTradeCount: config.aggregateBubbleMinTradeCount,
+          minTradeCountVolume: config.aggregateBubbleMinTradeCountVolume,
+        }),
+      })
+    }
+
+    logger.info('aggregate bubble candidates persisted', {
+      reason,
+      rowsSubmitted: batch.length,
+      rowsInserted: result.inserted,
+      duplicatesSkipped: result.duplicatesSkipped,
+      pendingRows: queuedAggregateBubbleEvents.length,
+    })
+  } catch (error) {
+    metrics.aggregateBubbles.insertFailed += batch.length
+    metrics.writeFailures += 1
+    logger.error('aggregate bubble candidate persist failed', {
+      reason,
+      rows: batch.length,
+      error: getErrorMessage(error),
+    })
+  }
 }
 
 function toFootprintDocuments(runtime, sliceTime, rows) {
@@ -729,6 +945,27 @@ async function insertMissingProfileDocuments(documents) {
   return { inserted: missing.length, skipped: documents.length - missing.length }
 }
 
+async function insertAggregateBubbleDocuments(documents) {
+  if (documents.length === 0) return { inserted: 0, duplicatesSkipped: 0 }
+
+  const collection = bubbleMongoDb.collection(COLLECTIONS.aggregateBubbles)
+
+  try {
+    const result = await collection.insertMany(documents, { ordered: false })
+    return { inserted: result.insertedCount, duplicatesSkipped: 0 }
+  } catch (error) {
+    const writeErrors = Array.isArray(error?.writeErrors) ? error.writeErrors : []
+    const duplicateCount = writeErrors.filter((writeError) => writeError.code === 11000).length
+    const inserted = Number(error?.result?.insertedCount ?? error?.insertedCount ?? 0)
+
+    if (writeErrors.length > 0 && duplicateCount === writeErrors.length) {
+      return { inserted, duplicatesSkipped: duplicateCount }
+    }
+
+    throw error
+  }
+}
+
 async function updateCollectorMeta(values) {
   const collection = mongoDb.collection(COLLECTIONS.collectorMeta)
   const updates = Object.entries(values)
@@ -784,6 +1021,7 @@ async function logStatus() {
     dryRun: config.dryRun,
     priceReferences,
     pendingSlices,
+    pendingAggregateBubbleEvents: queuedAggregateBubbleEvents.length,
     metrics,
     runtimes: runtimes.map((runtime) => ({
       identity: runtime.identity,
@@ -801,7 +1039,9 @@ async function logStatus() {
       collector_status: JSON.stringify({
         symbol: status.symbol,
         pendingSlices: status.pendingSlices,
+        pendingAggregateBubbleEvents: status.pendingAggregateBubbleEvents,
         tradesReceived: status.metrics.tradesReceived,
+        aggregateBubbles: status.metrics.aggregateBubbles,
         slicesPersisted: status.metrics.slicesPersisted,
         writeFailures: status.metrics.writeFailures,
       }),
@@ -828,6 +1068,9 @@ async function shutdown(signal, flushTimer, statusTimer) {
   streamClients.forEach((client) => client.close())
   if (mongoClient) {
     await mongoClient.close()
+  }
+  if (bubbleMongoClient) {
+    await bubbleMongoClient.close()
   }
   logger.info('collector stopped')
   process.exit(0)
@@ -946,6 +1189,15 @@ function getErrorMessage(error) {
 function handlePipeError(error) {
   if (error?.code === 'EPIPE') {
     process.exit(0)
+  }
+}
+
+function rememberBoundedSet(set, value, limit) {
+  set.add(value)
+  while (set.size > limit) {
+    const oldest = set.values().next().value
+    if (oldest === undefined) break
+    set.delete(oldest)
   }
 }
 

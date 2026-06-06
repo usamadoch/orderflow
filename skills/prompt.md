@@ -37,6 +37,7 @@ HARD RULES:
 - Never skip log.md update
 - Do not re-scan full repository
 
+Do not start the Next dev server unless the change specifically requires browser/runtime UI verification. Prefer TypeScript checks and targeted code review first.
 
 
 
@@ -69,3 +70,11 @@ RULES:
 - Do NOT push if working directory has unfinished task.md changes
 - Do NOT include unrelated files
 - Always confirm repo is in clean state before pushing
+
+
+
+
+
+
+
+

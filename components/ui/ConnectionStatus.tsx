@@ -1,10 +1,11 @@
 'use client';
 
 import { useChartStore } from '../../lib/store/chart';
+import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 
 export function ConnectionStatus() {
-  const leftConnected = useChartStore(s => s.panels.left.connected);
-  const rightConnected = useChartStore(s => s.panels.right.connected);
+  const leftConnected = useChartRuntimeStore(s => s.panels.left.connected);
+  const rightConnected = useChartRuntimeStore(s => s.panels.right.connected);
   const layoutMode = useChartStore(s => s.layoutMode);
 
   // Combined status: LIVE if any panel is connected

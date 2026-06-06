@@ -1,16 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Candle } from '../../types/candle';
-import { Trade } from '../../types/trade';
 import { FootprintMode } from '../../types/footprint';
-import { AbsorptionResult } from '../../types/absorption';
 import { BubbleScaleMode, BubbleSide } from '../../components/chart/drawBubbles';
-import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource } from '../../types/bubble';
-import { ExhaustionResult } from '../../types/exhaustion';
-import { IcebergLevel } from '../../types/iceberg';
-import { LiquidityVacuumZone } from '../../types/liquidityVacuum';
+import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource } from '../../types/bubble';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
-import { LiquidityZone } from '../../types/liquidity';
 import { getMinimumFineProfileResolutionTicks } from '../config/markets';
 
 export type ChartMode = 'candle' | 'footprint';
@@ -47,6 +40,13 @@ export interface HistoryRestoreStatus {
   footprintCellCount: number;
   footprintCandleCount: number;
   rawTradeCount: number;
+  rawTradeRestoreSkipped?: boolean;
+  profileRestoreSkipped?: boolean;
+  footprintRestoreSkipped?: boolean;
+  needsFootprintWork?: boolean;
+  footprintWorkReasons?: string[];
+  footprintIngestionSkipped?: number;
+  icebergDisabledNoopSkipped?: number;
 }
 
 export interface SettingsOpenRequest {
@@ -167,19 +167,12 @@ export interface PanelState {
   autoBucketSize: boolean;
   barWidth: number;
   scrollOffset: number;
-  candles: Candle[];
-  trades: Trade[];
-  connected: boolean;
-  isLoadingHistory: boolean;
-  historyRestoreStatus: HistoryRestoreStatus | null;
   contractType: ContractType;
   dataSourceMode: DataSourceMode;
-  footprintTrigger: number;
   absorptionEnabled: boolean;
   absorptionMinScore: number;
   absorptionSide: AbsorptionSide;
   absorptionShowLabels: boolean;
-  absorptionMap: Map<number, AbsorptionResult>;
   bubblesEnabled: boolean;
   bubbleSource: BubbleSource;
   bubbleSizeBy: BubbleSizeBy;
@@ -191,7 +184,6 @@ export interface PanelState {
   bubbleMaxRadius: number;
   bubbleSide: BubbleSide;
   bubbleScaleMode: BubbleScaleMode;
-  aggregateBubbleEvents: BubbleEvent[];
   isDrawMode: boolean;
   customProfileRange: {
     firstTime?: number;
@@ -202,7 +194,6 @@ export interface PanelState {
     priceLow: number;
   } | null;
   customProfileLocked: boolean;
-  isProfileSelected: boolean;
   drawnLines: DrawnLine[];
   lineDrawMode: LineDrawMode;
   drawingToolbarPosition: DrawingToolbarPosition;
@@ -211,20 +202,17 @@ export interface PanelState {
   exhaustionSide: ExhaustionSide;
   exhaustionLookback: number;
   exhaustionShowProvisional: boolean;
-  exhaustionMap: Map<number, ExhaustionResult>;
   icebergEnabled: boolean;
   icebergMinScore: number;
   icebergLookback: number;
   icebergShowSuspected: boolean;
   icebergShowLabels: boolean;
   icebergShowTint: boolean;
-  icebergLevels: IcebergLevel[];
   liquidityVacuumEnabled: boolean;
   liquidityVacuumMinScore: number;
   liquidityVacuumShowLabels: boolean;
   liquidityVacuumOpacity: number;
   liquidityVacuumMaxZones: number;
-  liquidityVacuumZones: LiquidityVacuumZone[];
   indicatorLabelsCollapsed: boolean;
   // Volume Profile Visuals
   profileWidthPct: number;
@@ -253,8 +241,6 @@ export interface PanelState {
   cvdShowDivergence: boolean;
   cvdDivergenceLookback: number;
   cvdMinimized: boolean;
-  measureToolActive: boolean;
-  activeMeasurement: Measurement | null;
   // Session Visualization
   sessionsEnabled: boolean;
   sessions: {
@@ -264,7 +250,6 @@ export interface PanelState {
   };
   settingsByTimeframe: Record<string, Partial<TimeframeSettings>>;
   // Liquidity Map
-  liquidityZones: LiquidityZone[];       // session only, not persisted
   liquidityEnabled: boolean;              // default true, persisted
   liquidityBucketSize: number;            // default 50, persisted
   minimumLiquidityThreshold: number;      // default 5, persisted
@@ -298,7 +283,6 @@ interface ChartState {
   focusMode: boolean;
   settingsDropdownHeight: number;
   settingsOpenRequest: SettingsOpenRequest | null;
-  crosshair: GlobalCrosshair;
   crosshairSyncEnabled: boolean;
 
   // Per-panel actions
@@ -309,20 +293,12 @@ interface ChartState {
   setBucketSize: (panelId: PanelId, size: number) => void;
   setBarWidth: (panelId: PanelId, width: number) => void;
   setScrollOffset: (panelId: PanelId, offset: number) => void;
-  setConnected: (panelId: PanelId, connected: boolean) => void;
-  setLoadingHistory: (panelId: PanelId, v: boolean) => void;
-  setHistoryRestoreStatus: (panelId: PanelId, status: HistoryRestoreStatus | null) => void;
   setContractType: (panelId: PanelId, contractType: ContractType) => void;
   setDataSourceMode: (panelId: PanelId, mode: DataSourceMode) => void;
-  pushCandle: (panelId: PanelId, candle: Candle) => void;
-  pushTrade: (panelId: PanelId, trade: Trade) => void;
-  pushAllCandles: (panelId: PanelId, candles: Candle[]) => void;
-  triggerFootprintRedraw: (panelId: PanelId) => void;
   setAbsorptionEnabled: (panelId: PanelId, enabled: boolean) => void;
   setAbsorptionMinScore: (panelId: PanelId, score: number) => void;
   setAbsorptionSide: (panelId: PanelId, side: AbsorptionSide) => void;
   setAbsorptionShowLabels: (panelId: PanelId, show: boolean) => void;
-  setAbsorptionMap: (panelId: PanelId, map: Map<number, AbsorptionResult>) => void;
   setBubblesEnabled: (panelId: PanelId, enabled: boolean) => void;
   setBubbleSource: (panelId: PanelId, source: BubbleSource) => void;
   setBubbleSizeBy: (panelId: PanelId, sizeBy: BubbleSizeBy) => void;
@@ -336,12 +312,9 @@ interface ChartState {
   setBubbleMaxRadius: (panelId: PanelId, radius: number) => void;
   setBubbleSide: (panelId: PanelId, side: BubbleSide) => void;
   setBubbleScaleMode: (panelId: PanelId, mode: BubbleScaleMode) => void;
-  appendAggregateBubbleEvents: (panelId: PanelId, events: BubbleEvent[]) => void;
-  clearAggregateBubbleEvents: (panelId: PanelId) => void;
   setDrawMode: (panelId: PanelId, enabled: boolean) => void;
   setCustomProfileRange: (panelId: PanelId, range: PanelState['customProfileRange']) => void;
   setCustomProfileLocked: (panelId: PanelId, locked: boolean) => void;
-  setProfileSelected: (panelId: PanelId, selected: boolean) => void;
   addLine: (panelId: PanelId, line: DrawnLine) => void;
   updateLine: (panelId: PanelId, id: string, updates: Partial<DrawnLine>) => void;
   removeLine: (panelId: PanelId, id: string) => void;
@@ -352,20 +325,17 @@ interface ChartState {
   setExhaustionSide: (panelId: PanelId, side: ExhaustionSide) => void;
   setExhaustionLookback: (panelId: PanelId, lookback: number) => void;
   setExhaustionShowProvisional: (panelId: PanelId, show: boolean) => void;
-  setExhaustionMap: (panelId: PanelId, map: Map<number, ExhaustionResult>) => void;
   setIcebergEnabled: (panelId: PanelId, enabled: boolean) => void;
   setIcebergMinScore: (panelId: PanelId, score: number) => void;
   setIcebergLookback: (panelId: PanelId, lookback: number) => void;
   setIcebergShowSuspected: (panelId: PanelId, show: boolean) => void;
   setIcebergShowLabels: (panelId: PanelId, show: boolean) => void;
   setIcebergShowTint: (panelId: PanelId, show: boolean) => void;
-  setIcebergLevels: (panelId: PanelId, levels: IcebergLevel[]) => void;
   setLiquidityVacuumEnabled: (panelId: PanelId, enabled: boolean) => void;
   setLiquidityVacuumMinScore: (panelId: PanelId, score: number) => void;
   setLiquidityVacuumShowLabels: (panelId: PanelId, show: boolean) => void;
   setLiquidityVacuumOpacity: (panelId: PanelId, opacity: number) => void;
   setLiquidityVacuumMaxZones: (panelId: PanelId, maxZones: number) => void;
-  setLiquidityVacuumZones: (panelId: PanelId, zones: LiquidityVacuumZone[]) => void;
   setProfileWidthPct: (panelId: PanelId, pct: number) => void;
   setDefaultProfileEnabled: (panelId: PanelId, enabled: boolean) => void;
   setProfileResolutionTicks: (panelId: PanelId, ticks: number) => void;
@@ -391,15 +361,12 @@ interface ChartState {
   setCvdShowDivergence: (panelId: PanelId, show: boolean) => void;
   setCvdDivergenceLookback: (panelId: PanelId, lookback: number) => void;
   setCvdMinimized: (panelId: PanelId, minimized: boolean) => void;
-  setMeasureToolActive: (panelId: PanelId, active: boolean) => void;
-  setActiveMeasurement: (panelId: PanelId, measurement: Measurement | null) => void;
   setSessionsEnabled: (panelId: PanelId, enabled: boolean) => void;
   setSessionEnabled: (panelId: PanelId, sessionId: SessionId, enabled: boolean) => void;
   setSessionTime: (panelId: PanelId, sessionId: SessionId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
   setSessionColor: (panelId: PanelId, sessionId: SessionId, color: string) => void;
 
   // Liquidity
-  setLiquidityZones: (panelId: PanelId, zones: LiquidityZone[]) => void;
   setLiquidityEnabled: (panelId: PanelId, enabled: boolean) => void;
   setLiquidityBucketSize: (panelId: PanelId, size: number) => void;
   setMinimumLiquidityThreshold: (panelId: PanelId, threshold: number) => void;
@@ -427,7 +394,6 @@ interface ChartState {
   setSettingsDropdownHeight: (height: number) => void;
   setIndicatorLabelsCollapsed: (panelId: PanelId, collapsed: boolean) => void;
   openIndicatorSettings: (panelId: PanelId, section: SettingsFocusSection) => void;
-  setCrosshair: (crosshair: GlobalCrosshair) => void;
   setCrosshairSyncEnabled: (enabled: boolean) => void;
 
   // Auth
@@ -447,19 +413,12 @@ function createDefaultPanel(id: PanelId): PanelState {
     autoBucketSize: false,
     barWidth: 12,
     scrollOffset: 0,
-    candles: [],
-    trades: [],
-    connected: false,
-    isLoadingHistory: false,
-    historyRestoreStatus: null,
     contractType: 'spot',
     dataSourceMode: 'both',
-    footprintTrigger: 0,
     absorptionEnabled: true,
     absorptionMinScore: 50,
     absorptionSide: 'both' as AbsorptionSide,
     absorptionShowLabels: true,
-    absorptionMap: new Map(),
     bubblesEnabled: false,
     bubbleSource: 'footprintCells',
     bubbleSizeBy: 'volume',
@@ -471,11 +430,9 @@ function createDefaultPanel(id: PanelId): PanelState {
     bubbleMaxRadius: 20,
     bubbleSide: 'both' as BubbleSide,
     bubbleScaleMode: 'sqrt' as BubbleScaleMode,
-    aggregateBubbleEvents: [],
     isDrawMode: false,
     customProfileRange: null,
     customProfileLocked: false,
-    isProfileSelected: false,
     drawnLines: [],
     lineDrawMode: 'none',
     drawingToolbarPosition: { x: 16, y: 48 },
@@ -484,20 +441,17 @@ function createDefaultPanel(id: PanelId): PanelState {
     exhaustionSide: 'both' as ExhaustionSide,
     exhaustionLookback: 5,
     exhaustionShowProvisional: true,
-    exhaustionMap: new Map(),
     icebergEnabled: true,
     icebergMinScore: 45,
     icebergLookback: 10,
     icebergShowSuspected: true,
     icebergShowLabels: true,
     icebergShowTint: true,
-    icebergLevels: [],
     liquidityVacuumEnabled: true,
     liquidityVacuumMinScore: 55,
     liquidityVacuumShowLabels: false,
     liquidityVacuumOpacity: 0.18,
     liquidityVacuumMaxZones: 6,
-    liquidityVacuumZones: [],
     indicatorLabelsCollapsed: false,
     profileWidthPct: 70,
     defaultProfileEnabled: false,
@@ -524,8 +478,6 @@ function createDefaultPanel(id: PanelId): PanelState {
     cvdShowDivergence: false,
     cvdDivergenceLookback: 8,
     cvdMinimized: false,
-    measureToolActive: false,
-    activeMeasurement: null,
     sessionsEnabled: false,
     sessions: {
       tokyo: {
@@ -549,7 +501,6 @@ function createDefaultPanel(id: PanelId): PanelState {
     },
     settingsByTimeframe: {},
     // Liquidity Map
-    liquidityZones: [],
     liquidityEnabled: false,
     liquidityBucketSize: 50,
     minimumLiquidityThreshold: 5,
@@ -692,58 +643,6 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
   };
 }
 
-function mergeCandles(existing: Candle[], incoming: Candle[]) {
-  const byTime = new Map<number, Candle>();
-
-  for (const candle of existing) {
-    byTime.set(candle.time, candle);
-  }
-
-  for (const candle of incoming) {
-    const current = byTime.get(candle.time);
-    if (!current) {
-      byTime.set(candle.time, candle);
-      continue;
-    }
-
-    if (current.isClosed && !candle.isClosed) {
-      continue;
-    }
-
-    byTime.set(candle.time, candle);
-  }
-
-  return Array.from(byTime.values())
-    .sort((a, b) => a.time - b.time)
-    .slice(-500);
-}
-
-function getAggregateBubbleEventKey(event: BubbleEvent) {
-  if (Number.isFinite(event.aggregateTradeId)) {
-    return `${event.symbol}:${event.contractType}:id:${event.aggregateTradeId}`;
-  }
-
-  return `${event.symbol}:${event.contractType}:${event.time}:${event.price}:${event.volume}:${event.side}`;
-}
-
-function mergeAggregateBubbleEvents(existing: BubbleEvent[], incoming: BubbleEvent[]) {
-  const byKey = new Map<string, BubbleEvent>();
-
-  for (const event of existing) {
-    byKey.set(getAggregateBubbleEventKey(event), event);
-  }
-
-  for (const event of incoming) {
-    const key = getAggregateBubbleEventKey(event);
-    if (byKey.has(key)) continue;
-    byKey.set(key, event);
-  }
-
-  return Array.from(byKey.values())
-    .sort((a, b) => a.time - b.time || (a.aggregateTradeId ?? 0) - (b.aggregateTradeId ?? 0))
-    .slice(-MAX_AGGREGATE_BUBBLE_EVENTS);
-}
-
 export const useChartStore = create<ChartState>()(
   persist(
     (set) => ({
@@ -759,13 +658,12 @@ export const useChartStore = create<ChartState>()(
       focusMode: false,
       settingsDropdownHeight: 500,
       settingsOpenRequest: null,
-      crosshair: { activePanel: null, time: null, price: null },
       crosshairSyncEnabled: true,
       isAuthenticated: false,
 
       // Per-panel actions
       setPair: (panelId, pair) =>
-        set((state) => updatePanel(state, panelId, { pair, candles: [], trades: [], aggregateBubbleEvents: [], historyRestoreStatus: null, icebergLevels: [], liquidityVacuumZones: [] })),
+        set((state) => updatePanel(state, panelId, { pair })),
 
       setTimeframe: (panelId, timeframe) =>
         set((state) => {
@@ -773,11 +671,6 @@ export const useChartStore = create<ChartState>()(
           const savedSettings = clampTimeframeSettings(panel.settingsByTimeframe[timeframe] || {}, state.tickSize);
           return updatePanel(state, panelId, { 
             timeframe, 
-            candles: [], 
-            trades: [],
-            historyRestoreStatus: null,
-            icebergLevels: [],
-            liquidityVacuumZones: [],
             ...savedSettings
           });
         }),
@@ -803,23 +696,11 @@ export const useChartStore = create<ChartState>()(
       setScrollOffset: (panelId, scrollOffset) =>
         set((state) => updatePanel(state, panelId, { scrollOffset })),
 
-      setConnected: (panelId, connected) =>
-        set((state) => updatePanel(state, panelId, { connected })),
-
-      setLoadingHistory: (panelId, isLoadingHistory) =>
-        set((state) => updatePanel(state, panelId, { isLoadingHistory })),
-
-      setHistoryRestoreStatus: (panelId, historyRestoreStatus) =>
-        set((state) => updatePanel(state, panelId, { historyRestoreStatus })),
-
       setContractType: (panelId, contractType) =>
-        set((state) => updatePanel(state, panelId, { contractType, candles: [], trades: [], aggregateBubbleEvents: [], historyRestoreStatus: null, icebergLevels: [], liquidityVacuumZones: [] })),
+        set((state) => updatePanel(state, panelId, { contractType })),
 
       setDataSourceMode: (panelId, dataSourceMode) =>
-        set((state) => updatePanel(state, panelId, { dataSourceMode, aggregateBubbleEvents: [], historyRestoreStatus: null })),
-
-      triggerFootprintRedraw: (panelId) =>
-        set((state) => updatePanel(state, panelId, { footprintTrigger: Date.now() })),
+        set((state) => updatePanel(state, panelId, { dataSourceMode })),
 
       setAbsorptionEnabled: (panelId, absorptionEnabled) =>
         set((state) => updatePanel(state, panelId, { absorptionEnabled })),
@@ -832,9 +713,6 @@ export const useChartStore = create<ChartState>()(
 
       setAbsorptionShowLabels: (panelId, absorptionShowLabels) =>
         set((state) => updatePanel(state, panelId, { absorptionShowLabels })),
-
-      setAbsorptionMap: (panelId, absorptionMap) =>
-        set((state) => updatePanel(state, panelId, { absorptionMap })),
 
       setBubblesEnabled: (panelId, bubblesEnabled) =>
         set((state) => updatePanel(state, panelId, { bubblesEnabled })),
@@ -877,36 +755,20 @@ export const useChartStore = create<ChartState>()(
       setBubbleScaleMode: (panelId, bubbleScaleMode) =>
         set((state) => updatePanel(state, panelId, { bubbleScaleMode })),
 
-      appendAggregateBubbleEvents: (panelId, events) =>
-        set((state) => {
-          if (events.length === 0) return {};
-          const panel = state.panels[panelId];
-          const aggregateBubbleEvents = mergeAggregateBubbleEvents(panel.aggregateBubbleEvents, events);
-          return updatePanel(state, panelId, { aggregateBubbleEvents });
-        }),
-
-      clearAggregateBubbleEvents: (panelId) =>
-        set((state) => updatePanel(state, panelId, { aggregateBubbleEvents: [] })),
-
       setDrawMode: (panelId, isDrawMode) =>
         set((state) => {
           const updates: Partial<PanelState> = { isDrawMode };
           if (isDrawMode) {
-            updates.measureToolActive = false;
-            updates.activeMeasurement = null;
             updates.lineDrawMode = 'none';
           }
           return updatePanel(state, panelId, updates);
         }),
 
       setCustomProfileRange: (panelId, customProfileRange) =>
-        set((state) => updatePanel(state, panelId, { customProfileRange, isProfileSelected: !!customProfileRange })),
+        set((state) => updatePanel(state, panelId, { customProfileRange })),
 
       setCustomProfileLocked: (panelId, customProfileLocked) =>
         set((state) => updatePanel(state, panelId, { customProfileLocked })),
-
-      setProfileSelected: (panelId, isProfileSelected) =>
-        set((state) => updatePanel(state, panelId, { isProfileSelected })),
 
       addLine: (panelId, line) =>
         set((state) => {
@@ -932,8 +794,6 @@ export const useChartStore = create<ChartState>()(
         set((state) => {
           const updates: Partial<PanelState> = { lineDrawMode };
           if (lineDrawMode !== 'none') {
-            updates.measureToolActive = false;
-            updates.activeMeasurement = null;
             updates.isDrawMode = false;
           }
           return updatePanel(state, panelId, updates);
@@ -962,9 +822,6 @@ export const useChartStore = create<ChartState>()(
       setExhaustionShowProvisional: (panelId, exhaustionShowProvisional) =>
         set((state) => updatePanel(state, panelId, { exhaustionShowProvisional })),
 
-      setExhaustionMap: (panelId, exhaustionMap) =>
-        set((state) => updatePanel(state, panelId, { exhaustionMap })),
-
       setIcebergEnabled: (panelId, icebergEnabled) =>
         set((state) => updatePanel(state, panelId, { icebergEnabled })),
 
@@ -983,9 +840,6 @@ export const useChartStore = create<ChartState>()(
       setIcebergShowTint: (panelId, icebergShowTint) =>
         set((state) => updatePanel(state, panelId, { icebergShowTint })),
 
-      setIcebergLevels: (panelId, icebergLevels) =>
-        set((state) => updatePanel(state, panelId, { icebergLevels })),
-
       setLiquidityVacuumEnabled: (panelId, liquidityVacuumEnabled) =>
         set((state) => updatePanel(state, panelId, { liquidityVacuumEnabled })),
 
@@ -1000,9 +854,6 @@ export const useChartStore = create<ChartState>()(
 
       setLiquidityVacuumMaxZones: (panelId, liquidityVacuumMaxZones) =>
         set((state) => updatePanel(state, panelId, { liquidityVacuumMaxZones: Math.max(1, Math.min(20, Math.round(liquidityVacuumMaxZones))) })),
-
-      setLiquidityVacuumZones: (panelId, liquidityVacuumZones) =>
-        set((state) => updatePanel(state, panelId, { liquidityVacuumZones })),
 
       setProfileWidthPct: (panelId, profileWidthPct) =>
         set((state) => updatePanel(state, panelId, { profileWidthPct: Math.max(10, Math.min(100, profileWidthPct)) })),
@@ -1079,28 +930,10 @@ export const useChartStore = create<ChartState>()(
       setCvdMinimized: (panelId, cvdMinimized) =>
         set((state) => updatePanel(state, panelId, { cvdMinimized })),
 
-      setMeasureToolActive: (panelId, measureToolActive) =>
-        set((state) => {
-          const updates: Partial<PanelState> = { measureToolActive };
-          if (measureToolActive) {
-            updates.isDrawMode = false;
-            updates.lineDrawMode = 'none';
-          } else {
-            updates.activeMeasurement = null;
-          }
-          return updatePanel(state, panelId, updates);
-        }),
-
-      setActiveMeasurement: (panelId, activeMeasurement) =>
-        set((state) => updatePanel(state, panelId, { activeMeasurement })),
-
       setSessionsEnabled: (panelId, sessionsEnabled) =>
         set((state) => updatePanel(state, panelId, { sessionsEnabled })),
 
       // Liquidity actions
-      setLiquidityZones: (panelId, liquidityZones) =>
-        set((state) => updatePanel(state, panelId, { liquidityZones })),
-
       setLiquidityEnabled: (panelId, liquidityEnabled) =>
         set((state) => updatePanel(state, panelId, { liquidityEnabled })),
 
@@ -1194,28 +1027,6 @@ export const useChartStore = create<ChartState>()(
           });
         }),
 
-      pushAllCandles: (panelId, candles) =>
-        set((state) => {
-          const panel = state.panels[panelId];
-          return updatePanel(state, panelId, { candles: mergeCandles(panel.candles, candles) });
-        }),
-
-      pushCandle: (panelId, candle) =>
-        set((state) => {
-          const panel = state.panels[panelId];
-          return updatePanel(state, panelId, { candles: mergeCandles(panel.candles, [candle]) });
-        }),
-
-      pushTrade: (panelId, trade) =>
-        set((state) => {
-          const panel = state.panels[panelId];
-          const newTrades = [...panel.trades, trade];
-          if (newTrades.length > 5000) {
-            newTrades.splice(0, newTrades.length - 5000);
-          }
-          return updatePanel(state, panelId, { trades: newTrades });
-        }),
-
       // Global actions
       setLayoutMode: (layoutMode) => set({ layoutMode }),
       setActivePanel: (activePanel) => set({ activePanel }),
@@ -1250,14 +1061,7 @@ export const useChartStore = create<ChartState>()(
             requestId: (state.settingsOpenRequest?.requestId ?? 0) + 1,
           },
         })),
-      setCrosshair: (crosshair) => set({ crosshair }),
-      setCrosshairSyncEnabled: (crosshairSyncEnabled) => {
-        if (!crosshairSyncEnabled) {
-          set({ crosshairSyncEnabled, crosshair: { activePanel: null, time: null, price: null } });
-        } else {
-          set({ crosshairSyncEnabled });
-        }
-      },
+      setCrosshairSyncEnabled: (crosshairSyncEnabled) => set({ crosshairSyncEnabled }),
 
       // Auth actions
       authenticate: (password) => {
@@ -1271,7 +1075,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 33,
+      version: 34,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -1299,6 +1103,21 @@ export const useChartStore = create<ChartState>()(
           if (!p) return p;
           const panelRest = { ...p };
           delete panelRest.panelHeaderCollapsed;
+          delete panelRest.candles;
+          delete panelRest.trades;
+          delete panelRest.connected;
+          delete panelRest.isLoadingHistory;
+          delete panelRest.historyRestoreStatus;
+          delete panelRest.footprintTrigger;
+          delete panelRest.absorptionMap;
+          delete panelRest.exhaustionMap;
+          delete panelRest.aggregateBubbleEvents;
+          delete panelRest.isProfileSelected;
+          delete panelRest.icebergLevels;
+          delete panelRest.liquidityVacuumZones;
+          delete panelRest.liquidityZones;
+          delete panelRest.measureToolActive;
+          delete panelRest.activeMeasurement;
           return {
             ...panelRest,
             footprintMode: p.footprintMode || 'bid-ask',
@@ -1320,11 +1139,9 @@ export const useChartStore = create<ChartState>()(
             bubbleMaxRadius: p.bubbleMaxRadius ?? 20,
             bubbleSide: p.bubbleSide || 'both',
             bubbleScaleMode: normalizeBubbleScaleMode(p.bubbleScaleMode),
-            aggregateBubbleEvents: [],
             isDrawMode: p.isDrawMode ?? false,
             customProfileRange: p.customProfileRange ?? null,
             customProfileLocked: p.customProfileLocked ?? false,
-            isProfileSelected: false,
             drawnLines: p.drawnLines ?? [],
             lineDrawMode: p.lineDrawMode || 'none',
             drawingToolbarPosition: ensureDrawingToolbarPosition(p.drawingToolbarPosition),
@@ -1339,13 +1156,11 @@ export const useChartStore = create<ChartState>()(
             icebergShowSuspected: p.icebergShowSuspected ?? true,
             icebergShowLabels: p.icebergShowLabels ?? true,
             icebergShowTint: p.icebergShowTint ?? true,
-            icebergLevels: [],
             liquidityVacuumEnabled: p.liquidityVacuumEnabled ?? true,
             liquidityVacuumMinScore: Math.max(30, Math.min(90, p.liquidityVacuumMinScore ?? 55)),
             liquidityVacuumShowLabels: p.liquidityVacuumShowLabels ?? false,
             liquidityVacuumOpacity: Math.max(0.05, Math.min(0.5, p.liquidityVacuumOpacity ?? 0.18)),
             liquidityVacuumMaxZones: Math.max(1, Math.min(20, p.liquidityVacuumMaxZones ?? 6)),
-            liquidityVacuumZones: [],
             indicatorLabelsCollapsed: p.indicatorLabelsCollapsed ?? persisted.indicatorLabelsCollapsed ?? false,
             profileWidthPct: p.profileWidthPct ?? 70,
             defaultProfileEnabled: p.defaultProfileEnabled ?? false,
@@ -1404,6 +1219,7 @@ export const useChartStore = create<ChartState>()(
           if (persisted.panels.right) persisted.panels.right = ensurePanel(persisted.panels.right);
         }
         persisted.settingsDropdownHeight = Math.max(350, Math.min(900, persisted.settingsDropdownHeight ?? 500));
+        delete persisted.crosshair;
         delete persisted.indicatorLabelsCollapsed;
         return persisted;
       },
@@ -1415,9 +1231,10 @@ export const useChartStore = create<ChartState>()(
           : currentState.tickSize;
         const persistedLeft = persistedState.panels?.left || {};
         const persistedRight = persistedState.panels?.right || {};
+        const { crosshair: _crosshair, ...persistedSettings } = persistedState;
         return {
           ...currentState,
-          ...persistedState,
+          ...persistedSettings,
           panels: {
             left: {
               ...currentState.panels.left,
@@ -1445,7 +1262,6 @@ export const useChartStore = create<ChartState>()(
               bubbleScaleMode: normalizeBubbleScaleMode(
                 persistedLeft.bubbleScaleMode ?? currentState.panels.left.bubbleScaleMode,
               ),
-              aggregateBubbleEvents: [],
             },
             right: {
               ...currentState.panels.right,
@@ -1473,7 +1289,6 @@ export const useChartStore = create<ChartState>()(
               bubbleScaleMode: normalizeBubbleScaleMode(
                 persistedRight.bubbleScaleMode ?? currentState.panels.right.bubbleScaleMode,
               ),
-              aggregateBubbleEvents: [],
             },
           },
         };

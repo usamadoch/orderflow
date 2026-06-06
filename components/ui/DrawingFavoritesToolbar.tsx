@@ -3,6 +3,7 @@
 import React from 'react';
 import { GripVertical, Minus, MoveRight, Ruler, Square } from 'lucide-react';
 import { LineDrawMode, PanelId, useChartStore } from '@/lib/store/chart';
+import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 
 const FAVORITE_TOOLS: Array<{
   mode: Exclude<LineDrawMode, 'none'>;
@@ -38,9 +39,10 @@ interface DrawingFavoritesToolbarProps {
 export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProps) {
   const toolbarRef = React.useRef<HTMLDivElement | null>(null);
   const panel = useChartStore(s => s.panels[panelId]);
+  const measureToolActive = useChartRuntimeStore(s => s.panels[panelId].measureToolActive);
   const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
   const setDrawMode = useChartStore(s => s.setDrawMode);
-  const setMeasureToolActive = useChartStore(s => s.setMeasureToolActive);
+  const setMeasureToolActive = useChartRuntimeStore(s => s.setMeasureToolActive);
   const setDrawingToolbarPosition = useChartStore(s => s.setDrawingToolbarPosition);
   const [position, setPosition] = React.useState(panel.drawingToolbarPosition);
 
@@ -74,15 +76,17 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   }, [clampPosition, panel.drawingToolbarPosition]);
 
   const selectTool = (mode: Exclude<LineDrawMode, 'none'>) => {
+    setMeasureToolActive(panelId, false);
     setLineDrawMode(panelId, panel.lineDrawMode === mode ? 'none' : mode);
   };
 
   const selectProfile = () => {
+    setMeasureToolActive(panelId, false);
     setDrawMode(panelId, !panel.isDrawMode);
   };
 
   const selectMeasure = () => {
-    setMeasureToolActive(panelId, !panel.measureToolActive);
+    setMeasureToolActive(panelId, !measureToolActive);
   };
 
   const buttonClass = (active: boolean) =>
@@ -160,9 +164,9 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
       <button
         type="button"
         onClick={selectMeasure}
-        className={buttonClass(panel.measureToolActive)}
+        className={buttonClass(measureToolActive)}
         title="Measure"
-        aria-pressed={panel.measureToolActive}
+        aria-pressed={measureToolActive}
         aria-label="Measure"
       >
         <Ruler size={14} strokeWidth={2.4} />

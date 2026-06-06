@@ -151,6 +151,8 @@ export class BinanceAdapter implements FeedAdapter {
         const data = parsed.data;
         const trade: Trade = {
           id: data.a,
+          firstTradeId: data.f,
+          lastTradeId: data.l,
           time: data.T, // unix ms
           price: parseFloat(data.p),
           quantity: parseFloat(data.q),

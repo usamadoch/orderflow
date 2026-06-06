@@ -3,6 +3,7 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle2, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
 import { useChartStore, PanelId } from '@/lib/store/chart';
+import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { buildCvdSeries } from '@/lib/utils/delta';
 import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine } from '../ChartEngineContext';
 import { ChartCanvas } from './ChartCanvas';
@@ -21,13 +22,15 @@ function formatCount(value: number) {
 }
 
 export function ChartPanel({ panelId }: ChartPanelProps) {
-  const panel = useChartStore(s => s.panels[panelId]);
+  const panelSettings = useChartStore(s => s.panels[panelId]);
+  const panelRuntime = useChartRuntimeStore(s => s.panels[panelId]);
+  const panel = { ...panelSettings, ...panelRuntime };
   const setActivePanel = useChartStore(s => s.setActivePanel);
   const setBarWidth = useChartStore(s => s.setBarWidth);
   const setScrollOffset = useChartStore(s => s.setScrollOffset);
   const setCvdPanelHeightPct = useChartStore(s => s.setCvdPanelHeightPct);
   const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
-  const setHistoryRestoreStatus = useChartStore(s => s.setHistoryRestoreStatus);
+  const setHistoryRestoreStatus = useChartRuntimeStore(s => s.setHistoryRestoreStatus);
   const tickSize = useChartStore(s => s.tickSize);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
@@ -67,7 +70,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
     if (restoreStatus?.stage !== 'complete') return;
 
     const timeout = window.setTimeout(() => {
-      const currentStatus = useChartStore.getState().panels[panelId].historyRestoreStatus;
+      const currentStatus = useChartRuntimeStore.getState().panels[panelId].historyRestoreStatus;
       if (currentStatus?.updatedAt === restoreStatus.updatedAt && currentStatus.stage === 'complete') {
         setHistoryRestoreStatus(panelId, null);
       }
@@ -136,11 +139,19 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             absorptionShowLabels={panel.absorptionShowLabels}
             absorptionMap={panel.absorptionMap}
             bubblesEnabled={panel.bubblesEnabled}
+            bubbleSource={panel.bubbleSource}
+            bubbleSizeBy={panel.bubbleSizeBy}
+            aggregateBubbleMarketSource={panel.aggregateBubbleMarketSource}
             bubbleThreshold={panel.bubbleThreshold}
             bubbleThresholdMode={panel.bubbleThresholdMode}
+            bubbleMinOrders={panel.bubbleMinOrders}
             bubbleMinRadius={panel.bubbleMinRadius}
             bubbleMaxRadius={panel.bubbleMaxRadius}
             bubbleSide={panel.bubbleSide}
+            bubbleScaleMode={panel.bubbleScaleMode}
+            aggregateBubbleEvents={panel.aggregateBubbleEvents}
+            activeChartContractType={panel.contractType}
+            activeDataSourceMode={panel.dataSourceMode}
             isDrawMode={panel.isDrawMode}
             customProfileRange={panel.customProfileRange}
             customProfileLocked={panel.customProfileLocked}

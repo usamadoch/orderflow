@@ -1,5 +1,50 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-06] - Performance: Zustand Runtime State Separation
+- **What changed**:
+  - Added `lib/store/chartRuntime.ts` as a non-persisted Zustand store for panel runtime data: candles, trades, connection/loading/restore status, signal maps, aggregate bubble buffers, liquidity zones, footprint redraw triggers, profile/measurement selection, and the shared crosshair payload.
+  - Routed `FeedProvider`, `ChartPanel`, `ConnectionStatus`, keyboard shortcuts, drawing/position toolbars, `ChartCanvas`, and `CvdPanel` runtime reads/writes through the runtime store while leaving user settings in `lib/store/chart.ts`.
+  - Moved crosshair sync off the persisted chart store and onto runtime-store selector subscriptions so crosshair redraws stay outside React component selectors.
+  - Bumped the persisted settings version and stripped legacy runtime/crosshair keys during migration.
+  - Updated `skills/map.md` for the new runtime store and revised store/chart/feed responsibilities.
+- **Why it changed**:
+  - Live feed, restore, signal, liquidity, bubble, and mouse crosshair updates should not trigger persisted store writes or component-level subscriptions tied to saved settings.
+- **Impact summary**:
+  - Runtime panel updates no longer write through the persisted settings store.
+  - Crosshair sync remains direct-to-canvas and is no longer part of saved settings state.
+  - Persisted settings remain responsible for user preferences, layout, drawing configuration, and feature toggles.
+
+## [2026-06-06] - Performance: Need-Based Footprint And Iceberg Work
+- **What changed**:
+  - Added a per-panel footprint-work predicate covering footprint mode, footprint-cell bubbles, CVD, footprint-dependent signals, liquidity vacuum, and explicit browser market writes.
+  - Gated stored footprint restore and live footprint trade ingestion behind that predicate while keeping candle updates, aggregate-trade bubbles, profile trade handling, and raw-trade restore behavior intact.
+  - Added restore/debug skip fields for footprint restore, footprint ingestion skips, footprint-work reasons, and disabled Iceberg no-op skips.
+  - Stopped disabled Iceberg paths from repeatedly writing empty level arrays when there is no stale level state to clear.
+  - Updated `skills/map.md` for the revised FeedProvider and store responsibilities.
+- **Why it changed**:
+  - Candlestick panels without footprint-dependent features should not restore footprint rows or feed live trades into the footprint aggregation engine.
+- **Impact summary**:
+  - Footprint restore and live footprint aggregation now run only when the specific panel needs footprint data.
+  - Dual-panel layouts avoid forcing footprint work in one panel because another panel needs it.
+  - Iceberg behavior remains unchanged when enabled, while disabled no-op state writes are avoided.
+
+## [2026-06-06] - Performance: Phase 1 Chart Restore And Hidden Work Skips
+- **What changed**:
+  - Disabled raw-trade restore by default and gated it behind `NEXT_PUBLIC_ENABLE_RAW_TRADE_RESTORE=true`.
+  - Kept browser-side market writes, including raw trade writes, behind `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES=true`.
+  - Skipped stored Volume Profile restore when no default/custom profile is enabled or visible, while preserving lazy restore for profiles when they are needed later.
+  - Moved default Volume Profile building in `ChartCanvas` behind `defaultProfileEnabled`.
+  - Guarded disabled absorption, exhaustion, iceberg, liquidity vacuum, bubble, heatmap/orderbook sampling, and profile live work so hidden features do not keep doing heavy calculations.
+  - Added lightweight restore/debug skip markers for raw-trade and profile restore skips.
+  - Updated `skills/map.md` for the revised FeedProvider responsibilities.
+- **Why it changed**:
+  - Collector-backed footprint/profile data already covers normal chart usage, and the frontend should avoid replaying raw trades or building hidden overlays during restore/redraw.
+- **Impact summary**:
+  - Normal chart loads skip the largest raw-trade replay freeze risk unless explicitly opted in.
+  - Disabled Volume Profile, bubble, heatmap, and signal features avoid unnecessary restore, buffering, sampling, or calculation work.
+  - Existing visuals remain unchanged when features are enabled.
+  - `npx.cmd tsc --noEmit` passes.
+
 ## [2026-06-05] - Fix: Profile Settings And Signal Defaults After Indicator Cleanup
 - **What changed**:
   - Restored the global Profiles tab Volume Profile controls that were accidentally hidden during indicator cleanup.
@@ -155,59 +200,3 @@
 - **Impact summary**:
   - Market data, signal calculations, and storage semantics were unchanged.
   - Profile renderer visuals, indicator toggles, and restore flows improved without changing the underlying profile math or live feed behavior.
-
-## [2026-06-04] - UI: Position Tool Border And Toolbar Spacing
-- **What changed**:
-  - Removed the outer red/green stroke around Long/Short Position boxes and kept the 1px white entry separator between risk and reward zones.
-  - Added extra selected-drawing toolbar offset for Long/Short Position drawings so the style toolbar no longer overlaps the active position labels.
-  - Updated `skills/map.md` for the adjusted renderer and toolbar-position responsibilities.
-- **Why it changed**:
-  - The position boxes needed a cleaner TradingView-like surface, and the selected drawing toolbar could cover the target/entry info labels.
-- **Impact summary**:
-  - Position behavior, calculations, drag/resize handles, persistence, and visual-only trade independence were not changed.
-  - Market data, feeds, storage, Volume Profile, footprint, heatmap, and signal calculations were not changed.
-
-## [2026-06-04] - Fix: Position Tool Layering And Label Design
-- **What changed**:
-  - Moved Long/Short Position drawings into a later chart drawing pass so they render above candles, footprint cells, bubbles, order-flow overlays, Volume Profile, and the heatmap strip while remaining below React UI overlays.
-  - Added darker candle-overlap shading inside risk/reward zones by intersecting each visible candle high/low range with the position box price ranges.
-  - Replaced the black details box with selected/hover-only colored rounded labels for target, stop, and main entry/risk-reward details.
-  - Removed always-on position price labels from the generic drawing price-label pass so inactive position drawings stay visually clean.
-  - Updated `skills/map.md` for the adjusted renderer responsibilities.
-- **Why it changed**:
-  - The position drawing needed to read like a TradingView-style drawing object on top of chart content, with clearer price-action overlap styling and cleaner active-only detail labels.
-- **Impact summary**:
-  - Position creation, risk-first drag behavior, reward creation, drag/resize handles, live calculations, persistence, locking, styling, and deletion remain on the existing implementation.
-  - Position drawings remain visual-only and are not connected to live trades, current market price, or open positions.
-  - Market data, feeds, storage, order placement, Volume Profile calculations, footprint calculations, heatmap collection, and signal calculations were not changed.
-  - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
-
-## [2026-06-04] - Fix: Position Tool Risk-First Preview And Details
-- **What changed**:
-  - Changed Long/Short Position drag preview to render only the red risk/stop-loss zone while the pointer is down.
-  - Changed initial entry/stop assignment so the user-drawn risk box becomes the actual stop zone: long uses the upper edge as entry and lower edge as stop, short uses the lower edge as entry and upper edge as stop.
-  - Changed finalized drawings to create a smaller default reward box on the opposite side after release.
-  - Hid detailed position metrics unless the drawing is selected or hovered; non-active drawings keep the joined boxes and basic price labels.
-  - Updated `skills/map.md` for the adjusted drawing responsibilities.
-- **Why it changed**:
-  - The first implementation showed the reward zone during drag and kept the detailed info panel always visible, which made the tool feel unlike TradingView's visual position drawings.
-- **Impact summary**:
-  - Position tools remain visual-only drawings and stay disconnected from live trades, current market price, and open positions.
-  - Existing selection, lock, style, delete, persistence, and entry/stop/target dragging behavior remains in the current drawing system.
-  - Market data, feeds, storage, order placement, Volume Profile, footprint, heatmap, and signal calculations were not changed.
-  - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
-
-## [2026-06-04] - Feature: Long/Short Position Drawing Tools
-- **What changed**:
-  - Added Long Position and Short Position buttons to each panel header.
-  - Added persisted `long-position` and `short-position` drawing variants with entry, stop, and target levels.
-  - Added risk-first click-drag creation, preview rendering, selectable whole-drawing movement, width resizing, and draggable entry/stop/target handles.
-  - Added red risk zones, green reward zones, entry separator lines, price labels, and live risk/reward, price-move, percent-move, and point-distance metrics.
-  - Updated `skills/map.md` for the touched file responsibilities.
-- **Why it changed**:
-  - The chart needed TradingView-style visual position measurement tools that users can draw anywhere without creating orders or binding to current price/open positions.
-- **Impact summary**:
-  - Position drawings behave like existing drawings for selection, locking, styling, deletion, and persistence.
-  - Long drawings keep stop/risk below entry and target/reward above entry; short drawings keep stop/risk above entry and target/reward below entry.
-  - Market data, feeds, storage, order placement, live positions, Volume Profile, footprint, heatmap, and signal calculations were not changed.
-  - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.

@@ -1,6 +1,8 @@
+import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleSource } from '../../types/bubble';
+
 type StreamType = 'kline' | 'aggTrade' | 'depth';
 type CacheKind = 'footprint' | 'volumeProfile' | 'candle';
-type RestoreKind = 'candles' | 'rawTrades' | 'footprint' | 'volumeProfile' | 'orderbook' | 'storage';
+type RestoreKind = 'candles' | 'rawTrades' | 'footprint' | 'volumeProfile' | 'orderbook' | 'storage' | 'aggregateBubbles';
 
 interface CoverageRange {
   startTime: number;
@@ -50,6 +52,111 @@ interface RestoreMetric {
   details?: Record<string, unknown>;
 }
 
+interface AggregateBubbleEventSummary {
+  time: number;
+  price: number;
+  volume: number;
+  side: BubbleEvent['side'];
+  source: BubbleEvent['source'];
+  symbol: string;
+  contractType: BubbleEvent['contractType'];
+  tradeCount: number | null;
+}
+
+interface AggregateBubbleRenderedEventSummary extends AggregateBubbleEventSummary {
+  renderedValue: number;
+  renderedValueSource: BubbleSizeBy;
+  tradeCountFallback: boolean;
+  renderedX: number;
+  renderedY: number;
+  nearestCandleTime: number | null;
+  candleHigh: number | null;
+  candleLow: number | null;
+  nearestFootprintBucket: number | null;
+  nearestFootprintBidVol: number | null;
+  nearestFootprintAskVol: number | null;
+}
+
+interface AggregateBubbleFilteredEventSummary extends AggregateBubbleEventSummary {
+  reason: string;
+  eventSeconds: number | null;
+}
+
+interface AggregateBubbleStorageThresholds {
+  minVolume: number;
+  minTradeCount: number;
+  minTradeCountVolume: number;
+}
+
+interface AggregateBubbleRestoreDebugState {
+  duplicateSkippedCount: number;
+  restoreQueryRange: {
+    startTime: number;
+    endTime: number;
+  } | null;
+  storageThresholds: AggregateBubbleStorageThresholds | null;
+}
+
+export interface AggregateBubbleDebugSnapshot {
+  panelId: string;
+  bubbleSource: BubbleSource;
+  bubbleSizeBy: BubbleSizeBy;
+  aggregateBubbleMarketSource: AggregateBubbleMarketSource;
+  activeChartMarketSource: {
+    contractType: BubbleEventContractType;
+    dataSourceMode: BubbleEventContractType | 'both';
+  };
+  bufferSize: number;
+  maxBufferSize: number;
+  restoredEventCount: number;
+  liveEventCount: number;
+  totalHydratedCount: number;
+  duplicateSkippedCount: number;
+  restoreQueryRange: {
+    startTime: number;
+    endTime: number;
+  } | null;
+  restoredSpotCount: number;
+  restoredFuturesCount: number;
+  minRestoredEventTime: number | null;
+  maxRestoredEventTime: number | null;
+  storageThresholds: AggregateBubbleStorageThresholds | null;
+  currentRenderedCountAfterRestore: number | null;
+  visibleEventCount: number;
+  renderedCount: number;
+  totalEventCountBySource: Record<BubbleEventContractType, number>;
+  visibleEventCountBySource: Record<BubbleEventContractType, number>;
+  renderedCountBySource: Record<BubbleEventContractType, number>;
+  visibleEventCountBySizeMode: Record<BubbleSizeBy, number>;
+  renderedCountBySizeMode: Record<BubbleSizeBy, number>;
+  filteredCount: number;
+  filterReasons: Record<string, number>;
+  tradeCountFallbackCount: number;
+  tradeCountFallbackPolicy: string | null;
+  latestEvent: AggregateBubbleEventSummary | null;
+  latestRendered: AggregateBubbleRenderedEventSummary | null;
+  latestFiltered: AggregateBubbleFilteredEventSummary | null;
+  visibleWindow: {
+    startTime: number;
+    endTime: number;
+  } | null;
+  settings: {
+    sizeBy: BubbleSizeBy;
+    marketSource: AggregateBubbleMarketSource;
+    resolvedMarketSource: BubbleEventContractType | 'both';
+    minVolume: number;
+    minOrders: number;
+    thresholdMode: 'absolute' | 'relative';
+    side: 'both' | 'buy' | 'sell';
+    scaleMode: 'linear' | 'sqrt' | 'log';
+    minRadius: number;
+    maxRadius: number;
+    actualThreshold: number | null;
+    actualThresholdMode: BubbleSizeBy | null;
+  };
+  updatedAt: number;
+}
+
 export interface MarketDebugSnapshot {
   enabled: boolean;
   generatedAt: number;
@@ -62,6 +169,7 @@ export interface MarketDebugSnapshot {
   storage: {
     recentRestoreCalls: RestoreMetric[];
   };
+  aggregateBubbles: Record<string, AggregateBubbleDebugSnapshot>;
   totals: {
     activeStreams: number;
     activeCaches: number;
@@ -95,6 +203,8 @@ const MAX_RECENT_RESTORE_CALLS = 80;
 const streams = new Map<string, StreamMetric>();
 const caches = new Map<string, CacheMetric>();
 const recentRestoreCalls: RestoreMetric[] = [];
+const aggregateBubbleDebug = new Map<string, AggregateBubbleDebugSnapshot>();
+const aggregateBubbleRestoreDebug = new Map<string, AggregateBubbleRestoreDebugState>();
 
 function isExplicitlyEnabled() {
   return process.env.NEXT_PUBLIC_MARKET_DEBUG === 'true' || process.env.MARKET_DEBUG === 'true';
@@ -326,6 +436,29 @@ export function recordRestoreDiagnostic(call: RestoreMetric) {
   }
 }
 
+export function recordAggregateBubbleDebug(snapshot: Omit<AggregateBubbleDebugSnapshot, 'updatedAt'>) {
+  if (!isMarketMetricsEnabled()) return;
+  attachBrowserApi();
+  const restoreDebug = aggregateBubbleRestoreDebug.get(snapshot.panelId);
+  aggregateBubbleDebug.set(snapshot.panelId, {
+    ...snapshot,
+    duplicateSkippedCount: restoreDebug?.duplicateSkippedCount ?? snapshot.duplicateSkippedCount,
+    restoreQueryRange: restoreDebug?.restoreQueryRange ?? snapshot.restoreQueryRange,
+    storageThresholds: restoreDebug?.storageThresholds ?? snapshot.storageThresholds,
+    currentRenderedCountAfterRestore: restoreDebug ? snapshot.renderedCount : snapshot.currentRenderedCountAfterRestore,
+    updatedAt: now(),
+  });
+}
+
+export function recordAggregateBubbleRestoreDebug(
+  panelId: string,
+  state: AggregateBubbleRestoreDebugState,
+) {
+  if (!isMarketMetricsEnabled()) return;
+  attachBrowserApi();
+  aggregateBubbleRestoreDebug.set(panelId, state);
+}
+
 export function getCoverageFromTimes(times: number[]): CoverageRange | null {
   if (times.length === 0) return null;
   return {
@@ -423,6 +556,28 @@ export function getSnapshot(): MarketDebugSnapshot {
         details: call.details ? { ...call.details } : undefined,
       })),
     },
+    aggregateBubbles: Object.fromEntries(
+      Array.from(aggregateBubbleDebug.entries()).map(([panelId, snapshot]) => [
+        panelId,
+        {
+          ...snapshot,
+          activeChartMarketSource: { ...snapshot.activeChartMarketSource },
+          totalEventCountBySource: { ...snapshot.totalEventCountBySource },
+          visibleEventCountBySource: { ...snapshot.visibleEventCountBySource },
+          renderedCountBySource: { ...snapshot.renderedCountBySource },
+          visibleEventCountBySizeMode: { ...snapshot.visibleEventCountBySizeMode },
+          renderedCountBySizeMode: { ...snapshot.renderedCountBySizeMode },
+          filterReasons: { ...snapshot.filterReasons },
+          latestEvent: snapshot.latestEvent ? { ...snapshot.latestEvent } : null,
+          latestRendered: snapshot.latestRendered ? { ...snapshot.latestRendered } : null,
+          latestFiltered: snapshot.latestFiltered ? { ...snapshot.latestFiltered } : null,
+          visibleWindow: snapshot.visibleWindow ? { ...snapshot.visibleWindow } : null,
+          restoreQueryRange: snapshot.restoreQueryRange ? { ...snapshot.restoreQueryRange } : null,
+          storageThresholds: snapshot.storageThresholds ? { ...snapshot.storageThresholds } : null,
+          settings: { ...snapshot.settings },
+        },
+      ]),
+    ),
     totals,
   };
 }
@@ -431,6 +586,8 @@ export function reset() {
   streams.clear();
   caches.clear();
   recentRestoreCalls.length = 0;
+  aggregateBubbleDebug.clear();
+  aggregateBubbleRestoreDebug.clear();
   attachBrowserApi();
 }
 

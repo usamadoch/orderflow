@@ -3,6 +3,7 @@
 import React from 'react';
 import { Maximize2, Minimize2, Settings, TrendingDown, TrendingUp } from 'lucide-react';
 import { useChartStore, PanelId, type SettingsOpenRequest } from '../../lib/store/chart';
+import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 import { ChartSettingsDropdown } from './ChartSettingsDropdown';
 
 const PAIRS = ['BTCUSDT', 'ETHUSDT'];
@@ -18,6 +19,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setTimeframe = useChartStore(s => s.setTimeframe);
   const setChartMode = useChartStore(s => s.setChartMode);
   const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
+  const setMeasureToolActive = useChartRuntimeStore(s => s.setMeasureToolActive);
   const focusMode = useChartStore(s => s.focusMode);
   const setFocusMode = useChartStore(s => s.setFocusMode);
   const setActivePanel = useChartStore(s => s.setActivePanel);
@@ -30,8 +32,9 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
 
   const selectPositionTool = React.useCallback((mode: 'long-position' | 'short-position') => {
     setActivePanel(panelId);
+    setMeasureToolActive(panelId, false);
     setLineDrawMode(panelId, panel.lineDrawMode === mode ? 'none' : mode);
-  }, [panel.lineDrawMode, panelId, setActivePanel, setLineDrawMode]);
+  }, [panel.lineDrawMode, panelId, setActivePanel, setLineDrawMode, setMeasureToolActive]);
 
   const getSettingsAnchor = React.useCallback(() => {
     const rect = settingsButtonRef.current?.getBoundingClientRect();

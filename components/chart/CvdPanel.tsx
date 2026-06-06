@@ -5,6 +5,7 @@ import { AggregationEngine } from '@/lib/aggregation/engine';
 import { buildCvdSeries, detectLocalCvdDivergences } from '@/lib/utils/delta';
 import { initCanvas } from '@/lib/utils/canvas';
 import { useChartStore, PanelId, PanelState } from '@/lib/store/chart';
+import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { Candle } from '@/types/candle';
 import { getVisibleRange, indexToX as calcIndexToX, xToIndex, timeToIndex } from './useCoordinates';
 import { drawTimeAxis } from './drawAxes';
@@ -176,7 +177,7 @@ export function CvdPanel({
 
       drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, barWidthProp);
 
-      const crosshair = useChartStore.getState().crosshair;
+      const crosshair = useChartRuntimeStore.getState().crosshair;
       const crosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
       let mx: number | null = null;
       let my: number | null = null;
@@ -239,7 +240,7 @@ export function CvdPanel({
 
   const updateCrosshair = useCallback((x: number | null, y: number | null) => {
     if (x === null || y === null) {
-      useChartStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+      useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
       return;
     }
 
@@ -254,7 +255,7 @@ export function CvdPanel({
     const time = candles[index]?.time ?? null;
 
     if (useChartStore.getState().crosshairSyncEnabled) {
-      useChartStore.getState().setCrosshair({ activePanel: panelId, time, price: null });
+      useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price: null });
     }
   }, [panelId, candles, scrollOffsetProp, barWidthProp, profileWidth]);
 
@@ -477,17 +478,28 @@ export function CvdPanel({
   ]);
 
   useEffect(() => {
-    const unsubscribe = useChartStore.subscribe((state, prevState) => {
+    const unsubscribeCrosshair = useChartRuntimeStore.subscribe((state) => state.crosshair, (crosshair, previousCrosshair) => {
+      if (!useChartStore.getState().crosshairSyncEnabled) return;
       if (
-        state.crosshair.time !== prevState.crosshair.time ||
-        state.crosshair.activePanel !== prevState.crosshair.activePanel ||
-        state.crosshairSyncEnabled !== prevState.crosshairSyncEnabled
+        crosshair.time !== previousCrosshair.time ||
+        crosshair.activePanel !== previousCrosshair.activePanel
       ) {
         redrawRef.current();
       }
     });
 
-    return unsubscribe;
+    const unsubscribeSync = useChartStore.subscribe((state, prevState) => {
+      if (state.crosshairSyncEnabled === prevState.crosshairSyncEnabled) return;
+      if (!state.crosshairSyncEnabled) {
+        useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+      }
+      redrawRef.current();
+    });
+
+    return () => {
+      unsubscribeCrosshair();
+      unsubscribeSync();
+    };
   }, []);
 
   return (

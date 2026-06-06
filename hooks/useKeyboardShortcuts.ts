@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useChartStore } from '@/lib/store/chart';
+import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 
 const TIMEFRAME_KEYS: Record<string, string> = {
   '1': '1m',
@@ -34,6 +35,7 @@ export function useKeyboardShortcuts() {
       const key = e.key.toLowerCase();
       const activePanel = useChartStore.getState().activePanel;
       const panel = useChartStore.getState().panels[activePanel];
+      const runtimePanel = useChartRuntimeStore.getState().panels[activePanel];
 
       if (e.altKey && e.shiftKey && key === 'z') {
         e.preventDefault();
@@ -87,10 +89,10 @@ export function useKeyboardShortcuts() {
       if (key === 'e') {
         e.preventDefault();
         console.log(`--- Exhaustion Map (${activePanel} panel) ---`);
-        if (panel.exhaustionMap.size === 0) {
+        if (runtimePanel.exhaustionMap.size === 0) {
           console.log('No exhaustion signals detected.');
         } else {
-          panel.exhaustionMap.forEach((res, time) => {
+          runtimePanel.exhaustionMap.forEach((res, time) => {
             console.log(`[${new Date(time * 1000).toLocaleTimeString()}] Score: ${res.score} (${res.rank}) Dir: ${res.direction}`);
             console.log(`   Reasons: ${res.reasons.join(', ')}`);
           });
@@ -102,10 +104,10 @@ export function useKeyboardShortcuts() {
       if (key === 'i') {
         e.preventDefault();
         console.log(`--- Iceberg Levels (${activePanel} panel) ---`);
-        if (panel.icebergLevels.length === 0) {
+        if (runtimePanel.icebergLevels.length === 0) {
           console.log('No iceberg levels detected.');
         } else {
-          console.table(panel.icebergLevels.map(level => ({
+          console.table(runtimePanel.icebergLevels.map(level => ({
             price: level.price,
             score: level.score,
             rank: level.rank,
@@ -123,7 +125,12 @@ export function useKeyboardShortcuts() {
       // M: Toggle measurement tool
       if (key === 'm') {
         e.preventDefault();
-        useChartStore.getState().setMeasureToolActive(activePanel, !panel.measureToolActive);
+        const nextActive = !runtimePanel.measureToolActive;
+        if (nextActive) {
+          useChartStore.getState().setDrawMode(activePanel, false);
+          useChartStore.getState().setLineDrawMode(activePanel, 'none');
+        }
+        useChartRuntimeStore.getState().setMeasureToolActive(activePanel, nextActive);
         return;
       }
 
@@ -159,7 +166,7 @@ export function useKeyboardShortcuts() {
       if (key === 'l') {
         e.preventDefault();
         console.log(`--- Liquidity Zones (${activePanel} panel) ---`);
-        const zones = panel.liquidityZones;
+        const zones = runtimePanel.liquidityZones;
         if (zones.length === 0) {
           console.log('No liquidity zones available.');
         } else {
@@ -178,8 +185,8 @@ export function useKeyboardShortcuts() {
       // Escape: Clear active measurement
       if (key === 'escape') {
         e.preventDefault();
-        if (panel.activeMeasurement) {
-          useChartStore.getState().setActiveMeasurement(activePanel, null);
+        if (runtimePanel.activeMeasurement) {
+          useChartRuntimeStore.getState().setActiveMeasurement(activePanel, null);
         } else if (panel.isDrawMode) {
           useChartStore.getState().setDrawMode(activePanel, false);
         } else if (panel.lineDrawMode !== 'none') {

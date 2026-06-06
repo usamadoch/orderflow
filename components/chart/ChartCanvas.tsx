@@ -3,6 +3,7 @@
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { Lock, Settings, Unlock, X } from 'lucide-react';
 import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide, Measurement, DrawnLine, DrawingStrokeWidth, ContractType, DataSourceMode, MAX_AGGREGATE_BUBBLE_EVENTS } from '@/lib/store/chart';
+import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import type { VolumeProfileSource } from '@/lib/volumeProfile/profileEngine';
@@ -40,7 +41,7 @@ import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
 import { recordAggregateBubbleDebug } from '@/lib/debug/marketMetrics';
 import { MeasurementPanel } from './MeasurementPanel';
-import { HeatmapRow } from '@/types/liquidity';
+import { HeatmapRow, LiquidityZone } from '@/types/liquidity';
 import { IcebergTooltip } from './IcebergTooltip';
 import { MIN_FINE_PROFILE_BASE_BUCKET_SIZE } from '@/lib/config/markets';
 
@@ -508,7 +509,7 @@ interface ChartCanvasProps {
   activeMeasurement: Measurement | null;
   sessionsEnabled: boolean;
   sessions: PanelState['sessions'];
-  liquidityZones: PanelState['liquidityZones'];
+  liquidityZones: LiquidityZone[];
   liquidityEnabled: boolean;
   liquidityOpacity: number;
   liquidityBucketSize: number;
@@ -1061,33 +1062,36 @@ export function ChartCanvas({
       }
 
       // Volume Profile
-      const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
-      const profile = volumeProfileEngine.buildProfile({
-        candles: visibleCandles,
-        profileBucketSize: defaultProfileBucketSize,
-      });
-      if (defaultProfileEnabled && profile) {
-        drawVolumeProfile(
-          ctx, 
-          profile, 
-          priceToY, 
-          logicalWidth, 
-          baseProfileWidth, 
-          priceAxisWidth, 
-          bucketSize, 
-          !!resolvedCustomProfileRange,
-          profileWidthPct,
-          profileOpacity,
-          profileMinRowWidth,
-          profileMinRowHeight,
-          defaultProfileBucketSize,
-          profileScaleMode,
-          profileShowPocHighlight,
-          profileShowVaFill,
-          profileShowPocLine,
-          profileShowVaLines,
-          liquidityHeatmapProfileSync ? heatmapRows : undefined
-        );
+      if (defaultProfileEnabled) {
+        const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
+        const profile = volumeProfileEngine.buildProfile({
+          candles: visibleCandles,
+          profileBucketSize: defaultProfileBucketSize,
+        });
+
+        if (profile) {
+          drawVolumeProfile(
+            ctx,
+            profile,
+            priceToY,
+            logicalWidth,
+            baseProfileWidth,
+            priceAxisWidth,
+            bucketSize,
+            !!resolvedCustomProfileRange,
+            profileWidthPct,
+            profileOpacity,
+            profileMinRowWidth,
+            profileMinRowHeight,
+            defaultProfileBucketSize,
+            profileScaleMode,
+            profileShowPocHighlight,
+            profileShowVaFill,
+            profileShowPocLine,
+            profileShowVaLines,
+            liquidityHeatmapProfileSync ? heatmapRows : undefined
+          );
+        }
       }
       
       // Measurement Rect (on top of profiles, below axes)
@@ -1215,7 +1219,7 @@ export function ChartCanvas({
       }
 
       // Draw Crosshair
-      const crosshair = useChartStore.getState().crosshair;
+      const crosshair = useChartRuntimeStore.getState().crosshair;
       const crosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
       let mx: number | null = null;
       let my: number | null = null;
@@ -1324,7 +1328,7 @@ export function ChartCanvas({
     // Crosshair Sync Handler
     useCallback((x: number | null, y: number | null) => {
       if (x === null || y === null) {
-        useChartStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
         return;
       }
 
@@ -1359,7 +1363,7 @@ export function ChartCanvas({
       );
 
       if (profileHitZone) {
-        useChartStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
         return;
       }
 
@@ -1378,7 +1382,7 @@ export function ChartCanvas({
 
       const syncEnabled = useChartStore.getState().crosshairSyncEnabled;
       if (syncEnabled) {
-        useChartStore.getState().setCrosshair({ activePanel: panelId, time, price });
+        useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price });
       }
     }, [panelId, candles, priceAxisWidth, timeAxisHeight, profileWidth, customProfileRange, customProfileLocked]),
     { scrollOffset, barWidth, priceCenter, priceRange }
@@ -1391,26 +1395,34 @@ export function ChartCanvas({
 
   // Subscribe to crosshair changes for sync rendering
   useEffect(() => {
-    return useChartStore.subscribe((state, prevState) => {
-      if (!state.crosshairSyncEnabled) {
-        // If sync was just disabled, trigger a final redraw to clear synced lines
-        if (prevState.crosshairSyncEnabled) {
-          redrawRef.current();
-        }
+    const unsubscribeCrosshair = useChartRuntimeStore.subscribe((state) => state.crosshair, (crosshair, previousCrosshair) => {
+      if (!useChartStore.getState().crosshairSyncEnabled) {
         return;
       }
 
-      if (state.crosshair.activePanel === panelId && isMouseOver.current) return;
+      if (crosshair.activePanel === panelId && isMouseOver.current) return;
 
       if (
-        state.crosshair.time !== prevState.crosshair.time ||
-        state.crosshair.price !== prevState.crosshair.price ||
-        state.crosshair.activePanel !== prevState.crosshair.activePanel ||
-        state.crosshairSyncEnabled !== prevState.crosshairSyncEnabled
+        crosshair.time !== previousCrosshair.time ||
+        crosshair.price !== previousCrosshair.price ||
+        crosshair.activePanel !== previousCrosshair.activePanel
       ) {
         redrawRef.current();
       }
     });
+
+    const unsubscribeSync = useChartStore.subscribe((state, prevState) => {
+      if (state.crosshairSyncEnabled === prevState.crosshairSyncEnabled) return;
+      if (!state.crosshairSyncEnabled) {
+        useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+      }
+      redrawRef.current();
+    });
+
+    return () => {
+      unsubscribeCrosshair();
+      unsubscribeSync();
+    };
   }, [panelId, isMouseOver]);
 
   // Initial setup and resize handler
@@ -1570,7 +1582,7 @@ export function ChartCanvas({
         const targetLine = useChartStore.getState().panels[panelId].drawnLines.find((line) => line.id === hoveredLineId.current);
         if (targetLine) {
           setSelectedDrawingId(targetLine.id);
-          useChartStore.getState().setProfileSelected(panelId, false);
+          useChartRuntimeStore.getState().setProfileSelected(panelId, false);
           if (!targetLine.locked && hoveredDrawingZone.current !== 'hover') {
             dragAnchor.current = { x, y };
             drawingSnapshot.current = targetLine;
@@ -1637,7 +1649,7 @@ export function ChartCanvas({
         if (isDrawMode) {
           useChartStore.getState().setCustomProfileRange(panelId, null);
         } else {
-          useChartStore.getState().setActiveMeasurement(panelId, null);
+          useChartRuntimeStore.getState().setActiveMeasurement(panelId, null);
         }
         return;
       }
@@ -1682,21 +1694,21 @@ export function ChartCanvas({
           isDraggingResize.current = true;
           resizeEdge.current = profileHitZone.replace('resize-', '') as 'left' | 'right' | 'top' | 'bottom';
         }
-        useChartStore.getState().setProfileSelected(panelId, true);
+        useChartRuntimeStore.getState().setProfileSelected(panelId, true);
         return;
       }
 
       // 5. Select Profile (if clicked inside while locked)
       if (profileHitZone) {
         setSelectedDrawingId(null);
-        useChartStore.getState().setProfileSelected(panelId, true);
+        useChartRuntimeStore.getState().setProfileSelected(panelId, true);
         redraw();
         return;
       }
 
       // 6. Click outside -> deselect profile and drawing
       setSelectedDrawingId(null);
-      useChartStore.getState().setProfileSelected(panelId, false);
+      useChartRuntimeStore.getState().setProfileSelected(panelId, false);
       redraw();
     };
 
@@ -2207,7 +2219,7 @@ export function ChartCanvas({
         isDragging.current = false;
         const dist = Math.sqrt((dragEnd.current.x - dragStart.current.x)**2 + (dragEnd.current.y - dragStart.current.y)**2);
         if (dist < 4) {
-          useChartStore.getState().setActiveMeasurement(panelId, null);
+          useChartRuntimeStore.getState().setActiveMeasurement(panelId, null);
         } else {
           let metrics = null;
           if (coordsRef.current && candles.length > 0) {
@@ -2231,7 +2243,7 @@ export function ChartCanvas({
             footprintMetrics = computeFootprintMetrics(metrics, candles, engine);
           }
 
-          useChartStore.getState().setActiveMeasurement(panelId, {
+          useChartRuntimeStore.getState().setActiveMeasurement(panelId, {
             startX: dragStart.current.x,
             startY: dragStart.current.y,
             endX: dragEnd.current.x,

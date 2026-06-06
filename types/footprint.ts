@@ -3,6 +3,7 @@ export type FootprintMode = 'bid-ask' | 'delta';
 export interface FootprintCell {
   askVol: number;    // volume hitting the ask (buyers aggressive)
   bidVol: number;    // volume hitting the bid (sellers aggressive)
+  // TODO: Orders-based bubbles need tradeCount/orderCount here plus live aggregation, storage, restore API, and schema support.
 }
 
 export interface FootprintCandle {
