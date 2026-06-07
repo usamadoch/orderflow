@@ -11,6 +11,7 @@ import { usePanZoom } from './usePanZoom';
 import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex, timeToIndex } from './useCoordinates';
 import { drawCandles } from './drawCandles';
 import { drawFootprint } from './drawFootprint';
+import { drawVolumeBars } from './drawVolumeBars';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
 import { drawPriceLine } from './drawPriceLine';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
@@ -39,7 +40,7 @@ import { drawLiquidityVacuum } from '@/lib/draw/drawLiquidityVacuum';
 import { buildHeatmapRows } from '@/lib/liquidity/heatmap';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
-import { recordAggregateBubbleDebug } from '@/lib/debug/marketMetrics';
+import { recordAggregateBubbleDebug, recordVolumeBarsDebug } from '@/lib/debug/marketMetrics';
 import { MeasurementPanel } from './MeasurementPanel';
 import { HeatmapRow, LiquidityZone } from '@/types/liquidity';
 import { IcebergTooltip } from './IcebergTooltip';
@@ -462,6 +463,18 @@ interface ChartCanvasProps {
   aggregateBubbleEvents: BubbleEvent[];
   activeChartContractType: ContractType;
   activeDataSourceMode: DataSourceMode;
+  volumeBarsEnabled: boolean;
+  volumeBarsInputData: PanelState['volumeBarsInputData'];
+  volumeBarsMarketSource: PanelState['volumeBarsMarketSource'];
+  volumeBarsFilterMin: number;
+  volumeBarsFilterMax: number;
+  volumeBarsColorMode: PanelState['volumeBarsColorMode'];
+  volumeBarsOpacity: number;
+  volumeBarsHeightPct: number;
+  volumeBarsShowValueText: boolean;
+  volumeBarsTextSize: number;
+  volumeBarsAverageLineEnabled: boolean;
+  volumeBarsAverageLength: number;
   isDrawMode: boolean;
   customProfileRange: {
     firstTime?: number;
@@ -562,6 +575,18 @@ export function ChartCanvas({
   aggregateBubbleEvents,
   activeChartContractType,
   activeDataSourceMode,
+  volumeBarsEnabled,
+  volumeBarsInputData,
+  volumeBarsMarketSource,
+  volumeBarsFilterMin,
+  volumeBarsFilterMax,
+  volumeBarsColorMode,
+  volumeBarsOpacity,
+  volumeBarsHeightPct,
+  volumeBarsShowValueText,
+  volumeBarsTextSize,
+  volumeBarsAverageLineEnabled,
+  volumeBarsAverageLength,
   isDrawMode,
   customProfileRange,
   customProfileLocked,
@@ -819,6 +844,41 @@ export function ChartCanvas({
         drawCandles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
       } else {
         drawFootprint(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, chartHeight, footprintMode);
+      }
+
+      if (volumeBarsEnabled) {
+        drawVolumeBars(
+          ctx,
+          candles,
+          firstIndex,
+          lastIndex,
+          indexToX,
+          currentBarWidth,
+          chartWidth,
+          chartHeight,
+          timeAxisHeight,
+          profileWidth,
+          engine,
+          aggregateBubbleEvents,
+          {
+            panelId,
+            enabled: volumeBarsEnabled,
+            inputData: volumeBarsInputData,
+            marketSource: volumeBarsMarketSource,
+            filterMin: volumeBarsFilterMin,
+            filterMax: volumeBarsFilterMax,
+            colorMode: volumeBarsColorMode,
+            opacity: volumeBarsOpacity,
+            heightPct: volumeBarsHeightPct,
+            showValueText: volumeBarsShowValueText,
+            textSize: volumeBarsTextSize,
+            averageLineEnabled: volumeBarsAverageLineEnabled,
+            averageLength: volumeBarsAverageLength,
+            activeChartContractType,
+            activeDataSourceMode,
+            onDebug: recordVolumeBarsDebug,
+          },
+        );
       }
 
       // Volume bubbles — drawn above candles/footprint, below volume profile
@@ -1479,7 +1539,32 @@ export function ChartCanvas({
   // Redraw when data changes
   useEffect(() => {
     redraw();
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, volumeProfileRevision, redraw, isLoadingHistory, drawnLines, lineDrawMode, showTimeAxis]);
+  }, [
+    candles,
+    chartMode,
+    footprintMode,
+    bucketSize,
+    footprintTrigger,
+    volumeProfileRevision,
+    redraw,
+    isLoadingHistory,
+    drawnLines,
+    lineDrawMode,
+    showTimeAxis,
+    aggregateBubbleEvents,
+    volumeBarsEnabled,
+    volumeBarsInputData,
+    volumeBarsMarketSource,
+    volumeBarsFilterMin,
+    volumeBarsFilterMax,
+    volumeBarsColorMode,
+    volumeBarsOpacity,
+    volumeBarsHeightPct,
+    volumeBarsShowValueText,
+    volumeBarsTextSize,
+    volumeBarsAverageLineEnabled,
+    volumeBarsAverageLength,
+  ]);
 
   useEffect(() => {
     if (selectedDrawingId && !drawnLines.some((line) => line.id === selectedDrawingId)) {

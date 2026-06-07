@@ -1,5 +1,10 @@
 Yes, got it. After the current quick-win task, I’d go in this order:
 
+
+
+
+
+
 ## Phase 2: “Disabled but still working” audit
 
 Find anything that is visually hidden but still doing work in background.

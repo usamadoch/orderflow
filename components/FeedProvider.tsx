@@ -116,6 +116,20 @@ function getTradeSourcesForAggregateMarketSource(
     : [aggregateBubbleMarketSource];
 }
 
+function needsAggregateEventsForVolumeBars(panel: PanelState) {
+  return panel.volumeBarsEnabled && (
+    panel.volumeBarsInputData !== 'volume'
+    || panel.volumeBarsMarketSource !== 'active'
+  );
+}
+
+function needsAggregateEvents(panel: PanelState) {
+  return (
+    (panel.bubblesEnabled && panel.bubbleSource === 'aggregateTrades')
+    || needsAggregateEventsForVolumeBars(panel)
+  );
+}
+
 function getTradeDedupeKey(trade: Trade, source: TradeSource) {
   if (Number.isFinite(trade.id)) return `${source}:${trade.id}`;
   return `${source}:${trade.time}:${trade.price}:${trade.quantity}:${trade.isBuyerMaker}`;
@@ -424,6 +438,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const bubblesEnabled = useChartStore(s => s.panels[panelId].bubblesEnabled);
   const bubbleSource = useChartStore(s => s.panels[panelId].bubbleSource);
   const aggregateBubbleMarketSource = useChartStore(s => s.panels[panelId].aggregateBubbleMarketSource);
+  const volumeBarsEnabled = useChartStore(s => s.panels[panelId].volumeBarsEnabled);
+  const volumeBarsInputData = useChartStore(s => s.panels[panelId].volumeBarsInputData);
+  const volumeBarsMarketSource = useChartStore(s => s.panels[panelId].volumeBarsMarketSource);
   const tickSize = useChartStore(s => s.tickSize);
   const pushCandle = useChartRuntimeStore(s => s.pushCandle);
   const setConnected = useChartRuntimeStore(s => s.setConnected);
@@ -484,6 +501,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const liquidityHistoryRef = useRef<LiquidityHistoryManager>(new LiquidityHistoryManager(liquidityBucketSize, liquidityHistoryDepth));
   const bubblesEnabledRef = useRef(bubblesEnabled);
   const bubbleSourceRef = useRef(bubbleSource);
+  const aggregateEventsNeededRef = useRef(false);
   const footprintIngestionSkippedRef = useRef(0);
   const icebergDisabledNoopSkippedRef = useRef(0);
 
@@ -492,12 +510,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   }, [bucketSize]);
 
   useEffect(() => {
+    const aggregateEventsNeeded = needsAggregateEvents(useChartStore.getState().panels[panelId]);
     bubblesEnabledRef.current = bubblesEnabled;
     bubbleSourceRef.current = bubbleSource;
-    if (!bubblesEnabled || bubbleSource !== 'aggregateTrades') {
+    aggregateEventsNeededRef.current = aggregateEventsNeeded;
+    if (!aggregateEventsNeeded) {
       pendingAggregateBubbleEventsRef.current = [];
     }
-  }, [bubblesEnabled, bubbleSource]);
+  }, [bubblesEnabled, bubbleSource, panelId, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource]);
 
   const markProcessedTrade = useCallback((trade: Trade, source: TradeSource) => {
     const key = getTradeDedupeKey(trade, source);
@@ -540,16 +560,27 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   }, [panelId, setIcebergLevels]);
 
   useEffect(() => {
-    if (!bubblesEnabled) return;
-    if (bubbleSource !== 'aggregateTrades') return;
+    const requiredSources = new Set<TradeSource>();
+    if (bubblesEnabled && bubbleSource === 'aggregateTrades') {
+      getTradeSourcesForAggregateMarketSource(
+        aggregateBubbleMarketSource,
+        contractType,
+        dataSourceMode,
+      ).forEach((source) => requiredSources.add(source));
+    }
+
+    if (volumeBarsEnabled && (volumeBarsInputData !== 'volume' || volumeBarsMarketSource !== 'active')) {
+      getTradeSourcesForAggregateMarketSource(
+        volumeBarsMarketSource,
+        contractType,
+        dataSourceMode,
+      ).forEach((source) => requiredSources.add(source));
+    }
+
+    if (requiredSources.size === 0) return;
 
     const footprintSources = getTradeSourcesForDataSourceMode(dataSourceMode);
-    const aggregateSources = getTradeSourcesForAggregateMarketSource(
-      aggregateBubbleMarketSource,
-      contractType,
-      dataSourceMode,
-    );
-    const aggregateOnlySources = aggregateSources.filter((source) => !footprintSources.includes(source));
+    const aggregateOnlySources = Array.from(requiredSources).filter((source) => !footprintSources.includes(source));
     if (aggregateOnlySources.length === 0) return;
 
     const unsubscribers = aggregateOnlySources.map((source) => (
@@ -565,7 +596,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [aggregateBubbleMarketSource, bubblesEnabled, bubbleSource, contractType, dataSourceMode, markProcessedTrade, pair]);
+  }, [aggregateBubbleMarketSource, bubblesEnabled, bubbleSource, contractType, dataSourceMode, markProcessedTrade, pair, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource]);
 
   const rebuildLiquidityVacuumZones = useCallback((candles = useChartRuntimeStore.getState().panels[panelId].candles || []) => {
     if (!liquidityVacuumEnabled) {
@@ -637,7 +668,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
       }
 
-      if (!bubblesEnabledRef.current || bubbleSourceRef.current !== 'aggregateTrades') {
+      if (!aggregateEventsNeededRef.current) {
         pendingAggregateBubbleEventsRef.current = [];
       } else if (pendingAggregateBubbleEventsRef.current.length > 0) {
         const pendingBubbleEvents = pendingAggregateBubbleEventsRef.current;
@@ -841,7 +872,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     const shouldHydrateStoredAggregateBubbles = () => {
       const panel = useChartStore.getState().panels[panelId];
-      return panel.bubblesEnabled && panel.bubbleSource === 'aggregateTrades';
+      return needsAggregateEvents(panel);
     };
 
     const createEmptyRawTradeStats = (): RawTradeHydrationStats => ({
@@ -1448,7 +1479,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const handleTrade = (trade: Trade, source: TradeSource) => {
       if (!markProcessedTrade(trade, source)) return;
       markLiveConnected();
-      if (bubblesEnabledRef.current && bubbleSourceRef.current === 'aggregateTrades') {
+      if (aggregateEventsNeededRef.current) {
         const event = createAggregateBubbleEvent(trade, source, pair);
         if (event) {
           pendingAggregateBubbleEventsRef.current.push(event);
@@ -2757,7 +2788,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       footprintEngine.releaseSharedBaseCache();
       volumeProfileEngine.releaseSharedBaseCache();
     };
-  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, rebuildLiquidityVacuumZones, absorptionEnabled, exhaustionEnabled, bubblesEnabled, bubbleSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
+  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, rebuildLiquidityVacuumZones, absorptionEnabled, exhaustionEnabled, bubblesEnabled, bubbleSource, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
 
   // Temporary Verification Hotkey
   useEffect(() => {

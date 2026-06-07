@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Layers, Zap, X } from 'lucide-react';
-import { useChartStore, PanelId, AggregateBubbleMarketSource, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode, IndicatorSettingsSection, SettingsFocusSection } from '../../lib/store/chart';
+import { useChartStore, PanelId, AggregateBubbleMarketSource, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode, IndicatorSettingsSection, SettingsFocusSection, VolumeBarsColorMode, VolumeBarsInputData, VolumeBarsMarketSource } from '../../lib/store/chart';
 import { getMinimumFineProfileResolutionTicks } from '../../lib/config/markets';
 
 const SETTINGS_WIDTH = 544;
@@ -139,6 +139,18 @@ export function ChartSettingsDropdown({
   const setCvdShowDivergence = useChartStore(s => s.setCvdShowDivergence);
   const setCvdDivergenceLookback = useChartStore(s => s.setCvdDivergenceLookback);
   const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
+  const setVolumeBarsEnabled = useChartStore(s => s.setVolumeBarsEnabled);
+  const setVolumeBarsInputData = useChartStore(s => s.setVolumeBarsInputData);
+  const setVolumeBarsMarketSource = useChartStore(s => s.setVolumeBarsMarketSource);
+  const setVolumeBarsFilterMin = useChartStore(s => s.setVolumeBarsFilterMin);
+  const setVolumeBarsFilterMax = useChartStore(s => s.setVolumeBarsFilterMax);
+  const setVolumeBarsColorMode = useChartStore(s => s.setVolumeBarsColorMode);
+  const setVolumeBarsOpacity = useChartStore(s => s.setVolumeBarsOpacity);
+  const setVolumeBarsHeightPct = useChartStore(s => s.setVolumeBarsHeightPct);
+  const setVolumeBarsShowValueText = useChartStore(s => s.setVolumeBarsShowValueText);
+  const setVolumeBarsTextSize = useChartStore(s => s.setVolumeBarsTextSize);
+  const setVolumeBarsAverageLineEnabled = useChartStore(s => s.setVolumeBarsAverageLineEnabled);
+  const setVolumeBarsAverageLength = useChartStore(s => s.setVolumeBarsAverageLength);
   const setAutoBucketSize = useChartStore(s => s.setAutoBucketSize);
   const setSessionsEnabled = useChartStore(s => s.setSessionsEnabled);
   const setSessionEnabled = useChartStore(s => s.setSessionEnabled);
@@ -174,6 +186,7 @@ export function ChartSettingsDropdown({
   const sessionsSectionRef = useRef<HTMLDivElement>(null);
   const cvdSectionRef = useRef<HTMLDivElement>(null);
   const bubblesSectionRef = useRef<HTMLDivElement>(null);
+  const volumeBarsSectionRef = useRef<HTMLDivElement>(null);
   const volumeProfileSectionRef = useRef<HTMLDivElement>(null);
   const heatmapSectionRef = useRef<HTMLDivElement>(null);
   const liquidityMapSectionRef = useRef<HTMLDivElement>(null);
@@ -181,6 +194,7 @@ export function ChartSettingsDropdown({
     sessions: 'Sessions',
     cvd: 'CVD',
     bubbles: 'Volume Bubbles',
+    volumeBars: 'Volume Bars',
     heatmap: 'Heatmap',
     liquidityMap: 'Liquidity Map',
   };
@@ -373,6 +387,23 @@ export function ChartSettingsDropdown({
   const cvdScaleModes: { label: string; value: CvdScaleMode }[] = [
     { label: 'Auto', value: 'auto' },
     { label: 'Fixed', value: 'fixed' },
+  ];
+  const volumeBarsInputOptions: { label: string; value: VolumeBarsInputData }[] = [
+    { label: 'Volume', value: 'volume' },
+    { label: 'Orders', value: 'orders' },
+    { label: 'Agg Trades', value: 'aggregateTrades' },
+  ];
+  const volumeBarsMarketSources: { label: string; shortLabel: string; value: VolumeBarsMarketSource }[] = [
+    { label: 'Active Chart', shortLabel: 'Active', value: 'active' },
+    { label: 'Spot', shortLabel: 'Spot', value: 'spot' },
+    { label: 'Futures', shortLabel: 'Futures', value: 'futures' },
+    { label: 'Both', shortLabel: 'Both', value: 'both' },
+  ];
+  const volumeBarsColorModes: { label: string; value: VolumeBarsColorMode }[] = [
+    { label: 'Fixed', value: 'fixed' },
+    { label: 'Direction', value: 'priceDirection' },
+    { label: 'Delta', value: 'delta' },
+    { label: 'Slope', value: 'volumeSlope' },
   ];
 
   const tabs = [
@@ -675,6 +706,207 @@ export function ChartSettingsDropdown({
               />
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderVolumeBarsSettings = () => (
+    <div ref={volumeBarsSectionRef} className="scroll-mt-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Volume Bars</div>
+        <button
+          onClick={() => setVolumeBarsEnabled(panelId, !panel.volumeBarsEnabled)}
+          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.volumeBarsEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+            }`}
+        >
+          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.volumeBarsEnabled ? 'left-5' : 'left-1'
+            }`} />
+        </button>
+      </div>
+
+      {panel.volumeBarsEnabled && (
+        <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="space-y-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Input Data</label>
+              <span className="text-[11px] font-mono font-bold text-accent">
+                {volumeBarsInputOptions.find((option) => option.value === panel.volumeBarsInputData)?.label ?? 'Volume'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1">
+              {volumeBarsInputOptions.map(({ label, value }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setVolumeBarsInputData(panelId, value)}
+                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsInputData === value
+                    ? 'bg-[#1A1A1A] border-accent text-accent'
+                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Market Source</label>
+            <div className="grid grid-cols-4 gap-1">
+              {volumeBarsMarketSources.map(({ label, shortLabel, value }) => (
+                <button
+                  key={value}
+                  type="button"
+                  title={label}
+                  onClick={() => setVolumeBarsMarketSource(panelId, value)}
+                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsMarketSource === value
+                    ? 'bg-[#1A1A1A] border-accent text-accent'
+                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    }`}
+                >
+                  {shortLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Min</label>
+              <input
+                type="number"
+                value={panel.volumeBarsFilterMin}
+                onChange={(e) => setVolumeBarsFilterMin(panelId, Number(e.target.value))}
+                className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                min="0"
+                step="1"
+              />
+            </div>
+
+            <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Max</label>
+              <input
+                type="number"
+                value={panel.volumeBarsFilterMax}
+                onChange={(e) => setVolumeBarsFilterMax(panelId, Number(e.target.value))}
+                className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                min="0"
+                step="1"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Color Mode</label>
+            <div className="grid grid-cols-4 gap-1">
+              {volumeBarsColorModes.map(({ label, value }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setVolumeBarsColorMode(panelId, value)}
+                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsColorMode === value
+                    ? 'bg-[#1A1A1A] border-accent text-accent'
+                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.volumeBarsOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                value={panel.volumeBarsOpacity * 100}
+                onChange={(e) => setVolumeBarsOpacity(panelId, Number(e.target.value) / 100)}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="10"
+                max="100"
+                step="5"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Height</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsHeightPct}%</span>
+              </div>
+              <input
+                type="range"
+                value={panel.volumeBarsHeightPct}
+                onChange={(e) => setVolumeBarsHeightPct(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="8"
+                max="35"
+                step="1"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              onClick={() => setVolumeBarsShowValueText(panelId, !panel.volumeBarsShowValueText)}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.volumeBarsShowValueText
+                ? 'bg-accent/5 border-accent text-accent'
+                : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                }`}
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wider">Show Values</span>
+              <div className={`w-1.5 h-1.5 rounded-full ${panel.volumeBarsShowValueText ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+            </button>
+
+            <button
+              onClick={() => setVolumeBarsAverageLineEnabled(panelId, !panel.volumeBarsAverageLineEnabled)}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.volumeBarsAverageLineEnabled
+                ? 'bg-accent/5 border-accent text-accent'
+                : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                }`}
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wider">Average Line</span>
+              <div className={`w-1.5 h-1.5 rounded-full ${panel.volumeBarsAverageLineEnabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Text Size</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsTextSize}px</span>
+              </div>
+              <input
+                type="range"
+                value={panel.volumeBarsTextSize}
+                onChange={(e) => setVolumeBarsTextSize(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="8"
+                max="16"
+                step="1"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Average Len</label>
+                <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsAverageLength}</span>
+              </div>
+              <input
+                type="range"
+                value={panel.volumeBarsAverageLength}
+                onChange={(e) => setVolumeBarsAverageLength(panelId, Number(e.target.value))}
+                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                min="1"
+                max="200"
+                step="1"
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1282,6 +1514,8 @@ export function ChartSettingsDropdown({
         return renderCvdSettings();
       case 'bubbles':
         return renderBubbleSettings();
+      case 'volumeBars':
+        return renderVolumeBarsSettings();
       case 'heatmap':
         return renderHeatmapSettings();
       case 'liquidityMap':

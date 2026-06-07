@@ -1,4 +1,4 @@
-import type { Collection, Db, Filter } from 'mongodb'
+import type { Collection, CreateIndexesOptions, Db, Document, Filter, IndexSpecification } from 'mongodb'
 import { getMongoDb, verifyMongoConnection } from './client'
 import type {
   StoreBaseFootprintInput,
@@ -109,6 +109,15 @@ interface MongoCollectionInfoWithOptions {
       timeField?: string
       metaField?: string
     }
+  }
+}
+
+interface MongoIndexInfo {
+  name?: string
+  key?: unknown
+  unique?: boolean
+  originalSpec?: {
+    key?: unknown
   }
 }
 
@@ -320,10 +329,35 @@ function sortFineProfileRows(rows: FineProfileRow[]) {
   return rows.sort((a, b) => a.candle_time - b.candle_time || a.bucket_price - b.bucket_price)
 }
 
-function isMongoQueryMemorySortError(error: unknown) {
-  if (typeof error !== 'object' || error === null) return false
-  const maybeMongoError = error as { code?: unknown; codeName?: unknown }
-  return maybeMongoError.code === 292 || maybeMongoError.codeName === 'QueryExceededMemoryLimitNoDiskUseAllowed'
+function getComparableIndexKey(index: MongoIndexInfo) {
+  return index.originalSpec?.key ?? index.key
+}
+
+function hasCompatibleIndexOptions(index: MongoIndexInfo, options: CreateIndexesOptions) {
+  return options.unique !== true || index.unique === true
+}
+
+async function ensureMongoIndex<TDocument extends Document>(
+  collection: Collection<TDocument>,
+  key: IndexSpecification,
+  options: CreateIndexesOptions & { name: string },
+) {
+  const indexes = await collection.indexes() as MongoIndexInfo[]
+  const existing = indexes.find((index) => index.name === options.name)
+
+  if (
+    existing
+    && JSON.stringify(getComparableIndexKey(existing)) === JSON.stringify(key)
+    && hasCompatibleIndexOptions(existing, options)
+  ) {
+    return
+  }
+
+  if (existing) {
+    await collection.dropIndex(options.name)
+  }
+
+  await collection.createIndex(key, options)
 }
 
 async function getCandleCollection(): Promise<Collection<MongoCandleDocument>> {
@@ -387,14 +421,15 @@ async function initCandleCollection() {
   await ensureTimeSeriesCollection(db, MONGO_MARKET_COLLECTIONS.candles)
 
   const collection = db.collection<MongoCandleDocument>(MONGO_MARKET_COLLECTIONS.candles)
-  await collection.createIndex(
+  await ensureMongoIndex(
+    collection,
     {
       'meta.symbol': 1,
       'meta.contractType': 1,
       'meta.timeframe': 1,
       time: 1,
     },
-    { name: CANDLE_QUERY_INDEX },
+    { name: CANDLE_QUERY_INDEX, background: true },
   )
 
   if (process.env.NODE_ENV !== 'production') {
@@ -407,7 +442,8 @@ async function initFootprintCollection() {
   await ensureTimeSeriesCollection(db, MONGO_MARKET_COLLECTIONS.footprintCells)
 
   const collection = db.collection<MongoFootprintDocument>(MONGO_MARKET_COLLECTIONS.footprintCells)
-  await collection.createIndex(
+  await ensureMongoIndex(
+    collection,
     {
       'meta.symbol': 1,
       'meta.contractType': 1,
@@ -417,7 +453,7 @@ async function initFootprintCollection() {
       time: 1,
       bucketPriceKey: 1,
     },
-    { name: FOOTPRINT_QUERY_INDEX },
+    { name: FOOTPRINT_QUERY_INDEX, background: true },
   )
 
   if (process.env.NODE_ENV !== 'production') {
@@ -430,17 +466,7 @@ async function initProfileCollection() {
   await ensureTimeSeriesCollection(db, MONGO_MARKET_COLLECTIONS.profileRows)
 
   const collection = db.collection<MongoProfileRowDocument>(MONGO_MARKET_COLLECTIONS.profileRows)
-  const existingProfileIndexes = await collection.indexes()
-  const existingProfileQueryIndex = existingProfileIndexes.find((index) => index.name === PROFILE_QUERY_INDEX)
-
-  if (
-    existingProfileQueryIndex
-    && JSON.stringify(existingProfileQueryIndex.key) !== JSON.stringify(PROFILE_QUERY_INDEX_SPEC)
-  ) {
-    await collection.dropIndex(PROFILE_QUERY_INDEX)
-  }
-
-  await collection.createIndex(PROFILE_QUERY_INDEX_SPEC, { name: PROFILE_QUERY_INDEX })
+  await ensureMongoIndex(collection, PROFILE_QUERY_INDEX_SPEC, { name: PROFILE_QUERY_INDEX, background: true })
 
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[MongoDB] Profile rows collection ready: ${MONGO_MARKET_COLLECTIONS.profileRows}`)
@@ -451,7 +477,7 @@ async function initCollectorMetaCollection() {
   const db = await getMongoDb()
   const collection = db.collection<MongoCollectorMetaDocument>(MONGO_MARKET_COLLECTIONS.collectorMeta)
 
-  await collection.createIndex({ key: 1 }, { unique: true, name: COLLECTOR_META_KEY_INDEX })
+  await ensureMongoIndex(collection, { key: 1 }, { unique: true, name: COLLECTOR_META_KEY_INDEX, background: true })
   await collection.updateOne(
     { key: 'retention_seconds' },
     {
@@ -667,6 +693,7 @@ export const mongoMarketStorageAdapter: MarketStorageAdapter = {
     const latest = await collection
       .find({})
       .sort({ storedAt: -1 })
+      .allowDiskUse(true)
       .limit(1)
       .next()
     const candleCounts: Record<string, number> = {}
@@ -783,6 +810,7 @@ export const mongoMarketStorageAdapter: MarketStorageAdapter = {
       const rows = await collection
         .find(baseFilter)
         .sort({ time: -1 })
+        .allowDiskUse(true)
         .limit(boundedLimit)
         .toArray()
       const ordered = rows.reverse().map(toCandleRow)
@@ -805,6 +833,7 @@ export const mongoMarketStorageAdapter: MarketStorageAdapter = {
         time: { $gt: toDateFromSeconds(sinceUnixSeconds) },
       })
       .sort({ time: 1 })
+      .allowDiskUse(true)
       .limit(boundedLimit)
       .toArray()
     const ordered = rows.map(toCandleRow)
@@ -834,6 +863,7 @@ export const mongoMarketStorageAdapter: MarketStorageAdapter = {
         time: toDateFromSeconds(candleTime),
       })
       .sort({ bucketPriceKey: 1 })
+      .allowDiskUse(true)
       .toArray()
 
     return sortFootprintRows(rows.map(toFootprintCellRow))
@@ -854,6 +884,7 @@ export const mongoMarketStorageAdapter: MarketStorageAdapter = {
         },
       })
       .sort({ time: 1, bucketPriceKey: 1 })
+      .allowDiskUse(true)
       .toArray()
 
     return sortFootprintRows(rows.map(toFootprintCellRow))
@@ -872,46 +903,25 @@ export const mongoMarketStorageAdapter: MarketStorageAdapter = {
         $lt: toDateFromSeconds(endTime),
       },
     }
-    const readRows = (allowDiskUse: boolean) => {
-      const cursor = collection
-        .find(filter)
-        .hint(PROFILE_QUERY_INDEX)
-        .project<MongoProfileRowDocument>({
-          time: 1,
-          meta: 1,
-          candleTimeSec: 1,
-          baseBucketSize: 1,
-          bucketPrice: 1,
-          bucketPriceKey: 1,
-          bidVol: 1,
-          askVol: 1,
-          totalVol: 1,
-          tradeCount: 1,
-          storedAt: 1,
-        })
-        .sort({ time: 1, bucketPriceKey: 1 })
-
-      return (allowDiskUse ? cursor.allowDiskUse(true) : cursor).toArray()
-    }
-    let rows: MongoProfileRowDocument[]
-
-    try {
-      rows = await readRows(false)
-    } catch (error) {
-      if (!isMongoQueryMemorySortError(error)) throw error
-
-      console.warn('[MongoDB] Profile restore query exceeded in-memory sort limit; retrying with allowDiskUse fallback', {
-        symbol,
-        contractType,
-        dataSourceMode,
-        timeframe,
-        baseBucketSize,
-        startTime,
-        endTime,
-        index: PROFILE_QUERY_INDEX,
+    const rows = await collection
+      .find(filter)
+      .hint(PROFILE_QUERY_INDEX)
+      .project<MongoProfileRowDocument>({
+        time: 1,
+        meta: 1,
+        candleTimeSec: 1,
+        baseBucketSize: 1,
+        bucketPrice: 1,
+        bucketPriceKey: 1,
+        bidVol: 1,
+        askVol: 1,
+        totalVol: 1,
+        tradeCount: 1,
+        storedAt: 1,
       })
-      rows = await readRows(true)
-    }
+      .sort({ time: 1, bucketPriceKey: 1 })
+      .allowDiskUse(true)
+      .toArray()
 
     return sortFineProfileRows(rows.map(toFineProfileRow))
   },

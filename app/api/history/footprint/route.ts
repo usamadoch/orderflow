@@ -13,6 +13,15 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+const FOOTPRINT_RANGE_CANDLE_LIMIT = 500
+const TIMEFRAME_SECONDS = {
+  '1m': 60,
+  '5m': 5 * 60,
+  '15m': 15 * 60,
+  '1h': 60 * 60,
+  '4h': 4 * 60 * 60,
+} as const
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const symbol = searchParams.get('symbol')
@@ -37,6 +46,18 @@ export async function GET(request: NextRequest) {
   if (hasRange) {
     if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(requestedBucketSize) || requestedBucketSize < BASE_FOOTPRINT_BUCKET_SIZE || end <= start) {
       return NextResponse.json({ error: 'Invalid start, end, or bucketSize' }, { status: 400 })
+    }
+
+    const maxRangeSeconds = FOOTPRINT_RANGE_CANDLE_LIMIT * TIMEFRAME_SECONDS[timeframe]
+    if (end - start > maxRangeSeconds) {
+      return NextResponse.json(
+        {
+          error: `Footprint range is too large. Maximum range is ${maxRangeSeconds} seconds for ${timeframe}.`,
+          maxRangeSeconds,
+          maxCandles: FOOTPRINT_RANGE_CANDLE_LIMIT,
+        },
+        { status: 400 },
+      )
     }
 
     const rows = await getMarketStorageAdapter().getFootprintCellsForRange(

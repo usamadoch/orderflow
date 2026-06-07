@@ -5,6 +5,7 @@ import { PanelFeedProvider } from '../components/FeedProvider';
 import { Header } from '../components/layout/Header';
 import { Sidebar } from '../components/layout/Sidebar';
 import { ChartPanel } from '../components/chart/ChartPanel';
+import { DebugPanel } from '../components/debug/DebugPanel';
 import { useChartStore } from '../lib/store/chart';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
@@ -84,6 +85,8 @@ export default function Home() {
           )}
         </main>
       </div>
+
+      <DebugPanel />
     </div>
   );
 }

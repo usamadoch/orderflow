@@ -1,4 +1,5 @@
 import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleSource } from '../../types/bubble';
+import type { VolumeBarsInputData, VolumeBarsMarketSource } from '../store/chart';
 
 type StreamType = 'kline' | 'aggTrade' | 'depth';
 type CacheKind = 'footprint' | 'volumeProfile' | 'candle';
@@ -157,6 +158,18 @@ export interface AggregateBubbleDebugSnapshot {
   updatedAt: number;
 }
 
+export interface VolumeBarsDebugSnapshot {
+  panelId: string;
+  volumeBarsEnabled: boolean;
+  inputData: VolumeBarsInputData;
+  marketSource: VolumeBarsMarketSource;
+  visibleBarsCount: number;
+  maxVisibleValue: number;
+  averageValue: number | null;
+  unavailableReason: string | null;
+  updatedAt: number;
+}
+
 export interface MarketDebugSnapshot {
   enabled: boolean;
   generatedAt: number;
@@ -170,6 +183,7 @@ export interface MarketDebugSnapshot {
     recentRestoreCalls: RestoreMetric[];
   };
   aggregateBubbles: Record<string, AggregateBubbleDebugSnapshot>;
+  volumeBars: Record<string, VolumeBarsDebugSnapshot>;
   totals: {
     activeStreams: number;
     activeCaches: number;
@@ -205,6 +219,7 @@ const caches = new Map<string, CacheMetric>();
 const recentRestoreCalls: RestoreMetric[] = [];
 const aggregateBubbleDebug = new Map<string, AggregateBubbleDebugSnapshot>();
 const aggregateBubbleRestoreDebug = new Map<string, AggregateBubbleRestoreDebugState>();
+const volumeBarsDebug = new Map<string, VolumeBarsDebugSnapshot>();
 
 function isExplicitlyEnabled() {
   return process.env.NEXT_PUBLIC_MARKET_DEBUG === 'true' || process.env.MARKET_DEBUG === 'true';
@@ -459,6 +474,15 @@ export function recordAggregateBubbleRestoreDebug(
   aggregateBubbleRestoreDebug.set(panelId, state);
 }
 
+export function recordVolumeBarsDebug(snapshot: Omit<VolumeBarsDebugSnapshot, 'updatedAt'>) {
+  if (!isMarketMetricsEnabled()) return;
+  attachBrowserApi();
+  volumeBarsDebug.set(snapshot.panelId, {
+    ...snapshot,
+    updatedAt: now(),
+  });
+}
+
 export function getCoverageFromTimes(times: number[]): CoverageRange | null {
   if (times.length === 0) return null;
   return {
@@ -578,6 +602,12 @@ export function getSnapshot(): MarketDebugSnapshot {
         },
       ]),
     ),
+    volumeBars: Object.fromEntries(
+      Array.from(volumeBarsDebug.entries()).map(([panelId, snapshot]) => [
+        panelId,
+        { ...snapshot },
+      ]),
+    ),
     totals,
   };
 }
@@ -588,6 +618,7 @@ export function reset() {
   recentRestoreCalls.length = 0;
   aggregateBubbleDebug.clear();
   aggregateBubbleRestoreDebug.clear();
+  volumeBarsDebug.clear();
   attachBrowserApi();
 }
 

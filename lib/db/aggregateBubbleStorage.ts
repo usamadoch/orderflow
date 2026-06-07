@@ -10,6 +10,7 @@ const DEFAULT_RETENTION_DAYS = 7
 const UNIQUE_INDEX_NAME = 'uniq_aggregate_bubbles_source_id'
 const RESTORE_INDEX_NAME = 'idx_aggregate_bubbles_restore'
 const TTL_INDEX_NAME = 'ttl_aggregate_bubbles_event_time'
+const RESTORE_INDEX_SPEC = { symbol: 1, contractType: 1, eventTime: 1, aggregateTradeId: 1 } as const
 
 type QualifiedBy = 'volume' | 'tradeCount'
 
@@ -70,6 +71,15 @@ export interface GetAggregateBubbleEventsInput {
   startTime: number
   endTime: number
   limit?: number
+}
+
+interface MongoIndexInfo {
+  name?: string
+  key?: unknown
+  unique?: boolean
+  originalSpec?: {
+    key?: unknown
+  }
 }
 
 export interface StoreAggregateBubbleEventsResult {
@@ -145,6 +155,10 @@ function toDocument(input: AggregateBubbleEventWriteInput): AggregateBubbleEvent
   }
 }
 
+function getComparableIndexKey(index: MongoIndexInfo) {
+  return index.originalSpec?.key ?? index.key
+}
+
 export function toAggregateBubbleEvent(document: AggregateBubbleEventDocument) {
   return {
     time: document.eventTimeMs,
@@ -196,6 +210,47 @@ async function ensureTtlIndex(collection: Collection<AggregateBubbleEventDocumen
   )
 }
 
+async function ensureAggregateBubbleRestoreIndex(collection: Collection<AggregateBubbleEventDocument>) {
+  const indexes = await collection.indexes() as MongoIndexInfo[]
+  const existing = indexes.find((index) => index.name === RESTORE_INDEX_NAME)
+
+  if (existing && JSON.stringify(getComparableIndexKey(existing)) === JSON.stringify(RESTORE_INDEX_SPEC)) {
+    return
+  }
+
+  if (existing) {
+    await collection.dropIndex(RESTORE_INDEX_NAME)
+  }
+
+  await collection.createIndex(
+    RESTORE_INDEX_SPEC,
+    { name: RESTORE_INDEX_NAME, background: true },
+  )
+}
+
+async function ensureAggregateBubbleUniqueIndex(collection: Collection<AggregateBubbleEventDocument>) {
+  const key = { symbol: 1, contractType: 1, aggregateTradeId: 1 } as const
+  const indexes = await collection.indexes() as MongoIndexInfo[]
+  const existing = indexes.find((index) => index.name === UNIQUE_INDEX_NAME)
+
+  if (
+    existing
+    && JSON.stringify(getComparableIndexKey(existing)) === JSON.stringify(key)
+    && existing.unique === true
+  ) {
+    return
+  }
+
+  if (existing) {
+    await collection.dropIndex(UNIQUE_INDEX_NAME)
+  }
+
+  await collection.createIndex(
+    key,
+    { unique: true, name: UNIQUE_INDEX_NAME, background: true },
+  )
+}
+
 async function ensureAggregateBubbleCollection() {
   const db = await getAggregateBubbleMongoDb()
   const existing = await db.listCollections({ name: AGGREGATE_BUBBLE_COLLECTION }).toArray()
@@ -208,14 +263,8 @@ async function ensureAggregateBubbleCollection() {
 
   const collection = db.collection<AggregateBubbleEventDocument>(AGGREGATE_BUBBLE_COLLECTION)
 
-  await collection.createIndex(
-    { symbol: 1, contractType: 1, aggregateTradeId: 1 },
-    { unique: true, name: UNIQUE_INDEX_NAME },
-  )
-  await collection.createIndex(
-    { symbol: 1, contractType: 1, eventTime: 1 },
-    { name: RESTORE_INDEX_NAME },
-  )
+  await ensureAggregateBubbleUniqueIndex(collection)
+  await ensureAggregateBubbleRestoreIndex(collection)
   await ensureTtlIndex(collection)
 
   return collection
@@ -300,6 +349,7 @@ export async function getAggregateBubbleEvents({
       },
     })
     .sort({ eventTime: 1, aggregateTradeId: 1 })
+    .allowDiskUse(true)
     .limit(boundedLimit)
     .toArray()
 

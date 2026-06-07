@@ -23,6 +23,7 @@ export function IndicatorLabels({ panelId }: IndicatorLabelsProps) {
   const panel = useChartStore(s => s.panels[panelId]);
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
   const setCvdEnabled = useChartStore(s => s.setCvdEnabled);
+  const setVolumeBarsEnabled = useChartStore(s => s.setVolumeBarsEnabled);
   const setSessionsEnabled = useChartStore(s => s.setSessionsEnabled);
   const setDefaultProfileEnabled = useChartStore(s => s.setDefaultProfileEnabled);
   const setLiquidityEnabled = useChartStore(s => s.setLiquidityEnabled);
@@ -41,6 +42,12 @@ export function IndicatorLabels({ panelId }: IndicatorLabelsProps) {
       label: 'CVD',
       enabled: panel.cvdEnabled,
       onToggle: () => setCvdEnabled(panelId, !panel.cvdEnabled),
+    },
+    {
+      id: 'volumeBars',
+      label: 'Volume Bars',
+      enabled: panel.volumeBarsEnabled,
+      onToggle: () => setVolumeBarsEnabled(panelId, !panel.volumeBarsEnabled),
     },
     {
       id: 'sessions',

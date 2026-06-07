@@ -65,6 +65,7 @@ const metrics = {
     duplicatesSkipped: 0,
     inserted: 0,
     insertFailed: 0,
+    skippedPersistenceDisabled: 0,
   },
 }
 
@@ -93,9 +94,7 @@ main().catch((error) => {
 async function main() {
   assertRuntimeSupport()
   await initMongo()
-  if (config.enableWrites && !config.dryRun) {
-    await initBubbleMongo()
-  }
+  await initAggregateBubblePersistence()
   runtimes = TARGETS.map((target) => createRuntime(target))
 
   logger.info('active aggregation identities', {
@@ -110,6 +109,7 @@ async function main() {
     },
     writesEnabled: config.enableWrites,
     dryRun: config.dryRun,
+    aggregateBubbleWritesEnabled: config.aggregateBubbleWritesEnabled,
   })
 
   if (!config.enableWrites || config.dryRun) {
@@ -172,6 +172,7 @@ function loadConfig() {
     profileBaseBucketSize: Math.max(MIN_PROFILE_BASE_BUCKET_SIZE, tickSize),
     enableWrites: process.env.COLLECTOR_ENABLE_WRITES === 'true',
     dryRun: process.env.COLLECTOR_DRY_RUN === 'true',
+    aggregateBubbleWritesEnabled: false,
     logLevel: process.env.COLLECTOR_LOG_LEVEL === 'debug' ? 'debug' : 'info',
     logFormat: process.env.COLLECTOR_LOG_FORMAT === 'json' ? 'json' : 'pretty',
   }
@@ -222,18 +223,41 @@ function assertRuntimeSupport() {
     throw new Error('MONGODB_URI is required for the BTCUSDT collector')
   }
 
-  if (config.enableWrites && !config.dryRun) {
-    if (!config.bubblesMongoUri) {
-      throw new Error('BUBBLES_MONGODB_URI is required for Aggregate Bubble persistence when collector writes are enabled')
-    }
-
-    if (!config.bubblesMongoDbName) {
-      throw new Error('BUBBLES_MONGODB_DB_NAME is required for Aggregate Bubble persistence when collector writes are enabled')
-    }
-  }
-
   if (typeof WebSocket === 'undefined') {
     throw new Error('Global WebSocket is unavailable. Run this collector with Node.js 22+ or a Node runtime that provides WebSocket.')
+  }
+}
+
+async function initAggregateBubblePersistence() {
+  if (!config.enableWrites || config.dryRun) return
+
+  if (!config.bubblesMongoUri || !config.bubblesMongoDbName) {
+    logger.warn('aggregate bubble persistence disabled; continuing footprint/profile collector', {
+      requiredEnv: 'Set BUBBLES_MONGODB_URI and BUBBLES_MONGODB_DB_NAME to persist aggregate bubble candidates.',
+      hasBubblesMongoUri: Boolean(config.bubblesMongoUri),
+      hasBubblesMongoDbName: Boolean(config.bubblesMongoDbName),
+    })
+    return
+  }
+
+  try {
+    await initBubbleMongo()
+    config.aggregateBubbleWritesEnabled = true
+  } catch (error) {
+    if (bubbleMongoClient) {
+      try {
+        await bubbleMongoClient.close()
+      } catch {
+        // Best-effort cleanup after a failed startup connection.
+      }
+    }
+    bubbleMongoClient = null
+    bubbleMongoDb = null
+    config.aggregateBubbleWritesEnabled = false
+    logger.warn('aggregate bubble mongodb unavailable; continuing footprint/profile collector', {
+      error: getErrorMessage(error),
+      impact: 'Aggregate bubble candidates will be skipped until the collector is restarted with a healthy bubbles MongoDB connection.',
+    })
   }
 }
 
@@ -505,6 +529,11 @@ function getAggregateTradeCount(trade) {
 }
 
 function queueAggregateBubbleCandidate(trade) {
+  if (config.enableWrites && !config.dryRun && !config.aggregateBubbleWritesEnabled) {
+    metrics.aggregateBubbles.skippedPersistenceDisabled += 1
+    return
+  }
+
   metrics.aggregateBubbles.received[trade.source] += 1
 
   if (!Number.isFinite(trade.id)) {
@@ -766,6 +795,16 @@ async function persistAggregateBubbleEvents(reason) {
 
   const batch = queuedAggregateBubbleEvents.slice(0, config.aggregateBubbleFlushSize)
 
+  if (config.enableWrites && !config.dryRun && !config.aggregateBubbleWritesEnabled) {
+    queuedAggregateBubbleEvents.splice(0, batch.length)
+    metrics.aggregateBubbles.skippedPersistenceDisabled += batch.length
+    logger.warn('aggregate bubble candidate write skipped; persistence disabled', {
+      reason,
+      rows: batch.length,
+    })
+    return
+  }
+
   if (config.dryRun || !config.enableWrites) {
     queuedAggregateBubbleEvents.splice(0, batch.length)
     logger.info('dry-run aggregate bubble candidate write', {
@@ -1019,6 +1058,7 @@ async function logStatus() {
     symbol: SYMBOL,
     writesEnabled: config.enableWrites,
     dryRun: config.dryRun,
+    aggregateBubbleWritesEnabled: config.aggregateBubbleWritesEnabled,
     priceReferences,
     pendingSlices,
     pendingAggregateBubbleEvents: queuedAggregateBubbleEvents.length,

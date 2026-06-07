@@ -1,4 +1,15 @@
-export const ALLOWED_SYMBOLS = ['BTCUSDT', 'ETHUSDT'] as const
+export const ALLOWED_SYMBOLS = [
+  'BTCUSDT',
+  'ETHUSDT',
+  'SOLUSDT',
+  'BNBUSDT',
+  'XRPUSDT',
+  'ADAUSDT',
+  'DOGEUSDT',
+  'AVAXUSDT',
+  'LINKUSDT',
+  'LTCUSDT',
+] as const
 export const ALLOWED_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h'] as const
 
 export type AllowedSymbol = (typeof ALLOWED_SYMBOLS)[number]

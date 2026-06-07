@@ -20,7 +20,10 @@ export type CvdResetMode = 'none' | 'daily' | 'session';
 export type CvdScaleMode = 'auto' | 'fixed';
 export type ContractType = 'spot' | 'futures';
 export type DataSourceMode = 'spot' | 'futures' | 'both';
-export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'heatmap' | 'liquidityMap';
+export type VolumeBarsInputData = 'volume' | 'orders' | 'aggregateTrades';
+export type VolumeBarsMarketSource = 'active' | 'spot' | 'futures' | 'both';
+export type VolumeBarsColorMode = 'fixed' | 'priceDirection' | 'delta' | 'volumeSlope';
+export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap';
 export type SettingsFocusSection = IndicatorSettingsSection | 'profiles';
 export type HistoryRestoreStage = 'idle' | 'connecting' | 'candles' | 'volumeProfile' | 'rawTrades' | 'footprint' | 'complete' | 'error';
 
@@ -125,6 +128,18 @@ export interface TimeframeSettings {
   cvdShowDivergence: boolean;
   cvdDivergenceLookback: number;
   cvdMinimized: boolean;
+  volumeBarsEnabled: boolean;
+  volumeBarsInputData: VolumeBarsInputData;
+  volumeBarsMarketSource: VolumeBarsMarketSource;
+  volumeBarsFilterMin: number;
+  volumeBarsFilterMax: number;
+  volumeBarsColorMode: VolumeBarsColorMode;
+  volumeBarsOpacity: number;
+  volumeBarsHeightPct: number;
+  volumeBarsShowValueText: boolean;
+  volumeBarsTextSize: number;
+  volumeBarsAverageLineEnabled: boolean;
+  volumeBarsAverageLength: number;
 }
 
 export interface Measurement {
@@ -241,6 +256,19 @@ export interface PanelState {
   cvdShowDivergence: boolean;
   cvdDivergenceLookback: number;
   cvdMinimized: boolean;
+  // Volume Bars
+  volumeBarsEnabled: boolean;
+  volumeBarsInputData: VolumeBarsInputData;
+  volumeBarsMarketSource: VolumeBarsMarketSource;
+  volumeBarsFilterMin: number;
+  volumeBarsFilterMax: number;
+  volumeBarsColorMode: VolumeBarsColorMode;
+  volumeBarsOpacity: number;
+  volumeBarsHeightPct: number;
+  volumeBarsShowValueText: boolean;
+  volumeBarsTextSize: number;
+  volumeBarsAverageLineEnabled: boolean;
+  volumeBarsAverageLength: number;
   // Session Visualization
   sessionsEnabled: boolean;
   sessions: {
@@ -361,6 +389,18 @@ interface ChartState {
   setCvdShowDivergence: (panelId: PanelId, show: boolean) => void;
   setCvdDivergenceLookback: (panelId: PanelId, lookback: number) => void;
   setCvdMinimized: (panelId: PanelId, minimized: boolean) => void;
+  setVolumeBarsEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setVolumeBarsInputData: (panelId: PanelId, inputData: VolumeBarsInputData) => void;
+  setVolumeBarsMarketSource: (panelId: PanelId, source: VolumeBarsMarketSource) => void;
+  setVolumeBarsFilterMin: (panelId: PanelId, min: number) => void;
+  setVolumeBarsFilterMax: (panelId: PanelId, max: number) => void;
+  setVolumeBarsColorMode: (panelId: PanelId, mode: VolumeBarsColorMode) => void;
+  setVolumeBarsOpacity: (panelId: PanelId, opacity: number) => void;
+  setVolumeBarsHeightPct: (panelId: PanelId, pct: number) => void;
+  setVolumeBarsShowValueText: (panelId: PanelId, show: boolean) => void;
+  setVolumeBarsTextSize: (panelId: PanelId, size: number) => void;
+  setVolumeBarsAverageLineEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setVolumeBarsAverageLength: (panelId: PanelId, length: number) => void;
   setSessionsEnabled: (panelId: PanelId, enabled: boolean) => void;
   setSessionEnabled: (panelId: PanelId, sessionId: SessionId, enabled: boolean) => void;
   setSessionTime: (panelId: PanelId, sessionId: SessionId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
@@ -478,6 +518,18 @@ function createDefaultPanel(id: PanelId): PanelState {
     cvdShowDivergence: false,
     cvdDivergenceLookback: 8,
     cvdMinimized: false,
+    volumeBarsEnabled: false,
+    volumeBarsInputData: 'volume',
+    volumeBarsMarketSource: 'active',
+    volumeBarsFilterMin: 0,
+    volumeBarsFilterMax: 0,
+    volumeBarsColorMode: 'priceDirection',
+    volumeBarsOpacity: 0.45,
+    volumeBarsHeightPct: 18,
+    volumeBarsShowValueText: false,
+    volumeBarsTextSize: 10,
+    volumeBarsAverageLineEnabled: false,
+    volumeBarsAverageLength: 20,
     sessionsEnabled: false,
     sessions: {
       tokyo: {
@@ -551,6 +603,33 @@ function clampTimeframeSettings(settings: Partial<TimeframeSettings>, tickSize: 
     ...(settings.bubbleScaleMode === undefined
       ? {}
       : { bubbleScaleMode: normalizeBubbleScaleMode(settings.bubbleScaleMode) }),
+    ...(settings.volumeBarsInputData === undefined
+      ? {}
+      : { volumeBarsInputData: normalizeVolumeBarsInputData(settings.volumeBarsInputData) }),
+    ...(settings.volumeBarsMarketSource === undefined
+      ? {}
+      : { volumeBarsMarketSource: normalizeVolumeBarsMarketSource(settings.volumeBarsMarketSource) }),
+    ...(settings.volumeBarsFilterMin === undefined
+      ? {}
+      : { volumeBarsFilterMin: clampVolumeBarsFilter(settings.volumeBarsFilterMin) }),
+    ...(settings.volumeBarsFilterMax === undefined
+      ? {}
+      : { volumeBarsFilterMax: clampVolumeBarsFilter(settings.volumeBarsFilterMax) }),
+    ...(settings.volumeBarsColorMode === undefined
+      ? {}
+      : { volumeBarsColorMode: normalizeVolumeBarsColorMode(settings.volumeBarsColorMode) }),
+    ...(settings.volumeBarsOpacity === undefined
+      ? {}
+      : { volumeBarsOpacity: clampVolumeBarsOpacity(settings.volumeBarsOpacity) }),
+    ...(settings.volumeBarsHeightPct === undefined
+      ? {}
+      : { volumeBarsHeightPct: clampVolumeBarsHeightPct(settings.volumeBarsHeightPct) }),
+    ...(settings.volumeBarsTextSize === undefined
+      ? {}
+      : { volumeBarsTextSize: clampVolumeBarsTextSize(settings.volumeBarsTextSize) }),
+    ...(settings.volumeBarsAverageLength === undefined
+      ? {}
+      : { volumeBarsAverageLength: clampVolumeBarsAverageLength(settings.volumeBarsAverageLength) }),
   };
 }
 
@@ -588,6 +667,49 @@ function normalizeAggregateBubbleMarketSource(source: unknown): AggregateBubbleM
     : 'active';
 }
 
+function normalizeVolumeBarsInputData(inputData: unknown): VolumeBarsInputData {
+  return inputData === 'orders' || inputData === 'aggregateTrades' ? inputData : 'volume';
+}
+
+function normalizeVolumeBarsMarketSource(source: unknown): VolumeBarsMarketSource {
+  return source === 'spot' || source === 'futures' || source === 'both' ? source : 'active';
+}
+
+function normalizeVolumeBarsColorMode(mode: unknown): VolumeBarsColorMode {
+  if (mode === 'fixed' || mode === 'delta' || mode === 'volumeSlope') return mode;
+  return 'priceDirection';
+}
+
+function clampVolumeBarsFilter(value: unknown) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) return 0;
+  return Math.max(0, next);
+}
+
+function clampVolumeBarsOpacity(opacity: unknown) {
+  const next = Number(opacity);
+  if (!Number.isFinite(next)) return 0.45;
+  return Math.max(0.1, Math.min(1, next));
+}
+
+function clampVolumeBarsHeightPct(pct: unknown) {
+  const next = Number(pct);
+  if (!Number.isFinite(next)) return 18;
+  return Math.max(8, Math.min(35, Math.round(next)));
+}
+
+function clampVolumeBarsTextSize(size: unknown) {
+  const next = Number(size);
+  if (!Number.isFinite(next)) return 10;
+  return Math.max(8, Math.min(16, Math.round(next)));
+}
+
+function clampVolumeBarsAverageLength(length: unknown) {
+  const next = Number(length);
+  if (!Number.isFinite(next)) return 20;
+  return Math.max(1, Math.min(500, Math.round(next)));
+}
+
 function clampBubbleMinOrders(minOrders: unknown) {
   const value = Number(minOrders);
   if (!Number.isFinite(value)) return 1;
@@ -613,7 +735,11 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'cvdEnabled', 'cvdPanelHeightPct', 'cvdMode', 'cvdSmoothing',
     'cvdResetMode', 'cvdPositiveColor', 'cvdNegativeColor',
     'cvdScaleMode', 'cvdFixedRange', 'cvdShowDivergence',
-    'cvdDivergenceLookback', 'cvdMinimized'
+    'cvdDivergenceLookback', 'cvdMinimized',
+    'volumeBarsEnabled', 'volumeBarsInputData', 'volumeBarsMarketSource',
+    'volumeBarsFilterMin', 'volumeBarsFilterMax', 'volumeBarsColorMode',
+    'volumeBarsOpacity', 'volumeBarsHeightPct', 'volumeBarsShowValueText',
+    'volumeBarsTextSize', 'volumeBarsAverageLineEnabled', 'volumeBarsAverageLength'
   ];
   
   let settingsChanged = false;
@@ -930,6 +1056,42 @@ export const useChartStore = create<ChartState>()(
       setCvdMinimized: (panelId, cvdMinimized) =>
         set((state) => updatePanel(state, panelId, { cvdMinimized })),
 
+      setVolumeBarsEnabled: (panelId, volumeBarsEnabled) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsEnabled })),
+
+      setVolumeBarsInputData: (panelId, volumeBarsInputData) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsInputData: normalizeVolumeBarsInputData(volumeBarsInputData) })),
+
+      setVolumeBarsMarketSource: (panelId, volumeBarsMarketSource) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsMarketSource: normalizeVolumeBarsMarketSource(volumeBarsMarketSource) })),
+
+      setVolumeBarsFilterMin: (panelId, volumeBarsFilterMin) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsFilterMin: clampVolumeBarsFilter(volumeBarsFilterMin) })),
+
+      setVolumeBarsFilterMax: (panelId, volumeBarsFilterMax) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsFilterMax: clampVolumeBarsFilter(volumeBarsFilterMax) })),
+
+      setVolumeBarsColorMode: (panelId, volumeBarsColorMode) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsColorMode: normalizeVolumeBarsColorMode(volumeBarsColorMode) })),
+
+      setVolumeBarsOpacity: (panelId, volumeBarsOpacity) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsOpacity: clampVolumeBarsOpacity(volumeBarsOpacity) })),
+
+      setVolumeBarsHeightPct: (panelId, volumeBarsHeightPct) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsHeightPct: clampVolumeBarsHeightPct(volumeBarsHeightPct) })),
+
+      setVolumeBarsShowValueText: (panelId, volumeBarsShowValueText) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsShowValueText })),
+
+      setVolumeBarsTextSize: (panelId, volumeBarsTextSize) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsTextSize: clampVolumeBarsTextSize(volumeBarsTextSize) })),
+
+      setVolumeBarsAverageLineEnabled: (panelId, volumeBarsAverageLineEnabled) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsAverageLineEnabled })),
+
+      setVolumeBarsAverageLength: (panelId, volumeBarsAverageLength) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsAverageLength: clampVolumeBarsAverageLength(volumeBarsAverageLength) })),
+
       setSessionsEnabled: (panelId, sessionsEnabled) =>
         set((state) => updatePanel(state, panelId, { sessionsEnabled })),
 
@@ -1075,7 +1237,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 34,
+      version: 35,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -1187,6 +1349,18 @@ export const useChartStore = create<ChartState>()(
             cvdShowDivergence: p.cvdShowDivergence ?? false,
             cvdDivergenceLookback: Math.max(3, Math.min(30, p.cvdDivergenceLookback ?? 8)),
             cvdMinimized: p.cvdMinimized ?? false,
+            volumeBarsEnabled: p.volumeBarsEnabled ?? false,
+            volumeBarsInputData: normalizeVolumeBarsInputData(p.volumeBarsInputData),
+            volumeBarsMarketSource: normalizeVolumeBarsMarketSource(p.volumeBarsMarketSource),
+            volumeBarsFilterMin: clampVolumeBarsFilter(p.volumeBarsFilterMin),
+            volumeBarsFilterMax: clampVolumeBarsFilter(p.volumeBarsFilterMax),
+            volumeBarsColorMode: normalizeVolumeBarsColorMode(p.volumeBarsColorMode),
+            volumeBarsOpacity: clampVolumeBarsOpacity(p.volumeBarsOpacity),
+            volumeBarsHeightPct: clampVolumeBarsHeightPct(p.volumeBarsHeightPct),
+            volumeBarsShowValueText: p.volumeBarsShowValueText ?? false,
+            volumeBarsTextSize: clampVolumeBarsTextSize(p.volumeBarsTextSize),
+            volumeBarsAverageLineEnabled: p.volumeBarsAverageLineEnabled ?? false,
+            volumeBarsAverageLength: clampVolumeBarsAverageLength(p.volumeBarsAverageLength),
             sessionsEnabled: p.sessionsEnabled ?? false,
             sessions: p.sessions ?? {
               tokyo: { enabled: true, startHour: 0, startMin: 0, endHour: 6, endMin: 0, color: '#B39DDB' },
@@ -1262,6 +1436,15 @@ export const useChartStore = create<ChartState>()(
               bubbleScaleMode: normalizeBubbleScaleMode(
                 persistedLeft.bubbleScaleMode ?? currentState.panels.left.bubbleScaleMode,
               ),
+              volumeBarsInputData: normalizeVolumeBarsInputData(
+                persistedLeft.volumeBarsInputData ?? currentState.panels.left.volumeBarsInputData,
+              ),
+              volumeBarsMarketSource: normalizeVolumeBarsMarketSource(
+                persistedLeft.volumeBarsMarketSource ?? currentState.panels.left.volumeBarsMarketSource,
+              ),
+              volumeBarsColorMode: normalizeVolumeBarsColorMode(
+                persistedLeft.volumeBarsColorMode ?? currentState.panels.left.volumeBarsColorMode,
+              ),
             },
             right: {
               ...currentState.panels.right,
@@ -1288,6 +1471,15 @@ export const useChartStore = create<ChartState>()(
               ),
               bubbleScaleMode: normalizeBubbleScaleMode(
                 persistedRight.bubbleScaleMode ?? currentState.panels.right.bubbleScaleMode,
+              ),
+              volumeBarsInputData: normalizeVolumeBarsInputData(
+                persistedRight.volumeBarsInputData ?? currentState.panels.right.volumeBarsInputData,
+              ),
+              volumeBarsMarketSource: normalizeVolumeBarsMarketSource(
+                persistedRight.volumeBarsMarketSource ?? currentState.panels.right.volumeBarsMarketSource,
+              ),
+              volumeBarsColorMode: normalizeVolumeBarsColorMode(
+                persistedRight.volumeBarsColorMode ?? currentState.panels.right.volumeBarsColorMode,
               ),
             },
           },
@@ -1370,6 +1562,18 @@ export const useChartStore = create<ChartState>()(
             cvdShowDivergence: state.panels.left.cvdShowDivergence,
             cvdDivergenceLookback: state.panels.left.cvdDivergenceLookback,
             cvdMinimized: state.panels.left.cvdMinimized,
+            volumeBarsEnabled: state.panels.left.volumeBarsEnabled,
+            volumeBarsInputData: state.panels.left.volumeBarsInputData,
+            volumeBarsMarketSource: state.panels.left.volumeBarsMarketSource,
+            volumeBarsFilterMin: state.panels.left.volumeBarsFilterMin,
+            volumeBarsFilterMax: state.panels.left.volumeBarsFilterMax,
+            volumeBarsColorMode: state.panels.left.volumeBarsColorMode,
+            volumeBarsOpacity: state.panels.left.volumeBarsOpacity,
+            volumeBarsHeightPct: state.panels.left.volumeBarsHeightPct,
+            volumeBarsShowValueText: state.panels.left.volumeBarsShowValueText,
+            volumeBarsTextSize: state.panels.left.volumeBarsTextSize,
+            volumeBarsAverageLineEnabled: state.panels.left.volumeBarsAverageLineEnabled,
+            volumeBarsAverageLength: state.panels.left.volumeBarsAverageLength,
             sessionsEnabled: state.panels.left.sessionsEnabled,
             sessions: state.panels.left.sessions,
             liquidityEnabled: state.panels.left.liquidityEnabled,
@@ -1463,6 +1667,18 @@ export const useChartStore = create<ChartState>()(
             cvdShowDivergence: state.panels.right.cvdShowDivergence,
             cvdDivergenceLookback: state.panels.right.cvdDivergenceLookback,
             cvdMinimized: state.panels.right.cvdMinimized,
+            volumeBarsEnabled: state.panels.right.volumeBarsEnabled,
+            volumeBarsInputData: state.panels.right.volumeBarsInputData,
+            volumeBarsMarketSource: state.panels.right.volumeBarsMarketSource,
+            volumeBarsFilterMin: state.panels.right.volumeBarsFilterMin,
+            volumeBarsFilterMax: state.panels.right.volumeBarsFilterMax,
+            volumeBarsColorMode: state.panels.right.volumeBarsColorMode,
+            volumeBarsOpacity: state.panels.right.volumeBarsOpacity,
+            volumeBarsHeightPct: state.panels.right.volumeBarsHeightPct,
+            volumeBarsShowValueText: state.panels.right.volumeBarsShowValueText,
+            volumeBarsTextSize: state.panels.right.volumeBarsTextSize,
+            volumeBarsAverageLineEnabled: state.panels.right.volumeBarsAverageLineEnabled,
+            volumeBarsAverageLength: state.panels.right.volumeBarsAverageLength,
             sessionsEnabled: state.panels.right.sessionsEnabled,
             sessions: state.panels.right.sessions,
             liquidityEnabled: state.panels.right.liquidityEnabled,
