@@ -30,11 +30,11 @@ export function Sidebar() {
         {tools.map(({ icon: Icon, label }) => (
           <div
             key={label}
-            className="group relative flex h-8 w-8 items-center justify-center rounded-md text-text-dim transition-colors hover:bg-background hover:text-accent"
+            className="group relative flex h-8 w-8 items-center justify-center rounded-md text-text-dim transition-colors hover:bg-[#1F1F1F] hover:text-accent"
             title={label}
           >
             <Icon size={17} strokeWidth={2.4} />
-            <div className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded border border-border bg-surface px-2 py-1 text-[10px] font-bold text-main shadow-xl group-hover:block">
+            <div className="pointer-events-none absolute left-10 z-50 hidden whitespace-nowrap rounded border border-border bg-[#1F1F1F] px-2 py-1 text-[10px] font-bold text-main shadow-xl group-hover:block">
               {label}
             </div>
           </div>

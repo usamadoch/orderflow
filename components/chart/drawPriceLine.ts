@@ -1,4 +1,5 @@
 import { Candle } from "@/types/candle";
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
 import { timeframeToSeconds, formatCountdown, formatPrice } from "@/lib/utils/format";
 
 const PRICE_LINE_FONT = 'bold 13px "Inter", -apple-system, system-ui, sans-serif';
@@ -17,7 +18,7 @@ export function drawPriceLine(
   const price = lastCandle.close;
   
   const isBullish = lastCandle.close >= lastCandle.open;
-  const color = isBullish ? '#26A69A' : '#EF5350';
+  const color = isBullish ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
 
   // 1. Draw Horizontal Line across the chart area
   ctx.save();
@@ -71,6 +72,5 @@ export function drawPriceLine(
   ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
   ctx.fillText(countdownText, badgeX + 8, badgeY + badgeHeight * 0.75);
 }
-
 
 

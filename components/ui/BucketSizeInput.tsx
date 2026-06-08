@@ -21,7 +21,7 @@ export function BucketSizeInput({ panelId = 'left' }: { panelId?: PanelId }) {
             setBucketSize(panelId, val);
           }
         }}
-        className="w-14 bg-surface border border-border rounded-md px-1.5 py-0.5 text-right text-[11px] font-bold focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all text-main"
+        className="w-14 bg-[#1F1F1F] border border-border rounded-md px-1.5 py-0.5 text-right text-[11px] font-bold focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all text-main"
         step="1"
         min="1"
       />

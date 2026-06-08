@@ -2,12 +2,13 @@
 
 import { DrawnLine } from "@/lib/store/chart";
 import type { Candle } from "@/types/candle";
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, chartColorToRgba } from "@/lib/config/chartColors";
 import { formatPrice } from "@/lib/utils/format";
 
 const DEFAULT_DRAWING_COLOR = '#787B86';
 const DEFAULT_DRAWING_STROKE_WIDTH = 2;
-const POSITION_RISK_COLOR = '#F23645';
-const POSITION_REWARD_COLOR = '#089981';
+const POSITION_RISK_COLOR = CHART_BEARISH_COLOR;
+const POSITION_REWARD_COLOR = CHART_BULLISH_COLOR;
 
 export function drawLines(
   ctx: CanvasRenderingContext2D,
@@ -166,10 +167,10 @@ export function drawLines(
       const rewardTop = hasTarget ? Math.max(0, Math.min(entryY, targetY)) : entryY;
       const rewardBottom = hasTarget ? Math.min(drawableHeight, Math.max(entryY, targetY)) : entryY;
 
-      ctx.fillStyle = isActive ? 'rgba(242, 54, 69, 0.28)' : 'rgba(242, 54, 69, 0.18)';
+      ctx.fillStyle = isActive ? chartColorToRgba(CHART_BEARISH_COLOR, 0.28) : chartColorToRgba(CHART_BEARISH_COLOR, 0.18);
       ctx.fillRect(left, riskTop, width, Math.max(1, riskBottom - riskTop));
       if (hasTarget) {
-        ctx.fillStyle = isActive ? 'rgba(8, 153, 129, 0.28)' : 'rgba(8, 153, 129, 0.18)';
+        ctx.fillStyle = isActive ? chartColorToRgba(CHART_BULLISH_COLOR, 0.28) : chartColorToRgba(CHART_BULLISH_COLOR, 0.18);
         ctx.fillRect(left, rewardTop, width, Math.max(1, rewardBottom - rewardTop));
       }
 
@@ -261,7 +262,7 @@ function drawDeleteDot(ctx: CanvasRenderingContext2D, x: number, y: number, isHo
   ctx.arc(x, y, radius, 0, Math.PI * 2);
 
   if (isHovered) {
-    ctx.fillStyle = '#EF5350';
+    ctx.fillStyle = CHART_BEARISH_COLOR;
     ctx.fill();
   } else {
     ctx.fillStyle = '#1F1F1F';
@@ -273,7 +274,7 @@ function drawDeleteDot(ctx: CanvasRenderingContext2D, x: number, y: number, isHo
 }
 
 function drawHandle(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  ctx.fillStyle = '#0D0D0D';
+  ctx.fillStyle = '#1F1F1F';
   ctx.strokeStyle = '#3D7EFF';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -283,7 +284,7 @@ function drawHandle(ctx: CanvasRenderingContext2D, x: number, y: number) {
 }
 
 function drawPositionHandle(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  ctx.fillStyle = '#0D0D0D';
+  ctx.fillStyle = '#1F1F1F';
   ctx.strokeStyle = '#2962FF';
   ctx.lineWidth = 1.5;
   ctx.fillRect(x - 4, y - 4, 8, 8);
@@ -324,14 +325,14 @@ function drawPositionCandleOverlap(
     {
       low: Math.min(line.value, line.stopPrice),
       high: Math.max(line.value, line.stopPrice),
-      color: 'rgba(120, 10, 20, 0.22)',
+      color: chartColorToRgba(CHART_BEARISH_COLOR, 0.22),
     },
     ...(line.targetPrice === undefined
       ? []
       : [{
           low: Math.min(line.value, line.targetPrice),
           high: Math.max(line.value, line.targetPrice),
-          color: 'rgba(0, 95, 78, 0.20)',
+          color: chartColorToRgba(CHART_BULLISH_COLOR, 0.2),
         }]),
   ];
 

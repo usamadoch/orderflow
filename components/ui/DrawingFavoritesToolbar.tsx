@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { GripVertical, Minus, MoveRight, Ruler, Square } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, Minus, MoveRight, Ruler, Square } from 'lucide-react';
 import { LineDrawMode, PanelId, useChartStore } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 
@@ -45,6 +45,7 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   const setMeasureToolActive = useChartRuntimeStore(s => s.setMeasureToolActive);
   const setDrawingToolbarPosition = useChartStore(s => s.setDrawingToolbarPosition);
   const [position, setPosition] = React.useState(panel.drawingToolbarPosition);
+  const [collapsed, setCollapsed] = React.useState(false);
 
   const clampPosition = React.useCallback((nextPosition: { x: number; y: number }) => {
     const toolbar = toolbarRef.current;
@@ -90,10 +91,10 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   };
 
   const buttonClass = (active: boolean) =>
-    `flex h-8 w-8 items-center justify-center rounded-md transition-all duration-150 ${
+    `flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150 ${
       active
         ? 'border border-[#3D7EFF] bg-[#1F1F1F] text-[#E8E8E8] shadow-sm shadow-[#3D7EFF]/20'
-        : 'border border-transparent text-[#787B86] hover:bg-[#151515] hover:text-[#E8E8E8]'
+        : 'border border-transparent text-[#787B86] hover:bg-[#1F1F1F] hover:text-[#E8E8E8]'
     }`;
 
   const startDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -133,7 +134,9 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   return (
     <div
       ref={toolbarRef}
-      className="fixed z-40 flex items-center gap-1 rounded-lg border border-[#252525] bg-[#080808]/95 p-1 shadow-2xl shadow-black/40 backdrop-blur-sm"
+      className={`popup-contrast fixed z-40 flex items-center gap-0.5 border border-[#252525] bg-[#1F1F1F]/95 p-0.5 shadow-2xl shadow-black/40 backdrop-blur-sm ${
+        collapsed ? 'rounded-full' : 'rounded-lg'
+      }`}
       style={{ left: position.x, top: position.y }}
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
@@ -141,55 +144,84 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
       <button
         type="button"
         onPointerDown={startDrag}
-        className="flex h-8 w-6 items-center justify-center rounded-md text-[#4A4A4A] transition-colors hover:bg-[#151515] hover:text-[#A5A5A5] cursor-move"
+        className="flex h-7 w-6 items-center justify-center rounded-md text-[#4A4A4A] transition-colors hover:bg-[#1F1F1F] hover:text-[#A5A5A5] cursor-move"
         title="Drag drawing toolbar"
         aria-label="Drag drawing toolbar"
       >
         <GripVertical size={15} strokeWidth={2.4} />
       </button>
 
-      <div className="h-5 w-px bg-[#1F1F1F]" />
-
-      <button
-        type="button"
-        onClick={selectProfile}
-        className={buttonClass(panel.isDrawMode)}
-        title="Profile"
-        aria-pressed={panel.isDrawMode}
-        aria-label="Profile"
-      >
-        <Square size={14} strokeWidth={2.3} />
-      </button>
-
-      <button
-        type="button"
-        onClick={selectMeasure}
-        className={buttonClass(measureToolActive)}
-        title="Measure"
-        aria-pressed={measureToolActive}
-        aria-label="Measure"
-      >
-        <Ruler size={14} strokeWidth={2.4} />
-      </button>
-
-      <div className="h-5 w-px bg-[#1F1F1F]" />
-
-      {FAVORITE_TOOLS.map(tool => {
-        const active = panel.lineDrawMode === tool.mode;
-        return (
+      {collapsed ? (
+        <>
+          <div className="h-3.5 w-5 rounded-full bg-[#2A2A2A]" />
           <button
-            key={tool.mode}
             type="button"
-            onClick={() => selectTool(tool.mode)}
-            className={buttonClass(active)}
-            title={tool.title}
-            aria-pressed={active}
-            aria-label={tool.title}
+            onClick={() => setCollapsed(false)}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-[#787B86] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
+            title="Expand drawing toolbar"
+            aria-label="Expand drawing toolbar"
           >
-            {tool.icon}
+            <ChevronRight size={14} strokeWidth={2.5} />
           </button>
-        );
-      })}
+        </>
+      ) : (
+        <>
+          <div className="h-5 w-px bg-[#1F1F1F]" />
+
+          <button
+            type="button"
+            onClick={selectProfile}
+            className={buttonClass(panel.isDrawMode)}
+            title="Profile"
+            aria-pressed={panel.isDrawMode}
+            aria-label="Profile"
+          >
+            <Square size={14} strokeWidth={2.3} />
+          </button>
+
+          <button
+            type="button"
+            onClick={selectMeasure}
+            className={buttonClass(measureToolActive)}
+            title="Measure"
+            aria-pressed={measureToolActive}
+            aria-label="Measure"
+          >
+            <Ruler size={14} strokeWidth={2.4} />
+          </button>
+
+          <div className="h-5 w-px bg-[#1F1F1F]" />
+
+          {FAVORITE_TOOLS.map(tool => {
+            const active = panel.lineDrawMode === tool.mode;
+            return (
+              <button
+                key={tool.mode}
+                type="button"
+                onClick={() => selectTool(tool.mode)}
+                className={buttonClass(active)}
+                title={tool.title}
+                aria-pressed={active}
+                aria-label={tool.title}
+              >
+                {tool.icon}
+              </button>
+            );
+          })}
+
+          <div className="h-5 w-px bg-[#1F1F1F]" />
+
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[#787B86] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
+            title="Collapse drawing toolbar"
+            aria-label="Collapse drawing toolbar"
+          >
+            <ChevronLeft size={14} strokeWidth={2.5} />
+          </button>
+        </>
+      )}
     </div>
   );
 }

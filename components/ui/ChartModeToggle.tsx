@@ -12,7 +12,7 @@ export function ChartModeToggle({ panelId = 'left' }: { panelId?: PanelId }) {
         onClick={() => chartMode !== 'candle' && setChartMode(panelId, 'candle')}
         className={`px-3 py-1 text-[10px] font-black rounded-md transition-all duration-200 tracking-wider ${chartMode === 'candle'
             ? 'bg-accent text-white shadow-lg shadow-accent/20'
-            : 'text-text-dim hover:text-main hover:bg-surface'
+            : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
           }`}
       >
         CANDLES
@@ -21,7 +21,7 @@ export function ChartModeToggle({ panelId = 'left' }: { panelId?: PanelId }) {
         onClick={() => chartMode !== 'footprint' && setChartMode(panelId, 'footprint')}
         className={`px-3 py-1 text-[10px] font-black rounded-md transition-all duration-200 tracking-wider ${chartMode === 'footprint'
             ? 'bg-accent text-white shadow-lg shadow-accent/20'
-            : 'text-text-dim hover:text-main hover:bg-surface'
+            : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
           }`}
       >
         FOOTPRINT

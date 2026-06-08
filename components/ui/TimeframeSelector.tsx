@@ -15,8 +15,8 @@ export function TimeframeSelector({ panelId = 'left' }: { panelId?: PanelId }) {
           key={tf}
           onClick={() => setTimeframe(panelId, tf)}
           className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all duration-200 ${activeTimeframe === tf
-              ? 'bg-surface text-accent border border-border shadow-sm'
-              : 'text-text-dim hover:text-main hover:bg-surface'
+              ? 'bg-[#1F1F1F] text-accent border border-border shadow-sm'
+              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
             }`}
         >
           {tf}

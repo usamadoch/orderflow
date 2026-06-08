@@ -56,6 +56,12 @@ const FINE_PROFILE_LAZY_VISIBLE_BARS = 160;
 const FINE_PROFILE_LAZY_SCROLL_THRESHOLD_BARS = 20;
 const AGGREGATE_BUBBLE_RESTORE_SECONDS = 6 * 60 * 60;
 const AGGREGATE_BUBBLE_RESTORE_LIMIT = 10000;
+const FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS = 2 * 60 * 60;
+const FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS = FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS * 2;
+const FOOTPRINT_RESTORE_ASSUMED_DRAWABLE_WIDTH_PX = 1200;
+const FOOTPRINT_RESTORE_MIN_VISIBLE_BARS = 40;
+const FOOTPRINT_RESTORE_MAX_VISIBLE_BARS = 180;
+const FOOTPRINT_RESTORE_BUFFER_BARS = 10;
 const MAX_DEDUPE_KEYS = 100000;
 const ENABLE_BROWSER_MARKET_WRITES = process.env.NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES === 'true';
 const ENABLE_RAW_TRADE_RESTORE = process.env.NEXT_PUBLIC_ENABLE_RAW_TRADE_RESTORE === 'true';
@@ -117,10 +123,7 @@ function getTradeSourcesForAggregateMarketSource(
 }
 
 function needsAggregateEventsForVolumeBars(panel: PanelState) {
-  return panel.volumeBarsEnabled && (
-    panel.volumeBarsInputData !== 'volume'
-    || panel.volumeBarsMarketSource !== 'active'
-  );
+  return panel.volumeBarsEnabled && panel.volumeBarsInputData !== 'volume';
 }
 
 function needsAggregateEvents(panel: PanelState) {
@@ -250,12 +253,25 @@ interface FootprintHistoryRow {
   delta?: number;
 }
 
+interface FootprintRestoreRange {
+  startSeconds: number;
+  endSeconds: number;
+}
+
 interface FootprintHydrationStats {
   rowsFetched: number;
   candlesHydrated: number;
   cellsHydrated: number;
   bucketMatches: number;
   bucketMisses: number;
+  requestedRange: FootprintRestoreRange | null;
+  clampedRange: FootprintRestoreRange | null;
+  chunkCount: number;
+  chunksFetched: number;
+  chunksSkipped: number;
+  rowsPerChunk: number[];
+  skippedBecauseRangeTooLarge: boolean;
+  restoreFailureReason: string | null;
 }
 
 interface FineProfileHydrationStats {
@@ -338,6 +354,95 @@ function getBaseFootprintWindow(candles: Candle[], timeframeSeconds: number) {
     startMs: startSeconds * 1000,
     endMs: endSeconds * 1000,
   };
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function inferCandleSpanSeconds(candles: Candle[], index: number, fallbackSeconds: number) {
+  const current = candles[index]?.time;
+  const next = candles[index + 1]?.time;
+  if (Number.isFinite(current) && Number.isFinite(next) && next > current) {
+    return next - current;
+  }
+
+  const previous = candles[index - 1]?.time;
+  if (Number.isFinite(current) && Number.isFinite(previous) && current > previous) {
+    return current - previous;
+  }
+
+  return Math.max(BASE_FOOTPRINT_TIMEFRAME_SECONDS, fallbackSeconds);
+}
+
+function alignFootprintRange(startSeconds: number, endSeconds: number): FootprintRestoreRange {
+  return {
+    startSeconds: Math.floor(startSeconds / BASE_FOOTPRINT_TIMEFRAME_SECONDS) * BASE_FOOTPRINT_TIMEFRAME_SECONDS,
+    endSeconds: Math.ceil(endSeconds / BASE_FOOTPRINT_TIMEFRAME_SECONDS) * BASE_FOOTPRINT_TIMEFRAME_SECONDS,
+  };
+}
+
+function getFootprintRestorePlan(
+  candles: Candle[],
+  panel: PanelState,
+  timeframeSeconds: number,
+) {
+  const historyRange = getBaseFootprintWindow(candles, timeframeSeconds);
+  if (!historyRange || candles.length === 0) return null;
+
+  const safeBarWidth = Math.max(1, Number.isFinite(panel.barWidth) ? panel.barWidth : 12);
+  const safeScrollOffset = Math.max(0, Number.isFinite(panel.scrollOffset) ? panel.scrollOffset : 0);
+  const approximateVisibleBars = clampNumber(
+    Math.ceil(FOOTPRINT_RESTORE_ASSUMED_DRAWABLE_WIDTH_PX / safeBarWidth),
+    FOOTPRINT_RESTORE_MIN_VISIBLE_BARS,
+    FOOTPRINT_RESTORE_MAX_VISIBLE_BARS,
+  );
+  const rawLastVisibleIndex = candles.length - 1 - Math.floor(safeScrollOffset / safeBarWidth);
+  const lastVisibleIndex = clampNumber(rawLastVisibleIndex, 0, candles.length - 1);
+  const firstIndex = clampNumber(
+    lastVisibleIndex - approximateVisibleBars - FOOTPRINT_RESTORE_BUFFER_BARS,
+    0,
+    lastVisibleIndex,
+  );
+  const lastIndex = clampNumber(
+    lastVisibleIndex + FOOTPRINT_RESTORE_BUFFER_BARS,
+    firstIndex,
+    candles.length - 1,
+  );
+  const requestedRange = alignFootprintRange(
+    candles[firstIndex].time,
+    candles[lastIndex].time + inferCandleSpanSeconds(candles, lastIndex, timeframeSeconds),
+  );
+  const clampedStartSeconds = Math.max(
+    requestedRange.startSeconds,
+    requestedRange.endSeconds - FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS,
+  );
+  const clampedRange = alignFootprintRange(clampedStartSeconds, requestedRange.endSeconds);
+
+  return {
+    historyRange: {
+      startSeconds: historyRange.startSeconds,
+      endSeconds: historyRange.endSeconds,
+    },
+    requestedRange,
+    clampedRange,
+    requestedVisibleBars: lastIndex - firstIndex + 1,
+    approximateVisibleBars,
+    skippedBecauseRangeTooLarge: requestedRange.endSeconds - requestedRange.startSeconds > FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS,
+  };
+}
+
+function getFootprintRestoreChunks(range: FootprintRestoreRange) {
+  const chunks: FootprintRestoreRange[] = [];
+  let cursor = range.startSeconds;
+
+  while (cursor < range.endSeconds) {
+    const next = Math.min(range.endSeconds, cursor + FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS);
+    chunks.push({ startSeconds: cursor, endSeconds: next });
+    cursor = next;
+  }
+
+  return chunks;
 }
 
 function getBaseCandleTimeForTrade(tradeTimeMs: number) {
@@ -437,10 +542,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const dataSourceMode = useChartStore(s => s.panels[panelId].dataSourceMode);
   const bubblesEnabled = useChartStore(s => s.panels[panelId].bubblesEnabled);
   const bubbleSource = useChartStore(s => s.panels[panelId].bubbleSource);
-  const aggregateBubbleMarketSource = useChartStore(s => s.panels[panelId].aggregateBubbleMarketSource);
   const volumeBarsEnabled = useChartStore(s => s.panels[panelId].volumeBarsEnabled);
   const volumeBarsInputData = useChartStore(s => s.panels[panelId].volumeBarsInputData);
-  const volumeBarsMarketSource = useChartStore(s => s.panels[panelId].volumeBarsMarketSource);
   const tickSize = useChartStore(s => s.tickSize);
   const pushCandle = useChartRuntimeStore(s => s.pushCandle);
   const setConnected = useChartRuntimeStore(s => s.setConnected);
@@ -504,6 +607,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const aggregateEventsNeededRef = useRef(false);
   const footprintIngestionSkippedRef = useRef(0);
   const icebergDisabledNoopSkippedRef = useRef(0);
+  const aggregateBubbleMarketSource = dataSourceMode;
+  const volumeBarsMarketSource = dataSourceMode;
 
   useEffect(() => {
     bucketSizeRef.current = bucketSize;
@@ -517,7 +622,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     if (!aggregateEventsNeeded) {
       pendingAggregateBubbleEventsRef.current = [];
     }
-  }, [bubblesEnabled, bubbleSource, panelId, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource]);
+  }, [bubblesEnabled, bubbleSource, contractType, dataSourceMode, panelId, volumeBarsEnabled, volumeBarsInputData]);
 
   const markProcessedTrade = useCallback((trade: Trade, source: TradeSource) => {
     const key = getTradeDedupeKey(trade, source);
@@ -569,7 +674,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       ).forEach((source) => requiredSources.add(source));
     }
 
-    if (volumeBarsEnabled && (volumeBarsInputData !== 'volume' || volumeBarsMarketSource !== 'active')) {
+    if (volumeBarsEnabled && volumeBarsInputData !== 'volume') {
       getTradeSourcesForAggregateMarketSource(
         volumeBarsMarketSource,
         contractType,
@@ -898,6 +1003,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       cellsHydrated: 0,
       bucketMatches: 0,
       bucketMisses: 0,
+      requestedRange: null,
+      clampedRange: null,
+      chunkCount: 0,
+      chunksFetched: 0,
+      chunksSkipped: 0,
+      rowsPerChunk: [],
+      skippedBecauseRangeTooLarge: false,
+      restoreFailureReason: null,
     });
 
     const getTradeClosedFineProfileTime = () => {
@@ -1847,114 +1960,231 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         cellsHydrated: 0,
         bucketMatches: 0,
         bucketMisses: 0,
+        requestedRange: null,
+        clampedRange: null,
+        chunkCount: 0,
+        chunksFetched: 0,
+        chunksSkipped: 0,
+        rowsPerChunk: [],
+        skippedBecauseRangeTooLarge: false,
+        restoreFailureReason: null,
       };
-      const window = getBaseFootprintWindow(candles, timeframeSeconds);
-      if (!window) return stats;
 
-      const candidateTimes = engineRef.current.getMissingBaseCandleTimes(window.startSeconds, window.endSeconds);
-      if (candidateTimes.length === 0) return stats;
+      const plan = getFootprintRestorePlan(
+        candles,
+        useChartStore.getState().panels[panelId],
+        timeframeSeconds,
+      );
+      if (!plan || plan.clampedRange.endSeconds <= plan.clampedRange.startSeconds) return stats;
 
-      const restoredStats = await engineRef.current.getBaseCache().runRestoreOnce(window.startSeconds, window.endSeconds, async () => {
-        const params = new URLSearchParams({
-          symbol: pair,
-          contractType,
-          dataSourceMode,
-          timeframe: BASE_FOOTPRINT_TIMEFRAME,
-          start: String(window.startSeconds),
-          end: String(window.endSeconds),
-          bucketSize: String(BASE_FOOTPRINT_BUCKET_SIZE),
+      const footprintCache = engineRef.current.getBaseCache();
+      const restoreKey = `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`;
+      stats.requestedRange = plan.requestedRange;
+      stats.clampedRange = plan.clampedRange;
+      stats.skippedBecauseRangeTooLarge = plan.skippedBecauseRangeTooLarge;
+
+      if (plan.skippedBecauseRangeTooLarge) {
+        recordRestoreDiagnostic({
+          kind: 'footprint',
+          key: restoreKey,
+          timestamp: Date.now(),
+          rowsFetched: 0,
+          distinctCandleTimeCount: 0,
+          skippedRows: Math.max(0, Math.floor((plan.clampedRange.startSeconds - plan.requestedRange.startSeconds) / BASE_FOOTPRINT_TIMEFRAME_SECONDS)),
+          details: {
+            panelId,
+            status: 'range-clamped',
+            historyRange: plan.historyRange,
+            requestedRange: plan.requestedRange,
+            clampedRange: plan.clampedRange,
+            requestedVisibleBars: plan.requestedVisibleBars,
+            approximateVisibleBars: plan.approximateVisibleBars,
+            maxTotalSeconds: FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS,
+            maxChunkSeconds: FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS,
+            skippedBecauseRangeTooLarge: true,
+          },
         });
-        const response = await fetch(`/api/history/footprint?${params.toString()}`, {
-          cache: 'no-store',
-        });
+      }
 
-        if (!response.ok) {
+      const chunks = getFootprintRestoreChunks(plan.clampedRange);
+      stats.chunkCount = chunks.length;
+
+      for (let index = 0; index < chunks.length; index += 1) {
+        if (!active) break;
+
+        const chunk = chunks[index];
+        const candidateTimes = footprintCache.getMissingBaseCandleTimes(chunk.startSeconds, chunk.endSeconds);
+        if (candidateTimes.length === 0) {
+          stats.chunksSkipped += 1;
+          stats.rowsPerChunk.push(0);
           recordRestoreDiagnostic({
             kind: 'footprint',
-            key: `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`,
+            key: restoreKey,
+            timestamp: Date.now(),
+            rowsFetched: 0,
+            distinctCandleTimeCount: 0,
+            details: {
+              panelId,
+              status: 'cache-covered',
+              sourceKey: footprintCache.key,
+              requestedRange: plan.requestedRange,
+              clampedRange: plan.clampedRange,
+              chunkIndex: index + 1,
+              chunkCount: chunks.length,
+              chunkStart: chunk.startSeconds,
+              chunkEnd: chunk.endSeconds,
+              baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+            },
+          });
+          continue;
+        }
+
+        try {
+          const chunkStats = await footprintCache.runRestoreOnce(chunk.startSeconds, chunk.endSeconds, async () => {
+            const restoredChunkStats = {
+              rowsFetched: 0,
+              candlesHydrated: 0,
+              cellsHydrated: 0,
+              bucketMatches: 0,
+              bucketMisses: 0,
+            };
+            const params = new URLSearchParams({
+              symbol: pair,
+              contractType,
+              dataSourceMode,
+              timeframe: BASE_FOOTPRINT_TIMEFRAME,
+              start: String(chunk.startSeconds),
+              end: String(chunk.endSeconds),
+              bucketSize: String(BASE_FOOTPRINT_BUCKET_SIZE),
+            });
+            const response = await fetch(`/api/history/footprint?${params.toString()}`, {
+              cache: 'no-store',
+            });
+
+            if (!response.ok) {
+              let failureReason = `Footprint row restore failed with ${response.status}`;
+              try {
+                const body = await response.json() as { error?: string };
+                if (body.error) failureReason = body.error;
+              } catch {
+                // Keep the HTTP status message when the response body is not JSON.
+              }
+              throw new Error(failureReason);
+            }
+
+            const rows = await response.json() as FootprintHistoryRow[];
+            restoredChunkStats.rowsFetched = rows.length;
+
+            const rowsByCandle = new Map<number, FootprintHistoryRow[]>();
+            for (const row of rows) {
+              const current = rowsByCandle.get(row.candleTime) ?? [];
+              current.push(row);
+              rowsByCandle.set(row.candleTime, current);
+            }
+
+            const candidateTimeSet = new Set(candidateTimes);
+            restoredChunkStats.bucketMatches = candidateTimes.filter((time) => rowsByCandle.has(time)).length;
+            restoredChunkStats.bucketMisses = Math.max(0, candidateTimes.length - restoredChunkStats.bucketMatches);
+
+            for (const candleTime of candidateTimes) {
+              if (!active) return restoredChunkStats;
+
+              const candleRows = rowsByCandle.get(candleTime);
+              if (!candleRows || candleRows.length === 0) continue;
+              if (!candidateTimeSet.has(candleTime)) continue;
+
+              const cells = new Map<number, FootprintCell>();
+              let delta = 0;
+
+              for (const row of candleRows) {
+                cells.set(row.bucketPrice, {
+                  bidVol: row.bidVol,
+                  askVol: row.askVol,
+                });
+                delta += row.delta ?? row.askVol - row.bidVol;
+              }
+
+              engineRef.current.hydrateBaseFootprintCandle(candleTime, cells, undefined, delta);
+              restoredChunkStats.candlesHydrated += 1;
+              restoredChunkStats.cellsHydrated += cells.size;
+
+              if (restoredChunkStats.candlesHydrated % HYDRATION_CHUNK_SIZE === 0) {
+                await yieldToBrowser();
+              }
+            }
+
+            recordRestoreDiagnostic({
+              kind: 'footprint',
+              key: restoreKey,
+              timestamp: Date.now(),
+              rowsFetched: restoredChunkStats.rowsFetched,
+              distinctCandleTimeCount: restoredChunkStats.candlesHydrated,
+              skippedRows: restoredChunkStats.bucketMisses,
+              details: {
+                panelId,
+                status: 'chunk-complete',
+                sourceKey: footprintCache.key,
+                requestedRange: plan.requestedRange,
+                clampedRange: plan.clampedRange,
+                chunkIndex: index + 1,
+                chunkCount: chunks.length,
+                chunkStart: chunk.startSeconds,
+                chunkEnd: chunk.endSeconds,
+                candidateCandles: candidateTimes.length,
+                cellsHydrated: restoredChunkStats.cellsHydrated,
+                bucketMatches: restoredChunkStats.bucketMatches,
+                bucketMisses: restoredChunkStats.bucketMisses,
+                rowsPerChunk: restoredChunkStats.rowsFetched,
+                baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+              },
+            });
+
+            return restoredChunkStats;
+          });
+
+          stats.rowsFetched += chunkStats.rowsFetched;
+          stats.candlesHydrated += chunkStats.candlesHydrated;
+          stats.cellsHydrated += chunkStats.cellsHydrated;
+          stats.bucketMatches += chunkStats.bucketMatches;
+          stats.bucketMisses += chunkStats.bucketMisses;
+          stats.rowsPerChunk.push(chunkStats.rowsFetched);
+          stats.chunksFetched += 1;
+        } catch (error) {
+          const failureReason = error instanceof Error ? error.message : String(error);
+          stats.restoreFailureReason = stats.restoreFailureReason ?? failureReason;
+          stats.rowsPerChunk.push(0);
+          recordRestoreDiagnostic({
+            kind: 'footprint',
+            key: restoreKey,
             timestamp: Date.now(),
             failedRows: candidateTimes.length,
             details: {
               panelId,
-              status: response.status,
-              start: window.startSeconds,
-              end: window.endSeconds,
+              status: 'failed',
+              sourceKey: footprintCache.key,
+              requestedRange: plan.requestedRange,
+              clampedRange: plan.clampedRange,
+              chunkIndex: index + 1,
+              chunkCount: chunks.length,
+              chunkStart: chunk.startSeconds,
+              chunkEnd: chunk.endSeconds,
+              candidateCandles: candidateTimes.length,
+              restoreFailureReason: failureReason,
               baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
             },
           });
-          console.warn(`[HistoryRestore:${panelId}] Stored footprint fallback failed with ${response.status}`);
-          return stats;
+          console.warn(`[HistoryRestore:${panelId}] Stored footprint chunk ${index + 1}/${chunks.length} failed: ${failureReason}`);
         }
 
-        const rows = await response.json() as FootprintHistoryRow[];
-        stats.rowsFetched = rows.length;
+        await yieldToBrowser();
+      }
 
-        const rowsByCandle = new Map<number, FootprintHistoryRow[]>();
-        for (const row of rows) {
-          const current = rowsByCandle.get(row.candleTime) ?? [];
-          current.push(row);
-          rowsByCandle.set(row.candleTime, current);
-        }
-
-        const candidateTimeSet = new Set(candidateTimes);
-        stats.bucketMatches = candidateTimes.filter((time) => rowsByCandle.has(time)).length;
-        stats.bucketMisses = Math.max(0, candidateTimes.length - stats.bucketMatches);
-
-        for (const candleTime of candidateTimes) {
-          if (!active) return stats;
-
-          const candleRows = rowsByCandle.get(candleTime);
-          if (!candleRows || candleRows.length === 0) continue;
-          if (!candidateTimeSet.has(candleTime)) continue;
-
-          const cells = new Map<number, FootprintCell>();
-          let delta = 0;
-
-          for (const row of candleRows) {
-            cells.set(row.bucketPrice, {
-              bidVol: row.bidVol,
-              askVol: row.askVol,
-            });
-            delta += row.delta ?? row.askVol - row.bidVol;
-          }
-
-          engineRef.current.hydrateBaseFootprintCandle(candleTime, cells, undefined, delta);
-          stats.candlesHydrated += 1;
-          stats.cellsHydrated += cells.size;
-
-          if (stats.candlesHydrated % HYDRATION_CHUNK_SIZE === 0) {
-            await yieldToBrowser();
-          }
-        }
-
-        recordRestoreDiagnostic({
-          kind: 'footprint',
-          key: `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`,
-          timestamp: Date.now(),
-          rowsFetched: stats.rowsFetched,
-          distinctCandleTimeCount: stats.candlesHydrated,
-          skippedRows: stats.bucketMisses,
-          details: {
-            panelId,
-            start: window.startSeconds,
-            end: window.endSeconds,
-            candidateCandles: candidateTimes.length,
-            cellsHydrated: stats.cellsHydrated,
-            bucketMatches: stats.bucketMatches,
-            bucketMisses: stats.bucketMisses,
-            baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
-          },
-        });
-
-        return stats;
-      });
-
-      if (restoredStats.candlesHydrated > 0) {
+      if (stats.candlesHydrated > 0) {
         pendingFootprintRedrawRef.current = true;
         pendingProfileRedrawRef.current = true;
       }
 
-      return restoredStats;
+      return stats;
     };
 
     const hydrateStoredFineProfileRange = async (
@@ -2517,7 +2747,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             stage: 'footprint',
             message: footprintRestoreSkipped
               ? 'Footprint restore skipped; footprint not needed'
-              : `Restored ${footprintStats.rowsFetched} footprint rows`,
+              : footprintStats.restoreFailureReason
+                ? `Footprint restore incomplete (${footprintStats.chunksFetched}/${footprintStats.chunkCount} chunks)`
+                : `Restored ${footprintStats.rowsFetched} footprint rows`,
             candleCount: history.length,
             storedCandleCount: historyResult.storedCandles ?? 0,
             binanceCandleCount: historyResult.binanceCandles ?? 0,
@@ -2533,6 +2765,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             needsFootprintWork: footprintWorkForRestore.needed,
             footprintWorkReasons: footprintWorkForRestore.reasons,
             footprintRestoreSkipped,
+            footprintRequestedRange: footprintStats.requestedRange,
+            footprintClampedRange: footprintStats.clampedRange,
+            footprintChunkCount: footprintStats.chunkCount,
+            footprintRowsPerChunk: footprintStats.rowsPerChunk,
+            footprintRangeTooLargeSkipped: footprintStats.skippedBecauseRangeTooLarge,
+            footprintRestoreFailureReason: footprintStats.restoreFailureReason,
           });
           if (!active) return;
 
@@ -2576,6 +2814,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             needsFootprintWork: footprintWorkForRestore.needed,
             footprintWorkReasons: footprintWorkForRestore.reasons,
             footprintRestoreSkipped,
+            footprintRequestedRange: footprintStats.requestedRange,
+            footprintClampedRange: footprintStats.clampedRange,
+            footprintChunkCount: footprintStats.chunkCount,
+            footprintChunksFetched: footprintStats.chunksFetched,
+            footprintChunksSkipped: footprintStats.chunksSkipped,
+            footprintRowsPerChunk: footprintStats.rowsPerChunk,
+            footprintRangeTooLargeSkipped: footprintStats.skippedBecauseRangeTooLarge,
+            footprintRestoreFailureReason: footprintStats.restoreFailureReason,
             footprintRowsFetched: footprintStats.rowsFetched,
             footprintCellsHydrated: footprintStats.cellsHydrated,
             footprintCandlesHydrated: footprintStats.candlesHydrated,
@@ -2608,6 +2854,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               needsFootprintWork: footprintWorkForRestore.needed,
               footprintWorkReasons: footprintWorkForRestore.reasons,
               footprintRestoreSkipped,
+              footprintRequestedRange: footprintStats.requestedRange,
+              footprintClampedRange: footprintStats.clampedRange,
+              footprintChunkCount: footprintStats.chunkCount,
+              footprintChunksFetched: footprintStats.chunksFetched,
+              footprintChunksSkipped: footprintStats.chunksSkipped,
+              footprintRowsPerChunk: footprintStats.rowsPerChunk,
+              footprintRangeTooLargeSkipped: footprintStats.skippedBecauseRangeTooLarge,
+              footprintRestoreFailureReason: footprintStats.restoreFailureReason,
               footprintRowsFetched: footprintStats.rowsFetched,
               footprintCellsHydrated: footprintStats.cellsHydrated,
               footprintCandlesHydrated: footprintStats.candlesHydrated,
@@ -2621,7 +2875,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         const latestRestoreStatus = useChartRuntimeStore.getState().panels[panelId].historyRestoreStatus;
         publishRestoreStatus({
           stage: 'complete',
-          message: `Restored ${history.length} candles`,
+          message: latestRestoreStatus?.footprintRestoreFailureReason
+            ? `Restored ${history.length} candles; footprint incomplete`
+            : `Restored ${history.length} candles`,
           candleCount: history.length,
           storedCandleCount: historyResult.storedCandles ?? 0,
           binanceCandleCount: historyResult.binanceCandles ?? 0,
@@ -2638,6 +2894,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           footprintWorkReasons: latestRestoreStatus?.footprintWorkReasons,
           footprintIngestionSkipped: footprintIngestionSkippedRef.current,
           icebergDisabledNoopSkipped: icebergDisabledNoopSkippedRef.current,
+          footprintRequestedRange: latestRestoreStatus?.footprintRequestedRange,
+          footprintClampedRange: latestRestoreStatus?.footprintClampedRange,
+          footprintChunkCount: latestRestoreStatus?.footprintChunkCount,
+          footprintRowsPerChunk: latestRestoreStatus?.footprintRowsPerChunk,
+          footprintRangeTooLargeSkipped: latestRestoreStatus?.footprintRangeTooLargeSkipped,
+          footprintRestoreFailureReason: latestRestoreStatus?.footprintRestoreFailureReason,
           source: historySource,
         });
         setLoadingHistory(panelId, false);

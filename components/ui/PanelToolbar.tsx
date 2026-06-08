@@ -71,18 +71,18 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   }, [openSettings, panelId, settingsOpenRequest]);
 
   return (
-    <div className="font-sans h-8 bg-[#0D0D0D] border-b border-[#1F1F1F] flex items-center px-3 gap-2 shrink-0 overflow-visible">
+    <div className="font-sans h-8 bg-[#0F0F0F] border-b border-[#1F1F1F] flex items-center px-3 gap-2 shrink-0 overflow-visible">
       <PairSelector panelId={panelId} />
 
       {/* Timeframe Selector */}
-      <div className="flex gap-0.5 bg-[#080808] p-0.5 rounded-md border border-[#1A1A1A]">
+      <div className="flex gap-0.5 bg-[#0F0F0F] p-0.5 rounded-md border border-[#1F1F1F]">
         {TIMEFRAMES.map((tf) => (
           <button
             key={tf}
             onClick={() => setTimeframe(panelId, tf)}
             className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-all duration-200 ${panel.timeframe === tf
-              ? 'bg-[#1A1A1A] text-accent border border-[#252525] shadow-sm'
-              : 'text-text-dim hover:text-main hover:bg-[#151515]'
+              ? 'bg-[#1F1F1F] text-accent border border-[#252525] shadow-sm'
+              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
               }`}
           >
             {tf}
@@ -91,12 +91,12 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
       </div>
 
       {/* Mode Toggle */}
-      <div className="flex gap-0.5 bg-[#080808] p-0.5 rounded-md border border-[#1A1A1A]">
+      <div className="flex gap-0.5 bg-[#0F0F0F] p-0.5 rounded-md border border-[#1F1F1F]">
         <button
           onClick={() => panel.chartMode !== 'candle' && setChartMode(panelId, 'candle')}
           className={`px-2 py-0.5 text-[10px] font-black rounded tracking-wider transition-all duration-200 ${panel.chartMode === 'candle'
             ? 'bg-accent text-white shadow-sm shadow-accent/20'
-            : 'text-text-dim hover:text-main hover:bg-[#151515]'
+            : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
             }`}
         >
           C
@@ -105,21 +105,21 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
           onClick={() => panel.chartMode !== 'footprint' && setChartMode(panelId, 'footprint')}
           className={`px-2 py-0.5 text-[10px] font-black rounded tracking-wider transition-all duration-200 ${panel.chartMode === 'footprint'
             ? 'bg-accent text-white shadow-sm shadow-accent/20'
-            : 'text-text-dim hover:text-main hover:bg-[#151515]'
+            : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
             }`}
         >
           F
         </button>
       </div>
 
-      <div className="flex gap-0.5 bg-[#080808] p-0.5 rounded-md border border-[#1A1A1A]">
+      <div className="flex gap-0.5 bg-[#0F0F0F] p-0.5 rounded-md border border-[#1F1F1F]">
         <button
           type="button"
           onClick={() => selectPositionTool('long-position')}
           className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
             panel.lineDrawMode === 'long-position'
               ? 'bg-[#089981] text-white shadow-sm shadow-[#089981]/20'
-              : 'text-text-dim hover:text-main hover:bg-[#151515]'
+              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
           }`}
           title="Long Position"
           aria-pressed={panel.lineDrawMode === 'long-position'}
@@ -134,7 +134,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
           className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
             panel.lineDrawMode === 'short-position'
               ? 'bg-[#F23645] text-white shadow-sm shadow-[#F23645]/20'
-              : 'text-text-dim hover:text-main hover:bg-[#151515]'
+              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
           }`}
           title="Short Position"
           aria-pressed={panel.lineDrawMode === 'short-position'}
@@ -145,7 +145,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         </button>
       </div>
 
-      <div className="ml-auto flex items-center gap-1 border-l border-[#1A1A1A] pl-3 h-5">
+      <div className="ml-auto flex items-center gap-1 border-l border-[#1F1F1F] pl-3 h-5">
         <div ref={settingsContainerRef} className="relative">
           <button
             ref={settingsButtonRef}
@@ -153,7 +153,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
             className={`h-6 w-6 flex items-center justify-center rounded border transition-all duration-200 ${
               showSettings
                 ? 'border-accent bg-accent/10 text-accent'
-                : 'border-[#1A1A1A] bg-[#080808] text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8]'
+                : 'border-[#1F1F1F] bg-[#0F0F0F] text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8]'
             }`}
             title={`${panelId === 'left' ? 'Left' : 'Right'} panel settings`}
             aria-label={`${panelId === 'left' ? 'Left' : 'Right'} panel settings`}
@@ -174,7 +174,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
 
         <button
           onClick={() => setFocusMode(!focusMode)}
-          className="h-6 w-6 flex items-center justify-center rounded border border-[#1A1A1A] bg-[#080808] text-[#787B86] transition-all duration-200 hover:border-accent/60 hover:text-[#E8E8E8]"
+          className="h-6 w-6 flex items-center justify-center rounded border border-[#1F1F1F] bg-[#0F0F0F] text-[#787B86] transition-all duration-200 hover:border-accent/60 hover:text-[#E8E8E8]"
           title={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
         >
           {focusMode ? <Minimize2 size={11} strokeWidth={2.5} /> : <Maximize2 size={11} strokeWidth={2.5} />}

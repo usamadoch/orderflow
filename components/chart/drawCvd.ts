@@ -4,7 +4,7 @@ import type { CvdDivergenceMarker, CvdPoint } from '@/lib/utils/delta';
 const AXIS_FONT = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
 const MONO_FONT = '11px "JetBrains Mono", monospace';
 const BORDER = '#1F1F1F';
-const AXIS_BG = '#141414';
+const AXIS_BG = '#0F0F0F';
 const GRID = '#1F1F1F';
 const TEXT = '#909090';
 const MUTED_TEXT = '#5F6368';
@@ -124,7 +124,7 @@ export function drawCvd(
     barWidth,
   } = options;
 
-  ctx.fillStyle = '#0D0D0D';
+  ctx.fillStyle = '#0F0F0F';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
   drawCvdGrid(ctx, scale, chartWidth, chartHeight);
@@ -172,7 +172,7 @@ export function drawCvdCrosshairValueLabel(
   const rectHeight = 24;
   const rectWidth = Math.max(textWidth + padding * 2, priceAxisWidth - 2);
 
-  ctx.fillStyle = '#2A2A2A';
+  ctx.fillStyle = '#1F1F1F';
   ctx.fillRect(chartWidth + 1, mouseY - rectHeight / 2, rectWidth, rectHeight);
   ctx.strokeStyle = '#8A8A8A';
   ctx.strokeRect(chartWidth + 1, mouseY - rectHeight / 2, rectWidth, rectHeight);
@@ -200,7 +200,7 @@ function drawCvdGrid(ctx: CanvasRenderingContext2D, scale: CvdScale, chartWidth:
 
   if (scale.min < 0 && scale.max > 0) {
     const zeroY = Math.round(scale.valueToY(0)) + 0.5;
-    ctx.strokeStyle = '#3A3A3A';
+    ctx.strokeStyle = GRID;
     ctx.beginPath();
     ctx.moveTo(0, zeroY);
     ctx.lineTo(chartWidth, zeroY);

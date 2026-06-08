@@ -45,17 +45,18 @@ import { MeasurementPanel } from './MeasurementPanel';
 import { HeatmapRow, LiquidityZone } from '@/types/liquidity';
 import { IcebergTooltip } from './IcebergTooltip';
 import { MIN_FINE_PROFILE_BASE_BUCKET_SIZE } from '@/lib/config/markets';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 
 type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
 type DrawingHitZone = 'hover' | 'move' | 'delete' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom' | 'resize-entry' | 'resize-stop' | 'resize-target';
 type CustomProfileRange = NonNullable<PanelState['customProfileRange']>;
 
 const DRAWING_COLORS = [
-  '#F23645',
+  CHART_BEARISH_COLOR,
   '#FF9801',
   '#FFEB3B',
   '#4CAF50',
-  '#089981',
+  CHART_BULLISH_COLOR,
   '#00BCD4',
   '#2962FF',
   '#673AB7',
@@ -711,6 +712,8 @@ export function ChartCanvas({
       const chartHeight = logicalHeight - timeAxisHeight;
 
       ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+      ctx.fillStyle = '#0F0F0F';
+      ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
       if (candles.length === 0) return;
 
@@ -2527,7 +2530,7 @@ export function ChartCanvas({
 
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-[#0D0D0D] overflow-hidden">
+    <div ref={containerRef} className="w-full h-full relative bg-[#0F0F0F] overflow-hidden">
       <canvas
         ref={canvasRef}
         className="absolute top-0 left-0 outline-none"
@@ -2562,7 +2565,7 @@ export function ChartCanvas({
 
       {selectedDrawing && selectedDrawingControls && (
         <div
-          className="absolute flex items-center gap-1 rounded border border-[#333] bg-[#1A1A1A]/95 p-1 shadow-xl backdrop-blur-sm z-30"
+          className="popup-contrast absolute flex items-center gap-1 rounded border border-[#333] bg-[#1F1F1F]/95 p-1 shadow-xl backdrop-blur-sm z-30"
           style={{
             top: `${selectedDrawingControls.top}px`,
             left: `${selectedDrawingControls.left}px`,
@@ -2575,7 +2578,7 @@ export function ChartCanvas({
               useChartStore.getState().updateLine(panelId, selectedDrawing.id, { locked: !selectedDrawing.locked });
               redraw();
             }}
-            className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${selectedDrawing.locked ? 'text-[#3D7EFF] hover:bg-[#2A2A2A]' : 'text-gray-400 hover:bg-[#2A2A2A] hover:text-[#E8E8E8]'}`}
+            className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${selectedDrawing.locked ? 'text-[#3D7EFF] hover:bg-[#1F1F1F]' : 'text-gray-400 hover:bg-[#1F1F1F] hover:text-[#E8E8E8]'}`}
             title={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
             aria-label={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
           >
@@ -2590,7 +2593,7 @@ export function ChartCanvas({
               redraw();
             }}
             disabled={selectedDrawing.locked}
-            className="h-7 rounded border border-[#333] bg-[#101010] px-1 text-[11px] font-bold text-[#E8E8E8] outline-none transition-colors hover:border-[#555] disabled:cursor-not-allowed disabled:opacity-45"
+            className="h-7 rounded border border-[#333] bg-[#1F1F1F] px-1 text-[11px] font-bold text-[#E8E8E8] outline-none transition-colors hover:border-[#555] disabled:cursor-not-allowed disabled:opacity-45"
             title="Stroke width"
             aria-label="Stroke width"
           >
@@ -2609,7 +2612,7 @@ export function ChartCanvas({
                   redraw();
                 }}
                 disabled={selectedDrawing.locked}
-                className="flex h-7 w-5 items-center justify-center rounded hover:bg-[#2A2A2A] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+                className="flex h-7 w-5 items-center justify-center rounded hover:bg-[#1F1F1F] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
                 title={color}
                 aria-label={`Set drawing color ${color}`}
               >
@@ -2640,7 +2643,7 @@ export function ChartCanvas({
       {/* Custom Profile Controls Overlay */}
       {customProfileRange && customProfileControls && (
         <div 
-          className="absolute flex items-center gap-1 p-1 bg-[#1A1A1A]/90 backdrop-blur-sm border border-[#333] rounded shadow-xl z-20"
+          className="popup-contrast absolute flex items-center gap-1 p-1 bg-[#1F1F1F]/90 backdrop-blur-sm border border-[#333] rounded shadow-xl z-20"
           style={{
             top: `${customProfileControls.top}px`,
             left: `${customProfileControls.left}px`,
@@ -2652,7 +2655,7 @@ export function ChartCanvas({
               useChartStore.getState().setCustomProfileLocked(panelId, !customProfileLocked);
               redraw();
             }}
-            className={`p-1.5 hover:bg-[#2A2A2A] rounded-md transition-all ${customProfileLocked ? 'text-[#3D7EFF]' : 'text-gray-400'}`}
+            className={`p-1.5 hover:bg-[#1F1F1F] rounded-md transition-all ${customProfileLocked ? 'text-[#3D7EFF]' : 'text-gray-400'}`}
             title={customProfileLocked ? "Unlock Profile" : "Lock Profile"}
           >
             {customProfileLocked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
@@ -2661,7 +2664,7 @@ export function ChartCanvas({
             onClick={() => {
               useChartStore.getState().openIndicatorSettings(panelId, 'profiles');
             }}
-            className="p-1.5 text-gray-400 hover:bg-[#2A2A2A] hover:text-accent rounded-md transition-all"
+            className="p-1.5 text-gray-400 hover:bg-[#1F1F1F] hover:text-accent rounded-md transition-all"
             title="Profile Settings"
             aria-label="Profile Settings"
           >

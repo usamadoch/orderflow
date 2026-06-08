@@ -1,6 +1,7 @@
 import { AbsorptionResult } from '@/types/absorption';
 import { Candle } from '@/types/candle';
 import { IcebergLevel, IcebergRank, IcebergSide } from '@/types/iceberg';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 import { hexToRgba } from '@/lib/utils/format';
 
 interface IcebergDrawSettings {
@@ -12,8 +13,8 @@ interface IcebergDrawSettings {
   absorptionMap?: Map<number, AbsorptionResult>;
 }
 
-const BID_DEFENSE_COLOR = '#26A69A';
-const ASK_DEFENSE_COLOR = '#EF5350';
+const BID_DEFENSE_COLOR = CHART_BULLISH_COLOR;
+const ASK_DEFENSE_COLOR = CHART_BEARISH_COLOR;
 const ABSORPTION_HANDOFF_COLOR = '#F0B90B';
 
 function getColor(side: IcebergSide): string {

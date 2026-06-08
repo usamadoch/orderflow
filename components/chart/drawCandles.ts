@@ -1,4 +1,5 @@
 import { Candle } from "@/types/candle";
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
 
 export function drawCandles(
   ctx: CanvasRenderingContext2D,
@@ -22,7 +23,7 @@ export function drawCandles(
     const lowY = priceToY(c.low);
 
     const isBullish = c.close >= c.open;
-    const color = isBullish ? '#26A69A' : '#EF5350';
+    const color = isBullish ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
 
     ctx.strokeStyle = color;
     ctx.fillStyle = color;

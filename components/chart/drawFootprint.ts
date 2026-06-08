@@ -2,6 +2,7 @@ import { Candle } from "@/types/candle";
 import { AggregationEngine } from "@/lib/aggregation/engine";
 import { drawFootprintCell, drawDelta, drawDeltaCell } from "@/lib/utils/canvas";
 import { FootprintMode } from "@/types/footprint";
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
 
 interface CandleVisualStats {
   maxVol: number;
@@ -118,7 +119,8 @@ export function drawFootprint(
     const candleWidth = 4;
     const candleX = Math.round(x - barWidth / 2 + candleWidth / 2);
 
-    ctx.strokeStyle = "#888888";
+    const color = c.close >= c.open ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(candleX, Math.round(highY));
@@ -129,7 +131,7 @@ export function drawFootprint(
     const bodyBottom = Math.max(openY, closeY);
     const bodyHeight = Math.max(1, bodyBottom - bodyTop);
 
-    ctx.fillStyle = c.close >= c.open ? "#26A69A" : "#EF5350";
+    ctx.fillStyle = color;
     ctx.fillRect(candleX - candleWidth / 2, Math.round(bodyTop), candleWidth, Math.round(bodyHeight));
   }
 

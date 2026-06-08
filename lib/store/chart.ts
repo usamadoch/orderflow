@@ -4,6 +4,7 @@ import { FootprintMode } from '../../types/footprint';
 import { BubbleScaleMode, BubbleSide } from '../../components/chart/drawBubbles';
 import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource } from '../../types/bubble';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, normalizeChartSemanticColor } from '../config/chartColors';
 import { getMinimumFineProfileResolutionTicks } from '../config/markets';
 
 export type ChartMode = 'candle' | 'footprint';
@@ -50,6 +51,12 @@ export interface HistoryRestoreStatus {
   footprintWorkReasons?: string[];
   footprintIngestionSkipped?: number;
   icebergDisabledNoopSkipped?: number;
+  footprintRequestedRange?: { startSeconds: number; endSeconds: number } | null;
+  footprintClampedRange?: { startSeconds: number; endSeconds: number } | null;
+  footprintChunkCount?: number;
+  footprintRowsPerChunk?: number[];
+  footprintRangeTooLargeSkipped?: boolean;
+  footprintRestoreFailureReason?: string | null;
 }
 
 export interface SettingsOpenRequest {
@@ -511,8 +518,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     cvdMode: 'candles',
     cvdSmoothing: 1,
     cvdResetMode: 'daily',
-    cvdPositiveColor: '#26A69A',
-    cvdNegativeColor: '#EF5350',
+    cvdPositiveColor: CHART_BULLISH_COLOR,
+    cvdNegativeColor: CHART_BEARISH_COLOR,
     cvdScaleMode: 'auto',
     cvdFixedRange: 1000,
     cvdShowDivergence: false,
@@ -1342,8 +1349,8 @@ export const useChartStore = create<ChartState>()(
             cvdMode: p.cvdMode || 'candles',
             cvdSmoothing: Math.max(1, Math.min(50, p.cvdSmoothing ?? 1)),
             cvdResetMode: p.cvdResetMode || 'daily',
-            cvdPositiveColor: p.cvdPositiveColor || '#26A69A',
-            cvdNegativeColor: p.cvdNegativeColor || '#EF5350',
+            cvdPositiveColor: normalizeChartSemanticColor(p.cvdPositiveColor, CHART_BULLISH_COLOR),
+            cvdNegativeColor: normalizeChartSemanticColor(p.cvdNegativeColor, CHART_BEARISH_COLOR),
             cvdScaleMode: p.cvdScaleMode || 'auto',
             cvdFixedRange: Math.max(1, p.cvdFixedRange ?? 1000),
             cvdShowDivergence: p.cvdShowDivergence ?? false,

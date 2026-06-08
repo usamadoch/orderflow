@@ -1,7 +1,8 @@
 import { LiquidityZone } from '../../types/liquidity';
+import { CHART_BEARISH_RGB, CHART_BULLISH_RGB } from '../config/chartColors';
 
-const BID_COLOR = [38, 166, 154]; // #26A69A — teal
-const ASK_COLOR = [239, 83, 80];  // #EF5350 — red
+const BID_COLOR = [CHART_BULLISH_RGB.r, CHART_BULLISH_RGB.g, CHART_BULLISH_RGB.b] as const;
+const ASK_COLOR = [CHART_BEARISH_RGB.r, CHART_BEARISH_RGB.g, CHART_BEARISH_RGB.b] as const;
 
 /**
  * Renders liquidity zones as horizontal bands across the chart.

@@ -1,4 +1,11 @@
 import { FootprintCell } from '../../types/footprint';
+import {
+  CHART_BEARISH_COLOR,
+  CHART_BEARISH_RGB,
+  CHART_BULLISH_COLOR,
+  CHART_BULLISH_RGB,
+  chartColorToRgba,
+} from '../config/chartColors';
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
@@ -68,11 +75,11 @@ export function drawFootprintCell(
   const askX = leftX + halfWidth + gap;
 
   // Draw bid (left)
-  ctx.fillStyle = `rgba(239, 83, 80, ${bidOpacity})`;
+  ctx.fillStyle = chartColorToRgba(CHART_BEARISH_RGB, bidOpacity);
   ctx.fillRect(leftX, y, halfWidth, safeHeight);
 
   // Draw ask (right)
-  ctx.fillStyle = `rgba(38, 166, 154, ${askOpacity})`;
+  ctx.fillStyle = chartColorToRgba(CHART_BULLISH_RGB, askOpacity);
   ctx.fillRect(askX, y, halfWidth, safeHeight);
 
   // Draw text
@@ -123,7 +130,9 @@ export function drawDeltaCell(
   const opacity = getDeltaOpacity(absDelta, deltaScale);
   
   // Bar background - extend toward the right from the left edge of the cell
-  ctx.fillStyle = delta >= 0 ? `rgba(38, 166, 154, ${opacity})` : `rgba(239, 83, 80, ${opacity})`;
+  ctx.fillStyle = delta >= 0
+    ? chartColorToRgba(CHART_BULLISH_RGB, opacity)
+    : chartColorToRgba(CHART_BEARISH_RGB, opacity);
   ctx.fillRect(centerX - safeWidth / 2, y, barWidth, safeHeight);
 
   // Delta text
@@ -157,7 +166,7 @@ export function drawDelta(
 ) {
   const y = canvasHeight - 20;
   
-  ctx.fillStyle = delta >= 0 ? '#26A69A' : '#EF5350';
+  ctx.fillStyle = delta >= 0 ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
   
   let fontSize = 11;
   if (width < 30) fontSize = 9;

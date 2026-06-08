@@ -40,8 +40,8 @@ export function Header() {
             onClick={() => setLayoutMode('single')}
             className={`px-2 py-1 rounded-md transition-all duration-200 ${
               layoutMode === 'single'
-                ? 'bg-surface text-accent border border-border shadow-sm'
-                : 'text-text-dim hover:text-main hover:bg-surface'
+                ? 'bg-[#1F1F1F] text-accent border border-border shadow-sm'
+                : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
             }`}
             title="Single panel"
           >
@@ -54,8 +54,8 @@ export function Header() {
             onClick={() => setLayoutMode('dual')}
             className={`px-2 py-1 rounded-md transition-all duration-200 ${
               layoutMode === 'dual'
-                ? 'bg-surface text-accent border border-border shadow-sm'
-                : 'text-text-dim hover:text-main hover:bg-surface'
+                ? 'bg-[#1F1F1F] text-accent border border-border shadow-sm'
+                : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
             }`}
             title="Dual panel"
           >

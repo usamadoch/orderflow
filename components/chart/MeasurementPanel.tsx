@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Measurement } from '@/lib/store/chart';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 import { formatPrice, formatVol, formatDelta } from '@/lib/utils/format';
 
 interface MeasurementPanelProps {
@@ -37,13 +38,13 @@ export function MeasurementPanel({ measurement, canvasRect }: MeasurementPanelPr
     panelTop = canvasRect.top + Math.max(startY, endY) + 8;
   }
 
-  const priceColor = metrics.priceDiff > 0.0001 ? '#26A69A' : metrics.priceDiff < -0.0001 ? '#EF5350' : '#8A8A8A';
-  const deltaColor = footprintMetrics && footprintMetrics.totalDelta > 0.0001 ? '#26A69A' : footprintMetrics && footprintMetrics.totalDelta < -0.0001 ? '#EF5350' : '#8A8A8A';
-  const ratioColor = footprintMetrics && footprintMetrics.buySellRatio > 1.0001 ? '#26A69A' : footprintMetrics && footprintMetrics.buySellRatio < 0.9999 ? '#EF5350' : '#8A8A8A';
+  const priceColor = metrics.priceDiff > 0.0001 ? CHART_BULLISH_COLOR : metrics.priceDiff < -0.0001 ? CHART_BEARISH_COLOR : '#8A8A8A';
+  const deltaColor = footprintMetrics && footprintMetrics.totalDelta > 0.0001 ? CHART_BULLISH_COLOR : footprintMetrics && footprintMetrics.totalDelta < -0.0001 ? CHART_BEARISH_COLOR : '#8A8A8A';
+  const ratioColor = footprintMetrics && footprintMetrics.buySellRatio > 1.0001 ? CHART_BULLISH_COLOR : footprintMetrics && footprintMetrics.buySellRatio < 0.9999 ? CHART_BEARISH_COLOR : '#8A8A8A';
 
   return (
     <div 
-      className="fixed z-[100] bg-[#141414] border border-[#1F1F1F] rounded shadow-xl p-2 w-[160px] pointer-events-none"
+      className="fixed z-[100] bg-[#1F1F1F] border border-[#1F1F1F] rounded shadow-xl p-2 w-[160px] pointer-events-none"
       style={{
         left: `${panelLeft}px`,
         top: `${panelTop}px`,
@@ -93,11 +94,11 @@ export function MeasurementPanel({ measurement, canvasRect }: MeasurementPanelPr
             </div>
             <div className="flex justify-between items-center h-[18px]">
               <span className="text-[9px] text-[#4A4A4A] uppercase">Buy Vol</span>
-              <span className="text-[12px] text-[#26A69A]">{formatVol(footprintMetrics.totalBuyVol)}</span>
+              <span className="text-[12px]" style={{ color: CHART_BULLISH_COLOR }}>{formatVol(footprintMetrics.totalBuyVol)}</span>
             </div>
             <div className="flex justify-between items-center h-[18px]">
               <span className="text-[9px] text-[#4A4A4A] uppercase">Sell Vol</span>
-              <span className="text-[12px] text-[#EF5350]">{formatVol(footprintMetrics.totalSellVol)}</span>
+              <span className="text-[12px]" style={{ color: CHART_BEARISH_COLOR }}>{formatVol(footprintMetrics.totalSellVol)}</span>
             </div>
             <div className="flex justify-between items-center h-[18px]">
               <span className="text-[9px] text-[#4A4A4A] uppercase">B/S</span>

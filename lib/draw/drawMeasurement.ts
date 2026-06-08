@@ -1,4 +1,5 @@
 import { Measurement } from '../store/chart';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '../config/chartColors';
 
 export function drawMeasurementRect(
   ctx: CanvasRenderingContext2D,
@@ -42,8 +43,8 @@ export function drawMeasurementRect(
 
     let color = '#8A8A8A'; // Neutral default
     if (metrics) {
-      if (metrics.priceDiff > 0.0001) color = '#26A69A'; // Green
-      else if (metrics.priceDiff < -0.0001) color = '#EF5350'; // Red
+      if (metrics.priceDiff > 0.0001) color = CHART_BULLISH_COLOR;
+      else if (metrics.priceDiff < -0.0001) color = CHART_BEARISH_COLOR;
     }
 
     ctx.strokeStyle = color;

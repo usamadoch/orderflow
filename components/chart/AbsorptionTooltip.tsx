@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { AbsorptionResult } from '@/types/absorption';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 import { useChartStore } from '@/lib/store/chart';
 
 interface AbsorptionTooltipProps {
@@ -13,7 +14,7 @@ interface AbsorptionTooltipProps {
 export const AbsorptionTooltip: React.FC<AbsorptionTooltipProps> = ({ result, x, y }) => {
   const isAuthenticated = useChartStore(s => s.isAuthenticated);
   const isSeller = result.direction === 'seller';
-  const color = isSeller ? '#26A69A' : '#EF5350';
+  const color = isSeller ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
   
   // Rank dots
   const dots = [];
@@ -30,7 +31,7 @@ export const AbsorptionTooltip: React.FC<AbsorptionTooltipProps> = ({ result, x,
 
   return (
     <div 
-      className="absolute pointer-events-none z-50 p-3 bg-[#141414]/95 backdrop-blur-md border border-[#1F1F1F] rounded-md shadow-xl flex flex-col gap-2 min-w-[200px]"
+      className="absolute pointer-events-none z-50 p-3 bg-[#1F1F1F]/95 backdrop-blur-md border border-[#1F1F1F] rounded-md shadow-xl flex flex-col gap-2 min-w-[200px]"
       style={{ 
         left: x + 15, 
         top: y - 40,

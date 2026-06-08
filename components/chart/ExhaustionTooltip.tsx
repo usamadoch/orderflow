@@ -26,7 +26,7 @@ export const ExhaustionTooltip: React.FC<ExhaustionTooltipProps> = ({ result, x,
 
   return (
     <div 
-      className="absolute pointer-events-none z-50 p-3 bg-[#141414]/95 backdrop-blur-md border border-[#1F1F1F] rounded-[6px] shadow-2xl flex flex-col gap-2 w-[220px]"
+      className="absolute pointer-events-none z-50 p-3 bg-[#1F1F1F]/95 backdrop-blur-md border border-[#1F1F1F] rounded-[6px] shadow-2xl flex flex-col gap-2 w-[220px]"
       style={{ 
         left: x + 15, 
         top: isBuyer ? y + 20 : y - 100, // Positioned below for buyer, above for seller

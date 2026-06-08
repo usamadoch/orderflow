@@ -57,7 +57,7 @@ export function PairSelector({ panelId = 'left' }: { panelId?: PanelId }) {
         className={`h-6 min-w-[88px] flex items-center justify-between gap-1.5 rounded-md border px-2 text-[11px] font-bold tracking-tight transition-all duration-150 ${
           isOpen
             ? 'border-accent bg-accent/10 text-accent shadow-sm shadow-accent/10'
-            : 'border-[#1A1A1A] bg-[#080808] text-[#E8E8E8] hover:border-accent/60 hover:text-white'
+            : 'border-[#1F1F1F] bg-[#1F1F1F] text-[#E8E8E8] hover:border-accent/60 hover:text-white'
         }`}
         title={`${panelId === 'left' ? 'Left' : 'Right'} panel symbol`}
         aria-expanded={isOpen}
@@ -86,8 +86,8 @@ export function PairSelector({ panelId = 'left' }: { panelId?: PanelId }) {
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex max-h-[min(640px,calc(100vh-48px))] w-full max-w-[420px] flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#0D0D0D] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#1F1F1F] bg-[#080808]/50 p-4">
+          <div className="popup-contrast flex max-h-[min(640px,calc(100vh-48px))] w-full max-w-[420px] flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#1F1F1F] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#1F1F1F] bg-[#1F1F1F]/50 p-4">
               <div className="flex flex-col">
                 <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-accent">Symbol</h3>
                 <span className="text-[9px] font-bold uppercase tracking-tighter text-text-dim/60">
@@ -105,7 +105,7 @@ export function PairSelector({ panelId = 'left' }: { panelId?: PanelId }) {
               </button>
             </div>
 
-            <div className="border-b border-[#1A1A1A] px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#787B86]">
+            <div className="border-b border-[#1F1F1F] px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#787B86]">
               Binance USDT
             </div>
             <div className="custom-scrollbar overflow-y-auto p-2">
@@ -120,8 +120,8 @@ export function PairSelector({ panelId = 'left' }: { panelId?: PanelId }) {
                       onClick={() => setExpandedSymbol(expanded ? null : symbol)}
                       className={`flex h-9 w-full items-center justify-between rounded-md px-3 text-left text-[11px] font-bold transition-colors ${
                         selectedSymbol
-                          ? 'bg-[#151515] text-[#E8E8E8]'
-                          : 'text-[#A5A7AD] hover:bg-[#151515] hover:text-white'
+                          ? 'bg-[#1F1F1F] text-[#E8E8E8]'
+                          : 'text-[#A5A7AD] hover:bg-[#1F1F1F] hover:text-white'
                       }`}
                       aria-expanded={expanded}
                     >
@@ -134,7 +134,7 @@ export function PairSelector({ panelId = 'left' }: { panelId?: PanelId }) {
                     </button>
 
                     {expanded && (
-                      <div className="bg-[#080808] px-2 pb-2">
+                      <div className="bg-[#1F1F1F] px-2 pb-2">
                         {CONTRACT_OPTIONS.map((option) => {
                           const selected = selectedSymbol && panel.contractType === option.value;
                           const label = option.value === 'futures' ? `${symbol}.P` : symbol;
@@ -147,7 +147,7 @@ export function PairSelector({ panelId = 'left' }: { panelId?: PanelId }) {
                               className={`mt-1 flex h-8 w-full items-center justify-between rounded-md border px-2.5 text-[11px] font-semibold transition-all ${
                                 selected
                                   ? 'border-accent bg-accent text-white shadow-sm shadow-accent/20'
-                                  : 'border-[#1A1A1A] bg-[#101010] text-[#A5A7AD] hover:border-accent/60 hover:text-white'
+                                  : 'border-[#1F1F1F] bg-[#1F1F1F] text-[#A5A7AD] hover:border-accent/60 hover:text-white'
                               }`}
                             >
                               <span>{option.label}</span>

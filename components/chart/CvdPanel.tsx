@@ -503,7 +503,7 @@ export function CvdPanel({
   }, []);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-[#0D0D0D] overflow-hidden">
+    <div ref={containerRef} className="w-full h-full relative bg-[#0F0F0F] overflow-hidden">
       <canvas
         ref={canvasRef}
         className="absolute top-0 left-0 outline-none"

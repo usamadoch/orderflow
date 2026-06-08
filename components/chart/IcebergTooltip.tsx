@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { IcebergLevel } from '@/types/iceberg';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 import { formatDelta, formatPrice, formatVol } from '@/lib/utils/format';
 
 interface IcebergTooltipProps {
@@ -11,8 +12,8 @@ interface IcebergTooltipProps {
 }
 
 const COLORS = {
-  bid_defense: '#26A69A',
-  ask_defense: '#EF5350',
+  bid_defense: CHART_BULLISH_COLOR,
+  ask_defense: CHART_BEARISH_COLOR,
 };
 
 const RANK_LEVELS = {
@@ -30,7 +31,7 @@ export const IcebergTooltip: React.FC<IcebergTooltipProps> = ({ level, x, y }) =
 
   return (
     <div
-      className="absolute pointer-events-none z-50 p-3 bg-[#141414]/95 backdrop-blur-md border border-[#1F1F1F] rounded-[6px] shadow-2xl flex flex-col gap-2 w-[240px]"
+      className="absolute pointer-events-none z-50 p-3 bg-[#1F1F1F]/95 backdrop-blur-md border border-[#1F1F1F] rounded-[6px] shadow-2xl flex flex-col gap-2 w-[240px]"
       style={{
         left: x + 14,
         top,

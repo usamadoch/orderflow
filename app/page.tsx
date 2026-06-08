@@ -54,7 +54,7 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         {!focusMode && <Sidebar />}
 
-        <main ref={containerRef} className="flex-1 relative flex bg-[#080808] min-w-0">
+        <main ref={containerRef} className="flex-1 relative flex bg-[#0F0F0F] min-w-0">
           {/* Left Panel — always visible */}
           <div style={{ width: leftPercent }} className="h-full flex min-w-0">
             <PanelFeedProvider panelId="left">

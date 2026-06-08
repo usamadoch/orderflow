@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Layers, Zap, X } from 'lucide-react';
-import { useChartStore, PanelId, AggregateBubbleMarketSource, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, ContractType, DataSourceMode, IndicatorSettingsSection, SettingsFocusSection, VolumeBarsColorMode, VolumeBarsInputData, VolumeBarsMarketSource } from '../../lib/store/chart';
+import { useChartStore, PanelId, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, IndicatorSettingsSection, SettingsFocusSection, VolumeBarsColorMode, VolumeBarsInputData } from '../../lib/store/chart';
 import { getMinimumFineProfileResolutionTicks } from '../../lib/config/markets';
 
 const SETTINGS_WIDTH = 544;
@@ -82,12 +82,9 @@ export function ChartSettingsDropdown({
   const setTickSize = useChartStore(s => s.setTickSize);
   const setFootprintMode = useChartStore(s => s.setFootprintMode);
   const setBucketSize = useChartStore(s => s.setBucketSize);
-  const setContractType = useChartStore(s => s.setContractType);
-  const setDataSourceMode = useChartStore(s => s.setDataSourceMode);
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
   const setBubbleSource = useChartStore(s => s.setBubbleSource);
   const setBubbleSizeBy = useChartStore(s => s.setBubbleSizeBy);
-  const setAggregateBubbleMarketSource = useChartStore(s => s.setAggregateBubbleMarketSource);
   const setBubbleThreshold = useChartStore(s => s.setBubbleThreshold);
   const setBubbleThresholdMode = useChartStore(s => s.setBubbleThresholdMode);
   const setBubbleMinOrders = useChartStore(s => s.setBubbleMinOrders);
@@ -141,7 +138,6 @@ export function ChartSettingsDropdown({
   const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
   const setVolumeBarsEnabled = useChartStore(s => s.setVolumeBarsEnabled);
   const setVolumeBarsInputData = useChartStore(s => s.setVolumeBarsInputData);
-  const setVolumeBarsMarketSource = useChartStore(s => s.setVolumeBarsMarketSource);
   const setVolumeBarsFilterMin = useChartStore(s => s.setVolumeBarsFilterMin);
   const setVolumeBarsFilterMax = useChartStore(s => s.setVolumeBarsFilterMax);
   const setVolumeBarsColorMode = useChartStore(s => s.setVolumeBarsColorMode);
@@ -194,7 +190,7 @@ export function ChartSettingsDropdown({
     sessions: 'Sessions',
     cvd: 'CVD',
     bubbles: 'Volume Bubbles',
-    volumeBars: 'Volume Bars',
+    volumeBars: 'Volume',
     heatmap: 'Heatmap',
     liquidityMap: 'Liquidity Map',
   };
@@ -351,12 +347,6 @@ export function ChartSettingsDropdown({
     { label: 'Volume', value: 'volume' },
     { label: 'Orders', value: 'orders' },
   ];
-  const aggregateBubbleMarketSources: { label: string; shortLabel: string; value: AggregateBubbleMarketSource }[] = [
-    { label: 'Active Chart', shortLabel: 'Active', value: 'active' },
-    { label: 'Spot', shortLabel: 'Spot', value: 'spot' },
-    { label: 'Futures', shortLabel: 'Futures', value: 'futures' },
-    { label: 'Both', shortLabel: 'Both', value: 'both' },
-  ];
   const bubbleScaleModes: { label: string; value: BubbleScaleMode; title: string }[] = [
     { label: 'Linear', value: 'linear', title: 'Direct value proportion' },
     { label: 'SQRT', value: 'sqrt', title: 'Compresses outliers while preserving relative size' },
@@ -364,15 +354,6 @@ export function ChartSettingsDropdown({
   ];
   const isAggregateBubbleSource = panel.bubbleSource === 'aggregateTrades';
   const showOrderBubbleControls = isAggregateBubbleSource && panel.bubbleSizeBy === 'orders';
-  const dataSourceModes: { label: string; value: DataSourceMode }[] = [
-    { label: 'Spot', value: 'spot' },
-    { label: 'Futures', value: 'futures' },
-    { label: 'Both', value: 'both' },
-  ];
-  const contractTypes: { label: string; value: ContractType }[] = [
-    { label: 'Spot', value: 'spot' },
-    { label: 'Futures', value: 'futures' },
-  ];
   const cvdModes: { label: string; value: CvdMode }[] = [
     { label: 'Candles', value: 'candles' },
     { label: 'Bars', value: 'bars' },
@@ -393,12 +374,6 @@ export function ChartSettingsDropdown({
     { label: 'Orders', value: 'orders' },
     { label: 'Agg Trades', value: 'aggregateTrades' },
   ];
-  const volumeBarsMarketSources: { label: string; shortLabel: string; value: VolumeBarsMarketSource }[] = [
-    { label: 'Active Chart', shortLabel: 'Active', value: 'active' },
-    { label: 'Spot', shortLabel: 'Spot', value: 'spot' },
-    { label: 'Futures', shortLabel: 'Futures', value: 'futures' },
-    { label: 'Both', shortLabel: 'Both', value: 'both' },
-  ];
   const volumeBarsColorModes: { label: string; value: VolumeBarsColorMode }[] = [
     { label: 'Fixed', value: 'fixed' },
     { label: 'Direction', value: 'priceDirection' },
@@ -417,7 +392,7 @@ export function ChartSettingsDropdown({
       label: 'Absorption',
       enabled: panel.absorptionEnabled,
       onToggle: () => setAbsorptionEnabled(panelId, !panel.absorptionEnabled),
-      enabledClass: 'bg-[#26A69A]/10 border-[#26A69A]/60 text-[#26A69A]',
+      enabledClass: 'bg-[#089981]/10 border-[#089981]/60 text-[#089981]',
     },
     {
       id: 'exhaustion',
@@ -431,7 +406,7 @@ export function ChartSettingsDropdown({
       label: 'Iceberg',
       enabled: panel.icebergEnabled,
       onToggle: () => setIcebergEnabled(panelId, !panel.icebergEnabled),
-      enabledClass: 'bg-[#26A69A]/10 border-[#26A69A]/60 text-[#26A69A]',
+      enabledClass: 'bg-[#089981]/10 border-[#089981]/60 text-[#089981]',
     },
     {
       id: 'liquidity-vacuum',
@@ -475,14 +450,14 @@ export function ChartSettingsDropdown({
                   onClick={() => setSessionEnabled(panelId, sid, !session.enabled)}
                   className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-200 ${session.enabled
                     ? 'bg-accent/5 border-accent text-accent'
-                    : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                     }`}
                 >
                   <span className="text-[10px] font-bold uppercase tracking-wider">Enabled</span>
                   <div className={`w-1.5 h-1.5 rounded-full ${session.enabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
                 </button>
 
-                <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#1F1F1F] bg-[#080808]">
+                <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#1F1F1F] bg-[#1F1F1F]">
                   <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Color</span>
                   <input
                     type="color"
@@ -494,21 +469,21 @@ export function ChartSettingsDropdown({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1.5 bg-[#080808] p-2 rounded-lg border border-[#1F1F1F]">
+                <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
                   <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time (UTC)</label>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
                       value={session.startHour}
                       onChange={(e) => setSessionTime(panelId, sid, 'startHour', Number(e.target.value))}
-                      className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
+                      className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
                       min="0" max="23" step="1"
                     />
                     <span className="text-text-dim/40">:</span>
                     <select
                       value={session.startMin}
                       onChange={(e) => setSessionTime(panelId, sid, 'startMin', Number(e.target.value))}
-                      className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
+                      className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
                     >
                       <option value="0">00</option>
                       <option value="30">30</option>
@@ -516,21 +491,21 @@ export function ChartSettingsDropdown({
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1.5 bg-[#080808] p-2 rounded-lg border border-[#1F1F1F]">
+                <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
                   <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time (UTC)</label>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
                       value={session.endHour}
                       onChange={(e) => setSessionTime(panelId, sid, 'endHour', Number(e.target.value))}
-                      className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
+                      className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
                       min="0" max="23" step="1"
                     />
                     <span className="text-text-dim/40">:</span>
                     <select
                       value={session.endMin}
                       onChange={(e) => setSessionTime(panelId, sid, 'endMin', Number(e.target.value))}
-                      className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
+                      className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
                     >
                       <option value="0">00</option>
                       <option value="30">30</option>
@@ -566,7 +541,7 @@ export function ChartSettingsDropdown({
                 onClick={() => setCvdMode(panelId, mode.value)}
                 className={`py-2 rounded-lg border text-[9px] font-black uppercase transition-all duration-200 ${panel.cvdMode === mode.value
                   ? 'bg-accent/10 border-accent text-accent'
-                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                   }`}
               >
                 {mode.label}
@@ -578,7 +553,7 @@ export function ChartSettingsDropdown({
             onClick={() => setCvdMinimized(panelId, !panel.cvdMinimized)}
             className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdMinimized
               ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
               }`}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider">Compact Mode</span>
@@ -586,12 +561,12 @@ export function ChartSettingsDropdown({
           </button>
 
           <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Reset</label>
               <select
                 value={panel.cvdResetMode}
                 onChange={(e) => setCvdResetMode(panelId, e.target.value as CvdResetMode)}
-                className="bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-bold text-main focus:border-accent focus:outline-none"
+                className="bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-bold text-main focus:border-accent focus:outline-none"
               >
                 {cvdResetModes.map((mode) => (
                   <option key={mode.value} value={mode.value}>{mode.label}</option>
@@ -599,7 +574,7 @@ export function ChartSettingsDropdown({
               </select>
             </div>
 
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scale</label>
               <div className="flex gap-1">
                 {cvdScaleModes.map((mode) => (
@@ -607,8 +582,8 @@ export function ChartSettingsDropdown({
                     key={mode.value}
                     onClick={() => setCvdScaleMode(panelId, mode.value)}
                     className={`flex-1 py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.cvdScaleMode === mode.value
-                      ? 'bg-[#1A1A1A] border-accent text-accent'
-                      : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                      ? 'bg-[#1F1F1F] border-accent text-accent'
+                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                       }`}
                   >
                     {mode.label}
@@ -618,7 +593,7 @@ export function ChartSettingsDropdown({
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Height</label>
               <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdPanelHeightPct}%</span>
@@ -627,12 +602,12 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.cvdPanelHeightPct}
               onChange={(e) => setCvdPanelHeightPct(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="12" max="45" step="1"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Smoothing</label>
               <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdSmoothing <= 1 ? 'OFF' : `${panel.cvdSmoothing}`}</span>
@@ -641,26 +616,26 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.cvdSmoothing}
               onChange={(e) => setCvdSmoothing(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="1" max="50" step="1"
             />
           </div>
 
           {panel.cvdScaleMode === 'fixed' && (
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Fixed Range</label>
               <input
                 type="number"
                 value={panel.cvdFixedRange}
                 onChange={(e) => setCvdFixedRange(panelId, Number(e.target.value) || 1)}
-                className="w-full bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-mono font-bold text-main focus:border-accent focus:outline-none"
+                className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-mono font-bold text-main focus:border-accent focus:outline-none"
                 min="1"
               />
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Positive</span>
               <input
                 type="color"
@@ -669,7 +644,7 @@ export function ChartSettingsDropdown({
                 className="w-8 h-6 bg-transparent border-0 p-0 cursor-pointer"
               />
             </label>
-            <label className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Negative</span>
               <input
                 type="color"
@@ -684,7 +659,7 @@ export function ChartSettingsDropdown({
             onClick={() => setCvdShowDivergence(panelId, !panel.cvdShowDivergence)}
             className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdShowDivergence
               ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
               }`}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider">Divergence Markers</span>
@@ -692,7 +667,7 @@ export function ChartSettingsDropdown({
           </button>
 
           {panel.cvdShowDivergence && (
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <div className="flex justify-between items-center mb-1">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Divergence Lookback</label>
                 <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdDivergenceLookback}</span>
@@ -701,7 +676,7 @@ export function ChartSettingsDropdown({
                 type="range"
                 value={panel.cvdDivergenceLookback}
                 onChange={(e) => setCvdDivergenceLookback(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                 min="3" max="30" step="1"
               />
             </div>
@@ -714,7 +689,7 @@ export function ChartSettingsDropdown({
   const renderVolumeBarsSettings = () => (
     <div ref={volumeBarsSectionRef} className="scroll-mt-5 space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Volume Bars</div>
+        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Volume</div>
         <button
           onClick={() => setVolumeBarsEnabled(panelId, !panel.volumeBarsEnabled)}
           className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.volumeBarsEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
@@ -727,7 +702,7 @@ export function ChartSettingsDropdown({
 
       {panel.volumeBarsEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="space-y-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="space-y-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Input Data</label>
               <span className="text-[11px] font-mono font-bold text-accent">
@@ -741,8 +716,8 @@ export function ChartSettingsDropdown({
                   type="button"
                   onClick={() => setVolumeBarsInputData(panelId, value)}
                   className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsInputData === value
-                    ? 'bg-[#1A1A1A] border-accent text-accent'
-                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    ? 'bg-[#1F1F1F] border-accent text-accent'
+                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                     }`}
                 >
                   {label}
@@ -751,53 +726,33 @@ export function ChartSettingsDropdown({
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Market Source</label>
-            <div className="grid grid-cols-4 gap-1">
-              {volumeBarsMarketSources.map(({ label, shortLabel, value }) => (
-                <button
-                  key={value}
-                  type="button"
-                  title={label}
-                  onClick={() => setVolumeBarsMarketSource(panelId, value)}
-                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsMarketSource === value
-                    ? 'bg-[#1A1A1A] border-accent text-accent'
-                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                >
-                  {shortLabel}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Min</label>
               <input
                 type="number"
                 value={panel.volumeBarsFilterMin}
                 onChange={(e) => setVolumeBarsFilterMin(panelId, Number(e.target.value))}
-                className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                 min="0"
                 step="1"
               />
             </div>
 
-            <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Max</label>
               <input
                 type="number"
                 value={panel.volumeBarsFilterMax}
                 onChange={(e) => setVolumeBarsFilterMax(panelId, Number(e.target.value))}
-                className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                 min="0"
                 step="1"
               />
             </div>
           </div>
 
-          <div className="space-y-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="space-y-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Color Mode</label>
             <div className="grid grid-cols-4 gap-1">
               {volumeBarsColorModes.map(({ label, value }) => (
@@ -806,8 +761,8 @@ export function ChartSettingsDropdown({
                   type="button"
                   onClick={() => setVolumeBarsColorMode(panelId, value)}
                   className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsColorMode === value
-                    ? 'bg-[#1A1A1A] border-accent text-accent'
-                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    ? 'bg-[#1F1F1F] border-accent text-accent'
+                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                     }`}
                 >
                   {label}
@@ -817,7 +772,7 @@ export function ChartSettingsDropdown({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <div className="flex justify-between items-center mb-1">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
                 <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.volumeBarsOpacity * 100)}%</span>
@@ -826,14 +781,14 @@ export function ChartSettingsDropdown({
                 type="range"
                 value={panel.volumeBarsOpacity * 100}
                 onChange={(e) => setVolumeBarsOpacity(panelId, Number(e.target.value) / 100)}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                 min="10"
                 max="100"
                 step="5"
               />
             </div>
 
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <div className="flex justify-between items-center mb-1">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Height</label>
                 <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsHeightPct}%</span>
@@ -842,7 +797,7 @@ export function ChartSettingsDropdown({
                 type="range"
                 value={panel.volumeBarsHeightPct}
                 onChange={(e) => setVolumeBarsHeightPct(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                 min="8"
                 max="35"
                 step="1"
@@ -855,7 +810,7 @@ export function ChartSettingsDropdown({
               onClick={() => setVolumeBarsShowValueText(panelId, !panel.volumeBarsShowValueText)}
               className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.volumeBarsShowValueText
                 ? 'bg-accent/5 border-accent text-accent'
-                : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                 }`}
             >
               <span className="text-[10px] font-bold uppercase tracking-wider">Show Values</span>
@@ -866,7 +821,7 @@ export function ChartSettingsDropdown({
               onClick={() => setVolumeBarsAverageLineEnabled(panelId, !panel.volumeBarsAverageLineEnabled)}
               className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.volumeBarsAverageLineEnabled
                 ? 'bg-accent/5 border-accent text-accent'
-                : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                 }`}
             >
               <span className="text-[10px] font-bold uppercase tracking-wider">Average Line</span>
@@ -875,7 +830,7 @@ export function ChartSettingsDropdown({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <div className="flex justify-between items-center mb-1">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Text Size</label>
                 <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsTextSize}px</span>
@@ -884,14 +839,14 @@ export function ChartSettingsDropdown({
                 type="range"
                 value={panel.volumeBarsTextSize}
                 onChange={(e) => setVolumeBarsTextSize(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                 min="8"
                 max="16"
                 step="1"
               />
             </div>
 
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <div className="flex justify-between items-center mb-1">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Average Len</label>
                 <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsAverageLength}</span>
@@ -900,7 +855,7 @@ export function ChartSettingsDropdown({
                 type="range"
                 value={panel.volumeBarsAverageLength}
                 onChange={(e) => setVolumeBarsAverageLength(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                 min="1"
                 max="200"
                 step="1"
@@ -928,7 +883,7 @@ export function ChartSettingsDropdown({
 
       {panel.bubblesEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="space-y-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="space-y-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bubble Source</label>
               <span className="text-[11px] font-mono font-bold text-accent">
@@ -944,8 +899,8 @@ export function ChartSettingsDropdown({
                   onClick={() => setBubbleSource(panelId, value)}
                   className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
                     panel.bubbleSource === value
-                      ? 'bg-[#1A1A1A] border-accent text-accent'
-                      : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                      ? 'bg-[#1F1F1F] border-accent text-accent'
+                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                   }`}
                 >
                   {shortLabel}
@@ -956,28 +911,7 @@ export function ChartSettingsDropdown({
 
           {isAggregateBubbleSource && (
             <div className="space-y-3">
-              <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Market Source</label>
-                <div className="grid grid-cols-4 gap-1">
-                  {aggregateBubbleMarketSources.map(({ label, shortLabel, value }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      title={label}
-                      onClick={() => setAggregateBubbleMarketSource(panelId, value)}
-                      className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
-                        panel.aggregateBubbleMarketSource === value
-                          ? 'bg-[#1A1A1A] border-accent text-accent'
-                          : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
-                    >
-                      {shortLabel}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Size By</label>
                 <div className="grid grid-cols-2 gap-1">
                   {bubbleSizeModes.map(({ label, value }) => (
@@ -987,8 +921,8 @@ export function ChartSettingsDropdown({
                       onClick={() => setBubbleSizeBy(panelId, value)}
                       className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
                         panel.bubbleSizeBy === value
-                          ? 'bg-[#1A1A1A] border-accent text-accent'
-                          : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          ? 'bg-[#1F1F1F] border-accent text-accent'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                       }`}
                     >
                       {label}
@@ -1000,12 +934,12 @@ export function ChartSettingsDropdown({
           )}
 
           {!showOrderBubbleControls && (
-            <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Volume</label>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setBubbleThresholdMode(panelId, panel.bubbleThresholdMode === 'absolute' ? 'relative' : 'absolute')}
-                  className="px-2 py-1 bg-[#1A1A1A] border border-[#1F1F1F] rounded text-[10px] font-black text-text-dim hover:text-main transition-colors uppercase"
+                  className="px-2 py-1 bg-[#1F1F1F] border border-[#1F1F1F] rounded text-[10px] font-black text-text-dim hover:text-main transition-colors uppercase"
                 >
                   {panel.bubbleThresholdMode === 'absolute' ? 'Fixed (BTC)' : 'Adaptive (x Avg)'}
                 </button>
@@ -1014,7 +948,7 @@ export function ChartSettingsDropdown({
                   value={localThreshold}
                   onChange={handleThresholdChange}
                   step={panel.bubbleThresholdMode === 'relative' ? "0.5" : "1"}
-                  className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                  className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                   min="0.1"
                 />
               </div>
@@ -1022,14 +956,14 @@ export function ChartSettingsDropdown({
           )}
 
           {showOrderBubbleControls && (
-            <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <div className="flex justify-between items-center">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Orders</label>
                 <input
                   type="number"
                   value={panel.bubbleMinOrders}
                   onChange={(e) => setBubbleMinOrders(panelId, Number(e.target.value))}
-                  className="w-20 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                  className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                   min="1"
                   max="1000"
                   step="1"
@@ -1039,7 +973,7 @@ export function ChartSettingsDropdown({
                 type="range"
                 value={panel.bubbleMinOrders}
                 onChange={(e) => setBubbleMinOrders(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                 min="1"
                 max="1000"
                 step="1"
@@ -1047,7 +981,7 @@ export function ChartSettingsDropdown({
             </div>
           )}
 
-          <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
             <div className="flex gap-1">
               {bubbleSides.map(({ label, value }) => (
@@ -1055,8 +989,8 @@ export function ChartSettingsDropdown({
                   key={value}
                   onClick={() => setBubbleSide(panelId, value)}
                   className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.bubbleSide === value
-                    ? 'bg-[#1A1A1A] border-accent text-accent'
-                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    ? 'bg-[#1F1F1F] border-accent text-accent'
+                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                     }`}
                 >
                   {label}
@@ -1065,7 +999,7 @@ export function ChartSettingsDropdown({
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scale Mode</label>
               <div className="flex gap-1 w-36">
@@ -1076,8 +1010,8 @@ export function ChartSettingsDropdown({
                     title={title}
                     onClick={() => setBubbleScaleMode(panelId, value)}
                     className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.bubbleScaleMode === value
-                      ? 'bg-[#1A1A1A] border-accent text-accent'
-                      : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                      ? 'bg-[#1F1F1F] border-accent text-accent'
+                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                       }`}
                   >
                     {label}
@@ -1088,7 +1022,7 @@ export function ChartSettingsDropdown({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <div className="flex justify-between items-center">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Radius</label>
                 <span className="text-[12px] font-mono font-bold text-accent">{panel.bubbleMinRadius}px</span>
@@ -1097,14 +1031,14 @@ export function ChartSettingsDropdown({
                 type="range"
                 value={panel.bubbleMinRadius}
                 onChange={(e) => setBubbleMinRadius(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                 min="1"
                 max={Math.max(1, Math.min(20, panel.bubbleMaxRadius - 1))}
                 step="1"
               />
             </div>
 
-            <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <div className="flex justify-between items-center">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Max Radius</label>
                 <span className="text-[12px] font-mono font-bold text-accent">{panel.bubbleMaxRadius}px</span>
@@ -1113,7 +1047,7 @@ export function ChartSettingsDropdown({
                 type="range"
                 value={panel.bubbleMaxRadius}
                 onChange={(e) => setBubbleMaxRadius(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                 min={Math.max(5, panel.bubbleMinRadius + 1)}
                 max="60"
                 step="1"
@@ -1134,14 +1068,14 @@ export function ChartSettingsDropdown({
           onClick={() => setDefaultProfileEnabled(panelId, !panel.defaultProfileEnabled)}
           className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.defaultProfileEnabled
             ? 'bg-accent/5 border-accent text-accent'
-            : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+            : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
             }`}
         >
           <span className="text-[10px] font-bold uppercase tracking-wider">Default Profile</span>
           <div className={`w-1.5 h-1.5 rounded-full ${panel.defaultProfileEnabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
         </button>
 
-        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex justify-between items-center mb-1">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scaling</label>
             <div className="flex gap-1 w-24">
@@ -1151,8 +1085,8 @@ export function ChartSettingsDropdown({
                   onClick={() => setProfileScaleMode(panelId, m)}
                   title={m === 'linear' ? 'True proportions - best for shape reading' : 'Amplifies low volume - best for activity presence'}
                   className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.profileScaleMode === m
-                    ? 'bg-[#1A1A1A] border-accent text-accent'
-                    : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    ? 'bg-[#1F1F1F] border-accent text-accent'
+                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                     }`}
                 >
                   {m}
@@ -1162,7 +1096,7 @@ export function ChartSettingsDropdown({
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex justify-between items-center mb-1">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
             <span className="text-[12px] font-mono font-bold text-accent">
@@ -1173,14 +1107,14 @@ export function ChartSettingsDropdown({
             type="range"
             value={panel.profileResolutionTicks}
             onChange={(e) => handleProfileResolutionChange(Number(e.target.value))}
-            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
             min="0"
             max={maxProfileResolutionTicks}
             step="1"
           />
         </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex justify-between items-center mb-1">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Width</label>
             <span className="text-[12px] font-mono font-bold text-accent">{panel.profileWidthPct}%</span>
@@ -1189,12 +1123,12 @@ export function ChartSettingsDropdown({
             type="range"
             value={panel.profileWidthPct}
             onChange={(e) => setProfileWidthPct(panelId, Number(e.target.value))}
-            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
             min="10" max="100" step="5"
           />
         </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex justify-between items-center mb-1">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
             <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.profileOpacity * 100)}%</span>
@@ -1203,12 +1137,12 @@ export function ChartSettingsDropdown({
             type="range"
             value={panel.profileOpacity * 100}
             onChange={(e) => setProfileOpacity(panelId, Number(e.target.value) / 100)}
-            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
             min="10" max="100" step="5"
           />
         </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex justify-between items-center mb-1">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Width</label>
             <span className="text-[12px] font-mono font-bold text-accent">
@@ -1219,12 +1153,12 @@ export function ChartSettingsDropdown({
             type="range"
             value={panel.profileMinRowWidth}
             onChange={(e) => setProfileMinRowWidth(panelId, Number(e.target.value))}
-            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
             min="0" max="8" step="1"
           />
         </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex justify-between items-center mb-1">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Height</label>
             <span className="text-[12px] font-mono font-bold text-accent">
@@ -1235,7 +1169,7 @@ export function ChartSettingsDropdown({
             type="range"
             value={panel.profileMinRowHeight}
             onChange={(e) => setProfileMinRowHeight(panelId, Number(e.target.value))}
-            className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
             min="0" max="4" step="0.5"
           />
         </div>
@@ -1245,7 +1179,7 @@ export function ChartSettingsDropdown({
             onClick={() => setProfileShowPocHighlight(panelId, !panel.profileShowPocHighlight)}
             className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocHighlight
               ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
               }`}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider">POC Highlight</span>
@@ -1256,7 +1190,7 @@ export function ChartSettingsDropdown({
             onClick={() => setProfileShowVaFill(panelId, !panel.profileShowVaFill)}
             className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaFill
               ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
               }`}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider">VA Area Fill</span>
@@ -1267,7 +1201,7 @@ export function ChartSettingsDropdown({
             onClick={() => setProfileShowPocLine(panelId, !panel.profileShowPocLine)}
             className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocLine
               ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
               }`}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider">POC Line</span>
@@ -1278,7 +1212,7 @@ export function ChartSettingsDropdown({
             onClick={() => setProfileShowVaLines(panelId, !panel.profileShowVaLines)}
             className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaLines
               ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
               }`}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider">VA Lines</span>
@@ -1289,7 +1223,7 @@ export function ChartSettingsDropdown({
             onClick={() => setProfileShowDelta(panelId, !panel.profileShowDelta)}
             className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowDelta
               ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
               }`}
           >
             <span className="text-[10px] font-bold uppercase tracking-wider">Show Delta</span>
@@ -1298,7 +1232,7 @@ export function ChartSettingsDropdown({
         </div>
 
         {panel.profileShowDelta && (
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Delta Width</label>
               <span className="text-[12px] font-mono font-bold text-accent">{panel.deltaProfileWidth}px</span>
@@ -1307,7 +1241,7 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.deltaProfileWidth}
               onChange={(e) => setDeltaProfileWidth(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="40" max="160" step="5"
             />
           </div>
@@ -1332,7 +1266,7 @@ export function ChartSettingsDropdown({
 
       {panel.liquidityEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
               <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityOpacity * 100)}%</span>
@@ -1341,12 +1275,12 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.liquidityOpacity * 100}
               onChange={(e) => setLiquidityOpacity(panelId, Number(e.target.value) / 100)}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="10" max="100" step="5"
             />
           </div>
 
-          <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bucket Size</label>
             <div className="flex items-center gap-2">
               <input
@@ -1356,14 +1290,14 @@ export function ChartSettingsDropdown({
                   const val = Number(e.target.value);
                   if (val >= 10) setLiquidityBucketSize(panelId, val);
                 }}
-                className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                className="w-16 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                 min="10" max="500" step="10"
               />
               <span className="text-[9px] text-text-dim font-black uppercase">$</span>
             </div>
           </div>
 
-          <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Size</label>
             <div className="flex items-center gap-2">
               <input
@@ -1373,14 +1307,14 @@ export function ChartSettingsDropdown({
                   const val = Number(e.target.value);
                   if (val >= 0.5) setMinimumLiquidityThreshold(panelId, val);
                 }}
-                className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                className="w-16 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                 min="0.5" max="100" step="0.5"
               />
               <span className="text-[9px] text-text-dim font-black uppercase">BTC</span>
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Range</label>
               <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityRange}%</span>
@@ -1389,7 +1323,7 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.liquidityRange}
               onChange={(e) => setLiquidityRange(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="5" max="20" step="1"
             />
           </div>
@@ -1414,7 +1348,7 @@ export function ChartSettingsDropdown({
 
       {panel.liquidityHeatmapEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Base Opacity</label>
               <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityHeatmapOpacity * 100)}%</span>
@@ -1423,12 +1357,12 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.liquidityHeatmapOpacity * 100}
               onChange={(e) => setLiquidityHeatmapOpacity(panelId, Number(e.target.value) / 100)}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="10" max="100" step="5"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Age Fade Factor</label>
               <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.liquidityHeatmapAgeFade * 100)}%</span>
@@ -1437,12 +1371,12 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.liquidityHeatmapAgeFade * 100}
               onChange={(e) => setLiquidityHeatmapAgeFade(panelId, Number(e.target.value) / 100)}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="0" max="100" step="5"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Strip Width</label>
               <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityHeatmapWidth}px</span>
@@ -1451,12 +1385,12 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.liquidityHeatmapWidth}
               onChange={(e) => setLiquidityHeatmapWidth(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="30" max="120" step="5"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">History Depth</label>
               <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityHistoryDepth} candles</span>
@@ -1465,7 +1399,7 @@ export function ChartSettingsDropdown({
               type="range"
               value={panel.liquidityHistoryDepth}
               onChange={(e) => setLiquidityHistoryDepth(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
               min="50" max="500" step="50"
             />
           </div>
@@ -1482,7 +1416,7 @@ export function ChartSettingsDropdown({
                 onClick={onClick as () => void}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${enabled
                   ? 'bg-accent/5 border-accent text-accent'
-                  : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                  : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                   }`}
               >
                 <span className="text-[10px] font-bold uppercase tracking-wider">{label as string}</span>
@@ -1494,7 +1428,7 @@ export function ChartSettingsDropdown({
               onClick={() => setLiquidityHeatmapShowPersistence(panelId, !panel.liquidityHeatmapShowPersistence)}
               className={`col-span-2 flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.liquidityHeatmapShowPersistence
                 ? 'bg-accent/5 border-accent text-accent'
-                : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                 }`}
             >
               <span className="text-[10px] font-bold uppercase tracking-wider">Show Persistence Bars</span>
@@ -1539,10 +1473,10 @@ export function ChartSettingsDropdown({
         onClick={(event) => event.stopPropagation()}
       >
         <div
-          className="flex max-h-[min(720px,calc(100vh-48px))] w-full flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#0D0D0D] shadow-2xl"
+          className="popup-contrast flex max-h-[min(720px,calc(100vh-48px))] w-full flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#1F1F1F] shadow-2xl"
           style={{ maxWidth: INDICATOR_DIALOG_WIDTH }}
         >
-          <div className="flex items-center justify-between border-b border-[#1F1F1F] bg-[#080808]/50 p-4">
+          <div className="flex items-center justify-between border-b border-[#1F1F1F] bg-[#1F1F1F]/50 p-4">
             <div className="flex flex-col">
               <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-accent">
                 {indicatorTitle ?? indicatorDialogTitles[indicatorSection]}
@@ -1570,7 +1504,7 @@ export function ChartSettingsDropdown({
   return (
     <div
       ref={dropdownRef}
-      className={`pointer-events-auto fixed z-[1000] flex w-[544px] flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#0D0D0D] shadow-2xl transition-shadow duration-200 ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''}`}
+      className={`popup-contrast pointer-events-auto fixed z-[1000] flex w-[544px] flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#1F1F1F] shadow-2xl transition-shadow duration-200 ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''}`}
       style={{ 
         left: position.x === -1 ? 'auto' : position.x,
         top: position.y,
@@ -1587,7 +1521,7 @@ export function ChartSettingsDropdown({
       {/* Header / Drag Handle */}
       <div 
         onMouseDown={handleMouseDown}
-        className={`p-4 border-b border-[#1F1F1F] flex items-center justify-between bg-[#080808]/50 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab active:cursor-grabbing'}`}
+        className={`p-4 border-b border-[#1F1F1F] flex items-center justify-between bg-[#1F1F1F]/50 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab active:cursor-grabbing'}`}
       >
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
@@ -1613,14 +1547,14 @@ export function ChartSettingsDropdown({
 
       <div className="flex flex-1 min-h-0">
         {/* Sidebar Navigation */}
-        <div className="w-32 bg-[#080808]/50 border-r border-[#1F1F1F] flex flex-col p-1.5 gap-1">
+        <div className="w-32 bg-[#1F1F1F]/50 border-r border-[#1F1F1F] flex flex-col p-1.5 gap-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${activeTab === tab.id
                 ? 'bg-accent/10 text-accent shadow-[inset_0_0_10px_rgba(61,126,255,0.05)]'
-                : 'text-text-dim hover:text-main hover:bg-[#151515]'
+                : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
                 }`}
             >
               <tab.icon size={14} className={activeTab === tab.id ? 'opacity-100' : 'opacity-40'} />
@@ -1635,60 +1569,10 @@ export function ChartSettingsDropdown({
             {/* Tab: Chart */}
             {activeTab === 'chart' && (
               <>
-                {/* Contract Type */}
-                <div className="space-y-4">
-                  <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Contract Type</div>
-                  <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Candles & Price</label>
-                    <div className="flex gap-1">
-                      {contractTypes.map(({ label, value }) => (
-                        <button
-                          key={value}
-                          onClick={() => setContractType(panelId, value)}
-                          className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.contractType === value
-                            ? 'bg-[#1A1A1A] border-accent text-accent'
-                            : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                            }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="text-[9px] text-text-dim/40 font-bold uppercase tracking-tighter">
-                      Sets the clean reference chart for candles, price axis, and OHLCV.
-                    </span>
-                  </div>
-                </div>
-
-                {/* Data Sources */}
-                <div className="space-y-4">
-                  <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Aggregate Trades</div>
-                  <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
-                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">AggTrades</label>
-                    <div className="flex gap-1">
-                      {dataSourceModes.map(({ label, value }) => (
-                        <button
-                          key={value}
-                          onClick={() => setDataSourceMode(panelId, value)}
-                          className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.dataSourceMode === value
-                            ? 'bg-[#1A1A1A] border-accent text-accent'
-                            : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                            }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="text-[9px] text-text-dim/40 font-bold uppercase tracking-tighter">
-                      Controls footprint volume and delta only. Non-contract trades are aligned to the chart price.
-                    </span>
-                  </div>
-                </div>
-
                 {/* Bucket Size */}
                 <div className="space-y-4">
                   <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Aggregation</div>
-                  <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                  <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                     <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Tick Size</label>
                     <div className="flex items-center gap-2">
                       <input
@@ -1696,19 +1580,19 @@ export function ChartSettingsDropdown({
                         step="0.1"
                         value={tickSize}
                         onChange={(e) => setTickSize(parseFloat(e.target.value) || 0.5)}
-                        className="w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                        className="w-16 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                       />
                       <span className="text-[9px] text-text-dim font-black uppercase">Price</span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                  <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                     <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Bucket Size</label>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setAutoBucketSize(panelId, !panel.autoBucketSize)}
                         className={`px-2 py-1 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.autoBucketSize
                           ? 'bg-accent/10 border-accent text-accent'
-                          : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         Auto
@@ -1721,7 +1605,7 @@ export function ChartSettingsDropdown({
                           const val = Number(e.target.value);
                           if (val > 0) setBucketSize(panelId, val);
                         }}
-                        className={`w-16 bg-[#0D0D0D] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold transition-all text-main ${panel.autoBucketSize ? 'opacity-50 cursor-not-allowed' : 'focus:border-accent focus:outline-none'}`}
+                        className={`w-16 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold transition-all text-main ${panel.autoBucketSize ? 'opacity-50 cursor-not-allowed' : 'focus:border-accent focus:outline-none'}`}
                         min="1"
                       />
                       <span className="text-[9px] text-text-dim font-black uppercase">Ticks</span>
@@ -1742,7 +1626,7 @@ export function ChartSettingsDropdown({
                         }`} />
                     </button>
                   </div>
-                  <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                  <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                     <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sync Crosshairs</label>
                     <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
                       {crosshairSyncEnabled ? 'Enabled' : 'Disabled'}
@@ -1765,8 +1649,8 @@ export function ChartSettingsDropdown({
                       <button
                         onClick={() => setFootprintMode(panelId, 'bid-ask')}
                         className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border transition-all duration-200 ${panel.footprintMode === 'bid-ask'
-                          ? 'bg-accent/10 border-accent text-accent shadow-[0_0_15px_rgba(38,166,154,0.1)]'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          ? 'bg-accent/10 border-accent text-accent shadow-[0_0_15px_rgba(8,153,129,0.1)]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         <div className="text-[11px] font-black">BID / ASK</div>
@@ -1775,8 +1659,8 @@ export function ChartSettingsDropdown({
                       <button
                         onClick={() => setFootprintMode(panelId, 'delta')}
                         className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border transition-all duration-200 ${panel.footprintMode === 'delta'
-                          ? 'bg-accent/10 border-accent text-accent shadow-[0_0_15px_rgba(38,166,154,0.1)]'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          ? 'bg-accent/10 border-accent text-accent shadow-[0_0_15px_rgba(8,153,129,0.1)]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         <div className="text-[11px] font-black">DELTA</div>
@@ -1795,14 +1679,14 @@ export function ChartSettingsDropdown({
                       onClick={() => setDefaultProfileEnabled(panelId, !panel.defaultProfileEnabled)}
                       className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.defaultProfileEnabled
                         ? 'bg-accent/5 border-accent text-accent'
-                        : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                        : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                         }`}
                     >
                       <span className="text-[10px] font-bold uppercase tracking-wider">Default Profile</span>
                       <div className={`w-1.5 h-1.5 rounded-full ${panel.defaultProfileEnabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
                     </button>
 
-                    <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scaling</label>
                         <div className="flex gap-1 w-24">
@@ -1812,8 +1696,8 @@ export function ChartSettingsDropdown({
                               onClick={() => setProfileScaleMode(panelId, m)}
                               title={m === 'linear' ? 'True proportions - best for shape reading' : 'Amplifies low volume - best for activity presence'}
                               className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.profileScaleMode === m
-                                ? 'bg-[#1A1A1A] border-accent text-accent'
-                                : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                                ? 'bg-[#1F1F1F] border-accent text-accent'
+                                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                                 }`}
                             >
                               {m}
@@ -1823,7 +1707,7 @@ export function ChartSettingsDropdown({
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
                         <span className="text-[12px] font-mono font-bold text-accent">
@@ -1834,14 +1718,14 @@ export function ChartSettingsDropdown({
                         type="range"
                         value={panel.profileResolutionTicks}
                         onChange={(e) => handleProfileResolutionChange(Number(e.target.value))}
-                        className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                        className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                         min="0"
                         max={maxProfileResolutionTicks}
                         step="1"
                       />
                     </div>
 
-                    <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Width</label>
                         <span className="text-[12px] font-mono font-bold text-accent">{panel.profileWidthPct}%</span>
@@ -1850,12 +1734,12 @@ export function ChartSettingsDropdown({
                         type="range"
                         value={panel.profileWidthPct}
                         onChange={(e) => setProfileWidthPct(panelId, Number(e.target.value))}
-                        className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                        className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                         min="10" max="100" step="5"
                       />
                     </div>
 
-                    <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
                         <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.profileOpacity * 100)}%</span>
@@ -1864,12 +1748,12 @@ export function ChartSettingsDropdown({
                         type="range"
                         value={panel.profileOpacity * 100}
                         onChange={(e) => setProfileOpacity(panelId, Number(e.target.value) / 100)}
-                        className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                        className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                         min="10" max="100" step="5"
                       />
                     </div>
 
-                    <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Width</label>
                         <span className="text-[12px] font-mono font-bold text-accent">
@@ -1880,12 +1764,12 @@ export function ChartSettingsDropdown({
                         type="range"
                         value={panel.profileMinRowWidth}
                         onChange={(e) => setProfileMinRowWidth(panelId, Number(e.target.value))}
-                        className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                        className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                         min="0" max="8" step="1"
                       />
                     </div>
 
-                    <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                    <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Height</label>
                         <span className="text-[12px] font-mono font-bold text-accent">
@@ -1896,7 +1780,7 @@ export function ChartSettingsDropdown({
                         type="range"
                         value={panel.profileMinRowHeight}
                         onChange={(e) => setProfileMinRowHeight(panelId, Number(e.target.value))}
-                        className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                        className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                         min="0" max="4" step="0.5"
                       />
                     </div>
@@ -1906,7 +1790,7 @@ export function ChartSettingsDropdown({
                         onClick={() => setProfileShowPocHighlight(panelId, !panel.profileShowPocHighlight)}
                         className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocHighlight
                           ? 'bg-accent/5 border-accent text-accent'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         <span className="text-[10px] font-bold uppercase tracking-wider">POC Highlight</span>
@@ -1917,7 +1801,7 @@ export function ChartSettingsDropdown({
                         onClick={() => setProfileShowVaFill(panelId, !panel.profileShowVaFill)}
                         className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaFill
                           ? 'bg-accent/5 border-accent text-accent'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         <span className="text-[10px] font-bold uppercase tracking-wider">VA Area Fill</span>
@@ -1928,7 +1812,7 @@ export function ChartSettingsDropdown({
                         onClick={() => setProfileShowPocLine(panelId, !panel.profileShowPocLine)}
                         className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocLine
                           ? 'bg-accent/5 border-accent text-accent'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         <span className="text-[10px] font-bold uppercase tracking-wider">POC Line</span>
@@ -1939,7 +1823,7 @@ export function ChartSettingsDropdown({
                         onClick={() => setProfileShowVaLines(panelId, !panel.profileShowVaLines)}
                         className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaLines
                           ? 'bg-accent/5 border-accent text-accent'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         <span className="text-[10px] font-bold uppercase tracking-wider">VA Lines</span>
@@ -1950,7 +1834,7 @@ export function ChartSettingsDropdown({
                         onClick={() => setProfileShowDelta(panelId, !panel.profileShowDelta)}
                         className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowDelta
                           ? 'bg-accent/5 border-accent text-accent'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         <span className="text-[10px] font-bold uppercase tracking-wider">Show Delta</span>
@@ -1959,7 +1843,7 @@ export function ChartSettingsDropdown({
                     </div>
 
                     {panel.profileShowDelta && (
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Delta Width</label>
                           <span className="text-[12px] font-mono font-bold text-accent">{panel.deltaProfileWidth}px</span>
@@ -1968,7 +1852,7 @@ export function ChartSettingsDropdown({
                           type="range"
                           value={panel.deltaProfileWidth}
                           onChange={(e) => setDeltaProfileWidth(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                           min="40" max="160" step="5"
                         />
                       </div>
@@ -1984,7 +1868,7 @@ export function ChartSettingsDropdown({
               <>
                 <div className="space-y-4">
                   <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Signal Toggles</div>
-                  <div className="grid grid-cols-1 gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                  <div className="grid grid-cols-1 gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                     {signalToggles.map((signal) => (
                       <button
                         key={signal.id}
@@ -1992,7 +1876,7 @@ export function ChartSettingsDropdown({
                         className={`flex items-center justify-between rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-all duration-200 ${
                           signal.enabled
                             ? signal.enabledClass
-                            : 'border-[#1F1F1F] bg-[#0D0D0D] text-text-dim hover:border-[#333] hover:text-main'
+                            : 'border-[#1F1F1F] bg-[#1F1F1F] text-text-dim hover:border-[#333] hover:text-main'
                         }`}
                       >
                         <span>{signal.label}</span>
@@ -2016,28 +1900,28 @@ export function ChartSettingsDropdown({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Absorption Signals</div>
-                    <span className={`rounded-full border px-2 py-1 text-[9px] font-black tracking-[0.18em] ${panel.absorptionEnabled ? 'border-[#26A69A]/60 text-[#26A69A]' : 'border-[#1F1F1F] text-text-dim/50'}`}>
+                    <span className={`rounded-full border px-2 py-1 text-[9px] font-black tracking-[0.18em] ${panel.absorptionEnabled ? 'border-[#089981]/60 text-[#089981]' : 'border-[#1F1F1F] text-text-dim/50'}`}>
                       {panel.absorptionEnabled ? 'ON' : 'OFF'}
                     </span>
                   </div>
 
                   {panel.absorptionEnabled && (
                     <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Score</label>
-                          <span className="text-[12px] font-mono font-bold text-[#26A69A]">{panel.absorptionMinScore}</span>
+                          <span className="text-[12px] font-mono font-bold text-[#089981]">{panel.absorptionMinScore}</span>
                         </div>
                         <input
                           type="range"
                           value={panel.absorptionMinScore}
                           onChange={(e) => setAbsorptionMinScore(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#26A69A]"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#089981]"
                           min="30" max="90" step="5"
                         />
                       </div>
 
-                      <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
                         <div className="flex gap-1">
                           {(['buyer', 'seller', 'both'] as AbsorptionSide[]).map(s => (
@@ -2045,8 +1929,8 @@ export function ChartSettingsDropdown({
                               key={s}
                               onClick={() => setAbsorptionSide(panelId, s)}
                               className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.absorptionSide === s
-                                ? 'bg-[#1A1A1A] border-[#26A69A] text-[#26A69A]'
-                                : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                                ? 'bg-[#1F1F1F] border-[#089981] text-[#089981]'
+                                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                                 }`}
                             >
                               {s === 'buyer' ? 'Buy' : s === 'seller' ? 'Sell' : 'Both'}
@@ -2069,7 +1953,7 @@ export function ChartSettingsDropdown({
 
                   {panel.exhaustionEnabled && (
                     <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Score</label>
                           <span className="text-[12px] font-mono font-bold text-[#F0B90B]">{panel.exhaustionMinScore}</span>
@@ -2078,12 +1962,12 @@ export function ChartSettingsDropdown({
                           type="range"
                           value={panel.exhaustionMinScore}
                           onChange={(e) => setExhaustionMinScore(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#F0B90B]"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#F0B90B]"
                           min="30" max="90" step="5"
                         />
                       </div>
 
-                      <div className="flex flex-col gap-2 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
                         <div className="flex gap-1">
                           {(['buyer', 'seller', 'both'] as ExhaustionSide[]).map(s => (
@@ -2091,8 +1975,8 @@ export function ChartSettingsDropdown({
                               key={s}
                               onClick={() => setExhaustionSide(panelId, s)}
                               className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.exhaustionSide === s
-                                ? 'bg-[#1A1A1A] border-[#F0B90B] text-[#F0B90B]'
-                                : 'bg-[#0D0D0D] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                                ? 'bg-[#1F1F1F] border-[#F0B90B] text-[#F0B90B]'
+                                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                                 }`}
                             >
                               {s === 'buyer' ? 'Buy' : s === 'seller' ? 'Sell' : 'Both'}
@@ -2101,7 +1985,7 @@ export function ChartSettingsDropdown({
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Lookback window</label>
                           <span className="text-[12px] font-mono font-bold text-accent">{panel.exhaustionLookback} Candles</span>
@@ -2110,12 +1994,12 @@ export function ChartSettingsDropdown({
                           type="range"
                           value={panel.exhaustionLookback}
                           onChange={(e) => setExhaustionLookback(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                           min="3" max="8" step="1"
                         />
                       </div>
 
-                      <div className="flex items-center justify-between bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Show on live candle</label>
                         <button
                           onClick={() => setExhaustionShowProvisional(panelId, !panel.exhaustionShowProvisional)}
@@ -2134,28 +2018,28 @@ export function ChartSettingsDropdown({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Iceberg Detection</div>
-                    <span className={`rounded-full border px-2 py-1 text-[9px] font-black tracking-[0.18em] ${panel.icebergEnabled ? 'border-[#26A69A]/60 text-[#26A69A]' : 'border-[#1F1F1F] text-text-dim/50'}`}>
+                    <span className={`rounded-full border px-2 py-1 text-[9px] font-black tracking-[0.18em] ${panel.icebergEnabled ? 'border-[#089981]/60 text-[#089981]' : 'border-[#1F1F1F] text-text-dim/50'}`}>
                       {panel.icebergEnabled ? 'ON' : 'OFF'}
                     </span>
                   </div>
 
                   {panel.icebergEnabled && (
                     <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Minimum score</label>
-                          <span className="text-[12px] font-mono font-bold text-[#26A69A]">{panel.icebergMinScore}</span>
+                          <span className="text-[12px] font-mono font-bold text-[#089981]">{panel.icebergMinScore}</span>
                         </div>
                         <input
                           type="range"
                           value={panel.icebergMinScore}
                           onChange={(e) => setIcebergMinScore(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#26A69A]"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#089981]"
                           min="30" max="80" step="5"
                         />
                       </div>
 
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Lookback window</label>
                           <span className="text-[12px] font-mono font-bold text-accent">{panel.icebergLookback} Candles</span>
@@ -2164,7 +2048,7 @@ export function ChartSettingsDropdown({
                           type="range"
                           value={panel.icebergLookback}
                           onChange={(e) => setIcebergLookback(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                           min="5" max="20" step="1"
                         />
                       </div>
@@ -2179,12 +2063,12 @@ export function ChartSettingsDropdown({
                             key={label as string}
                             onClick={onClick as () => void}
                             className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${enabled
-                              ? 'bg-[#26A69A]/5 border-[#26A69A] text-[#26A69A]'
-                              : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                              ? 'bg-[#089981]/5 border-[#089981] text-[#089981]'
+                              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                               }`}
                           >
                             <span className="text-[10px] font-bold uppercase tracking-wider">{label as string}</span>
-                            <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-[#26A69A] shadow-[0_0_8px_rgba(38,166,154,0.5)]' : 'bg-[#1F1F1F]'}`} />
+                            <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-[#089981] shadow-[0_0_8px_rgba(8,153,129,0.5)]' : 'bg-[#1F1F1F]'}`} />
                           </button>
                         ))}
                       </div>
@@ -2203,7 +2087,7 @@ export function ChartSettingsDropdown({
 
                   {panel.liquidityVacuumEnabled && (
                     <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Minimum score</label>
                           <span className="text-[12px] font-mono font-bold text-[#3D7EFF]">{panel.liquidityVacuumMinScore}</span>
@@ -2212,12 +2096,12 @@ export function ChartSettingsDropdown({
                           type="range"
                           value={panel.liquidityVacuumMinScore}
                           onChange={(e) => setLiquidityVacuumMinScore(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
                           min="30" max="90" step="5"
                         />
                       </div>
 
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Zone opacity</label>
                           <span className="text-[12px] font-mono font-bold text-[#3D7EFF]">{Math.round(panel.liquidityVacuumOpacity * 100)}%</span>
@@ -2226,12 +2110,12 @@ export function ChartSettingsDropdown({
                           type="range"
                           value={panel.liquidityVacuumOpacity * 100}
                           onChange={(e) => setLiquidityVacuumOpacity(panelId, Number(e.target.value) / 100)}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
                           min="5" max="50" step="1"
                         />
                       </div>
 
-                      <div className="flex flex-col gap-1.5 bg-[#080808] p-3 rounded-lg border border-[#1F1F1F]">
+                      <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Max zones</label>
                           <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityVacuumMaxZones}</span>
@@ -2240,7 +2124,7 @@ export function ChartSettingsDropdown({
                           type="range"
                           value={panel.liquidityVacuumMaxZones}
                           onChange={(e) => setLiquidityVacuumMaxZones(panelId, Number(e.target.value))}
-                          className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent"
+                          className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
                           min="1" max="20" step="1"
                         />
                       </div>
@@ -2249,7 +2133,7 @@ export function ChartSettingsDropdown({
                         onClick={() => setLiquidityVacuumShowLabels(panelId, !panel.liquidityVacuumShowLabels)}
                         className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.liquidityVacuumShowLabels
                           ? 'bg-[#3D7EFF]/5 border-[#3D7EFF] text-[#3D7EFF]'
-                          : 'bg-[#080808] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
                           }`}
                       >
                         <span className="text-[10px] font-bold uppercase tracking-wider">Show labels</span>
@@ -2265,17 +2149,17 @@ export function ChartSettingsDropdown({
       </div>
 
       {/* Footer info */}
-      <div className="p-3 border-t border-[#1F1F1F] bg-[#080808]/50">
+      <div className="p-3 border-t border-[#1F1F1F] bg-[#1F1F1F]/50">
         <div className="text-[9px] text-text-dim/40 text-center font-medium uppercase tracking-widest">
           Global Settings • {panelId} Panel
         </div>
       </div>
       <div
         onMouseDown={handleResizeMouseDown}
-        className="h-3 shrink-0 cursor-row-resize bg-[#080808]/60 border-t border-[#1A1A1A] flex items-center justify-center"
+        className="h-3 shrink-0 cursor-row-resize bg-[#1F1F1F]/60 border-t border-[#1F1F1F] flex items-center justify-center"
         title="Resize settings panel"
       >
-        <div className="h-1 w-12 rounded-full bg-[#2A2A2A]" />
+        <div className="h-1 w-12 rounded-full bg-[#1F1F1F]" />
       </div>
     </div>
   );

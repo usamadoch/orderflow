@@ -1,9 +1,9 @@
 import { Candle } from '@/types/candle';
 import { AbsorptionResult, AbsorptionRank } from '@/types/absorption';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, chartColorToRgba } from '@/lib/config/chartColors';
 
-// ── Colors ───────────────────────────────────────────────
-const COLOR_SELLER_ABS = '#26A69A';  // teal — passive buyers won
-const COLOR_BUYER_ABS  = '#EF5350';  // red  — passive sellers won
+const COLOR_SELLER_ABS = CHART_BULLISH_COLOR;
+const COLOR_BUYER_ABS = CHART_BEARISH_COLOR;
 
 // ── Rank → visual config ─────────────────────────────────
 interface RankConfig {
@@ -26,14 +26,8 @@ function getRankConfig(rank: AbsorptionRank): RankConfig {
   }
 }
 
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
-}
-
 function rgba(hex: string, a: number): string {
-  const { r, g, b } = hexToRgb(hex);
-  return `rgba(${r},${g},${b},${a})`;
+  return chartColorToRgba(hex, a);
 }
 
 // ── Main Draw ────────────────────────────────────────────

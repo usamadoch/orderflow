@@ -9,18 +9,15 @@ import {
 import {
   BASE_FOOTPRINT_BUCKET_SIZE,
   BASE_FOOTPRINT_TIMEFRAME,
+  BASE_FOOTPRINT_TIMEFRAME_SECONDS,
 } from '../../../../lib/aggregation/engine'
 
 export const dynamic = 'force-dynamic'
 
-const FOOTPRINT_RANGE_CANDLE_LIMIT = 500
-const TIMEFRAME_SECONDS = {
-  '1m': 60,
-  '5m': 5 * 60,
-  '15m': 15 * 60,
-  '1h': 60 * 60,
-  '4h': 4 * 60 * 60,
-} as const
+const FOOTPRINT_RANGE_MAX_SECONDS = 2 * 60 * 60
+const FOOTPRINT_RANGE_BASE_CANDLE_LIMIT = Math.floor(
+  FOOTPRINT_RANGE_MAX_SECONDS / BASE_FOOTPRINT_TIMEFRAME_SECONDS,
+)
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -48,13 +45,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid start, end, or bucketSize' }, { status: 400 })
     }
 
-    const maxRangeSeconds = FOOTPRINT_RANGE_CANDLE_LIMIT * TIMEFRAME_SECONDS[timeframe]
-    if (end - start > maxRangeSeconds) {
+    const requestedRangeSeconds = end - start
+    if (requestedRangeSeconds > FOOTPRINT_RANGE_MAX_SECONDS) {
       return NextResponse.json(
         {
-          error: `Footprint range is too large. Maximum range is ${maxRangeSeconds} seconds for ${timeframe}.`,
-          maxRangeSeconds,
-          maxCandles: FOOTPRINT_RANGE_CANDLE_LIMIT,
+          error: `Footprint range is too large. Maximum range is ${FOOTPRINT_RANGE_MAX_SECONDS} seconds for ${BASE_FOOTPRINT_TIMEFRAME} footprint data.`,
+          requestedRangeSeconds,
+          maxRangeSeconds: FOOTPRINT_RANGE_MAX_SECONDS,
+          maxBaseCandles: FOOTPRINT_RANGE_BASE_CANDLE_LIMIT,
+          baseTimeframe: BASE_FOOTPRINT_TIMEFRAME,
         },
         { status: 400 },
       )

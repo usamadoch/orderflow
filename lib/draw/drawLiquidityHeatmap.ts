@@ -1,4 +1,5 @@
 import { HeatmapRow } from '../../types/liquidity';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '../config/chartColors';
 import { hexToRgba } from '../utils/format';
 
 export interface HeatmapSettings {
@@ -56,15 +57,15 @@ export function drawLiquidityHeatmap(
 
     // Draw ask gradient (top half)
     const askGradient = ctx.createLinearGradient(0, 0, 0, Math.max(1, currentY));
-    askGradient.addColorStop(0, hexToRgba('#EF5350', 0));
-    askGradient.addColorStop(1, hexToRgba('#EF5350', askOpacity));
+    askGradient.addColorStop(0, hexToRgba(CHART_BEARISH_COLOR, 0));
+    askGradient.addColorStop(1, hexToRgba(CHART_BEARISH_COLOR, askOpacity));
     ctx.fillStyle = askGradient;
     ctx.fillRect(stripX, 0, stripWidth, currentY);
 
     // Draw bid gradient (bottom half)
     const bidGradient = ctx.createLinearGradient(0, currentY, 0, Math.max(currentY + 1, settings.canvasHeight));
-    bidGradient.addColorStop(0, hexToRgba('#26A69A', bidOpacity));
-    bidGradient.addColorStop(1, hexToRgba('#26A69A', 0));
+    bidGradient.addColorStop(0, hexToRgba(CHART_BULLISH_COLOR, bidOpacity));
+    bidGradient.addColorStop(1, hexToRgba(CHART_BULLISH_COLOR, 0));
     ctx.fillStyle = bidGradient;
     ctx.fillRect(stripX, currentY, stripWidth, settings.canvasHeight - currentY);
 
@@ -78,8 +79,8 @@ export function drawLiquidityHeatmap(
     const height = Math.max(1, bY - tY);
 
     let color = '#F0B90B'; // amber for contested/both
-    if (row.side === 'bid') color = '#26A69A';
-    else if (row.side === 'ask') color = '#EF5350';
+    if (row.side === 'bid') color = CHART_BULLISH_COLOR;
+    else if (row.side === 'ask') color = CHART_BEARISH_COLOR;
 
     const finalOpacity = Math.max(0.04, row.intensity * (1 - row.ageScore * settings.ageFadeFactor) * settings.heatmapOpacity);
 

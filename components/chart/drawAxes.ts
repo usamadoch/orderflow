@@ -17,7 +17,7 @@ export function calculatePriceStep(priceRange: number, chartHeight: number, minS
 const AXIS_FONT = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
 const AXIS_TEXT_COLOR = '#909090';
 const AXIS_BORDER_COLOR = '#1F1F1F';
-const AXIS_BG_COLOR = '#141414';
+const AXIS_BG_COLOR = '#0F0F0F';
 
 export function drawGrid(
   ctx: CanvasRenderingContext2D,
@@ -48,8 +48,9 @@ export function drawGrid(
     ctx.beginPath();
     for (let p = startPrice; p <= priceMax; p += step) {
       const y = priceToY(p);
-      ctx.moveTo(0, Math.round(y));
-      ctx.lineTo(chartWidth, Math.round(y));
+      const alignedY = Math.round(y) + 0.5;
+      ctx.moveTo(0, alignedY);
+      ctx.lineTo(chartWidth, alignedY);
     }
     ctx.stroke();
   }
@@ -61,8 +62,9 @@ export function drawGrid(
   for (let i = rawFirstIndex; i <= rawLastIndex; i++) {
     if (i % skipCount === 0) {
       const x = indexToX(i);
-      ctx.moveTo(Math.round(x), 0);
-      ctx.lineTo(Math.round(x), chartHeight);
+      const alignedX = Math.round(x) + 0.5;
+      ctx.moveTo(alignedX, 0);
+      ctx.lineTo(alignedX, chartHeight);
     }
   }
   ctx.stroke();

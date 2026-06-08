@@ -1,4 +1,5 @@
 import { VolumeProfile } from '@/lib/utils/volumeProfile';
+import { CHART_BEARISH_RGB, CHART_BULLISH_RGB, chartColorToRgba } from '@/lib/config/chartColors';
 
 /**
  * Draws the delta profile strip (ask volume - bid volume per price level).
@@ -65,10 +66,9 @@ export function drawDeltaProfile(
 
     const barX = stripRightEdge - barW;
     
-    // Teal for positive, Red for negative
     ctx.fillStyle = rowDelta > 0 
-      ? `rgba(38, 166, 154, ${profileOpacity})` 
-      : `rgba(239, 83, 80, ${profileOpacity})`;
+      ? chartColorToRgba(CHART_BULLISH_RGB, profileOpacity)
+      : chartColorToRgba(CHART_BEARISH_RGB, profileOpacity);
     
     // Clip at left edge (x=0)
     const drawX = Math.max(0, barX);

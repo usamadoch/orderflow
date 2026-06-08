@@ -76,7 +76,7 @@ export function DebugPanel() {
   const current = snapshot ?? getDebugPanelSnapshot();
 
   return (
-    <div className="fixed right-4 top-16 z-[80] flex max-h-[calc(100vh-5rem)] w-[min(920px,calc(100vw-2rem))] flex-col overflow-hidden rounded-md border border-[#2A2F35] bg-[#080B0E]/95 text-main shadow-2xl backdrop-blur">
+    <div className="popup-contrast fixed right-4 top-16 z-[80] flex max-h-[calc(100vh-5rem)] w-[min(920px,calc(100vw-2rem))] flex-col overflow-hidden rounded-md border border-[#2A2F35] bg-[#1F1F1F]/95 text-main shadow-2xl backdrop-blur">
       <div className="flex min-h-11 items-center justify-between border-b border-[#1F252B] px-3">
         <div className="min-w-0">
           <div className="text-xs font-black uppercase tracking-[0.14em] text-text-muted">Market Debug</div>
@@ -125,7 +125,7 @@ export function DebugPanel() {
             className={`h-8 shrink-0 rounded border px-3 text-[11px] font-bold transition-colors ${
               activeTab === tab.id
                 ? 'border-accent/60 bg-accent/15 text-main'
-                : 'border-white/10 bg-[#0D1116] text-text-muted hover:border-white/20 hover:text-main'
+                : 'border-white/10 bg-[#1F1F1F] text-text-muted hover:border-white/20 hover:text-main'
             }`}
           >
             {tab.label}
@@ -222,6 +222,12 @@ function RestoreTab({ snapshot }: { snapshot: DebugPanelSnapshot }) {
               <InfoRow label="Raw trade restore skipped" value={formatMaybe(runtime.historyRestoreStatus?.rawTradeRestoreSkipped)} />
               <InfoRow label="Profile restore skipped" value={formatMaybe(runtime.historyRestoreStatus?.profileRestoreSkipped)} />
               <InfoRow label="Footprint restore skipped" value={formatMaybe(runtime.historyRestoreStatus?.footprintRestoreSkipped)} />
+              <InfoRow label="Footprint requested" value={formatSecondsRange(runtime.historyRestoreStatus?.footprintRequestedRange)} />
+              <InfoRow label="Footprint clamped" value={formatSecondsRange(runtime.historyRestoreStatus?.footprintClampedRange)} />
+              <InfoRow label="Footprint chunks" value={runtime.historyRestoreStatus?.footprintChunkCount ?? 0} />
+              <InfoRow label="Rows per chunk" value={formatRowsPerChunk(runtime.historyRestoreStatus?.footprintRowsPerChunk)} />
+              <InfoRow label="Range too large skipped" value={formatMaybe(runtime.historyRestoreStatus?.footprintRangeTooLargeSkipped)} />
+              <InfoRow label="Footprint failure" value={runtime.historyRestoreStatus?.footprintRestoreFailureReason ?? 'none'} />
             </PanelBlock>
           ))}
         </div>
@@ -374,7 +380,7 @@ function StoreTab({ snapshot }: { snapshot: DebugPanelSnapshot }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-md border border-[#20262C] bg-[#0B0F13]">
+    <section className="rounded-md border border-[#20262C] bg-[#1F1F1F]">
       <div className="border-b border-[#1A2026] px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-text-muted">
         {title}
       </div>
@@ -385,7 +391,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function PanelBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-md border border-[#20262C] bg-[#0B0F13] p-3">
+    <section className="rounded-md border border-[#20262C] bg-[#1F1F1F] p-3">
       <div className="mb-2 text-[11px] font-black uppercase tracking-[0.12em] text-text-muted">{title}</div>
       <div className="space-y-1">{children}</div>
     </section>
@@ -396,7 +402,7 @@ function MetricGrid({ items }: { items: Array<[string, React.ReactNode]> }) {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
       {items.map(([label, value]) => (
-        <div key={label} className="rounded border border-white/10 bg-[#080B0E] px-2 py-2">
+        <div key={label} className="rounded border border-white/10 bg-[#1F1F1F] px-2 py-2">
           <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-text-dim">{label}</div>
           <div className="mt-1 break-words text-xs font-mono text-main">{formatValue(value)}</div>
         </div>
@@ -445,7 +451,7 @@ function JsonSnippet({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="pt-2">
       <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-text-dim">{label}</div>
-      <pre className="max-h-32 overflow-auto rounded border border-white/10 bg-[#07090B] p-2 text-[10px] leading-relaxed text-text-muted">
+      <pre className="max-h-32 overflow-auto rounded border border-white/10 bg-[#1F1F1F] p-2 text-[10px] leading-relaxed text-text-muted">
         {value ? JSON.stringify(value, null, 2) : 'null'}
       </pre>
     </div>
@@ -476,6 +482,19 @@ function formatRecord(record: Record<string, number>) {
 
 function formatMaybe(value: boolean | undefined) {
   return value === undefined ? 'n/a' : formatBool(value);
+}
+
+function formatSecondsRange(range: { startSeconds: number; endSeconds: number } | null | undefined) {
+  if (!range) return 'n/a';
+  const start = new Date(range.startSeconds * 1000).toISOString();
+  const end = new Date(range.endSeconds * 1000).toISOString();
+  const minutes = Math.max(0, Math.round((range.endSeconds - range.startSeconds) / 60));
+  return `${start} -> ${end} (${minutes}m)`;
+}
+
+function formatRowsPerChunk(rows: number[] | undefined) {
+  if (!rows || rows.length === 0) return 'n/a';
+  return rows.join(', ');
 }
 
 function formatBool(value: boolean) {

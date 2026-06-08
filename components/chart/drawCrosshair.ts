@@ -1,7 +1,7 @@
 import { formatPrice, formatTime12h } from "@/lib/utils/format";
 
 const CROSSHAIR_FONT = '12px "Inter", -apple-system, system-ui, sans-serif';
-const CROSSHAIR_BG = '#2A2A2A';
+const CROSSHAIR_BG = '#1F1F1F';
 const CROSSHAIR_BORDER = '#8A8A8A';
 const CROSSHAIR_TEXT = '#FFFFFF';
 
@@ -95,4 +95,3 @@ export function drawCrosshairTimeLabel(
   ctx.textBaseline = 'middle';
   ctx.fillText(label, mouseX, chartHeight + 1 + rectHeight / 2);
 }
-

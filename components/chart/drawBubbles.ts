@@ -1,5 +1,6 @@
 import { Candle } from '@/types/candle';
 import { AggregationEngine } from '@/lib/aggregation/engine';
+import { CHART_BEARISH_RGB, CHART_BULLISH_RGB, chartColorToRgba } from '@/lib/config/chartColors';
 import { recordAggregateBubbleDebug } from '@/lib/debug/marketMetrics';
 import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleSource } from '@/types/bubble';
 
@@ -321,16 +322,14 @@ export function drawBubbles(
       const opacity = 0.4 + t * 0.5;
 
       const isBuy = side === 'buy';
-      const r = isBuy ? 38 : 239;
-      const g = isBuy ? 166 : 83;
-      const b = isBuy ? 154 : 80;
+      const rgb = isBuy ? CHART_BULLISH_RGB : CHART_BEARISH_RGB;
 
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+      ctx.fillStyle = chartColorToRgba(rgb, opacity);
       ctx.fill();
 
-      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 1)`;
+      ctx.strokeStyle = chartColorToRgba(rgb, 1);
       ctx.lineWidth = 1;
       ctx.stroke();
 
@@ -603,17 +602,15 @@ export function drawAggregateTradeBubbles(
     const opacity = 0.4 + t * 0.5;
 
     const isBuy = event.side === 'buy';
-    const r = isBuy ? 38 : 239;
-    const g = isBuy ? 166 : 83;
-    const b = isBuy ? 154 : 80;
+    const rgb = isBuy ? CHART_BULLISH_RGB : CHART_BEARISH_RGB;
 
     ctx.beginPath();
     ctx.arc(placement.x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    ctx.fillStyle = chartColorToRgba(rgb, opacity);
     ctx.fill();
 
     const distinguishMarketSource = resolvedMarketSource === 'both';
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 1)`;
+    ctx.strokeStyle = chartColorToRgba(rgb, 1);
     ctx.lineWidth = distinguishMarketSource && event.contractType === 'futures' ? 1.5 : 1;
     ctx.setLineDash(distinguishMarketSource && event.contractType === 'futures' ? [3, 2] : []);
     ctx.stroke();
