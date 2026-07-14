@@ -12,6 +12,7 @@ import { formatCvdValue } from './drawCvd';
 import { PanelToolbar } from '../ui/PanelToolbar';
 import { DrawingFavoritesToolbar } from '../ui/DrawingFavoritesToolbar';
 import { IndicatorLabels } from './IndicatorLabels';
+import { OrderTicket } from '../ui/OrderTicket';
 
 interface ChartPanelProps {
   panelId: PanelId;
@@ -27,6 +28,9 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const setCvdPanelHeightPct = useChartStore(s => s.setCvdPanelHeightPct);
   const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
   const setHistoryRestoreStatus = useChartRuntimeStore(s => s.setHistoryRestoreStatus);
+  const tradingOpenOrders = useChartRuntimeStore(s => s.tradingStatus.openOrders);
+  const tradingPositions = useChartRuntimeStore(s => s.tradingStatus.positions);
+  const tradingRecentTrades = useChartRuntimeStore(s => s.tradingStatus.recentTrades);
   const tickSize = useChartStore(s => s.tickSize);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
@@ -52,6 +56,23 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   );
   const flowSource = panel.dataSourceMode;
   const volumeFlowSource = flowSource === panel.contractType ? 'active' : flowSource;
+  const panelSymbol = panel.pair.toUpperCase();
+  const chartOpenOrders = React.useMemo(
+    () => panel.contractType === 'spot'
+      ? tradingOpenOrders.filter((order) => order.symbol.toUpperCase() === panelSymbol)
+      : [],
+    [panel.contractType, panelSymbol, tradingOpenOrders],
+  );
+  const chartPositions = React.useMemo(
+    () => tradingPositions.filter((position) => position.symbol.toUpperCase() === panelSymbol),
+    [panelSymbol, tradingPositions],
+  );
+  const chartRecentTrades = React.useMemo(
+    () => panel.contractType === 'spot'
+      ? tradingRecentTrades.filter((trade) => trade.symbol.toUpperCase() === panelSymbol)
+      : [],
+    [panel.contractType, panelSymbol, tradingRecentTrades],
+  );
 
   React.useEffect(() => {
     if (restoreStatus?.stage !== 'complete') return;
@@ -139,6 +160,11 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             aggregateBubbleEvents={panel.aggregateBubbleEvents}
             activeChartContractType={panel.contractType}
             activeDataSourceMode={panel.dataSourceMode}
+            tradingSymbol={panelSymbol}
+            tradingContractType={panel.contractType}
+            openOrders={chartOpenOrders}
+            positions={chartPositions}
+            recentFills={chartRecentTrades}
             volumeBarsEnabled={panel.volumeBarsEnabled}
             volumeBarsInputData={panel.volumeBarsInputData}
             volumeBarsMarketSource={volumeFlowSource}
@@ -210,6 +236,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
           />
           <IndicatorLabels panelId={panelId} isLoading={isPanelLoading} />
+          <OrderTicket panelId={panelId} />
           {isCvdCompact && (
             <button
               onClick={() => setCvdMinimized(panelId, false)}

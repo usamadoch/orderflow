@@ -1,5 +1,5 @@
 import type { MarketDebugSnapshot } from './marketMetrics';
-import { useChartRuntimeStore, type PanelRuntimeState } from '@/lib/store/chartRuntime';
+import { useChartRuntimeStore, type PanelRuntimeState, type TradingRuntimeStatus } from '@/lib/store/chartRuntime';
 import { useChartStore, type PanelId, type PanelState } from '@/lib/store/chart';
 
 const PANEL_IDS: PanelId[] = ['left', 'right'];
@@ -18,6 +18,7 @@ export interface DebugPanelSnapshot {
 
 export interface RuntimeSummary {
   panels: Record<PanelId, RuntimePanelSummary>;
+  trading: TradingDebugSummary;
   crosshair: {
     activePanel: PanelId | null;
     time: number | null;
@@ -40,6 +41,33 @@ export interface RuntimePanelSummary {
   liquidityZoneCount: number;
   footprintTrigger: number;
   historyRestoreStatus: PanelRuntimeState['historyRestoreStatus'];
+}
+
+export interface TradingDebugSummary {
+  tradingMode: TradingRuntimeStatus['currentMode'];
+  accountSnapshotConnected: boolean;
+  userStreamConnected: boolean;
+  userStreamStatus: TradingRuntimeStatus['userStreamStatus'];
+  userStreamLastEventAt: string | null;
+  reconnectCount: number;
+  lastReconciledAt: string | null;
+  balancesCount: number;
+  openOrdersCount: number;
+  positionsCount: number;
+  recentTradesCount: number;
+  lastSnapshotAt: string | null;
+  lastSnapshotError: string | null;
+  orderActionLoading: boolean;
+  orderActionError: string | null;
+  orderActionSuccess: string | null;
+  riskStatus: TradingRuntimeStatus['riskStatus'];
+  liveBlocked: boolean;
+  killSwitchActive: boolean;
+  dailyOrderCount: number | null;
+  dailyOrderLimit: number | null;
+  maxOrderNotional: number | null;
+  maxOrderQty: number | null;
+  lastRiskRejectionReason: string | null;
 }
 
 export interface SettingsSummary {
@@ -119,6 +147,7 @@ function getRuntimeSummary(): RuntimeSummary {
       left: summarizeRuntimePanel(runtimeState.panels.left),
       right: summarizeRuntimePanel(runtimeState.panels.right),
     },
+    trading: summarizeTradingStatus(runtimeState.tradingStatus),
     crosshair: {
       activePanel: runtimeState.crosshair.activePanel,
       time: runtimeState.crosshair.time,
@@ -147,6 +176,35 @@ function summarizeRuntimePanel(panel: PanelRuntimeState): RuntimePanelSummary {
     liquidityZoneCount: panel.liquidityZones.length,
     footprintTrigger: panel.footprintTrigger,
     historyRestoreStatus: panel.historyRestoreStatus,
+  };
+}
+
+function summarizeTradingStatus(status: TradingRuntimeStatus): TradingDebugSummary {
+  return {
+    tradingMode: status.currentMode,
+    accountSnapshotConnected: status.connectionStatus === 'connected' && !status.snapshotError,
+    userStreamConnected: status.userStreamConnected,
+    userStreamStatus: status.userStreamStatus,
+    userStreamLastEventAt: status.userStreamLastEventAt,
+    reconnectCount: status.userStreamReconnectCount,
+    lastReconciledAt: status.lastReconciledAt,
+    balancesCount: status.balances.length,
+    openOrdersCount: status.openOrders.length,
+    positionsCount: status.positions.length,
+    recentTradesCount: status.recentTrades.length,
+    lastSnapshotAt: status.lastSnapshotAt,
+    lastSnapshotError: status.snapshotError,
+    orderActionLoading: status.orderActionLoading,
+    orderActionError: status.orderActionError,
+    orderActionSuccess: status.orderActionSuccess,
+    riskStatus: status.riskStatus,
+    liveBlocked: status.liveBlocked,
+    killSwitchActive: status.killSwitchActive,
+    dailyOrderCount: status.riskStatus?.dailyOrderCountUsed ?? null,
+    dailyOrderLimit: status.riskStatus?.dailyOrderCountLimit ?? null,
+    maxOrderNotional: status.riskStatus?.maxOrderNotional ?? null,
+    maxOrderQty: status.riskStatus?.maxOrderQty ?? null,
+    lastRiskRejectionReason: status.riskStatus?.lastRiskRejectionReason ?? null,
   };
 }
 

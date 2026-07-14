@@ -60,12 +60,11 @@ function getSnapshotKey(symbol: string, limit: number) {
 }
 
 function log(message: string, details: Record<string, unknown>) {
-  const streamKey = String(details.streamKey ?? 'n/a');
-  const subscriberCount = String(details.subscriberCount ?? 'n/a');
-  const runtime = typeof window === 'undefined' ? 'server' : 'client';
+  void message;
+  void details;
 
   // console.log(
-  //   `[FEED_REGISTRY] ${message} | key=${streamKey} | subscribers=${subscriberCount} | runtime=${runtime}`,
+  //   `[FEED_REGISTRY] ${message} | key=${String(details.streamKey ?? 'n/a')} | subscribers=${String(details.subscriberCount ?? 'n/a')} | runtime=${typeof window === 'undefined' ? 'server' : 'client'}`,
   //   details,
   // );
 }

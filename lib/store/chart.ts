@@ -1412,7 +1412,8 @@ export const useChartStore = create<ChartState>()(
           : currentState.tickSize;
         const persistedLeft = persistedState.panels?.left || {};
         const persistedRight = persistedState.panels?.right || {};
-        const { crosshair: _crosshair, ...persistedSettings } = persistedState;
+        const persistedSettings = { ...persistedState };
+        delete persistedSettings.crosshair;
         return {
           ...currentState,
           ...persistedSettings,

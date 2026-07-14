@@ -12,6 +12,7 @@ import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexT
 import { drawCandles } from './drawCandles';
 import { drawFootprint } from './drawFootprint';
 import { drawVolumeBars } from './drawVolumeBars';
+import { drawTradingOverlays } from './drawTradingOverlays';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
 import { drawPriceLine } from './drawPriceLine';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
@@ -22,6 +23,7 @@ import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
 import { drawDrawingPriceLabels, drawLines } from './drawLines';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
+import type { Order, Position, TradeFill, TradingRiskStatusPayload } from '@/types/trading';
 import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource } from '@/types/bubble';
 import { AbsorptionResult } from '@/types/absorption';
 import { ExhaustionResult } from '@/types/exhaustion';
@@ -46,10 +48,17 @@ import { HeatmapRow, LiquidityZone } from '@/types/liquidity';
 import { IcebergTooltip } from './IcebergTooltip';
 import { MIN_FINE_PROFILE_BASE_BUCKET_SIZE } from '@/lib/config/markets';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
+import { formatPrice, formatVol } from '@/lib/utils/format';
 
 type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
 type DrawingHitZone = 'hover' | 'move' | 'delete' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom' | 'resize-entry' | 'resize-stop' | 'resize-target';
 type CustomProfileRange = NonNullable<PanelState['customProfileRange']>;
+type PendingModifyOrder = {
+  order: Order;
+  originalPrice: number;
+  newPrice: number;
+  quantity: number;
+};
 
 const DRAWING_COLORS = [
   CHART_BEARISH_COLOR,
@@ -187,6 +196,91 @@ function hasPositionGeometry(line: DrawnLine) {
     line.stopPrice !== undefined &&
     line.targetPrice !== undefined
   );
+}
+
+function ModifyConfirmRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
+  return (
+    <div className="flex items-center justify-between rounded border border-[#303030] bg-[#262626] px-3 py-2">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-[#787B86]">{label}</span>
+      <span className="text-right text-[11px] font-black uppercase text-[#E8E8E8]" style={valueColor ? { color: valueColor } : undefined}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function isActiveLimitOrder(order: Order) {
+  return (
+    order.type === 'limit' &&
+    (order.status === 'open' || order.status === 'partially_filled') &&
+    Number.isFinite(order.price) &&
+    !!order.price
+  );
+}
+
+function getRemainingOrderQuantity(order: Order) {
+  if (Number.isFinite(order.quantity) && Number.isFinite(order.filledQuantity)) {
+    const remaining = order.quantity - order.filledQuantity;
+    if (remaining > 0) return remaining;
+  }
+
+  return Number.isFinite(order.quantity) && order.quantity > 0 ? order.quantity : null;
+}
+
+function getModifyBlockReason(input: {
+  order: Order;
+  symbol: string;
+  contractType: ContractType;
+  mode: string;
+  modeBadge: string;
+  price?: number;
+  quantity?: number;
+  riskStatus?: TradingRiskStatusPayload | null;
+}) {
+  const { order, symbol, contractType, mode, modeBadge, price, quantity, riskStatus } = input;
+
+  if (mode === 'binance_live' || modeBadge === 'live') return 'Live trading is blocked for drag modify.';
+  if (mode !== 'binance_testnet' || modeBadge !== 'testnet') return 'Only Binance testnet spot order modification is supported.';
+  if (riskStatus?.killSwitchActive) return riskStatus.blockReasons[0] ?? 'Trading kill switch is active.';
+  if (riskStatus?.liveBlocked) return riskStatus.blockReasons[0] ?? 'Live trading is blocked.';
+  if (riskStatus && riskStatus.blockReasons.length > 0) return riskStatus.blockReasons[0];
+  if (contractType !== 'spot') return 'Only spot limit orders can be modified.';
+  if (order.symbol.toUpperCase() !== symbol.toUpperCase()) return 'Order symbol does not match this chart panel.';
+  if (!order.id || order.id.trim().length === 0) return 'Order id is required to modify an order.';
+  if (order.type !== 'limit') return 'Only open Limit orders can be modified.';
+  if (order.status !== 'open' && order.status !== 'partially_filled') return 'Only open orders can be modified.';
+  if (getRemainingOrderQuantity(order) === null) return 'Remaining quantity is required to modify an order.';
+  if (price !== undefined && (!Number.isFinite(price) || price <= 0)) return 'Replacement limit price must be greater than 0.';
+  if (riskStatus && quantity !== undefined && quantity > riskStatus.maxOrderQty) return `Order quantity exceeds max quantity ${riskStatus.maxOrderQty}.`;
+  if (riskStatus && price !== undefined && quantity !== undefined) {
+    const notional = quantity * price;
+    if (Number.isFinite(notional) && notional > riskStatus.maxOrderNotional) return `Order notional exceeds max notional ${riskStatus.maxOrderNotional}.`;
+  }
+  if (riskStatus && riskStatus.dailyOrderCountUsed >= riskStatus.dailyOrderCountLimit) {
+    return `Daily order count limit ${riskStatus.dailyOrderCountLimit} has been reached.`;
+  }
+  return null;
+}
+
+function findNearestOrderLine(
+  orders: Order[],
+  x: number,
+  y: number,
+  chartWidth: number,
+  chartHeight: number,
+  priceToY: (price: number) => number,
+) {
+  if (x < 0 || x > chartWidth || y < 0 || y > chartHeight) return null;
+
+  let nearest: { order: Order; distance: number } | null = null;
+  for (const order of orders) {
+    if (order.type !== 'limit' || !Number.isFinite(order.price) || !order.price) continue;
+    const distance = Math.abs(y - priceToY(order.price));
+    if (distance > 7) continue;
+    if (!nearest || distance < nearest.distance) nearest = { order, distance };
+  }
+
+  return nearest?.order ?? null;
 }
 
 function buildPositionFromRiskDrag(
@@ -464,6 +558,11 @@ interface ChartCanvasProps {
   aggregateBubbleEvents: BubbleEvent[];
   activeChartContractType: ContractType;
   activeDataSourceMode: DataSourceMode;
+  tradingSymbol: string;
+  tradingContractType: ContractType;
+  openOrders: Order[];
+  positions: Position[];
+  recentFills: TradeFill[];
   volumeBarsEnabled: boolean;
   volumeBarsInputData: PanelState['volumeBarsInputData'];
   volumeBarsMarketSource: PanelState['volumeBarsMarketSource'];
@@ -576,6 +675,11 @@ export function ChartCanvas({
   aggregateBubbleEvents,
   activeChartContractType,
   activeDataSourceMode,
+  tradingSymbol,
+  tradingContractType,
+  openOrders,
+  positions,
+  recentFills,
   volumeBarsEnabled,
   volumeBarsInputData,
   volumeBarsMarketSource,
@@ -670,6 +774,10 @@ export function ChartCanvas({
   const isDraggingDrawing = useRef(false);
   const drawingDragZone = useRef<DrawingHitZone | null>(null);
   const drawingSnapshot = useRef<DrawnLine | null>(null);
+  const hoveredOrderLineId = useRef<string | null>(null);
+  const isDraggingOrderLine = useRef(false);
+  const orderDragSnapshot = useRef<Order | null>(null);
+  const orderDragOriginalPrice = useRef<number | null>(null);
   
   const coordsRef = useRef<CoordinateSystem | null>(null);
   const widthRef = useRef(0);
@@ -681,12 +789,35 @@ export function ChartCanvas({
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
   const [hoveredIceberg, setHoveredIceberg] = React.useState<{ level: IcebergLevel, x: number, y: number } | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = React.useState<string | null>(null);
+  const [confirmingCancelOrderId, setConfirmingCancelOrderId] = React.useState<string | null>(null);
+  const [showModifyConfirm, setShowModifyConfirm] = React.useState(false);
+  const [pendingModifyOrder, setPendingModifyOrder] = React.useState<PendingModifyOrder | null>(null);
+  const [chartOrderMessage, setChartOrderMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const currentTradingMode = useChartRuntimeStore(s => s.tradingStatus.currentMode);
+  const modeBadge = useChartRuntimeStore(s => s.tradingStatus.modeBadge);
+  const orderActionLoading = useChartRuntimeStore(s => s.tradingStatus.orderActionLoading);
+  const orderActionError = useChartRuntimeStore(s => s.tradingStatus.orderActionError);
+  const orderActionSuccess = useChartRuntimeStore(s => s.tradingStatus.orderActionSuccess);
+  const modifyingOrderId = useChartRuntimeStore(s => s.tradingStatus.modifyingOrderId);
+  const dragPreviewPrice = useChartRuntimeStore(s => s.tradingStatus.dragPreviewPrice);
+  const modifyLoading = useChartRuntimeStore(s => s.tradingStatus.modifyLoading);
+  const modifyError = useChartRuntimeStore(s => s.tradingStatus.modifyError);
+  const modifySuccess = useChartRuntimeStore(s => s.tradingStatus.modifySuccess);
+  const riskStatus = useChartRuntimeStore(s => s.tradingStatus.riskStatus);
+  const setTradingStatus = useChartRuntimeStore(s => s.setTradingStatus);
+  const refreshRiskStatus = useChartRuntimeStore(s => s.refreshRiskStatus);
+  const cancelOrder = useChartRuntimeStore(s => s.cancelOrder);
+  const modifyOrder = useChartRuntimeStore(s => s.modifyOrder);
 
   const getCandlesLength = useCallback(() => candles.length, [candles]);
 
   const priceAxisWidth = 85;
   const timeAxisHeight = showTimeAxis ? 24 : 0;
   const baseProfileWidth = 120;
+
+  useEffect(() => {
+    void refreshRiskStatus();
+  }, [refreshRiskStatus]);
   
   let profileWidth = defaultProfileEnabled ? baseProfileWidth : 0;
   if (liquidityHeatmapEnabled) {
@@ -1277,6 +1408,24 @@ export function ChartCanvas({
         );
       }
 
+      if (openOrders.length > 0 || positions.length > 0 || recentFills.length > 0) {
+        drawTradingOverlays(
+          ctx,
+          candles,
+          { firstIndex, lastIndex },
+          indexToX,
+          priceToY,
+          chartWidth,
+          chartHeight,
+          openOrders,
+          positions,
+          recentFills,
+          modifyingOrderId && dragPreviewPrice !== null
+            ? { orderId: modifyingOrderId, price: dragPreviewPrice }
+            : null
+        );
+      }
+
       if (lastCandle) {
         drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
       }
@@ -1330,7 +1479,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, aggregateBubbleEvents, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, showTimeAxis]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, aggregateBubbleEvents, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, showTimeAxis, openOrders, positions, recentFills, modifyingOrderId, dragPreviewPrice]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1358,7 +1507,7 @@ export function ChartCanvas({
     measureToolActive,
     (x: number, y: number) => {
       // Prevent chart panning if we are over a custom profile or its buttons, or a line
-      if (isHoveringClear.current || isHoveringLock.current || hoverZone.current || hoveredLineId.current) {
+      if (isHoveringClear.current || isHoveringLock.current || hoverZone.current || hoveredLineId.current || hoveredOrderLineId.current) {
         return false;
       }
       const canvas = canvasRef.current;
@@ -1567,6 +1716,9 @@ export function ChartCanvas({
     volumeBarsTextSize,
     volumeBarsAverageLineEnabled,
     volumeBarsAverageLength,
+    openOrders,
+    positions,
+    recentFills,
   ]);
 
   useEffect(() => {
@@ -1642,6 +1794,123 @@ export function ChartCanvas({
       left: Math.max(4, Math.min(chartWidth - overlayWidth - 4, anchor.x - overlayWidth / 2)),
     };
   })();
+
+  const chartOrderControls = useMemo(() => {
+    if (containerSize.width === 0 || containerSize.height === 0 || candles.length === 0) return [];
+
+    const chartWidth = containerSize.width - priceAxisWidth;
+    const chartHeight = containerSize.height - timeAxisHeight;
+    if (chartWidth <= 0 || chartHeight <= 0) return [];
+
+    const pCenter = priceCenter.current ?? 0;
+    const pRange = priceRange.current ?? 100;
+    const priceMin = pCenter - pRange / 2;
+    const priceMax = pCenter + pRange / 2;
+
+    return openOrders
+      .filter(isActiveLimitOrder)
+      .map((order) => {
+        const y = calcPriceToY(order.price!, priceMin, priceMax, chartHeight);
+        if (y < -12 || y > chartHeight + 12) return null;
+        return {
+          order,
+          top: Math.max(4, Math.min(chartHeight - 24, y - 11)),
+          left: Math.max(8, chartWidth - 70),
+        };
+      })
+      .filter((item): item is { order: Order; top: number; left: number } => item !== null);
+  }, [openOrders, containerSize, candles.length, priceAxisWidth, timeAxisHeight, priceCenter, priceRange]);
+
+  const handleCancelOrder = useCallback(async (order: Order) => {
+    if (confirmingCancelOrderId !== order.id) {
+      setConfirmingCancelOrderId(order.id);
+      setChartOrderMessage(null);
+      return;
+    }
+
+    const result = await cancelOrder({
+      symbol: tradingSymbol,
+      contractType: tradingContractType === 'spot' ? 'spot' : 'futures',
+      orderId: order.id,
+      clientOrderId: order.clientOrderId,
+    });
+
+    setConfirmingCancelOrderId(null);
+    setChartOrderMessage({
+      type: result.success ? 'success' : 'error',
+      text: result.success ? `Cancelled order ${order.id}.` : result.errorMessage ?? 'Order cancellation failed.',
+    });
+  }, [cancelOrder, confirmingCancelOrderId, tradingContractType, tradingSymbol]);
+
+  useEffect(() => {
+    if (!confirmingCancelOrderId) return;
+    if (openOrders.some((order) => order.id === confirmingCancelOrderId)) return;
+    setConfirmingCancelOrderId(null);
+  }, [confirmingCancelOrderId, openOrders]);
+
+  const closeModifyConfirm = useCallback(() => {
+    if (modifyLoading) return;
+    setShowModifyConfirm(false);
+    setPendingModifyOrder(null);
+    setTradingStatus({
+      modifyingOrderId: null,
+      dragPreviewPrice: null,
+      modifyError: null,
+    });
+  }, [modifyLoading, setTradingStatus]);
+
+  const confirmModifyOrder = useCallback(async () => {
+    if (!pendingModifyOrder || modifyLoading) return;
+
+    const blockReason = getModifyBlockReason({
+      order: pendingModifyOrder.order,
+      symbol: tradingSymbol,
+      contractType: tradingContractType,
+      mode: currentTradingMode,
+      modeBadge,
+      price: pendingModifyOrder.newPrice,
+      quantity: pendingModifyOrder.quantity,
+      riskStatus,
+    });
+
+    if (blockReason) {
+      setTradingStatus({ modifyError: blockReason, modifySuccess: null });
+      return;
+    }
+
+    const result = await modifyOrder({
+      symbol: tradingSymbol,
+      contractType: 'spot',
+      orderId: pendingModifyOrder.order.id,
+      clientOrderId: pendingModifyOrder.order.clientOrderId,
+      side: pendingModifyOrder.order.side,
+      quantity: pendingModifyOrder.quantity,
+      price: pendingModifyOrder.newPrice,
+      timeInForce: pendingModifyOrder.order.timeInForce ?? 'GTC',
+    });
+
+    setChartOrderMessage({
+      type: result.success ? 'success' : 'error',
+      text: result.success
+        ? `Modified order ${pendingModifyOrder.order.id}.`
+        : result.errorMessage ?? 'Order modification failed.',
+    });
+
+    if (result.success) {
+      setShowModifyConfirm(false);
+      setPendingModifyOrder(null);
+    }
+  }, [
+    currentTradingMode,
+    modeBadge,
+    modifyLoading,
+    modifyOrder,
+    pendingModifyOrder,
+    riskStatus,
+    setTradingStatus,
+    tradingContractType,
+    tradingSymbol,
+  ]);
 
   // Drawing Interaction Logic
   useEffect(() => {
@@ -1752,6 +2021,49 @@ export function ChartCanvas({
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
+      const orderLine = findNearestOrderLine(
+        openOrders,
+        x,
+        y,
+        chartWidth,
+        chartHeight,
+        (price) => calcPriceToY(price, priceMin, priceMax, chartHeight)
+      );
+
+      if (orderLine) {
+        const blockReason = getModifyBlockReason({
+          order: orderLine,
+          symbol: tradingSymbol,
+          contractType: tradingContractType,
+          mode: currentTradingMode,
+          modeBadge,
+          riskStatus,
+        });
+
+        if (blockReason) {
+          setChartOrderMessage({ type: 'error', text: blockReason });
+          redraw();
+          return;
+        }
+
+        setSelectedDrawingId(null);
+        useChartRuntimeStore.getState().setProfileSelected(panelId, false);
+        orderDragSnapshot.current = orderLine;
+        orderDragOriginalPrice.current = orderLine.price!;
+        isDraggingOrderLine.current = true;
+        setPendingModifyOrder(null);
+        setShowModifyConfirm(false);
+        setChartOrderMessage(null);
+        setTradingStatus({
+          modifyingOrderId: orderLine.id,
+          dragPreviewPrice: orderLine.price!,
+          modifyError: null,
+          modifySuccess: null,
+        });
+        redraw();
+        return;
+      }
+
       const currentPanel = useChartStore.getState().panels[panelId];
       const resolvedCurrentProfileRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
       const profileHitZone = getCustomProfileHitZone(
@@ -1823,6 +2135,8 @@ export function ChartCanvas({
         cursor = 'grabbing';
       } else if (isDraggingResize.current) {
         cursor = (resizeEdge.current === 'left' || resizeEdge.current === 'right') ? 'ew-resize' : 'ns-resize';
+      } else if (isDraggingOrderLine.current) {
+        cursor = 'ns-resize';
       } else if (isPanZoomDragging.current) {
         if (panZoomDragMode.current === 'price') cursor = 'ns-resize';
         else if (panZoomDragMode.current === 'time') cursor = 'ew-resize';
@@ -1874,6 +2188,7 @@ export function ChartCanvas({
           hoveredLineId.current = null;
           isHoveringDeleteDot.current = false;
           hoveredDrawingZone.current = null;
+          hoveredOrderLineId.current = null;
 
           if (!hoveringAction && !hoverZone.current) {
             const chartWidth = rect.width - priceAxisWidth;
@@ -1910,9 +2225,26 @@ export function ChartCanvas({
                 break;
               }
             }
+
+            if (!hoveredLineId.current) {
+              const orderLine = findNearestOrderLine(openOrders, x, y, chartWidth, chartHeight, priceToY);
+              if (orderLine) {
+                hoveredOrderLineId.current = orderLine.id;
+                cursor = getModifyBlockReason({
+                  order: orderLine,
+                  symbol: tradingSymbol,
+                  contractType: tradingContractType,
+                  mode: currentTradingMode,
+                  modeBadge,
+                  riskStatus,
+                })
+                  ? 'not-allowed'
+                  : 'ns-resize';
+              }
+            }
           }
 
-          if (!hoveredLineId.current && !hoveringAction && !hoverZone.current) {
+          if (!hoveredLineId.current && !hoveredOrderLineId.current && !hoveringAction && !hoverZone.current) {
             // Check Axes
             if (x > rect.width - priceAxisWidth) cursor = 'ns-resize';
             else if (y > rect.height - timeAxisHeight) cursor = 'ew-resize';
@@ -2056,7 +2388,20 @@ export function ChartCanvas({
       redraw();
 
       // Drag Logic
-      if (
+      if (isDraggingOrderLine.current) {
+        const chartHeight = rect.height - timeAxisHeight;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+        const nextPrice = yToPrice(Math.max(0, Math.min(chartHeight, y)), priceMin, priceMax, chartHeight);
+        setTradingStatus({
+          modifyingOrderId: orderDragSnapshot.current?.id ?? null,
+          dragPreviewPrice: Number.isFinite(nextPrice) ? nextPrice : null,
+          modifyError: null,
+        });
+        redraw();
+      } else if (
         isDragging.current &&
         (isDrawMode || measureToolActive || lineDrawMode === 'box' || lineDrawMode === 'long-position' || lineDrawMode === 'short-position')
       ) {
@@ -2292,7 +2637,80 @@ export function ChartCanvas({
     };
 
     const onMouseUp = () => {
-      if (!isDragging.current && !isDraggingProfile.current && !isDraggingResize.current && !isDraggingDrawing.current) return;
+      if (
+        !isDragging.current &&
+        !isDraggingProfile.current &&
+        !isDraggingResize.current &&
+        !isDraggingDrawing.current &&
+        !isDraggingOrderLine.current
+      ) return;
+
+      if (isDraggingOrderLine.current) {
+        const order = orderDragSnapshot.current;
+        const originalPrice = orderDragOriginalPrice.current;
+        const newPrice = useChartRuntimeStore.getState().tradingStatus.dragPreviewPrice;
+        isDraggingOrderLine.current = false;
+        orderDragSnapshot.current = null;
+        orderDragOriginalPrice.current = null;
+
+        if (!order || originalPrice === null || newPrice === null || !Number.isFinite(newPrice) || newPrice <= 0) {
+          setTradingStatus({
+            modifyingOrderId: null,
+            dragPreviewPrice: null,
+            modifyError: 'Replacement limit price must be greater than 0.',
+            modifySuccess: null,
+          });
+          redraw();
+          return;
+        }
+
+        const quantity = getRemainingOrderQuantity(order);
+        const blockReason = getModifyBlockReason({
+          order,
+          symbol: tradingSymbol,
+          contractType: tradingContractType,
+          mode: currentTradingMode,
+          modeBadge,
+          price: newPrice,
+          quantity: quantity ?? undefined,
+          riskStatus,
+        });
+
+        if (blockReason || quantity === null) {
+          const message = blockReason ?? 'Remaining quantity is required to modify an order.';
+          setTradingStatus({
+            modifyingOrderId: null,
+            dragPreviewPrice: null,
+            modifyError: message,
+            modifySuccess: null,
+          });
+          setChartOrderMessage({ type: 'error', text: message });
+          redraw();
+          return;
+        }
+
+        const minDelta = Math.max(Number.EPSILON, tickSize > 0 ? tickSize * 0.1 : 0);
+        if (Math.abs(newPrice - originalPrice) <= minDelta) {
+          setTradingStatus({
+            modifyingOrderId: null,
+            dragPreviewPrice: null,
+            modifyError: null,
+          });
+          redraw();
+          return;
+        }
+
+        setPendingModifyOrder({ order, originalPrice, newPrice, quantity });
+        setShowModifyConfirm(true);
+        setTradingStatus({
+          modifyingOrderId: order.id,
+          dragPreviewPrice: newPrice,
+          modifyError: null,
+          modifySuccess: null,
+        });
+        redraw();
+        return;
+      }
 
       if (isDraggingDrawing.current) {
         isDraggingDrawing.current = false;
@@ -2507,6 +2925,12 @@ export function ChartCanvas({
         dragEnd.current = null;
         isDragging.current = false;
         isDraggingDrawing.current = false;
+        isDraggingOrderLine.current = false;
+        orderDragSnapshot.current = null;
+        orderDragOriginalPrice.current = null;
+        setShowModifyConfirm(false);
+        setPendingModifyOrder(null);
+        setTradingStatus({ modifyingOrderId: null, dragPreviewPrice: null, modifyError: null });
         drawingSnapshot.current = null;
         drawingDragZone.current = null;
         setSelectedDrawingId(null);
@@ -2526,8 +2950,20 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId]);
+  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, openOrders, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus]);
 
+  const pendingModifyBlockReason = pendingModifyOrder
+    ? getModifyBlockReason({
+      order: pendingModifyOrder.order,
+      symbol: tradingSymbol,
+      contractType: tradingContractType,
+      mode: currentTradingMode,
+      modeBadge,
+      price: pendingModifyOrder.newPrice,
+      quantity: pendingModifyOrder.quantity,
+      riskStatus,
+    })
+    : null;
 
   return (
     <div ref={containerRef} className="w-full h-full relative bg-[#0F0F0F] overflow-hidden">
@@ -2562,6 +2998,106 @@ export function ChartCanvas({
         measurement={activeMeasurement}
         canvasRect={canvasRef.current?.getBoundingClientRect() || null}
       />
+
+      {chartOrderControls.map(({ order, top, left }) => {
+        const isConfirming = confirmingCancelOrderId === order.id;
+        const disabled = orderActionLoading || modifyLoading;
+        return (
+          <button
+            key={order.id}
+            type="button"
+            disabled={disabled}
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleCancelOrder(order);
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+            className={`absolute z-20 h-[22px] rounded border px-2 text-[10px] font-bold leading-none shadow-sm transition-colors disabled:cursor-wait disabled:opacity-70 ${
+              isConfirming
+                ? 'border-[#f23645]/70 bg-[#f23645]/18 text-[#ffd7db] hover:bg-[#f23645]/26'
+                : 'border-[#333] bg-[#1F1F1F]/92 text-[#E8E8E8] hover:border-[#f23645]/60 hover:text-[#ffd7db]'
+            }`}
+            style={{ top: `${top}px`, left: `${left}px` }}
+            title={isConfirming ? 'Confirm cancel order' : 'Cancel order'}
+            aria-label={isConfirming ? 'Confirm cancel order' : 'Cancel order'}
+          >
+            {disabled && isConfirming ? '...' : isConfirming ? 'Confirm' : 'Cancel'}
+          </button>
+        );
+      })}
+
+      {(chartOrderMessage || orderActionError || orderActionSuccess || modifyError || modifySuccess) && (
+        <div
+          className={`pointer-events-none absolute right-[92px] top-2 z-20 max-w-[260px] rounded border bg-[#1F1F1F]/94 px-2 py-1 text-[11px] font-semibold shadow-sm ${
+            (chartOrderMessage?.type === 'error' || orderActionError || modifyError)
+              ? 'border-[#f23645]/55 text-[#ffd7db]'
+              : 'border-[#089981]/55 text-[#c8fff2]'
+          }`}
+        >
+          {chartOrderMessage?.text ?? modifyError ?? orderActionError ?? modifySuccess ?? orderActionSuccess}
+        </div>
+      )}
+
+      {showModifyConfirm && pendingModifyOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-[380px] rounded-md border border-[#303030] bg-[#1F1F1F] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#303030] px-4 py-3">
+              <div>
+                <div className="text-[12px] font-black uppercase tracking-wider text-[#E8E8E8]">Confirm modify</div>
+                <div className="mt-0.5 text-[10px] font-semibold uppercase text-[#787B86]">
+                  {pendingModifyOrder.order.symbol} / {pendingModifyBlockReason ? 'BLOCKED' : modeBadge.toUpperCase()}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeModifyConfirm}
+                disabled={modifyLoading}
+                className="flex h-7 w-7 items-center justify-center rounded border border-[#303030] text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8] disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Close modify confirmation"
+                title="Close"
+              >
+                <X size={14} strokeWidth={2.4} />
+              </button>
+            </div>
+
+            <div className="space-y-2 px-4 py-4">
+              <ModifyConfirmRow label="Side" value={pendingModifyOrder.order.side.toUpperCase()} valueColor={pendingModifyOrder.order.side === 'buy' ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR} />
+              <ModifyConfirmRow label="Symbol" value={pendingModifyOrder.order.symbol} />
+              <ModifyConfirmRow label="Order id" value={pendingModifyOrder.order.id} />
+              <ModifyConfirmRow label="Quantity" value={formatVol(pendingModifyOrder.quantity)} />
+              <ModifyConfirmRow label="Original price" value={formatPrice(pendingModifyOrder.originalPrice)} />
+              <ModifyConfirmRow label="New price" value={formatPrice(pendingModifyOrder.newPrice)} />
+              <ModifyConfirmRow label="Badge" value={pendingModifyBlockReason ? 'BLOCKED' : modeBadge.toUpperCase()} />
+              {pendingModifyBlockReason && <ModifyConfirmRow label="Risk" value={pendingModifyBlockReason} />}
+
+              {(modifyError || pendingModifyBlockReason) && (
+                <div className="rounded border border-[#F23645]/30 bg-[#F23645]/10 px-3 py-2 text-[11px] font-semibold text-[#FF9BA4]">
+                  {modifyError ?? pendingModifyBlockReason}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 border-t border-[#303030] px-4 py-3">
+              <button
+                type="button"
+                onClick={closeModifyConfirm}
+                disabled={modifyLoading}
+                className="h-8 flex-1 rounded border border-[#333333] bg-[#262626] text-[11px] font-bold uppercase text-[#B8B8B8] hover:text-[#E8E8E8] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmModifyOrder}
+                disabled={modifyLoading || !!pendingModifyBlockReason}
+                className="h-8 flex-1 rounded bg-accent text-[11px] font-black uppercase tracking-wider text-white hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {modifyLoading ? 'Modifying' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedDrawing && selectedDrawingControls && (
         <div
