@@ -31,10 +31,17 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
   const [priceInput, setPriceInput] = React.useState('');
   const [priceTouched, setPriceTouched] = React.useState(false);
   const [reduceOnly, setReduceOnly] = React.useState(false);
+  const [leverage, setLeverage] = React.useState<number>(10);
   const [showConfirm, setShowConfirm] = React.useState(false);
   const [safeMessage, setSafeMessage] = React.useState('');
   const [safeMessageTone, setSafeMessageTone] = React.useState<'success' | 'error'>('success');
   const [health, setHealth] = React.useState<TradingHealthStatus | null>(null);
+
+  const [position, setPosition] = React.useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 });
+  const [isInitialized, setIsInitialized] = React.useState(false);
+  const [hasSetDefaultQuantity, setHasSetDefaultQuantity] = React.useState(false);
 
   const latestPrice = React.useMemo(() => {
     for (let index = candles.length - 1; index >= 0; index -= 1) {
@@ -66,6 +73,49 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
   }, [refreshRiskStatus]);
 
   React.useEffect(() => {
+    if (!isInitialized) {
+      setPosition({ x: window.innerWidth - 260 - 24, y: 24 });
+      setIsInitialized(true);
+    }
+  }, [isInitialized]);
+
+  React.useEffect(() => {
+    function handlePointerMove(e: PointerEvent) {
+      if (isDragging) {
+        setPosition({
+          x: e.clientX - dragStart.x,
+          y: e.clientY - dragStart.y
+        });
+      }
+    }
+    function handlePointerUp() {
+      setIsDragging(false);
+    }
+    if (isDragging) {
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    }
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isDragging, dragStart]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    // Prevent dragging if clicking a button inside the header
+    if (target.closest('button')) return;
+    
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    });
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  React.useEffect(() => {
     if (orderType !== 'limit' || priceInput || priceTouched || latestPrice === null) return;
     setPriceInput(String(latestPrice));
   }, [latestPrice, orderType, priceInput, priceTouched]);
@@ -74,6 +124,28 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
     if (panel.contractType === 'spot' && reduceOnly) setReduceOnly(false);
   }, [panel.contractType, reduceOnly]);
 
+  const quoteAsset = getQuoteAsset(panel.pair);
+  const baseAsset = quoteAsset ? panel.pair.slice(0, -quoteAsset.length) : panel.pair;
+  const balanceAsset = side === 'buy' ? quoteAsset : baseAsset;
+  const balance = tradingStatus.balances.find(item => item.asset === balanceAsset);
+
+  React.useEffect(() => {
+    if (hasSetDefaultQuantity || latestPrice === null) return;
+    
+    if (balance && balance.free > 0) {
+      if (side === 'buy') {
+        const qty = Number(((balance.free * 0.05) / latestPrice).toFixed(4));
+        setQuantityInput(String(qty > 0 ? qty : 0.001));
+      } else {
+        const qty = Number((balance.free * 0.05).toFixed(4));
+        setQuantityInput(String(qty > 0 ? qty : 0.001));
+      }
+    } else {
+      setQuantityInput('0.001');
+    }
+    setHasSetDefaultQuantity(true);
+  }, [hasSetDefaultQuantity, latestPrice, balance, side]);
+
   const mode = health?.mode ?? tradingStatus.currentMode;
   const modeBadge = health?.modeBadge ?? tradingStatus.modeBadge;
   const connectionStatus = health?.connectionStatus ?? tradingStatus.connectionStatus;
@@ -81,10 +153,6 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
   const riskStatus = tradingStatus.riskStatus;
   const quantity = Number(quantityInput);
   const price = Number(priceInput);
-  const quoteAsset = getQuoteAsset(panel.pair);
-  const baseAsset = quoteAsset ? panel.pair.slice(0, -quoteAsset.length) : panel.pair;
-  const balanceAsset = side === 'buy' ? quoteAsset : baseAsset;
-  const balance = tradingStatus.balances.find(item => item.asset === balanceAsset);
   const reduceOnlySupported = panel.contractType === 'futures';
   const validation = validateTicket({
     symbol: panel.pair,
@@ -135,6 +203,7 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
       price: orderType === 'limit' ? price : undefined,
       estimatedPrice: orderType === 'market' && latestPrice !== null ? latestPrice : undefined,
       reduceOnly: reduceOnlySupported ? reduceOnly : false,
+      leverage: reduceOnlySupported ? leverage : undefined,
       confirmed: true,
     });
 
@@ -164,8 +233,14 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
 
   return (
     <>
-      <div className="absolute right-3 top-3 z-40 w-[260px] max-w-[calc(100%-24px)] rounded-md border border-[#262626] bg-[#1F1F1F]/95 shadow-xl shadow-black/25 backdrop-blur">
-        <div className="flex items-center justify-between border-b border-[#262626] px-3 py-2">
+      <div 
+        className={`fixed z-[100] w-[260px] max-w-[calc(100%-24px)] rounded-md border border-[#262626] bg-[#1F1F1F]/95 shadow-xl shadow-black/25 backdrop-blur transition-shadow ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''} ${!isInitialized ? 'invisible' : ''}`}
+        style={isInitialized ? { left: position.x, top: position.y } : undefined}
+      >
+        <div 
+          className={`flex items-center justify-between border-b border-[#262626] px-3 py-2 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab active:cursor-grabbing'}`}
+          onPointerDown={handlePointerDown}
+        >
           <div>
             <div className="text-[11px] font-black uppercase tracking-wider text-[#E8E8E8]">{panel.pair || 'No symbol'}</div>
             <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase text-[#787B86]">
@@ -294,6 +369,36 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
             </span>
           </div>
 
+          {reduceOnlySupported && (
+            <>
+              <div className="flex items-center justify-between rounded border border-[#303030] bg-[#262626] px-2 py-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#787B86]">Leverage</span>
+                <select
+                  value={leverage}
+                  onChange={(e) => setLeverage(Number(e.target.value))}
+                  className="bg-transparent text-[11px] font-bold text-[#E8E8E8] outline-none"
+                >
+                  <option value={1} className="bg-[#262626]">1x</option>
+                  <option value={2} className="bg-[#262626]">2x</option>
+                  <option value={5} className="bg-[#262626]">5x</option>
+                  <option value={10} className="bg-[#262626]">10x</option>
+                  <option value={20} className="bg-[#262626]">20x</option>
+                  <option value={50} className="bg-[#262626]">50x</option>
+                  <option value={100} className="bg-[#262626]">100x</option>
+                  <option value={125} className="bg-[#262626]">125x</option>
+                </select>
+              </div>
+              <div className="flex items-center justify-between rounded border border-[#303030] bg-[#262626] px-2 py-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#787B86]">Cost / Margin</span>
+                <span className="text-[11px] font-bold text-[#E8E8E8]">
+                  {Number.isFinite(quantity) && latestPrice !== null
+                    ? `${formatBalance((quantity * latestPrice) / leverage)} USDT`
+                    : '--'}
+                </span>
+              </div>
+            </>
+          )}
+
           {validation.messages.length > 0 && (
             <div className="rounded border border-[#F23645]/30 bg-[#F23645]/10 px-2 py-1.5 text-[10px] font-semibold text-[#FF9BA4]">
               {validation.messages[0]}
@@ -344,6 +449,7 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
               <ConfirmRow label="Badge" value={validation.liveBlocked ? 'BLOCKED' : modeBadge.toUpperCase()} />
               {validation.messages[0] && <ConfirmRow label="Risk" value={validation.messages[0]} />}
               {reduceOnlySupported && <ConfirmRow label="Reduce only" value={reduceOnly ? 'YES' : 'NO'} />}
+              {reduceOnlySupported && <ConfirmRow label="Leverage" value={`${leverage}x`} />}
 
               {safeMessage && (
                 <div className={`rounded border px-3 py-2 text-[11px] font-semibold ${
@@ -423,7 +529,7 @@ function validateTicket(input: {
   if (input.orderType === 'limit' && (!Number.isFinite(input.price) || input.price <= 0)) {
     messages.push('Limit price must be greater than 0.');
   }
-  if (input.contractType === 'futures') messages.push('Futures testnet order placement is not implemented yet.');
+  // Futures support is now implemented!
   if (input.contractType !== 'spot' && input.contractType !== 'futures') messages.push('Unsupported contract type selected.');
   if (input.killSwitchActive) messages.push(input.riskBlockReasons[0] ?? 'Trading kill switch is active.');
   if (liveBlocked) messages.push('Live trading is blocked until it is enabled on the server.');

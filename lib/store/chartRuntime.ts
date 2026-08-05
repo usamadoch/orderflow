@@ -11,6 +11,8 @@ import type { BubbleEvent } from '../../types/bubble';
 import type {
   AccountSnapshot,
   Balance,
+  BracketDragState,
+  BracketOrder,
   Order,
   OrderCancelRequest,
   OrderModifyRequest,
@@ -24,6 +26,7 @@ import type {
   TradingRiskStatusPayload,
   TradingUserStreamStatus,
   TradingUserStreamStatusPayload,
+  VirtualPosition,
 } from '../../types/trading';
 import { MAX_AGGREGATE_BUBBLE_EVENTS } from './chart';
 import type { GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId } from './chart';
@@ -80,6 +83,13 @@ export interface TradingRuntimeStatus {
   liveBlocked: boolean;
   killSwitchActive: boolean;
   riskBlockReasons: string[];
+  // ── Virtual Position Layer ────────────────────────────────────────────────
+  /** Derived from filled spot trades; not provided by Binance directly. */
+  virtualPositions: VirtualPosition[];
+  /** Bracket orders (SL/TP) keyed by VirtualPosition id. */
+  bracketOrders: BracketOrder[];
+  /** Live drag preview for the SL or TP handle on the chart canvas. */
+  bracketDrag: BracketDragState | null;
 }
 
 interface ChartRuntimeState {
@@ -106,6 +116,19 @@ interface ChartRuntimeState {
   setActiveMeasurement: (panelId: PanelId, measurement: Measurement | null) => void;
   setCrosshair: (crosshair: GlobalCrosshair) => void;
   setTradingStatus: (status: Partial<TradingRuntimeStatus>) => void;
+  // ── Virtual Position actions ──────────────────────────────────────────────
+  /** Upsert a virtual position derived from fills; updates unrealized PnL if markPrice is supplied. */
+  upsertVirtualPosition: (position: VirtualPosition) => void;
+  /** Remove a virtual position and its associated bracket by id. */
+  removeVirtualPosition: (positionId: string) => void;
+  /** Upsert a bracket order for the given virtual position. */
+  upsertBracketOrder: (bracket: BracketOrder) => void;
+  /** Remove a bracket order by id. */
+  removeBracketOrder: (bracketId: string) => void;
+  /** Set or clear the bracket drag state (used while the user drags SL/TP handles). */
+  setBracketDrag: (drag: BracketDragState | null) => void;
+  /** Recalculate unrealized PnL for all open virtual positions against a new mark price. */
+  updateVirtualPnl: (symbol: string, markPrice: number) => void;
   refreshRiskStatus: () => Promise<TradingRiskStatusPayload | null>;
   refreshAccountSnapshot: (symbol?: string, limit?: number) => Promise<void>;
   refreshUserStreamStatus: (symbol?: string, limit?: number) => Promise<void>;
@@ -169,6 +192,9 @@ function createDefaultTradingStatus(): TradingRuntimeStatus {
     liveBlocked: false,
     killSwitchActive: false,
     riskBlockReasons: [],
+    virtualPositions: [],
+    bracketOrders: [],
+    bracketDrag: null,
   };
 }
 
@@ -336,6 +362,58 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
         ...status,
       },
     })),
+
+  upsertVirtualPosition: (position) =>
+    set((state) => {
+      const existing = state.tradingStatus.virtualPositions;
+      const idx = existing.findIndex((p) => p.id === position.id);
+      const next = idx === -1
+        ? [...existing, position]
+        : existing.map((p) => (p.id === position.id ? { ...p, ...position } : p));
+      return { tradingStatus: { ...state.tradingStatus, virtualPositions: next } };
+    }),
+
+  removeVirtualPosition: (positionId) =>
+    set((state) => ({
+      tradingStatus: {
+        ...state.tradingStatus,
+        virtualPositions: state.tradingStatus.virtualPositions.filter((p) => p.id !== positionId),
+        bracketOrders: state.tradingStatus.bracketOrders.filter((b) => b.positionId !== positionId),
+      },
+    })),
+
+  upsertBracketOrder: (bracket) =>
+    set((state) => {
+      const existing = state.tradingStatus.bracketOrders;
+      const idx = existing.findIndex((b) => b.id === bracket.id);
+      const next = idx === -1
+        ? [...existing, bracket]
+        : existing.map((b) => (b.id === bracket.id ? { ...b, ...bracket } : b));
+      return { tradingStatus: { ...state.tradingStatus, bracketOrders: next } };
+    }),
+
+  removeBracketOrder: (bracketId) =>
+    set((state) => ({
+      tradingStatus: {
+        ...state.tradingStatus,
+        bracketOrders: state.tradingStatus.bracketOrders.filter((b) => b.id !== bracketId),
+      },
+    })),
+
+  setBracketDrag: (drag) =>
+    set((state) => ({ tradingStatus: { ...state.tradingStatus, bracketDrag: drag } })),
+
+  updateVirtualPnl: (symbol, markPrice) =>
+    set((state) => {
+      const virtualPositions = state.tradingStatus.virtualPositions.map((p) => {
+        if (p.symbol.toUpperCase() !== symbol.toUpperCase() || p.status !== 'open') return p;
+        const pnlPerUnit = p.side === 'long'
+          ? markPrice - p.entryPrice
+          : p.entryPrice - markPrice;
+        return { ...p, unrealizedPnl: pnlPerUnit * p.quantity };
+      });
+      return { tradingStatus: { ...state.tradingStatus, virtualPositions } };
+    }),
 
   refreshRiskStatus: async () => {
     set((state) => ({

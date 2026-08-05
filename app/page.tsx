@@ -5,9 +5,11 @@ import { PanelFeedProvider } from '../components/FeedProvider';
 import { Header } from '../components/layout/Header';
 import { Sidebar } from '../components/layout/Sidebar';
 import { ChartPanel } from '../components/chart/ChartPanel';
+import { OrdersPanel } from '../components/ui/OrdersPanel';
 import { DebugPanel } from '../components/debug/DebugPanel';
 import { useChartStore } from '../lib/store/chart';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useTradingSync } from '../hooks/useTradingSync';
 
 export default function Home() {
   const layoutMode = useChartStore(s => s.layoutMode);
@@ -15,6 +17,7 @@ export default function Home() {
   const focusMode = useChartStore(s => s.focusMode);
   const setSplitRatio = useChartStore(s => s.setSplitRatio);
   useKeyboardShortcuts();
+  useTradingSync();
 
   const containerRef = useRef<HTMLElement>(null);
   const isDragging = useRef(false);
@@ -54,35 +57,39 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         {!focusMode && <Sidebar />}
 
-        <main ref={containerRef} className="flex-1 relative flex bg-[#0F0F0F] min-w-0">
-          {/* Left Panel — always visible */}
-          <div style={{ width: leftPercent }} className="h-full flex min-w-0">
-            <PanelFeedProvider panelId="left">
-              <ChartPanel panelId="left" />
-            </PanelFeedProvider>
-          </div>
-
-          {/* Draggable Divider */}
-          {layoutMode === 'dual' && (
-            <div
-              className="w-[5px] shrink-0 relative cursor-col-resize group z-10"
-              onMouseDown={onDividerMouseDown}
-            >
-              {/* Visible thin line */}
-              <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-[#1F1F1F] group-hover:bg-accent/50 transition-colors duration-150" />
-              {/* Wider hit area on hover glow */}
-              <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[3px] bg-transparent group-hover:bg-accent/10 transition-colors duration-150 rounded-full" />
-            </div>
-          )}
-
-          {/* Right Panel — only in dual mode */}
-          {layoutMode === 'dual' && (
-            <div style={{ width: rightPercent }} className="h-full flex min-w-0">
-              <PanelFeedProvider panelId="right">
-                <ChartPanel panelId="right" />
+        <main ref={containerRef} className="flex-1 relative flex flex-col bg-[#0F0F0F] min-w-0">
+          <div className="flex-1 relative flex min-h-0">
+            {/* Left Panel — always visible */}
+            <div style={{ width: leftPercent }} className="h-full flex min-w-0">
+              <PanelFeedProvider panelId="left">
+                <ChartPanel panelId="left" />
               </PanelFeedProvider>
             </div>
-          )}
+
+            {/* Draggable Divider */}
+            {layoutMode === 'dual' && (
+              <div
+                className="w-[5px] shrink-0 relative cursor-col-resize group z-10"
+                onMouseDown={onDividerMouseDown}
+              >
+                {/* Visible thin line */}
+                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-[#1F1F1F] group-hover:bg-accent/50 transition-colors duration-150" />
+                {/* Wider hit area on hover glow */}
+                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[3px] bg-transparent group-hover:bg-accent/10 transition-colors duration-150 rounded-full" />
+              </div>
+            )}
+
+            {/* Right Panel — only in dual mode */}
+            {layoutMode === 'dual' && (
+              <div style={{ width: rightPercent }} className="h-full flex min-w-0">
+                <PanelFeedProvider panelId="right">
+                  <ChartPanel panelId="right" />
+                </PanelFeedProvider>
+              </div>
+            )}
+          </div>
+          
+          {!focusMode && process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && <OrdersPanel />}
         </main>
       </div>
 

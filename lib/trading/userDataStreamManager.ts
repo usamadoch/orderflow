@@ -16,6 +16,14 @@ import type {
 import type { BinanceTradingConfig } from './config';
 import { BinanceRestClientError } from './binanceRestClient';
 import { createBinanceBrokerAdapter } from './binanceAdapter';
+import { createBinanceFuturesBrokerAdapter } from './binanceFuturesAdapter';
+
+function createAdapter(config: BinanceTradingConfig) {
+  return config.isFutures
+    ? createBinanceFuturesBrokerAdapter(config)
+    : createBinanceBrokerAdapter(config);
+}
+
 
 const KEEPALIVE_INTERVAL_MS = 30 * 60 * 1000;
 const LISTEN_KEY_TTL_MS = 60 * 60 * 1000;
@@ -108,7 +116,7 @@ export class BinanceUserDataStreamManager {
     this.reconciliationLoading = true;
 
     try {
-      const adapter = createBinanceBrokerAdapter(this.config);
+      const adapter = createAdapter(this.config);
       const snapshot = await adapter.getAccountSnapshot(symbol, recentTradesLimit);
       this.applySnapshot(snapshot);
       this.lastErrorMessage = null;
@@ -236,7 +244,8 @@ export class BinanceUserDataStreamManager {
   }
 
   private async createListenKey() {
-    const response = await this.apiKeyRequest<ListenKeyResponse>('POST', '/userDataStream');
+    const path = this.config.isFutures ? '/fapi/v1/listenKey' : '/api/v3/userDataStream';
+    const response = await this.apiKeyRequest<ListenKeyResponse>('POST', path);
     const listenKey = typeof response.listenKey === 'string' ? response.listenKey : null;
     if (!listenKey) {
       throw new BinanceRestClientError('Binance user data stream did not return a listenKey.', 'listen_key_missing', 502);
@@ -248,7 +257,8 @@ export class BinanceUserDataStreamManager {
     if (!this.listenKey) return;
 
     try {
-      await this.apiKeyRequest<unknown>('PUT', '/userDataStream', { listenKey: this.listenKey });
+      const path = this.config.isFutures ? '/fapi/v1/listenKey' : '/api/v3/userDataStream';
+      await this.apiKeyRequest<unknown>('PUT', path, { listenKey: this.listenKey });
       this.listenKeyLastKeepaliveAt = Date.now();
       this.scheduleKeepalive();
     } catch (error) {

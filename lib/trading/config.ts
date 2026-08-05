@@ -4,10 +4,14 @@ import type { TradingHealthStatus, TradingMode, TradingModeBadge } from '../../t
 
 export const DEFAULT_TRADING_MODE: TradingMode = 'binance_testnet';
 
-const BINANCE_TESTNET_REST_URL = 'https://testnet.binance.vision/api/v3';
-const BINANCE_LIVE_REST_URL = 'https://api.binance.com/api/v3';
-const BINANCE_TESTNET_WS_URL = 'wss://stream.testnet.binance.vision/ws';
-const BINANCE_LIVE_WS_URL = 'wss://stream.binance.com:9443/ws';
+const BINANCE_TESTNET_REST_URL          = 'https://testnet.binance.vision';
+const BINANCE_LIVE_REST_URL             = 'https://api.binance.com';
+const BINANCE_TESTNET_WS_URL            = 'wss://stream.testnet.binance.vision/ws';
+const BINANCE_LIVE_WS_URL               = 'wss://stream.binance.com:9443/ws';
+
+// Binance USDT-M Futures Testnet
+const BINANCE_FUTURES_TESTNET_REST_URL  = 'https://testnet.binancefuture.com';
+const BINANCE_FUTURES_TESTNET_WS_URL    = 'wss://stream.binancefuture.com/ws';
 
 export interface SafeTradingConfigStatus {
   mode: TradingMode;
@@ -23,6 +27,8 @@ export interface BinanceTradingConfig extends SafeTradingConfigStatus {
   restBaseUrl: string | null;
   serverTimeUrl: string | null;
   userStreamWsBaseUrl: string | null;
+  /** Whether this config routes to a Futures API (fapi) vs Spot (api). */
+  isFutures: boolean;
 }
 
 export class TradingConfigError extends Error {
@@ -41,11 +47,9 @@ export class TradingConfigError extends Error {
 
 function parseTradingMode(value: string | undefined): TradingMode {
   if (!value) return DEFAULT_TRADING_MODE;
-
-  if (value === 'binance_testnet' || value === 'binance_live' || value === 'local_paper') {
+  if (value === 'binance_testnet' || value === 'binance_futures_testnet' || value === 'binance_live' || value === 'local_paper') {
     return value;
   }
-
   return DEFAULT_TRADING_MODE;
 }
 
@@ -56,7 +60,12 @@ function parseEnabled(value: string | undefined) {
 export function getTradingModeBadge(mode: TradingMode): TradingModeBadge {
   if (mode === 'binance_live') return 'live';
   if (mode === 'local_paper') return 'paper';
+  if (mode === 'binance_futures_testnet') return 'futures';
   return 'testnet';
+}
+
+export function isTradingDisabled(): boolean {
+  return process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true';
 }
 
 function getApiCredentials(mode: TradingMode) {
@@ -66,18 +75,19 @@ function getApiCredentials(mode: TradingMode) {
       apiSecret: process.env.BINANCE_LIVE_API_SECRET ?? null,
     };
   }
-
+  if (mode === 'binance_futures_testnet') {
+    return {
+      apiKey: process.env.BINANCE_FUTURES_TESTNET_API_KEY ?? null,
+      apiSecret: process.env.BINANCE_FUTURES_TESTNET_API_SECRET ?? null,
+    };
+  }
   if (mode === 'binance_testnet') {
     return {
       apiKey: process.env.BINANCE_TESTNET_API_KEY ?? null,
       apiSecret: process.env.BINANCE_TESTNET_API_SECRET ?? null,
     };
   }
-
-  return {
-    apiKey: null,
-    apiSecret: null,
-  };
+  return { apiKey: null, apiSecret: null };
 }
 
 function createSafeStatus(
@@ -117,6 +127,19 @@ export function getBinanceTradingConfig(): BinanceTradingConfig {
       restBaseUrl: null,
       serverTimeUrl: null,
       userStreamWsBaseUrl: null,
+      isFutures: false,
+    };
+  }
+
+  if (mode === 'binance_futures_testnet') {
+    return {
+      ...safeStatus,
+      apiKey,
+      apiSecret,
+      restBaseUrl: BINANCE_FUTURES_TESTNET_REST_URL,
+      serverTimeUrl: `${BINANCE_FUTURES_TESTNET_REST_URL}/fapi/v1/time`,
+      userStreamWsBaseUrl: BINANCE_FUTURES_TESTNET_WS_URL,
+      isFutures: true,
     };
   }
 
@@ -128,8 +151,9 @@ export function getBinanceTradingConfig(): BinanceTradingConfig {
     apiKey,
     apiSecret,
     restBaseUrl,
-    serverTimeUrl: `${restBaseUrl}/time`,
+    serverTimeUrl: `${restBaseUrl}/api/v3/time`,
     userStreamWsBaseUrl,
+    isFutures: false,
   };
 }
 

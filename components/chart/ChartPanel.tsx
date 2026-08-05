@@ -31,6 +31,9 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const tradingOpenOrders = useChartRuntimeStore(s => s.tradingStatus.openOrders);
   const tradingPositions = useChartRuntimeStore(s => s.tradingStatus.positions);
   const tradingRecentTrades = useChartRuntimeStore(s => s.tradingStatus.recentTrades);
+  const tradingVirtualPositions = useChartRuntimeStore(s => s.tradingStatus.virtualPositions);
+  const tradingBracketOrders = useChartRuntimeStore(s => s.tradingStatus.bracketOrders);
+  const tradingBracketDrag = useChartRuntimeStore(s => s.tradingStatus.bracketDrag);
   const tickSize = useChartStore(s => s.tickSize);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
@@ -58,20 +61,24 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const volumeFlowSource = flowSource === panel.contractType ? 'active' : flowSource;
   const panelSymbol = panel.pair.toUpperCase();
   const chartOpenOrders = React.useMemo(
-    () => panel.contractType === 'spot'
-      ? tradingOpenOrders.filter((order) => order.symbol.toUpperCase() === panelSymbol)
-      : [],
-    [panel.contractType, panelSymbol, tradingOpenOrders],
+    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingOpenOrders.filter((order) => order.symbol.toUpperCase() === panelSymbol),
+    [panelSymbol, tradingOpenOrders],
   );
   const chartPositions = React.useMemo(
-    () => tradingPositions.filter((position) => position.symbol.toUpperCase() === panelSymbol),
+    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingPositions.filter((position) => position.symbol.toUpperCase() === panelSymbol),
     [panelSymbol, tradingPositions],
   );
   const chartRecentTrades = React.useMemo(
-    () => panel.contractType === 'spot'
-      ? tradingRecentTrades.filter((trade) => trade.symbol.toUpperCase() === panelSymbol)
-      : [],
-    [panel.contractType, panelSymbol, tradingRecentTrades],
+    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingRecentTrades.filter((trade) => trade.symbol.toUpperCase() === panelSymbol),
+    [panelSymbol, tradingRecentTrades],
+  );
+  const chartVirtualPositions = React.useMemo(
+    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingVirtualPositions.filter((vp) => vp.symbol.toUpperCase() === panelSymbol && vp.status === 'open'),
+    [panelSymbol, tradingVirtualPositions],
+  );
+  const chartBracketOrders = React.useMemo(
+    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingBracketOrders.filter((b) => chartVirtualPositions.some((vp) => vp.id === b.positionId)),
+    [chartVirtualPositions, tradingBracketOrders],
   );
 
   React.useEffect(() => {
@@ -164,6 +171,9 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             tradingContractType={panel.contractType}
             openOrders={chartOpenOrders}
             positions={chartPositions}
+            virtualPositions={chartVirtualPositions}
+            bracketOrders={chartBracketOrders}
+            bracketDrag={tradingBracketDrag}
             recentFills={chartRecentTrades}
             volumeBarsEnabled={panel.volumeBarsEnabled}
             volumeBarsInputData={panel.volumeBarsInputData}
@@ -236,7 +246,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
           />
           <IndicatorLabels panelId={panelId} isLoading={isPanelLoading} />
-          <OrderTicket panelId={panelId} />
+          {process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && <OrderTicket panelId={panelId} />}
           {isCvdCompact && (
             <button
               onClick={() => setCvdMinimized(panelId, false)}

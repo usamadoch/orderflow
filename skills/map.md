@@ -11,6 +11,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 /
 ├── app/                         # Next.js App Router pages, layout, and history APIs
 │   ├── api/history/              # Stored candle, footprint, profile, trade, and status routes
+│   ├── api/trading/              # Safe trading health and account snapshot routes
 │   ├── layout.tsx                # Root layout
 │   ├── page.tsx                  # Main app scaffold: header, sidebar, chart layout, focus mode
 │   └── globals.css               # Tailwind globals and CSS variables
@@ -35,6 +36,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 │   ├── liquidity/                # Orderbook, liquidity zones, heatmap support
 │   ├── liquidityVacuum/          # Liquidity Vacuum detection
 │   ├── store/                    # Zustand state
+│   ├── trading/                  # Server-only trading config, signed Binance client, adapter, and health helpers
 │   ├── utils/                    # Math, formatting, CVD, sessions, measurement helpers
 │   └── volumeProfile/            # Shared/profile engine and cache
 │
@@ -70,12 +72,23 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `app/api/history/aggregate-bubbles/route.ts` -> Aggregate Trade bubble candidate restore API using the dedicated bubbles MongoDB connection, spot/futures/both source selection, 6-hour range guard, bounded limits, and storage-threshold response headers.
 - `app/api/history/status/route.ts` → History/status API for selected driver metadata, counts, retention, and DB status.
 
+### Trading APIs
+
+- `app/api/trading/health/route.ts` → Safe trading health API returning selected mode, testnet/live badge, configured credential presence, Binance server time status, connection status, and live-trading safety blocks without exposing secrets.
+- `app/api/trading/account-snapshot/route.ts` → Safe read-only trading account snapshot API that starts the backend user stream when possible, runs REST reconciliation, returns normalized balances/open orders/positions/recent fills, and reports clear non-secret errors for blocked, missing, or invalid Binance credentials.
+- `app/api/trading/orders/route.ts` → Safe Binance testnet spot order placement/cancellation API with request validation, server-side risk gates, live/non-testnet execution blocks, credential checks, daily order counter updates, normalized order results, and non-secret errors.
+- `app/api/trading/risk-status/route.ts` → Safe trading risk status API returning live lock state, kill switch status, risk limits, in-memory daily counters, and block reasons without exposing secrets.
+- `app/api/trading/stream-status/route.ts` → Safe backend Binance user data stream status API that starts/monitors the server stream and returns mode, connection/reconnect state, last event, listenKey session metadata, reconciliation state, and non-secret errors.
+
 ### Layout / UI Components
 
 - `components/layout/Header.tsx` → Top toolbar, layout controls, connection status, auth controls, and main-surface header styling.
 - `components/layout/Sidebar.tsx` → Thin icon-rail tools sidebar with active-panel context, main-surface sidebar styling, and elevated chart/tool status tooltips.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection indicator using shared semantic status colors.
 - `components/ui/PanelToolbar.tsx` → Per-panel header controls for the symbol selector, timeframe, chart mode, Long/Short Position drawing tool selection, panel-targeted settings access, whole-layout focus toggle, and main/elevated dark toolbar styling.
+- `components/ui/OrderTicket.tsx` → Draggable floating order ticket modal with smart default quantity logic, local side/type/quantity/price/confirmation state, latest-price estimates, safe validation, risk/live/kill-switch warnings, balance display from runtime snapshot data, and Binance testnet spot order submission loading/success/error feedback through runtime actions.
+- `components/ui/AccountBalanceWidget.tsx` → Header widget displaying available and total balance for the primary asset (e.g. USDT) based on live snapshot data.
+- `components/ui/OrdersPanel.tsx` → Bottom pane table listing all open orders with real-time status and integrated cancellation controls.
 - `components/ui/DrawingFavoritesToolbar.tsx` → Draggable panel-bounded compact/collapsible icon-only elevated floating toolbar with scoped inner-control contrast for Profile, Measure, and favorite line/box drawing tool selection using existing drawing state.
 - `components/ui/ChartSettingsDropdown.tsx` → Draggable, resizable, elevated panel-anchored top-layer settings window with scoped inner-control contrast, persisted height, chart aggregation/global tick-size controls without chart contract or Flow Source controls, restored Profiles tab with default/custom Volume Profile controls, no global Indicators tab, focused per-indicator dialog mode for sessions/CVD/bubbles/Volume/heatmap/liquidity map controls, Footprint Cells/Aggregate Trades bubble source, Size By Volume/Orders, and Min Orders controls, Volume input/filter/color/display/average controls without duplicate Market Source controls, radius/scale controls, Volume Profile auto/manual row-size display and linear/sqrt hints, compact signal toggles/settings using the shared bullish accent, single/combined liquidity depth source, real orderbook heatmap visual controls, responsive label visibility/detail/min-quantity controls, and related controls.
 - `components/ui/PairSelector.tsx` → Panel-scoped elevated settings-style Binance USDT symbol/contract modal selector with scoped inner-control contrast and Spot/Perpetual Futures choices.
@@ -91,9 +104,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Chart Rendering
 
-- `components/chart/ChartPanel.tsx` → Panel bridge combining persisted chart settings with non-persisted runtime candles/status/signals/bubbles/liquidity results into chart props, including Bubbles/Volume Flow Source routing, panel-scoped chart info loading state wiring without normal restore-detail badge UI, indicator labels, CVD canvases, main panel background styling, orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
+- `components/chart/ChartPanel.tsx` → Panel bridge combining persisted chart settings with non-persisted runtime candles/status/signals/bubbles/liquidity/trading results into chart props, including Bubbles/Volume Flow Source routing, panel-scoped trading order/fill/position/virtual-position/bracket-order filtering, panel-scoped chart info loading state wiring without normal restore-detail badge UI, indicator labels, the panel-scoped basic order ticket overlay, CVD canvases, main panel background styling, orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
 - `components/chart/IndicatorLabels.tsx` → TradingView-style top-left independent chart info row and labels for source controls, connection dot, loading dots, Bubbles, CVD, Volume, Sessions, VOP, Heatmap, and Liquidity with per-panel persisted collapse state that hides both chart info and indicators, readable text-first layout, elevated hover controls, per-panel eye toggles, per-indicator settings dialogs for indicator labels, and VOP gear routing to the global Profiles tab.
-- `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, explicit main canvas background fill, runtime-store crosshair sync via direct selector subscription, bubble source switching, aggregate bubble and Volume prop routing, active market context routing, aggregate bubble and Volume debug publication, auto-sized Volume Profile bucket selection for default and custom profiles, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order, hit-testing, local-ref hover/drag state, time-anchored drawing placement and movement including Long/Short Position risk-only preview, finalized default target creation, top-layer drawing pass, position-aware toolbar spacing, and entry/stop/target dragging, selectable elevated drawing toolbar with scoped inner-control contrast plus style/lock/delete controls, custom profile interactions including lock/remove/settings controls, render metrics, and visible footprint/profile/CVD wiring.
+- `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, explicit main canvas background fill, runtime-store crosshair sync via direct selector subscription, bubble source switching, aggregate bubble and Volume prop routing, active market/trading context routing, aggregate bubble and Volume debug publication, auto-sized Volume Profile bucket selection for default and custom profiles, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order including panel-scoped trading order/position/fill overlays, chart-line cancel controls, and open spot Limit order drag-modify preview/confirmation controls with risk/live/kill-switch blocking, hit-testing, local-ref hover/drag state, time-anchored drawing placement and movement including Long/Short Position risk-only preview, finalized default target creation, top-layer drawing pass, position-aware toolbar spacing, and entry/stop/target dragging, selectable elevated drawing toolbar with scoped inner-control contrast plus style/lock/delete controls, custom profile interactions including lock/remove/settings controls, render metrics, and visible footprint/profile/CVD wiring.
 - `components/chart/CvdPanel.tsx` → Attached CVD canvas with synced horizontal geometry, main panel background styling, runtime-store crosshair sync via direct selector subscription, vertical scaling, memoized CVD series/divergence, and render metrics.
 - `components/chart/useCoordinates.ts` → Coordinate math for price/time/index mapping, visible range, and drawable width.
 - `components/chart/usePanZoom.ts` → Shared pan/zoom hook with anchored zoom, drag handling, crosshair interaction, and sibling canvas sync.
@@ -107,6 +120,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawLines.ts` → Horizontal/vertical line, ray, box, Long/Short Position risk/reward zones using shared bearish/bullish colors, candle-overlap shading, conditional TradingView-style metric labels, elevated handle/delete/price-label surfaces, selected-state, and backward-compatible drawing style renderer.
 - `components/chart/drawAxes.ts` → Price/time axis and 1px aligned chart grid renderers using the main chart surface.
 - `components/chart/drawPriceLine.ts` → Live price line, badge, countdown, and shared bullish/bearish direction coloring.
+- `components/chart/drawTradingOverlays.ts` → Panel-scoped trading overlay renderer for open limit order lines (buy/sell styled, quantity/status labels, price-axis badges), virtual position entry lines (fixed, with PnL and side marker), SL/TP bracket lines with draggable pill handles and coloured risk/profit zone fills, drag-modify preview price lines, and lightweight recent fill markers. Returns `TradingOverlayHitZones` so ChartCanvas can hit-test SL/TP handles per frame.
 - `components/chart/drawCrosshair.ts` → Crosshair and elevated axis-label renderer.
 - `components/chart/drawAbsorption.ts` → Absorption signal marker renderer using shared bullish/bearish semantic colors.
 - `components/chart/drawExhaustion.ts` → Exhaustion signal marker renderer.
@@ -129,7 +143,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 ### State / Hooks
 
 - `lib/store/chart.ts` → Persisted Zustand chart settings, selected market/timeframe/mode, drawing/profile/session/CVD/bubble/Volume/signal/liquidity/heatmap preferences, layout/auth/settings-window state, restore status shape including footprint range/chunk/failure fields, shared CVD default colors, crosshair sync setting, and migration normalization that strips legacy runtime fields and maps legacy semantic colors.
-- `lib/store/chartRuntime.ts` → Non-persisted Zustand runtime panel state for candles, trades, connection/loading/restore status, signal result maps, aggregate bubble buffers, profile/measurement selection, liquidity zones, footprint redraw triggers, and shared crosshair sync payload with selector subscriptions.
+- `lib/store/chartRuntime.ts` → Non-persisted Zustand runtime panel state for candles, trades, connection/loading/restore status, signal result maps, aggregate bubble buffers, profile/measurement selection, liquidity zones, footprint redraw triggers, shared trading health/account snapshot/user-stream/order action/risk status state, drag-modify preview/modify action state and risk preflight actions, reconciliation fields, virtual positions, bracket orders, bracket drag state (with upsert/remove/setBracketDrag/updateVirtualPnl actions), and shared crosshair sync payload with selector subscriptions.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcuts for chart modes, tools, sessions, liquidity, signal toggles, focus mode, and active panel targeting.
 
 ### Feeds / Shared Live Data
@@ -141,6 +155,15 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/feeds/feedRegistry.ts` → Shared ref-counted feed registry for kline, aggTrade, concrete exchange/contract-routed depth streams, in-flight history/snapshot dedupe, and stream metrics.
 - `lib/feeds/candleCache.ts` → Shared contract/symbol/timeframe candle cache with capped candles, normalized loaded ranges, subscriber fanout, restore dedupe, cleanup, and metrics.
 - `lib/feeds/index.ts` → Feed and Binance/Bybit depth adapter exports.
+
+### Trading Foundation
+
+- `lib/trading/config.ts` → Server-only Binance trading mode/env config with `binance_testnet` default, safe credential-presence metadata, testnet/live REST and user-stream WebSocket endpoints, safe status helpers, and live-mode rejection unless `BINANCE_ENABLE_LIVE_TRADING=true`.
+- `lib/trading/binanceRestClient.ts` → Server-only signed Binance REST helper for API-key headers, HMAC SHA256 signatures, signed GET/POST/DELETE requests, timestamp/recvWindow handling, server-time offset sync, and safe Binance error wrapping.
+- `lib/trading/binanceAdapter.ts` → Binance broker adapter implementing signed account snapshot sync for balances, open orders, selected-symbol fills, empty positions until futures trading is supported, Binance testnet spot market/limit order placement/cancellation, and explicit futures execution rejection.
+- `lib/trading/health.ts` → Server-only trading health helper that performs the optional Binance server-time check and builds safe frontend/API health status.
+- `lib/trading/risk.ts` → Server-only trading risk config, live-mode lock status, kill switch, confirmation requirement, max order quantity/notional checks, non-persistent in-memory daily counters, and safe risk rejection tracking.
+- `lib/trading/userDataStreamManager.ts` → Server-only singleton Binance user data stream manager for listenKey creation/keepalive, testnet/live WebSocket connection, account/order/fill event normalization, reconnect backoff, duplicate stream prevention, safe status reporting, and REST snapshot reconciliation after reconnect/start.
 
 ### Aggregation / Footprint
 
@@ -200,7 +223,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 - `lib/cache/marketCachePolicy.ts` → Shared cache retention, cleanup interval, inactive grace, and max-size defaults/env overrides.
 - `lib/debug/marketMetrics.ts` → Dev-only metrics registry exposed through `window.__MARKET_DEBUG__` for streams, caches, aggregate bubble render/filter/restore snapshots with market source, active chart source, live/restored source counts, storage thresholds, restore range, duplicate skips, size mode, min-order, rendered-value, and trade-count fallback diagnostics, Volume enabled/input/Flow Source/visible/historical/live/max/average snapshots, orderbook sync state/gaps/resyncs, orderbook heatmap sampling/coverage, restore/storage diagnostics, cleanup, render rates, and redraw source breakdown.
-- `lib/debug/debugPanelAdapter.ts` → Internal debug panel snapshot adapter summarizing `window.__MARKET_DEBUG__`, persisted chart settings including Volume status, and runtime store state without copying raw market arrays.
+- `lib/debug/debugPanelAdapter.ts` → Internal debug panel snapshot adapter summarizing `window.__MARKET_DEBUG__`, persisted chart settings including Volume status, runtime store state, safe trading account snapshot counts/errors, order action and risk status state, and Binance user-stream connection/reconnect/reconciliation fields without copying raw market arrays.
 - `lib/config/markets.ts` → Supported Binance USDT symbols/timeframes, validation helpers, source-scoped storage key constants, and canonical fine profile base-bucket sizing.
 - `lib/config/chartColors.ts` → Shared TradingView-style bullish/bearish chart colors, RGB values, rgba conversion helper, and legacy semantic color normalization.
 
@@ -216,6 +239,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `types/bubble.ts` → Bubble source, aggregate bubble market-source, bubble size mode, and live/restored aggregate trade bubble event types with optional persisted aggregate trade ids and origin metadata.
 - `types/trade.ts` → Trade tick shape, including optional aggregate trade id and first/last raw trade ids.
 - `types/measurement.ts` → Measurement tool data types.
+- `types/trading.ts` → Shared generic trading types for modes, broker adapters, order/cancel/modify requests and results, orders, positions, balances, fills, optional-symbol account snapshots, safe health/risk payloads, safe Binance user-stream status payloads, `VirtualPosition` (client-side spot position abstraction derived from fills), `BracketOrder` (separate SL/TP model supporting future multi-TP and trailing stops), and `BracketDragState` (chart canvas drag context for SL/TP handles).
 
 ### Artifacts / Skills
 

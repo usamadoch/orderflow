@@ -1,5 +1,122 @@
 # OrderFlow Chart - Change Log
 
+## [2026-06-13] - Feature: Trading Risk Gates and Live Lock
+- **What changed**:
+  - Added server-only trading risk config and safe `/api/trading/risk-status` reporting for live lock state, kill switch, max order quantity/notional, daily order count, and non-persistent in-memory counters.
+  - Enforced backend risk checks before order placement, including kill switch, live-mode blocks, required confirmation, futures rejection, quantity/notional limits, and daily order count limits; successful placements update the server-side daily counter.
+  - Kept cancel existing orders allowed through the kill switch path while still blocking unsupported modes/contracts.
+  - Extended non-persisted runtime trading state with risk status/loading/error, live blocked state, kill switch state, and risk block reasons.
+  - Updated the order ticket and chart drag-modify confirmation to show risk/live/kill-switch warnings and disable final confirmation when risk status blocks the order; drag modify now preflights risk before the cancel leg.
+  - Added safe risk fields to the internal debug summary.
+- **Why it changed**:
+  - Testnet order placement, cancellation, and cancel+replace modify needed strict safety gates before any future live trading enablement path can exist.
+- **Impact summary**:
+  - Live trading remains blocked by default and still has no UI enable flow.
+  - Kill switch blocks new orders and modify/cancel+replace while existing order cancellation remains available as the safer exception.
+  - Daily counters are server-side but intentionally in-memory/non-persistent for now.
+  - Futures trading, SL/TP, bracket orders, paper trading, chart tools, indicators, feeds, footprint/profile logic, settings, and collectors remain unchanged.
+  - `npx.cmd tsc --noEmit` passes.
+
+## [2026-06-13] - Feature: Drag Modify Order Lines
+- **What changed**:
+  - Added drag hit-testing for active open spot Limit order lines on the matching chart panel.
+  - Added preview rendering for dragged order prices while keeping the original order line visible.
+  - Added a chart-level modify confirmation modal with original price, new price, side, symbol, quantity, order id, and testnet badge.
+  - Added non-persisted runtime modify state plus `modifyOrder()`, implemented as cancel old order then place a replacement spot Limit order at the dragged price.
+- **Why it changed**:
+  - Open Binance testnet spot Limit orders were visible and cancellable from the chart, but their price could not be modified from the order line.
+- **Impact summary**:
+  - Only open or partially filled spot Limit orders for the current panel symbol can be drag-modified in Binance testnet mode.
+  - Filled/cancelled/non-limit orders, recent fill markers, position lines, futures panels, and non-testnet/live modes are blocked before modify.
+  - No API request is sent during dragging; execution happens only after confirmation and then refreshes account snapshot/user-stream status.
+  - No new order types, futures modify behavior, drawing tools, indicators, feeds, settings, collectors, or user-stream logic were added.
+
+## [2026-06-13] - Feature: Chart Order and Position Lines
+- **What changed**:
+  - Added panel-scoped trading overlays to the main chart canvas for open limit order lines, real position entry lines, and lightweight recent fill markers.
+  - Filtered chart trading overlays by the active panel symbol; open order and fill overlays are limited to spot panels because the current Binance order path is spot-only.
+  - Added compact chart-line cancel controls that reuse the existing runtime `cancelOrder()` action, show inline confirmation/loading feedback, and rely on the existing post-cancel account snapshot/user-stream refresh.
+  - Kept Market orders out of active chart lines and did not add drag-to-modify behavior.
+- **Why it changed**:
+  - Existing Binance testnet trading state was available in runtime state, but the chart did not visualize active orders, real positions, or recent fills.
+- **Impact summary**:
+  - Open spot Limit orders now appear as buy/sell chart lines only on matching symbol panels and can be cancelled from the line.
+  - Real positions render only when runtime positions contain a matching non-flat position; no synthetic spot balance or fill-based position lines are created.
+  - Recent fills can appear as small buy/sell markers near the matching candle.
+  - Order execution, cancel backend logic, user stream sync, account snapshot sync, indicators, footprint/profile logic, market feeds, drawing tools, settings, and collectors remain unchanged.
+  - `npx.cmd tsc --noEmit` passes.
+
+## [2026-06-13] - Feature: Binance Testnet Place/Cancel Orders
+- **What changed**:
+  - Added `/api/trading/orders` with POST placement and DELETE cancellation for validated Binance testnet spot orders, including symbol/side/type/quantity/limit-price/cancel-id checks, credential checks, non-testnet/live execution blocks, and safe normalized `OrderResult` responses.
+  - Extended the server-only signed Binance REST client with signed POST/DELETE support and implemented spot Market/Limit placement plus cancel in the Binance adapter.
+  - Kept futures execution blocked with the clear `Futures testnet order placement is not implemented yet.` error and kept reduce-only out of spot execution.
+  - Added non-persisted runtime order action loading/error/success state plus `placeOrder()` and `cancelOrder()` actions that refresh account snapshot and stream status after successful execution.
+  - Updated the order ticket final confirmation to submit real testnet spot orders, show loading/success/error feedback, and stop showing the placeholder execution-not-implemented message.
+- **Why it changed**:
+  - The existing order ticket could validate and confirm orders but could not execute or cancel against Binance testnet.
+- **Impact summary**:
+  - Binance testnet spot Market/Limit orders can now be placed from the ticket and cancelled through the runtime/API path.
+  - Live and non-testnet execution remain blocked by default, API secrets stay server-only, and futures placement remains explicitly unsupported.
+  - Chart rendering, indicators, market data feeds, footprint/profile logic, drawing tools, and settings remain unchanged.
+
+## [2026-06-13] - UI: Basic Order Ticket
+- **What changed**:
+  - Added a compact panel-scoped order ticket overlay with Buy/Sell side selection, Market/Limit type selection, quantity input, limit price input, market estimated price from the latest chart candle, selected symbol/mode/market display, reduce-only toggle when the active panel is futures, and testnet/live/paper badge display.
+  - Added frontend-only validation for missing symbol/mode, non-positive quantity, non-positive limit price, and blocked live trading.
+  - Added a confirmation modal that summarizes side, symbol, order type, quantity, price or estimated price, mode, market, badge, and reduce-only state, then shows `Order execution is not implemented yet.` on final confirm.
+  - Reads available balance from the existing non-persisted trading runtime snapshot state when present; otherwise shows an empty balance state.
+- **Why it changed**:
+  - The app needed a safe basic order ticket surface before any backend order placement, cancellation, or modification behavior exists.
+- **Impact summary**:
+  - Order ticket state remains local UI state and is not persisted.
+  - No place/cancel/modify routes, Binance order calls, or broker execution behavior were added.
+  - Existing `placeOrder()` and `cancelOrder()` still reject as not implemented.
+  - `npx.cmd tsc --noEmit` passes.
+
+## [2026-06-13] - Feature: Binance Testnet User Stream Sync
+- **What changed**:
+  - Added a server-only Binance user data stream manager that creates listenKeys, connects to the configured testnet/live user-stream WebSocket endpoint, normalizes account balance and execution report events, keeps listenKeys alive, reconnects with backoff, prevents duplicate parallel sockets, and reconciles account state through the existing REST snapshot flow after start/reconnect.
+  - Added `/api/trading/stream-status` for safe stream status reporting with mode, connected/reconnecting/error state, last event time, reconnect count, listenKey session metadata, reconciliation state, and non-secret error messages.
+  - Updated `/api/trading/account-snapshot` to start the backend stream when possible and return the manager's REST-reconciled read-only account snapshot.
+  - Extended non-persisted trading runtime state with user-stream status, connection, last event, reconnect count, stream error, reconciliation loading, and last reconciled timestamp fields plus a stream status refresh action.
+  - Added safe user-stream connection/reconnect/reconciliation fields to the internal debug runtime summary.
+- **Why it changed**:
+  - Read-only Binance testnet/demo account data needed live backend updates and recovery after stream disconnects without adding any order execution UI or exposing API secrets.
+- **Impact summary**:
+  - Backend account state can now be updated from Binance user stream events and repaired with REST reconciliation after reconnects.
+  - Frontend runtime/debug state can track stream health separately from account snapshot data.
+  - Positions remain empty until futures trading is supported, and order placement/cancellation still reject as not implemented.
+  - `npx.cmd tsc --noEmit` passes.
+
+## [2026-06-13] - Feature: Binance Testnet Account Snapshot Sync
+- **What changed**:
+  - Added a server-only signed Binance REST client with API-key headers, HMAC SHA256 signatures, timestamp/recvWindow handling, server-time offset sync, and safe error wrapping.
+  - Replaced the empty Binance adapter snapshot stubs with read-only testnet account sync for balances, open orders, and selected-symbol recent fills; positions remain empty until a futures trading mode is supported.
+  - Added `/api/trading/account-snapshot` to return normalized account snapshot data and safe error payloads for blocked live mode, missing credentials, or Binance request failures.
+  - Extended non-persisted trading runtime state with snapshot arrays, loading/error/timestamp fields, and a callable `refreshAccountSnapshot(symbol, limit)` action.
+  - Added safe trading snapshot counts and errors to the internal debug summary.
+- **Why it changed**:
+  - The trading foundation needed real read-only Binance testnet/demo account synchronization without introducing order execution.
+- **Impact summary**:
+  - Valid Binance testnet credentials can now populate frontend runtime state with balances, open orders, and recent fills through the new API route.
+  - API secrets remain server-only, live mode remains guarded by the existing config safety gate, and order placement/cancellation still reject as not implemented.
+  - Chart rendering, indicators, market feeds, footprint/profile logic, drawing tools, and settings remain unchanged.
+
+## [2026-06-13] - Feature: Binance Trading Foundation
+- **What changed**:
+  - Added shared generic trading models for trading modes, broker adapters, orders, positions, balances, fills, account snapshots, and safe health status payloads.
+  - Added server-only Binance trading config with `binance_testnet` as the default mode, testnet/live credential presence checks, and a live-trading safety gate requiring `BINANCE_ENABLE_LIVE_TRADING=true`.
+  - Added an inert Binance broker adapter stub that can provide empty snapshot data but rejects order placement and cancellation.
+  - Added `/api/trading/health` to return safe mode, badge, credential-presence, Binance server-time, connection, and block status without exposing API secrets.
+  - Added non-persisted frontend runtime state for trading mode, connection status, badge, last health check time, and last error message.
+- **Why it changed**:
+  - The app needs a safe base architecture for Binance-linked testnet/demo trading before any order UI or real execution behavior is introduced.
+- **Impact summary**:
+  - Binance testnet is the default trading mode, live mode is blocked unless explicitly enabled on the server, and no real orders can be placed by this foundation.
+  - Chart rendering, indicators, order-flow feeds, footprint/profile logic, drawing tools, and existing settings remain unchanged.
+  - `npx.cmd tsc --noEmit` passes.
+
 ## [2026-06-09] - UI: Chart Info Row Polish
 - **What changed**:
   - Restyled the top-left chart info row to feel more like an independent TradingView legend line with larger text, clearer pair/market/source separation, and a small connection status dot.
@@ -9,157 +126,69 @@
 - **Impact summary**:
   - The chart info row is easier to scan above indicators while Flow Source behavior, indicator collapse behavior, toolbar behavior, and chart logic remain unchanged.
 
-## [2026-06-09] - UI: Chart Info Row and Compact Drawing Toolbar
-- **What changed**:
-  - Removed the Binance/source/loading cluster from the panel header while keeping the pair selector and existing chart controls in place.
-  - Added a top-left chart info row above the indicator labels showing pair, chart market type, Binance, Spot/Futures/Both source buttons, and panel-scoped loading dots.
-  - Reused the existing indicator collapse state so one control now hides or shows both the chart info row and indicator list.
-  - Added a right-side collapse/expand control to the floating drawing toolbar.
-  - Made the floating drawing toolbar more compact by reducing container spacing/padding and shrinking tool buttons; the collapsed toolbar remains draggable.
-- **Why it changed**:
-  - The panel header was crowded by market/feed/source/loading information, and the floating drawing toolbar needed a smaller footprint while idle.
-- **Impact summary**:
-  - Flow Source behavior, chart rendering, drawing behavior, indicators, data fetching, and restore logic are unchanged.
-  - The chart area now carries the market/source legend where users scan indicators, and the toolbar can collapse into a small draggable pill.
+## 2026-08-06
 
-## [2026-06-09] - UI: TradingView Colors and Header Loading Dots
-- **What changed**:
-  - Added shared chart bullish/bearish color constants for `#089981` and `#f23645`, plus RGB/rgba helpers and legacy semantic color normalization.
-  - Updated candlesticks, footprint cells/delta, footprint thin candles, bubbles, Volume bars, price line, CVD defaults, liquidity bid/ask helpers, iceberg/absorption visuals, measurement colors, and Long/Short drawing risk/reward visuals to use the shared green/red theme.
-  - Updated global bullish/bearish CSS variables and nearby chart-control accents to the same green/red defaults.
-  - Removed the normal chart-area detailed restore/loading badge and added small panel-scoped animated loading dots in each chart panel header.
-  - Kept detailed restore/loading status data in runtime/debug paths instead of showing it in the normal chart UI.
-- **Why it changed**:
-  - Chart visuals used older mismatched green/red defaults and the normal UI exposed detailed loading text that should only be visible through debug surfaces.
-- **Impact summary**:
-  - Bullish/buy/up chart visuals now consistently use `#089981`; bearish/sell/down visuals use `#f23645`.
-  - Loading feedback is smaller and panel-specific while data fetching, restore, rendering, indicators, settings, and debug logic remain unchanged.
+### What Changed
+- Added `<OrdersPanel />` bottom pane component with "Open Orders" and "Trade History" tabs.
+- Added `<AccountBalanceWidget />` in the top `Header`.
+- Integrated `OrdersPanel` into the `page.tsx` layout spanning the bottom of the main content area.
+- Verified limit order lines and labels render properly via `drawTradingOverlays.ts`.
+- Verified `DELETE /api/trading/orders` endpoint correctly cancels Binance testnet limit orders.
+- Created `useTradingSync` hook to automatically fetch `refreshAccountSnapshot` on mount and poll every 10s.
 
-## [2026-06-09] - UI: Popup Control Contrast
-- **What changed**:
-  - Added a scoped popup contrast layer that keeps popup shells on `#1F1F1F` while giving inner controls a clearer `#262626` surface.
-  - Applied the contrast layer to Global Settings, indicator settings dialogs, the symbol selector modal, floating drawing/profile toolbars, and the internal debug popup.
-  - Improved inactive control borders to `#333333`/`#3A3A3A` for inputs, selects, unselected buttons, setting boxes/cards, and popup inner controls.
-  - Improved range slider visibility with `#3A3A3A` inactive tracks, accent-colored thumbs/progress where supported, and a subtle `#5A5A5A` thumb border.
-  - Kept selected/accent controls on their existing blue or semantic selected styling.
-- **Why it changed**:
-  - The prior dark theme cleanup made many popup controls the same `#1F1F1F` as their parent popup, reducing contrast for inactive buttons, fields, cards, sliders, and drag handles.
-- **Impact summary**:
-  - Popup controls are easier to distinguish without changing popup layout, settings behavior, indicator behavior, chart logic, or data flow.
-  - The elevated popup style remains intact while controls have a clearer visual hierarchy.
+### Why It Changed
+- Implementation of Order Management Phase 1 & 2 to match TradingView's professional UI standards.
+- Replaces disconnected prototype behavior with actual open order tracking, trade history logging, and cancellation capability directly from the frontend UI.
+- Fixed a bug where orders and balances were completely empty on load because `refreshAccountSnapshot` was never automatically invoked.
 
-## [2026-06-08] - UI: Consistent Dark Theme Surfaces
-- **What changed**:
-  - Set the main app, chart panel, canvas, CVD, header/sidebar, price scale, and time scale surfaces to `#0F0F0F`.
-  - Set elevated/floating UI surfaces such as settings windows, symbol selector modal, drawing toolbars, tooltips, indicator hover controls, restore badge, and debug panel surfaces to `#1F1F1F`.
-  - Added an explicit chart canvas background fill so the canvas itself uses the main dark surface.
-  - Kept existing border, text, accent, and semantic status colors while removing the mixed dark surface tokens from the scoped chart/UI files.
-  - Kept chart behavior, data flow, settings behavior, toolbar behavior, and panel layout unchanged.
-  - Updated chart grid drawing so horizontal and vertical grid lines are explicitly 1px and pixel-aligned.
-- **Why it changed**:
-  - The chart UI used several close but inconsistent dark colors across main surfaces and floating panels, making the dark theme look uneven and the grid visually heavy.
-- **Impact summary**:
-  - The app now has a simpler two-level dark hierarchy: `#0F0F0F` for the main chart/app surface and `#1F1F1F` for elevated UI.
-  - Canvas grid lines should render thinner and cleaner without changing chart logic or interactions.
+### Impact Summary
+- New `OrdersPanel.tsx` reads live data from Zustand store to show testnet orders and recent fills.
+- New `useTradingSync.ts` hook guarantees the frontend stays in sync with the backend.
+- New `AccountBalanceWidget.tsx` calculates available/locked margin natively.
+- No structural refactoring; purely additive to UI real estate.
 
-## [2026-06-08] - Fix: Safe Footprint Restore Window
-- **What changed**:
-  - Kept `needsFootprintWork` intact for footprint mode, footprint-cell bubbles, CVD, footprint-dependent signals, liquidity vacuum, and browser market writes.
-  - Changed stored footprint restore to derive a bounded current/visible chart window, clamp oversized footprint spans, and fetch canonical `1m/$5` rows in 2-hour chunks.
-  - Made footprint chunk failures local to footprint hydration so candle/live chart restore can still complete.
-  - Added footprint restore diagnostics for requested range, clamped range, chunk count, rows per chunk, range-too-large skips, and failure reason in restore status/debug views.
-  - Tightened `/api/history/footprint` to reject range requests over 2 hours of canonical 1m footprint data with a clear JSON error.
-  - Updated `skills/map.md` for the changed API, feed, chart status, debug panel, and restore status responsibilities.
-- **Why it changed**:
-  - Candle panels can still legitimately need footprint/order-flow data for enabled features, but the restore path could request an oversized footprint range in one call and fail or lag the panel.
-- **Impact summary**:
-  - Footprint-dependent features still enable footprint work when needed.
-  - Initial footprint restore no longer asks the API for multi-day footprint history in one request.
-  - Oversized visible/current restore spans are clamped and chunked, with failures reported without breaking candle rendering.
-  - `npx.cmd tsc --noEmit` passes.
+---
 
-## [2026-06-08] - Fix: Volume History After Flow Source Cleanup
+## [2026-08-05] - UI: Order Panel Drag and Default Quantity
 - **What changed**:
-  - Changed the Volume renderer so `Input Data = Volume` always builds bars from visible candle history and updates the live candle bar from candle volume.
-  - Kept Orders/Agg Trades Volume inputs on the existing aggregate-event path, with Flow Source filtering and explicit aggregate-data unavailable/live-only debug reasons.
-  - Stopped treating non-active Flow Source as a reason to require aggregate events for plain candle-volume rendering.
-  - Added Volume debug fields for visible, historical, live counts, input data, Flow Source used, and live-only reason.
-  - Reviewed the Bubbles Flow Source path: footprint-cell bubbles still use footprint cells, and aggregate-trade bubbles still resolve Spot/Futures/Both through the shared panel Flow Source.
-  - Updated `skills/map.md` for the renderer and debug responsibility changes.
+  - Transformed `OrderTicket.tsx` into a draggable floating modal that mimics the TradingView order dialog instead of remaining absolutely positioned.
+  - Added smart default quantity calculation logic in `OrderTicket.tsx` so users no longer hit the "Quantity must be greater than 0" error by default.
 - **Why it changed**:
-  - The Flow Source cleanup accidentally routed Volume input through aggregate-event filtering when the panel Flow Source was `Both` or differed from the chart contract, causing restored candle-volume history to disappear.
+  - The static positioning of the order panel was obtrusive and lacked parity with the TradingView drag UX. A default quantity prevents immediate errors upon opening the ticket.
 - **Impact summary**:
-  - Volume now renders historical bars from restored candles whenever candle volume exists.
-  - The latest live candle continues updating the current Volume bar.
-  - Orders/Agg Trades do not fake missing aggregate history; debug reports when only live aggregate bars are available or aggregate data is unavailable.
-  - Bubbles continue to use the shared Flow Source without restoring duplicate Market Source controls.
+  - Users can now drag the Order Ticket around the screen naturally.
+  - Default quantity auto-populates intelligently based on available balance or defaults to 0.001.
 
-## [2026-06-08] - UI: Indicator Source Cleanup
-- **What changed**:
-  - Removed the duplicate `Market Source` selector from Bubbles settings while keeping Bubble Source, Size By, thresholds, side filter, scale mode, and radius controls unchanged.
-  - Renamed the user-facing `Volume Bars` indicator to `Volume` in indicator labels and the settings popup title/section.
-  - Removed the duplicate `Market Source` selector from Volume settings while keeping input data, filters, color, opacity, height, values, average line, text size, and average length controls unchanged.
-  - Routed Bubbles and Volume source props through the panel Flow Source from the chart header, leaving the existing persisted source fields in place for compatibility.
-  - Updated `skills/map.md` for the changed settings, label, panel bridge, feed source-routing, and renderer responsibilities.
-- **Why it changed**:
-  - Bubbles and Volume had indicator-level market source controls that could conflict with the chart header Flow Source.
-- **Impact summary**:
-  - Bubbles and Volume now use the panel Flow Source instead of separate indicator source selectors.
-  - Existing Bubbles and Volume display/filter/settings behavior remains intact aside from the removed duplicate source controls.
-  - Feed, candle price source, footprint calculation, aggregate bubble rendering logic, Volume rendering logic, persistence, profile logic, and debug panel behavior are otherwise unchanged.
+---
 
-## [2026-06-08] - UI: Flow Source Moved To Chart Header
-- **What changed**:
-  - Removed the `Contract Type` control from the Global Settings chart tab while keeping the underlying panel contract state intact.
-  - Removed the old Global Settings `Aggregate Trades` spot/futures/both source selector from the chart tab.
-  - Added a compact panel-scoped `Flow` selector beside the chart symbol and `Binance` label in the panel toolbar, backed by the existing `dataSourceMode` state.
-  - Updated `skills/map.md` for the toolbar and settings-window responsibilities.
-- **Why it changed**:
-  - Instrument selection already defines Spot versus Perpetual Futures candles, and the trade-flow source belongs near the chart symbol instead of in global settings.
-- **Impact summary**:
-  - Each split chart panel can independently choose Flow Source = Spot, Futures, or Both.
-  - Candle price source, selected symbol, contract type state, footprint calculations, bubbles, Volume Bars, and Volume Profile logic are unchanged.
+## [2026-08-06] — Feature: Chart Order Visualization, Virtual Positions, and SL/TP Drag Handles (Phase 1)
 
-## [2026-06-08] - Feature: Volume Bars Indicator
-- **What changed**:
-  - Added a default-off `Volume Bars` indicator to the top-left indicator labels with eye toggle and its own focused settings dialog.
-  - Added persisted per-timeframe Volume Bars settings for input data, market source, min/max filters, color mode, opacity, height, value text, text size, average line, and average length.
-  - Added a visible-range bottom histogram renderer using candle volume for the cheap default path, existing aggregate-trade buffers for Orders/Aggregate Trades/non-active market-source modes, and optional footprint volume fallback when candle volume is unavailable.
-  - Expanded aggregate-trade buffering/hydration gates so Volume Bars can reuse existing aggregate events only when enabled and configured to need them.
-  - Added Volume Bars debug snapshots with enabled/input/visible-count/max/average fields.
-  - Updated `skills/map.md` for the changed responsibilities and new renderer.
-- **Why it changed**:
-  - The app needed Volume Bars as an independent indicator, not a signal or global setting, while preserving hidden-work rules when disabled.
-- **Impact summary**:
-  - New panels keep Volume Bars hidden by default.
-  - Enabling Volume Bars renders bottom-aligned volume bars for visible candles and supports Volume, Orders, and Aggregate Trades modes where source data exists.
-  - Aggregate trade work remains off unless bubbles or Volume Bars settings require it.
-  - `npx.cmd tsc --noEmit` passes.
+### What changed
+- **`types/trading.ts`**: Added `VirtualPosition` (client-side spot position aggregated from fills), `BracketOrder` (decoupled SL/TP model with extensibility for multi-TP and trailing stops), and `BracketDragState` (canvas drag context).
+- **`components/chart/drawTradingOverlays.ts`**: Full rewrite into a professional overlay renderer:
+  - Limit order lines with buy (bullish) / sell (bearish) colour separation, quantity/status labels, and price-axis badges.
+  - Virtual position entry lines (fixed, non-draggable) with PnL text, side marker triangle, and axis badge.
+  - Bracket SL (red) and TP (teal) lines with pill-handle drag controls, coloured risk/profit zone fills, and faint nudge indicators when no bracket is set.
+  - Drag-modify preview line (existing).
+  - Fill markers (existing, moved into new priority order).
+  - Returns `TradingOverlayHitZones` with per-frame SL/TP handle bounding boxes.
+- **`lib/store/chartRuntime.ts`**: Extended `TradingRuntimeStatus` with `virtualPositions`, `bracketOrders`, `bracketDrag`. Added five new actions: `upsertVirtualPosition`, `removeVirtualPosition`, `upsertBracketOrder`, `removeBracketOrder`, `setBracketDrag`, `updateVirtualPnl`.
+- **`components/chart/ChartCanvas.tsx`**: Wired up bracket drag:
+  - `bracketDragRef`, `bracketDragEntryPrice`, `bracketDragSide`, `bracketHitZones` refs added.
+  - `onMouseDown`: hits SL/TP handles from last frame's `TradingOverlayHitZones` and starts bracket drag.
+  - `onMouseMove`: clamps price (Long TP > entry > SL; Short SL > entry > TP) and calls `setBracketDrag` every tick for live canvas feedback.
+  - `onMouseUp`: commits clamped price to `upsertBracketOrder`, resets all drag refs, clears `bracketDrag`.
+  - Updated `drawTradingOverlays` call with new signature + `priceAxisWidth`.
+  - Updated redraw dependency array to include `virtualPositions`, `bracketOrders`, `bracketDrag`.
+- **`components/chart/ChartPanel.tsx`**: Added selectors and memos for `chartVirtualPositions`, `chartBracketOrders`, and `tradingBracketDrag`. Passed new props to `ChartCanvas`.
 
-## [2026-06-07] - UI: Crypto Selector Settings-Style Modal
-- **What changed**:
-  - Changed `PairSelector` so the symbol chooser opens as a fixed settings-style modal/window with backdrop, header, close button, backdrop close, and Escape close.
-  - Kept the existing panel-scoped symbol, Spot, and Perpetual Futures selection behavior unchanged.
-  - Updated `skills/map.md` for the selector responsibility.
-- **Why it changed**:
-  - The selector needed to match the existing settings modal style instead of behaving like a small dropdown.
-- **Impact summary**:
-  - The chart header still shows one rounded current-symbol button.
-  - Clicking it now opens a modal-style selector rather than an anchored dropdown.
-  - Instrument selection still updates only the active chart panel.
-  - `npx.cmd tsc --noEmit` passes.
+### Why it changed
+- Open limit orders and positions existed only in the order list. They had no professional chart representation.
+- There was no Virtual Position abstraction to bridge spot fills → tradeable positions.
+- SL/TP were requested as interactive draggable chart controls following the TradingView UX model.
+- The architecture needed the decoupled `BracketOrder` model upfront to support Phase 4 (backend execution) cleanly.
 
-## [2026-06-07] - Feature: Crypto Instrument Selector
-- **What changed**:
-  - Replaced the chart header BTC/ETH toggle with the existing panel-scoped `PairSelector` rendered as one rounded current-symbol button.
-  - Expanded `PairSelector` into a local Binance USDT popup with the supported hardcoded symbols and expandable Spot / Perpetual Futures options.
-  - Selecting an option now updates only that panel's pair, contract type, and aligned data source mode, then closes the popup; futures displays with a `.P` suffix.
-  - Expanded shared allowed symbols to BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, LINK, and LTC USDT markets.
-  - Updated `skills/map.md` for the toolbar, selector, and market config responsibilities.
-- **Why it changed**:
-  - Chart panels needed a simple per-panel Binance symbol/instrument selector instead of a fixed BTC/ETH toggle.
-- **Impact summary**:
-  - Each chart panel can independently switch between supported Binance Spot and Perpetual Futures instruments.
-  - Candle/history validation accepts the new supported symbols.
-  - No collector, persistence, comparison overlay, or external symbol search behavior was added.
-  - `npx.cmd tsc --noEmit` passes.
+### Impact summary
+- `npx.cmd tsc --noEmit` passes with zero errors.
+- Existing Limit order drag-modify, cancel-on-chart, fill markers, indicator layers, drawing tools, feeds, and footprint/profile logic are unchanged.
+- Virtual positions and bracket orders are currently UI-only (local store); Phase 4 will connect them to the Binance backend execution engine.

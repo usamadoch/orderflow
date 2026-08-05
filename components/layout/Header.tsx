@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useChartStore } from '../../lib/store/chart';
 import { ConnectionStatus } from '../ui/ConnectionStatus';
+import { AccountBalanceWidget } from '../ui/AccountBalanceWidget';
 
 export function Header() {
   const layoutMode = useChartStore(s => s.layoutMode);
@@ -122,6 +123,7 @@ export function Header() {
           )}
         </div>
 
+        {process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && <AccountBalanceWidget />}
         <ConnectionStatus />
       </div>
     </header>

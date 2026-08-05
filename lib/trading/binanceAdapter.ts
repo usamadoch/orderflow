@@ -89,8 +89,11 @@ export class BinanceBrokerAdapter implements BrokerAdapter {
   }
 
   async getOpenOrders(): Promise<Order[]> {
-    const response = await this.client.signedGet<BinanceOrderResponse[]>('/openOrders');
-    return response.map(normalizeOrder).filter((order): order is Order => Boolean(order));
+    const response = await this.client.signedGet<BinanceOrderResponse[]>('/api/v3/openOrders');
+    console.log('[DEBUG] Binance openOrders response:', JSON.stringify(response, null, 2));
+    const normalized = response.map(normalizeOrder);
+    console.log('[DEBUG] Normalized openOrders:', JSON.stringify(normalized, null, 2));
+    return normalized.filter((order): order is Order => Boolean(order));
   }
 
   async getPositions(): Promise<Position[]> {
@@ -98,7 +101,7 @@ export class BinanceBrokerAdapter implements BrokerAdapter {
   }
 
   async getBalances(): Promise<Balance[]> {
-    const response = await this.client.signedGet<BinanceAccountResponse>('/account');
+    const response = await this.client.signedGet<BinanceAccountResponse>('/api/v3/account');
     const balances = Array.isArray(response.balances) ? response.balances : [];
     const updatedAt = asNumber(response.updateTime);
 
@@ -113,7 +116,7 @@ export class BinanceBrokerAdapter implements BrokerAdapter {
 
     const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 50;
     const boundedLimit = Math.min(1000, Math.max(1, normalizedLimit));
-    const response = await this.client.signedGet<BinanceTradeResponse[]>('/myTrades', {
+    const response = await this.client.signedGet<BinanceTradeResponse[]>('/api/v3/myTrades', {
       symbol: symbol.toUpperCase(),
       limit: boundedLimit,
     });
@@ -149,7 +152,7 @@ export class BinanceBrokerAdapter implements BrokerAdapter {
       params.timeInForce = request.timeInForce ?? 'GTC';
     }
 
-    const response = await this.client.signedPost<BinanceOrderResponse>('/order', params);
+    const response = await this.client.signedPost<BinanceOrderResponse>('/api/v3/order', params);
     const order = normalizeOrder(response);
 
     return {
@@ -167,7 +170,7 @@ export class BinanceBrokerAdapter implements BrokerAdapter {
       return createRejectedOrderResult(this.config.mode, unsupportedReason.message, unsupportedReason.reason);
     }
 
-    const response = await this.client.signedDelete<BinanceOrderResponse>('/order', {
+    const response = await this.client.signedDelete<BinanceOrderResponse>('/api/v3/order', {
       symbol: request.symbol.toUpperCase(),
       orderId: request.orderId,
       origClientOrderId: request.clientOrderId,

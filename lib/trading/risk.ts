@@ -71,7 +71,7 @@ export function evaluateOrderRisk(request: OrderRequest): RiskDecision {
   const reasons = [...status.blockReasons];
   const notional = getEstimatedOrderNotional(request);
 
-  if (status.mode !== 'binance_testnet') {
+  if (status.mode !== 'binance_testnet' && status.mode !== 'binance_futures_testnet') {
     reasons.push(status.mode === 'binance_live' ? 'Live order execution is still locked.' : 'Only Binance testnet order execution is supported.');
   }
 
@@ -79,8 +79,8 @@ export function evaluateOrderRisk(request: OrderRequest): RiskDecision {
     reasons.push('Order confirmation is required before placement.');
   }
 
-  if (request.contractType === 'futures') {
-    reasons.push('Futures order placement is not implemented yet.');
+  if (request.contractType !== 'spot' && request.contractType !== 'futures') {
+    reasons.push('Unsupported contract type.');
   }
 
   if (request.quantity > status.maxOrderQty) {
@@ -112,12 +112,12 @@ export function evaluateCancelRisk(mode: TradingMode, contractType: OrderRequest
   const status = getTradingRiskStatus();
   const reasons = [...status.blockReasons.filter((reason) => !reason.toLowerCase().includes('kill switch'))];
 
-  if (mode !== 'binance_testnet') {
-    reasons.push(mode === 'binance_live' ? 'Live order cancellation is still locked.' : 'Only Binance testnet order cancellation is supported.');
+  if (status.mode !== 'binance_testnet' && status.mode !== 'binance_futures_testnet') {
+    reasons.push('Only Binance testnet order cancellation is supported.');
   }
 
-  if (contractType === 'futures') {
-    reasons.push('Futures order cancellation is not implemented yet.');
+  if (contractType !== 'spot' && contractType !== 'futures') {
+    reasons.push('Unsupported contract type.');
   }
 
   const message = reasons[0] ?? null;

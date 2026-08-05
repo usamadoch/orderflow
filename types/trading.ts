@@ -1,6 +1,6 @@
-export type TradingMode = 'binance_testnet' | 'binance_live' | 'local_paper';
+export type TradingMode = 'binance_testnet' | 'binance_futures_testnet' | 'binance_live' | 'local_paper';
 
-export type TradingModeBadge = 'testnet' | 'live' | 'paper';
+export type TradingModeBadge = 'testnet' | 'futures' | 'live' | 'paper';
 
 export type TradingConnectionStatus = 'unknown' | 'connected' | 'degraded' | 'disconnected' | 'blocked';
 
@@ -42,6 +42,8 @@ export interface OrderRequest {
   timeInForce?: OrderTimeInForce;
   clientOrderId?: string;
   reduceOnly?: boolean;
+  /** Futures only — leverage multiplier (1-125). */
+  leverage?: number;
   confirmed?: boolean;
 }
 
@@ -106,6 +108,67 @@ export interface Position {
   unrealizedPnl?: number;
   leverage?: number;
   updatedAt?: number;
+  /** Futures-native fields */
+  liquidationPrice?: number;
+  marginType?: 'cross' | 'isolated';
+  /** Notional value of the position */
+  notional?: number;
+  /** Return on equity % */
+  roe?: number;
+}
+
+/**
+ * Virtual Position: client-side aggregation of filled spot trades into a
+ * position-like abstraction. Binance Spot does not provide native positions,
+ * so this is derived from trade history and account holdings.
+ */
+export interface VirtualPosition {
+  id: string;
+  symbol: string;
+  /** 'long' for net-buy holdings, 'short' for net-sell. */
+  side: 'long' | 'short';
+  quantity: number;
+  /** Weighted average entry price across all contributing fills. */
+  entryPrice: number;
+  /** Unrealised PnL calculated against latest market price (not persisted). */
+  unrealizedPnl?: number;
+  status: 'open' | 'closed';
+  openedAt: number;
+  updatedAt?: number;
+  /** IDs of the fills that built this position, for reconciliation. */
+  fillIds: string[];
+}
+
+/**
+ * Bracket order attached to a VirtualPosition.
+ * Kept separate so multiple TP targets, trailing stops, and partial exits
+ * can be supported in later phases without breaking the Position model.
+ */
+export interface BracketOrder {
+  id: string;
+  positionId: string;
+  symbol: string;
+  /** Stop-loss price level. */
+  stopLossPrice?: number;
+  /** Take-profit price level. */
+  takeProfitPrice?: number;
+  stopLossStatus: 'none' | 'active' | 'triggered' | 'cancelled';
+  takeProfitStatus: 'none' | 'active' | 'triggered' | 'cancelled';
+  /** Binance order ID for the SL order once placed on exchange (Phase 4). */
+  stopLossOrderId?: string;
+  /** Binance order ID for the TP order once placed on exchange (Phase 4). */
+  takeProfitOrderId?: string;
+  updatedAt?: number;
+}
+
+/**
+ * Drag state for SL/TP handles on the chart canvas.
+ * Only one handle can be dragged at a time.
+ */
+export interface BracketDragState {
+  positionId: string;
+  handle: 'sl' | 'tp';
+  previewPrice: number;
 }
 
 export interface Balance {

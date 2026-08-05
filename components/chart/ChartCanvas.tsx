@@ -12,7 +12,7 @@ import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexT
 import { drawCandles } from './drawCandles';
 import { drawFootprint } from './drawFootprint';
 import { drawVolumeBars } from './drawVolumeBars';
-import { drawTradingOverlays } from './drawTradingOverlays';
+import { drawTradingOverlays, TradingOverlayHitZones } from './drawTradingOverlays';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
 import { drawPriceLine } from './drawPriceLine';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
@@ -23,7 +23,7 @@ import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
 import { drawDrawingPriceLabels, drawLines } from './drawLines';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
-import type { Order, Position, TradeFill, TradingRiskStatusPayload } from '@/types/trading';
+import type { BracketDragState, BracketOrder, Order, Position, TradeFill, TradingRiskStatusPayload, VirtualPosition } from '@/types/trading';
 import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource } from '@/types/bubble';
 import { AbsorptionResult } from '@/types/absorption';
 import { ExhaustionResult } from '@/types/exhaustion';
@@ -562,6 +562,9 @@ interface ChartCanvasProps {
   tradingContractType: ContractType;
   openOrders: Order[];
   positions: Position[];
+  virtualPositions: VirtualPosition[];
+  bracketOrders: BracketOrder[];
+  bracketDrag: BracketDragState | null;
   recentFills: TradeFill[];
   volumeBarsEnabled: boolean;
   volumeBarsInputData: PanelState['volumeBarsInputData'];
@@ -679,6 +682,9 @@ export function ChartCanvas({
   tradingContractType,
   openOrders,
   positions,
+  virtualPositions,
+  bracketOrders,
+  bracketDrag,
   recentFills,
   volumeBarsEnabled,
   volumeBarsInputData,
@@ -778,6 +784,16 @@ export function ChartCanvas({
   const isDraggingOrderLine = useRef(false);
   const orderDragSnapshot = useRef<Order | null>(null);
   const orderDragOriginalPrice = useRef<number | null>(null);
+
+  // Bracket SL/TP drag refs
+  const isDraggingBracket = useRef(false);
+  const bracketDragRef = useRef<BracketDragState | null>(null);
+  const bracketDragEntryPrice = useRef<number | null>(null);
+  const bracketDragSide = useRef<'long' | 'short' | null>(null);
+  const bracketHitZones = useRef<TradingOverlayHitZones>({
+    slHandles: new Map(),
+    tpHandles: new Map(),
+  });
   
   const coordsRef = useRef<CoordinateSystem | null>(null);
   const widthRef = useRef(0);
@@ -1408,8 +1424,23 @@ export function ChartCanvas({
         );
       }
 
-      if (openOrders.length > 0 || positions.length > 0 || recentFills.length > 0) {
-        drawTradingOverlays(
+      const activePositions = tradingContractType === 'futures'
+        ? positions.filter(p => p.side !== 'flat').map(p => ({
+            id: p.symbol,
+            status: 'open' as const,
+            symbol: p.symbol,
+            side: p.side as 'long' | 'short',
+            quantity: p.quantity,
+            entryPrice: p.entryPrice ?? 0,
+            unrealizedPnl: p.unrealizedPnl,
+            liquidationPrice: p.liquidationPrice,
+            openedAt: p.updatedAt ?? Date.now(),
+            fillIds: [],
+          }))
+        : virtualPositions;
+
+      if (openOrders.length > 0 || activePositions.length > 0 || recentFills.length > 0) {
+        bracketHitZones.current = drawTradingOverlays(
           ctx,
           candles,
           { firstIndex, lastIndex },
@@ -1417,12 +1448,15 @@ export function ChartCanvas({
           priceToY,
           chartWidth,
           chartHeight,
+          priceAxisWidth,
           openOrders,
-          positions,
+          activePositions,
+          bracketOrders,
           recentFills,
           modifyingOrderId && dragPreviewPrice !== null
             ? { orderId: modifyingOrderId, price: dragPreviewPrice }
-            : null
+            : null,
+          bracketDrag,
         );
       }
 
@@ -1718,6 +1752,9 @@ export function ChartCanvas({
     volumeBarsAverageLength,
     openOrders,
     positions,
+    virtualPositions,
+    bracketOrders,
+    bracketDrag,
     recentFills,
   ]);
 
@@ -2064,6 +2101,41 @@ export function ChartCanvas({
         return;
       }
 
+      // ── Bracket SL/TP handle hit (onMouseDown) ─────────────────────────────
+      {
+        const chartWidth2 = rect.width - priceAxisWidth;
+        const chartHeight2 = rect.height - timeAxisHeight;
+        if (x <= chartWidth2 && y <= chartHeight2) {
+          for (const vp of virtualPositions) {
+            if (vp.status !== 'open') continue;
+
+            const slBox = bracketHitZones.current.slHandles.get(vp.id);
+            const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
+
+            const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
+            const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
+
+            if (hitSL || hitTP) {
+              const bracket = bracketOrders.find((b) => b.positionId === vp.id);
+              const handle: 'sl' | 'tp' = hitSL ? 'sl' : 'tp';
+              const startPrice = hitSL
+                ? (bracket?.stopLossPrice ?? vp.entryPrice)
+                : (bracket?.takeProfitPrice ?? vp.entryPrice);
+
+              isDraggingBracket.current    = true;
+              bracketDragEntryPrice.current = vp.entryPrice;
+              bracketDragSide.current       = vp.side;
+              bracketDragRef.current        = { positionId: vp.id, handle, previewPrice: startPrice };
+              useChartRuntimeStore.getState().setBracketDrag({ positionId: vp.id, handle, previewPrice: startPrice });
+              setSelectedDrawingId(null);
+              useChartRuntimeStore.getState().setProfileSelected(panelId, false);
+              redraw();
+              return;
+            }
+          }
+        }
+      }
+
       const currentPanel = useChartStore.getState().panels[panelId];
       const resolvedCurrentProfileRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
       const profileHitZone = getCustomProfileHitZone(
@@ -2136,6 +2208,8 @@ export function ChartCanvas({
       } else if (isDraggingResize.current) {
         cursor = (resizeEdge.current === 'left' || resizeEdge.current === 'right') ? 'ew-resize' : 'ns-resize';
       } else if (isDraggingOrderLine.current) {
+        cursor = 'ns-resize';
+      } else if (isDraggingBracket.current) {
         cursor = 'ns-resize';
       } else if (isPanZoomDragging.current) {
         if (panZoomDragMode.current === 'price') cursor = 'ns-resize';
@@ -2388,7 +2462,36 @@ export function ChartCanvas({
       redraw();
 
       // Drag Logic
-      if (isDraggingOrderLine.current) {
+      if (isDraggingBracket.current && bracketDragRef.current) {
+        const chartHeight = rect.height - timeAxisHeight;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange  = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+        const rawPrice   = yToPrice(Math.max(0, Math.min(chartHeight, y)), priceMin, priceMax, chartHeight);
+        const entryPrice = bracketDragEntryPrice.current ?? rawPrice;
+        const side       = bracketDragSide.current ?? 'long';
+        const { handle, positionId } = bracketDragRef.current;
+
+        // Clamping: Long → TP above entry, SL below. Short → SL above entry, TP below.
+        let clampedPrice = rawPrice;
+        if (handle === 'sl') {
+          clampedPrice = side === 'long'
+            ? Math.min(rawPrice, entryPrice - 1)   // SL must be strictly below long entry
+            : Math.max(rawPrice, entryPrice + 1);   // SL must be strictly above short entry
+        } else {
+          clampedPrice = side === 'long'
+            ? Math.max(rawPrice, entryPrice + 1)   // TP must be strictly above long entry
+            : Math.min(rawPrice, entryPrice - 1);   // TP must be strictly below short entry
+        }
+
+        if (Number.isFinite(clampedPrice)) {
+          const next: BracketDragState = { positionId, handle, previewPrice: clampedPrice };
+          bracketDragRef.current = next;
+          useChartRuntimeStore.getState().setBracketDrag(next);
+          redraw();
+        }
+      } else if (isDraggingOrderLine.current) {
         const chartHeight = rect.height - timeAxisHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
@@ -2642,8 +2745,36 @@ export function ChartCanvas({
         !isDraggingProfile.current &&
         !isDraggingResize.current &&
         !isDraggingDrawing.current &&
-        !isDraggingOrderLine.current
+        !isDraggingOrderLine.current &&
+        !isDraggingBracket.current
       ) return;
+
+      // ── Commit bracket SL/TP drag ──────────────────────────────────────────
+      if (isDraggingBracket.current && bracketDragRef.current) {
+        const { positionId, handle, previewPrice } = bracketDragRef.current;
+        const store = useChartRuntimeStore.getState();
+        const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+
+        if (existing && Number.isFinite(previewPrice) && previewPrice > 0) {
+          const updated: BracketOrder = {
+            ...existing,
+            ...(handle === 'sl'
+              ? { stopLossPrice: previewPrice }
+              : { takeProfitPrice: previewPrice }),
+            updatedAt: Date.now(),
+          };
+          store.upsertBracketOrder(updated);
+        }
+
+        // Reset bracket drag state
+        isDraggingBracket.current    = false;
+        bracketDragRef.current        = null;
+        bracketDragEntryPrice.current = null;
+        bracketDragSide.current       = null;
+        store.setBracketDrag(null);
+        redraw();
+        return;
+      }
 
       if (isDraggingOrderLine.current) {
         const order = orderDragSnapshot.current;

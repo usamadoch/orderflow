@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAllowedContractType, isAllowedSymbol } from '../../../../lib/config/markets';
 import { createBinanceBrokerAdapter } from '../../../../lib/trading/binanceAdapter';
+import { createBinanceFuturesBrokerAdapter } from '../../../../lib/trading/binanceFuturesAdapter';
 import { BinanceRestClientError } from '../../../../lib/trading/binanceRestClient';
-import { getBinanceTradingConfig, TradingConfigError } from '../../../../lib/trading/config';
+import { getBinanceTradingConfig, TradingConfigError, isTradingDisabled } from '../../../../lib/trading/config';
 import { evaluateCancelRisk, evaluateOrderRisk, recordPlacedOrder, recordRiskFailure } from '../../../../lib/trading/risk';
 import type {
   OrderCancelRequest,
@@ -24,6 +25,10 @@ export async function POST(request: NextRequest) {
   let validatedRequest: OrderRequest | null = null;
 
   try {
+    if (isTradingDisabled()) {
+      return NextResponse.json(createRejectedResult('binance_testnet', 'Trading is currently disabled.', 'trading_disabled'), { status: 403 });
+    }
+
     const payload = await readJsonBody(request);
     const validation = validateOrderRequest(payload);
     if (!validation.ok) {
@@ -41,7 +46,10 @@ export async function POST(request: NextRequest) {
 
     const config = getBinanceTradingConfig();
     assertCredentials(config.apiKey, config.apiSecret);
-    const result = await createBinanceBrokerAdapter(config).placeOrder(validation.request);
+    const adapter = config.isFutures
+      ? createBinanceFuturesBrokerAdapter(config)
+      : createBinanceBrokerAdapter(config);
+    const result = await adapter.placeOrder(validation.request);
     if (result.success) {
       recordPlacedOrder(validation.request);
     } else if (result.errorMessage) {
@@ -58,6 +66,10 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    if (isTradingDisabled()) {
+      return NextResponse.json(createRejectedResult('binance_testnet', 'Trading is currently disabled.', 'trading_disabled'), { status: 403 });
+    }
+
     const config = getBinanceTradingConfig();
     const blocked = getExecutionBlock(config.mode, config.liveTradingEnabled);
     if (blocked) {
@@ -79,7 +91,10 @@ export async function DELETE(request: NextRequest) {
     }
 
     assertCredentials(config.apiKey, config.apiSecret);
-    const result = await createBinanceBrokerAdapter(config).cancelOrder(validation.request);
+    const adapter = config.isFutures
+      ? createBinanceFuturesBrokerAdapter(config)
+      : createBinanceBrokerAdapter(config);
+    const result = await adapter.cancelOrder(validation.request);
     if (!result.success && result.errorMessage) {
       recordRiskFailure(result.errorMessage);
     }
@@ -126,7 +141,7 @@ function validateOrderRequest(payload: UnknownRecord):
   if (!side) return { ok: false, message: 'Order side must be buy or sell.', reason: 'invalid_order_side' };
 
   const type = normalizeOrderType(payload.type);
-  if (!type) return { ok: false, message: 'Only market and limit orders are supported.', reason: 'unsupported_order_type' };
+  if (!type) return { ok: false, message: 'Only market, limit, and stop orders are supported.', reason: 'unsupported_order_type' };
 
   const quantity = normalizePositiveNumber(payload.quantity);
   if (quantity === null) return { ok: false, message: 'Quantity must be greater than 0.', reason: 'invalid_quantity' };
@@ -154,6 +169,7 @@ function validateOrderRequest(payload: UnknownRecord):
       timeInForce,
       clientOrderId: normalizeOptionalId(payload.clientOrderId),
       reduceOnly: payload.reduceOnly === true,
+      leverage: normalizePositiveNumber(payload.leverage) ?? undefined,
       confirmed: payload.confirmed === true,
     },
   };
@@ -207,8 +223,11 @@ function normalizeSide(value: unknown): OrderSide | null {
   return null;
 }
 
-function normalizeOrderType(value: unknown): Extract<OrderType, 'market' | 'limit'> | null {
-  if (value === 'market' || value === 'limit') return value;
+function normalizeOrderType(value: unknown): OrderType | null {
+  if (value === 'market') return 'market';
+  if (value === 'limit') return 'limit';
+  if (value === 'stop_market') return 'stop_market';
+  if (value === 'stop_limit') return 'stop_limit';
   return null;
 }
 
@@ -235,7 +254,7 @@ function normalizeOptionalId(value: unknown) {
 }
 
 function getExecutionBlock(mode: TradingMode, liveTradingEnabled: boolean) {
-  if (mode === 'binance_testnet') return null;
+  if (mode === 'binance_testnet' || mode === 'binance_futures_testnet') return null;
   if (mode === 'binance_live' && !liveTradingEnabled) {
     return {
       message: 'Binance live trading mode is blocked because BINANCE_ENABLE_LIVE_TRADING is not true.',
