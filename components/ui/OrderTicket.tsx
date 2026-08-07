@@ -229,6 +229,8 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
     reduceOnlySupported,
     side,
     submitting,
+    latestPrice,
+    leverage,
   ]);
 
   return (

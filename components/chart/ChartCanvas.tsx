@@ -3089,7 +3089,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, openOrders, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus]);
+  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, openOrders, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, bracketOrders, virtualPositions]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({

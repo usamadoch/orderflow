@@ -79,7 +79,6 @@ function drawPriceBadge(
   y: number,
   color: string,
   chartWidth: number,
-  priceAxisWidth: number,
 ) {
   const label      = formatPrice(price);
   ctx.font         = BADGE_FONT;
@@ -294,7 +293,7 @@ export function drawTradingOverlays(
     drawOrderLabel(ctx, labelText, 10, y, color, chartWidth - 90);
 
     // Price badge on the price axis
-    drawPriceBadge(ctx, order.price, y, color, chartWidth, priceAxisWidth);
+    drawPriceBadge(ctx, order.price, y, color, chartWidth);
   }
 
   // ── 3. Drag-modify preview line ────────────────────────────────────────────
@@ -309,7 +308,7 @@ export function drawTradingOverlays(
 
         const labelText = `New Price  ${formatPrice(dragPreview.price)}`;
         drawOrderLabel(ctx, labelText, 10, y, color, chartWidth - 90);
-        drawPriceBadge(ctx, dragPreview.price, y, color, chartWidth, priceAxisWidth);
+        drawPriceBadge(ctx, dragPreview.price, y, color, chartWidth);
       }
     }
   }
@@ -334,7 +333,7 @@ export function drawTradingOverlays(
     const sideStr  = isLong ? 'LONG' : 'SHORT';
     const entryStr = `${sideStr}  ${formatVol(vp.quantity)} @ ${formatPrice(vp.entryPrice)}${pnlStr}`;
     drawOrderLabel(ctx, entryStr, 10, y, color, chartWidth - 90);
-    drawPriceBadge(ctx, vp.entryPrice, y, color, chartWidth, priceAxisWidth);
+    drawPriceBadge(ctx, vp.entryPrice, y, color, chartWidth);
 
     // Small fixed-entry indicator triangle on the left
     ctx.fillStyle = chartColorToRgba(color, 0.85);
@@ -354,7 +353,7 @@ export function drawTradingOverlays(
         const liqColor = '#E4A336'; // Warning orange/gold
         drawTradingLine(ctx, liqY, chartWidth, liqColor, 0.8, 1, [4, 4]);
         drawOrderLabel(ctx, `LIQ  ${formatPrice(vp.liquidationPrice!)}`, 10, liqY, liqColor, chartWidth - 90);
-        drawPriceBadge(ctx, vp.liquidationPrice!, liqY, liqColor, chartWidth, priceAxisWidth);
+        drawPriceBadge(ctx, vp.liquidationPrice!, liqY, liqColor, chartWidth);
       }
     }
   }
@@ -387,7 +386,7 @@ export function drawTradingOverlays(
 
         drawTradingLine(ctx, y, chartWidth, SL_COLOR, isDraggingSL ? 0.95 : 0.75, isDraggingSL ? 1.5 : 1.2, [4, 3]);
         drawOrderLabel(ctx, `SL  ${formatPrice(slPrice)}`, 10, y, SL_COLOR, chartWidth - 90);
-        drawPriceBadge(ctx, slPrice, y, SL_COLOR, chartWidth, priceAxisWidth);
+        drawPriceBadge(ctx, slPrice, y, SL_COLOR, chartWidth);
 
         const box = drawBracketHandle(ctx, 'SL', y, SL_COLOR, chartWidth, isDraggingSL);
         hitZones.slHandles.set(vp.id, box);
@@ -415,7 +414,7 @@ export function drawTradingOverlays(
 
         drawTradingLine(ctx, y, chartWidth, TP_COLOR, isDraggingTP ? 0.95 : 0.75, isDraggingTP ? 1.5 : 1.2, [4, 3]);
         drawOrderLabel(ctx, `TP  ${formatPrice(tpPrice)}`, 10, y, TP_COLOR, chartWidth - 90);
-        drawPriceBadge(ctx, tpPrice, y, TP_COLOR, chartWidth, priceAxisWidth);
+        drawPriceBadge(ctx, tpPrice, y, TP_COLOR, chartWidth);
 
         const box = drawBracketHandle(ctx, 'TP', y, TP_COLOR, chartWidth, isDraggingTP);
         hitZones.tpHandles.set(vp.id, box);

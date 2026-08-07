@@ -50,32 +50,7 @@ interface VolumeBarPoint {
   source: 'historical' | 'live';
 }
 
-function getSourcesForMarketSource(
-  marketSource: VolumeBarsMarketSource,
-  activeChartContractType: 'spot' | 'futures',
-  activeDataSourceMode: 'spot' | 'futures' | 'both',
-) {
-  if (marketSource === 'active') {
-    return activeDataSourceMode === 'both' ? ['spot', 'futures'] as const : [activeDataSourceMode];
-  }
 
-  return marketSource === 'both' ? ['spot', 'futures'] as const : [marketSource];
-}
-
-function getEventValue(event: BubbleEvent, inputData: VolumeBarsInputData) {
-  if (inputData === 'volume') return { value: event.volume, tradeCountFallback: false };
-  if (inputData === 'aggregateTrades') return { value: 1, tradeCountFallback: false };
-
-  const tradeCount = typeof event.tradeCount === 'number' && Number.isFinite(event.tradeCount)
-    ? event.tradeCount
-    : null;
-  
-  if (tradeCount !== null && tradeCount > 0) {
-    return { value: Math.max(1, Math.round(tradeCount)), tradeCountFallback: false };
-  }
-  
-  return { value: 1, tradeCountFallback: true };
-}
 
 function getFootprintValue(candle: Candle, engine: AggregationEngine, inputData: VolumeBarsInputData) {
   if (inputData !== 'volume') return null;
@@ -172,7 +147,7 @@ export function drawVolumeBars(
     return;
   }
 
-  let unavailableReason: string | null = null;
+  const unavailableReason: string | null = null;
   const rawCache = new Map<number, { value: number; delta: number | null }>();
 
   const getRawData = (idx: number) => {
@@ -205,7 +180,6 @@ export function drawVolumeBars(
 
   for (let index = startIndex; index <= endIndex; index += 1) {
     const { value, delta } = getRawData(index);
-    let unavailable = false;
 
     if (!Number.isFinite(value) || value <= 0) continue;
     
@@ -336,31 +310,4 @@ export function drawVolumeBars(
   ctx.restore();
 }
 
-function findCandleIndexForEvent(
-  candles: Candle[],
-  firstIndex: number,
-  lastIndex: number,
-  eventTime: number,
-) {
-  if (!Number.isFinite(eventTime)) return null;
-  if (!candles[firstIndex] || !candles[lastIndex]) return null;
-  if (eventTime < candles[firstIndex].time) return null;
 
-  let left = firstIndex;
-  let right = lastIndex;
-  let match: number | null = null;
-
-  while (left <= right) {
-    const mid = Math.floor((left + right) / 2);
-    if (candles[mid].time <= eventTime) {
-      match = mid;
-      left = mid + 1;
-    } else {
-      right = mid - 1;
-    }
-  }
-
-  if (match === null) return null;
-  const nextTime = candles[match + 1]?.time ?? Number.POSITIVE_INFINITY;
-  return eventTime < nextTime ? match : null;
-}
