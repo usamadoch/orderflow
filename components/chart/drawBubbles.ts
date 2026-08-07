@@ -569,8 +569,17 @@ export function drawAggregateTradeBubbles(
     .map((event) => getAggregateBubbleSizingValue(event, bubbleSizeBy).value)
     .filter((value) => Number.isFinite(value) && value > 0)
     .sort((a, b) => a - b);
+
+  // Use a stable anchor so one whale trade doesn't crush all other bubbles.
+  // The median gives us a reliable "normal" trade size. We cap maxValue at 5×
+  // the median so large trades still stand out but smaller trades remain visible.
+  const medianIndex = Math.floor((scaleValues.length - 1) / 2);
+  const medianValue = scaleValues[medianIndex] ?? 1;
   const percentileIndex = Math.min(scaleValues.length - 1, Math.floor((scaleValues.length - 1) * 0.95));
-  const maxValue = Math.max(1, scaleValues[percentileIndex] ?? 1);
+  const rawMax = scaleValues[percentileIndex] ?? 1;
+  const anchoredCap = Math.max(medianValue * 5, actualThreshold * 3);
+  const maxValue = Math.max(1, Math.min(rawMax, anchoredCap));
+
 
   let renderedCount = 0;
   for (const event of qualifiedEvents) {

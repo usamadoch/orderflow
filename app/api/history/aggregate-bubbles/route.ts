@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    console.error('[API: aggregate-bubbles] Error fetching bubbles:', error)
     const message = error instanceof Error ? error.message : String(error)
     const status = message.includes('BUBBLES_MONGODB_') ? 503 : 500
 

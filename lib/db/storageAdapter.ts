@@ -59,6 +59,7 @@ export interface GetStoredCandlesInput {
   contractType: string
   timeframe: string
   since?: number
+  until?: number
   limit?: number
 }
 
@@ -70,7 +71,7 @@ export interface MarketStorageAdapter {
   storeBaseFootprint(input: StoreBaseFootprintInput): Promise<void>
   storeFineProfileRows(input: StoreFineProfileRowsInput): Promise<void>
   storeRawTrades(input: StoreRawTradesInput): Promise<void>
-  getCandles(symbol: string, contractType: string, timeframe: string, since?: number, limit?: number): Promise<CandleRow[]>
+  getCandles(symbol: string, contractType: string, timeframe: string, since?: number, until?: number, limit?: number): Promise<CandleRow[]>
   getFootprintCells(
     symbol: string,
     contractType: string,
@@ -184,7 +185,7 @@ const libsqlMarketStorageAdapter: MarketStorageAdapter = {
     await storeRawTrades(input.symbol, input.trades)
   },
 
-  async getCandles(symbol, _contractType, timeframe, since, limit) {
+  async getCandles(symbol, _contractType, timeframe, since, until, limit) {
     const { getCandles } = await import('./database')
     return getCandles(symbol, timeframe, since, limit)
   },
@@ -235,12 +236,13 @@ export function getMarketStorageAdapter(): MarketStorageAdapter {
     : libsqlMarketStorageAdapter
 }
 
-export async function getStoredCandles(input: GetStoredCandlesInput) {
+export async function getStoredCandles(input: GetStoredCandlesInput): Promise<CandleRow[]> {
   return getMarketStorageAdapter().getCandles(
     input.symbol,
     input.contractType,
     input.timeframe,
     input.since,
+    input.until,
     input.limit,
   )
 }

@@ -1,6 +1,6 @@
 import type { AggregationEngine } from '@/lib/aggregation/engine';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
-import type { VolumeBarsColorMode, VolumeBarsInputData, VolumeBarsMarketSource } from '@/lib/store/chart';
+import type { VolumeBarsColorMode, VolumeBarsInputData, VolumeBarsMarketSource, VolumeBarsFilterMode } from '@/lib/store/chart';
 import type { BubbleEvent } from '@/types/bubble';
 import type { Candle } from '@/types/candle';
 
@@ -26,6 +26,8 @@ interface DrawVolumeBarsOptions {
   enabled: boolean;
   inputData: VolumeBarsInputData;
   marketSource: VolumeBarsMarketSource;
+  filterMode: VolumeBarsFilterMode;
+  movingAverageLength: number;
   filterMin: number;
   filterMax: number;
   colorMode: VolumeBarsColorMode;
@@ -61,12 +63,18 @@ function getSourcesForMarketSource(
 }
 
 function getEventValue(event: BubbleEvent, inputData: VolumeBarsInputData) {
-  if (inputData === 'volume') return event.volume;
-  if (inputData === 'aggregateTrades') return 1;
+  if (inputData === 'volume') return { value: event.volume, tradeCountFallback: false };
+  if (inputData === 'aggregateTrades') return { value: 1, tradeCountFallback: false };
 
-  return typeof event.tradeCount === 'number' && Number.isFinite(event.tradeCount)
+  const tradeCount = typeof event.tradeCount === 'number' && Number.isFinite(event.tradeCount)
     ? event.tradeCount
     : null;
+  
+  if (tradeCount !== null && tradeCount > 0) {
+    return { value: Math.max(1, Math.round(tradeCount)), tradeCountFallback: false };
+  }
+  
+  return { value: 1, tradeCountFallback: true };
 }
 
 function getFootprintValue(candle: Candle, engine: AggregationEngine, inputData: VolumeBarsInputData) {
@@ -164,90 +172,65 @@ export function drawVolumeBars(
     return;
   }
 
-  const selectedSources = new Set(getSourcesForMarketSource(
-    options.marketSource,
-    options.activeChartContractType,
-    options.activeDataSourceMode,
-  ));
-  const useAggregateEvents = options.inputData !== 'volume';
-  const visibleEvents = useAggregateEvents
-    ? aggregateEvents.filter((event) => selectedSources.has(event.contractType))
-    : [];
-  const eventBuckets = new Map<number, {
-    value: number;
-    delta: number;
-    missingOrderCount: number;
-    historicalEventCount: number;
-    liveEventCount: number;
-  }>();
-
-  if (useAggregateEvents) {
-    for (const event of visibleEvents) {
-      const candleIndex = findCandleIndexForEvent(candles, startIndex, endIndex, event.time);
-      if (candleIndex === null) continue;
-      const eventValue = getEventValue(event, options.inputData);
-      const bucket = eventBuckets.get(candleIndex) ?? {
-        value: 0,
-        delta: 0,
-        missingOrderCount: 0,
-        historicalEventCount: 0,
-        liveEventCount: 0,
-      };
-      if (eventValue === null) {
-        bucket.missingOrderCount += 1;
-      } else {
-        bucket.value += eventValue;
-      }
-      bucket.delta += event.side === 'buy' ? event.volume : -event.volume;
-      if (event.origin === 'restored') {
-        bucket.historicalEventCount += 1;
-      } else {
-        bucket.liveEventCount += 1;
-      }
-      eventBuckets.set(candleIndex, bucket);
-    }
-  }
-
   let unavailableReason: string | null = null;
+  const rawCache = new Map<number, { value: number; delta: number | null }>();
+
+  const getRawData = (idx: number) => {
+    if (idx < 0 || idx >= candles.length) return { value: 0, delta: null };
+    const cached = rawCache.get(idx);
+    if (cached) return cached;
+
+    let value = 0;
+    let delta: number | null = null;
+    const candle = candles[idx];
+    
+    if (options.inputData === 'volume') {
+      value = candle.volume ?? 0;
+    } else {
+      // Both 'orders' and 'aggregateTrades' map to native tradeCount
+      value = candle.tradeCount ?? 0;
+    }
+
+    const footprintValue = getFootprintValue(candle, engine, options.inputData);
+    if (footprintValue) {
+      delta = footprintValue.delta;
+    }
+
+    const data = { value, delta };
+    rawCache.set(idx, data);
+    return data;
+  };
+
   const points: VolumeBarPoint[] = [];
 
   for (let index = startIndex; index <= endIndex; index += 1) {
-    const candle = candles[index];
-    let value = 0;
-    let delta: number | null = null;
+    const { value, delta } = getRawData(index);
     let unavailable = false;
 
-    if (useAggregateEvents) {
-      const bucket = eventBuckets.get(index);
-      value = bucket?.value ?? 0;
-      delta = bucket?.delta ?? null;
-      if (options.inputData === 'orders' && bucket?.missingOrderCount) {
-        unavailable = true;
-        unavailableReason = 'order-count-unavailable';
+    if (!Number.isFinite(value) || value <= 0) continue;
+    
+    if (options.filterMode === 'relative') {
+      let sum = 0;
+      let count = 0;
+      const length = Math.max(1, options.movingAverageLength);
+      for (let i = 0; i < length; i++) {
+        const pastIdx = index - i;
+        if (pastIdx >= 0) {
+          sum += getRawData(pastIdx).value;
+          count++;
+        }
       }
-    } else if (Number.isFinite(candle.volume)) {
-      value = candle.volume;
+      const sma = count > 0 ? sum / count : 0;
+      
+      if (options.filterMin > 0 && value < sma * options.filterMin) continue;
+      if (options.filterMax > 0 && value > sma * options.filterMax) continue;
     } else {
-      const footprintValue = getFootprintValue(candle, engine, options.inputData);
-      if (footprintValue) {
-        value = footprintValue.value;
-        delta = footprintValue.delta;
-      }
+      if (value < options.filterMin) continue;
+      if (options.filterMax > 0 && value > options.filterMax) continue;
     }
 
-    if (!Number.isFinite(value) || value <= 0) continue;
-    if (value < options.filterMin) continue;
-    if (options.filterMax > 0 && value > options.filterMax) continue;
-    if (unavailable) continue;
-
-    const source = useAggregateEvents
-      ? eventBuckets.get(index)?.liveEventCount
-        ? 'live'
-        : 'historical'
-      : candle.isClosed
-        ? 'historical'
-        : 'live';
-    points.push({ index, value, delta, unavailable, source });
+    const source = candles[index].isClosed ? 'historical' : 'live';
+    points.push({ index, value, delta, unavailable: false, source });
   }
 
   const maxVisibleValue = points.reduce((max, point) => Math.max(max, point.value), 0);
@@ -259,12 +242,7 @@ export function drawVolumeBars(
     : options.averageLineEnabled ? 0 : null;
   const historicalCount = points.filter((point) => point.source === 'historical').length;
   const liveCount = points.length - historicalCount;
-  const liveOnlyReason = useAggregateEvents && points.length > 0 && historicalCount === 0 && liveCount > 0
-    ? 'aggregate-history-unavailable-live-only'
-    : null;
-  if (useAggregateEvents && points.length === 0 && visibleEvents.length === 0) {
-    unavailableReason = unavailableReason ?? 'aggregate-events-unavailable';
-  }
+  const liveOnlyReason = null;
 
   options.onDebug?.({
     panelId: options.panelId,

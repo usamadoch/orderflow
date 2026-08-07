@@ -674,14 +674,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       ).forEach((source) => requiredSources.add(source));
     }
 
-    if (volumeBarsEnabled && volumeBarsInputData !== 'volume') {
-      getTradeSourcesForAggregateMarketSource(
-        volumeBarsMarketSource,
-        contractType,
-        dataSourceMode,
-      ).forEach((source) => requiredSources.add(source));
-    }
-
     if (requiredSources.size === 0) return;
 
     const footprintSources = getTradeSourcesForDataSourceMode(dataSourceMode);
@@ -701,7 +693,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [aggregateBubbleMarketSource, bubblesEnabled, bubbleSource, contractType, dataSourceMode, markProcessedTrade, pair, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource]);
+  }, [aggregateBubbleMarketSource, bubblesEnabled, bubbleSource, contractType, dataSourceMode, markProcessedTrade, pair]);
 
   const rebuildLiquidityVacuumZones = useCallback((candles = useChartRuntimeStore.getState().panels[panelId].candles || []) => {
     if (!liquidityVacuumEnabled) {
@@ -2458,6 +2450,62 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
     };
 
+    let lazyCandlesRestoreRunning = false;
+    let lastLazyCandlesRestoreKey = 0;
+
+    const getScrolledCandlesRestoreWindow = () => {
+      const panel = useChartStore.getState().panels[panelId];
+      const candles = useChartRuntimeStore.getState().panels[panelId].candles;
+      if (candles.length === 0) return null;
+
+      const safeBarWidth = Math.max(1, Number.isFinite(panel.barWidth) ? panel.barWidth : 1);
+      const barsFromLatest = Math.max(0, Math.floor(panel.scrollOffset / safeBarWidth));
+      
+      if (candles.length - barsFromLatest < 150) {
+        return candles[0].time;
+      }
+      return null;
+    };
+
+    const restoreLazyCandlesRange = async (until: number) => {
+      if (lazyCandlesRestoreRunning) return;
+      if (until === lastLazyCandlesRestoreKey) return;
+
+      lazyCandlesRestoreRunning = true;
+      try {
+        const params = new URLSearchParams({
+          symbol: pair,
+          contractType,
+          timeframe,
+          until: String(until),
+          limit: '500',
+        });
+        const response = await fetch(`/api/history/candles?${params.toString()}`, {
+          cache: 'no-store',
+        });
+
+        if (!response.ok) return;
+
+        const fetchedCandles = await response.json() as Candle[];
+        if (fetchedCandles.length > 0) {
+          lastLazyCandlesRestoreKey = until;
+          const currentCandles = useChartRuntimeStore.getState().panels[panelId].candles;
+          const existingTimes = new Set(currentCandles.map((c) => c.time));
+          const newCandles = fetchedCandles.filter((c) => !existingTimes.has(c.time));
+          if (newCandles.length > 0) {
+            pushAllCandles(panelId, [...newCandles, ...currentCandles].sort((a, b) => a.time - b.time));
+          }
+        } else {
+          // If no more history, prevent refetching
+          lastLazyCandlesRestoreKey = until;
+        }
+      } catch (error) {
+        console.warn(`[HistoryRestore:${panelId}] lazy candles restore failed`, error);
+      } finally {
+        lazyCandlesRestoreRunning = false;
+      }
+    };
+
     const feedUnsubscribers: Array<() => void> = [];
 
     const init = async () => {
@@ -2934,6 +2982,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (defaultRange) {
         void restoreLazyProfileRange(defaultRange, 'default');
         return;
+      }
+
+      const scrolledCandleUntil = getScrolledCandlesRestoreWindow();
+      if (scrolledCandleUntil) {
+        void restoreLazyCandlesRange(scrolledCandleUntil);
       }
 
       const scrolledRange = getScrolledProfileRestoreWindow();

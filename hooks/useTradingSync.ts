@@ -16,6 +16,10 @@ export function useTradingSync() {
   const mountCount = useRef(0);
 
   useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true') {
+      return;
+    }
+
     let mounted = true;
     mountCount.current += 1;
 

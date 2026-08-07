@@ -38,9 +38,7 @@ HARD RULES:
 - Do not re-scan full repository
 
 Do not start the Next dev server unless the change specifically requires browser/runtime UI verification. Prefer TypeScript checks and targeted code review first.
-
-
-
+...
 
 
 

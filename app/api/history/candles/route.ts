@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   const contractType = searchParams.get('contractType')
   const driver = getMarketDbDriver()
   const since = Number(searchParams.get('since') ?? '0')
+  const until = Number(searchParams.get('until') ?? '0')
   const limit = Number(searchParams.get('limit') ?? '500')
 
   if (!isAllowedSymbol(symbol) || !isAllowedTimeframe(timeframe)) {
@@ -36,8 +37,10 @@ export async function GET(request: NextRequest) {
     contractType: requestedContractType,
     timeframe,
     since,
+    until,
     limit,
   })
+
 
   return NextResponse.json(rows.map((row) => ({
     time: row.open_time,
@@ -46,6 +49,7 @@ export async function GET(request: NextRequest) {
     low: row.low,
     close: row.close,
     volume: row.volume,
+    tradeCount: row.trade_count,
     isClosed: true,
   })))
 }

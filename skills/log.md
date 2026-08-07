@@ -1,5 +1,39 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-07] - Feature: Native Trade Count for Volume Bars
+- **What changed**:
+  - Added `trade_count` integer column to the `candles` SQLite schema (and the underlying MongoDB schema/adapter).
+  - Updated the Binance REST API history and WebSocket live streams (`@kline`) to parse and populate the native trade count field `candle.tradeCount`.
+  - Gutted the fallback `aggregateBubbleEvents` dependency logic from `drawVolumeBars.ts` and `FeedProvider.tsx`.
+  - The Volume Indicator's "Orders" and "Aggregate Trades" inputs now read `tradeCount` directly in `O(1)` time from the loaded candles instead of relying on buffered bubble events.
+- **Why it changed**:
+  - Previously, visualizing volume bars based on Orders or Aggregate Trades required waiting for massive arrays of individual live `aggregateTrades` to buffer, and required history restoration for events just to draw basic candles.
+  - Using the native trade count provided by the exchange on the kline object drastically improves performance and makes historical data loading instant and perfect.
+- **Impact summary**:
+  - Volume bars for Orders and Aggregate Trades are now natively supported, extremely performant, and 100% accurate historically.
+  - `npx tsc --noEmit` passes cleanly.
+
+## [2026-08-06] - Artifact: Collector Backfill Analysis
+- **What changed**:
+  - Created `artifacts/collector_backfill_analysis.md` detailing the current live-only collection state and proposing a REST API pagination approach to backfill 48 hours of historical trades.
+- **Why it changed**:
+  - The collector runs on a VPS 24/7. When starting, it needs to capture the previous 2 days of sessions and footprint/profile data instead of starting from zero.
+- **Impact summary**:
+  - An implementation plan is now available for review before modifying the Node.js collector script.
+
+## [2026-08-06] - Feature: Dynamic Size Capping & Smart Pagination
+- **What changed**:
+  - Implemented dynamic database size capping (~450MB) in `btcusdtCollector.mjs` to automatically prune the oldest data, maximizing historical capacity regardless of a hard time limit.
+  - Added an `until` parameter to `GetStoredCandlesInput` and `getCandles` in the `storageAdapter` and `marketStorageMongo` to support backward paginated fetching.
+  - Plumbed `until` through the `/api/history/candles` endpoint.
+  - Updated `components/FeedProvider.tsx` with a `getScrolledCandlesRestoreWindow` check that automatically background-fetches older candles when the chart is panned near the left edge, providing an infinite scroll experience.
+  - Created a stub standalone `scripts/collector/runBackfill.mjs` to backfill trades to that 450MB limit without affecting the live collector.
+- **Why it changed**:
+  - The user wanted to store as many days of footprint data as possible within the 512MB MongoDB limit instead of hardcoding 2 days, and required the frontend to seamlessly scroll backward without freezing or hanging.
+- **Impact summary**:
+  - The collector runs safely at capacity, and the frontend smoothly backfills UI history on scroll.
+  - `npx tsc --noEmit` passes cleanly.
+
 ## [2026-06-13] - Feature: Trading Risk Gates and Live Lock
 - **What changed**:
   - Added server-only trading risk config and safe `/api/trading/risk-status` reporting for live lock state, kill switch, max order quantity/notional, daily order count, and non-persistent in-memory counters.
@@ -192,3 +226,30 @@
 - `npx.cmd tsc --noEmit` passes with zero errors.
 - Existing Limit order drag-modify, cancel-on-chart, fill markers, indicator layers, drawing tools, feeds, and footprint/profile logic are unchanged.
 - Virtual positions and bracket orders are currently UI-only (local store); Phase 4 will connect them to the Binance backend execution engine.
+
+---
+
+## [2026-08-07] — Fix: Lowered Aggregate Bubble Storage Thresholds
+
+### What changed
+- **`.env.local`**: Lowered `COLLECTOR_AGG_BUBBLE_MIN_VOLUME_BTC` to `1`, set `COLLECTOR_AGG_BUBBLE_MIN_TRADE_COUNT` to `25`, and lowered `COLLECTOR_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC` to `0.5`.
+
+### Why it changed
+- The collector script was dropping all aggregate bubble candidates because the previous thresholds (e.g. 15 BTC) were far too high for normal market conditions, resulting in an empty `aggregate_bubble_events` collection.
+
+### Impact summary
+- The collector will now properly store historical aggregate bubbles meeting these realistic thresholds into the `orderflow_bubbles` database.
+- The UI chart will now be able to fetch and hydrate these historical bubbles on refresh.
+
+---
+
+## [2026-08-07] — Fix: Collector Index Mismatch
+
+### What changed
+- **`scripts/collector/btcusdtCollector.mjs`**: Updated the `idx_aggregate_bubbles_restore` index creation to include `aggregateTradeId: 1` and `background: true`, exactly matching `aggregateBubbleStorage.ts` and `ensureIndexes.ts`.
+
+### Why it changed
+- The collector crashed on startup with an `IndexKeySpecsConflict` error because the existing index created by the web app/indexer script included `aggregateTradeId: 1` in the key, but the collector script was attempting to recreate it with just `eventTime: 1`.
+
+### Impact summary
+- The collector script now starts up correctly and connects to the bubbles database without index conflict errors.

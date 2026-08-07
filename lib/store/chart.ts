@@ -24,6 +24,7 @@ export type DataSourceMode = 'spot' | 'futures' | 'both';
 export type VolumeBarsInputData = 'volume' | 'orders' | 'aggregateTrades';
 export type VolumeBarsMarketSource = 'active' | 'spot' | 'futures' | 'both';
 export type VolumeBarsColorMode = 'fixed' | 'priceDirection' | 'delta' | 'volumeSlope';
+export type VolumeBarsFilterMode = 'absolute' | 'relative';
 export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap';
 export type SettingsFocusSection = IndicatorSettingsSection | 'profiles';
 export type HistoryRestoreStage = 'idle' | 'connecting' | 'candles' | 'volumeProfile' | 'rawTrades' | 'footprint' | 'complete' | 'error';
@@ -138,6 +139,8 @@ export interface TimeframeSettings {
   volumeBarsEnabled: boolean;
   volumeBarsInputData: VolumeBarsInputData;
   volumeBarsMarketSource: VolumeBarsMarketSource;
+  volumeBarsFilterMode: VolumeBarsFilterMode;
+  volumeBarsMovingAverageLength: number;
   volumeBarsFilterMin: number;
   volumeBarsFilterMax: number;
   volumeBarsColorMode: VolumeBarsColorMode;
@@ -267,6 +270,8 @@ export interface PanelState {
   volumeBarsEnabled: boolean;
   volumeBarsInputData: VolumeBarsInputData;
   volumeBarsMarketSource: VolumeBarsMarketSource;
+  volumeBarsFilterMode: VolumeBarsFilterMode;
+  volumeBarsMovingAverageLength: number;
   volumeBarsFilterMin: number;
   volumeBarsFilterMax: number;
   volumeBarsColorMode: VolumeBarsColorMode;
@@ -399,6 +404,8 @@ interface ChartState {
   setVolumeBarsEnabled: (panelId: PanelId, enabled: boolean) => void;
   setVolumeBarsInputData: (panelId: PanelId, inputData: VolumeBarsInputData) => void;
   setVolumeBarsMarketSource: (panelId: PanelId, source: VolumeBarsMarketSource) => void;
+  setVolumeBarsFilterMode: (panelId: PanelId, mode: VolumeBarsFilterMode) => void;
+  setVolumeBarsMovingAverageLength: (panelId: PanelId, length: number) => void;
   setVolumeBarsFilterMin: (panelId: PanelId, min: number) => void;
   setVolumeBarsFilterMax: (panelId: PanelId, max: number) => void;
   setVolumeBarsColorMode: (panelId: PanelId, mode: VolumeBarsColorMode) => void;
@@ -528,6 +535,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     volumeBarsEnabled: false,
     volumeBarsInputData: 'volume',
     volumeBarsMarketSource: 'active',
+    volumeBarsFilterMode: 'absolute',
+    volumeBarsMovingAverageLength: 20,
     volumeBarsFilterMin: 0,
     volumeBarsFilterMax: 0,
     volumeBarsColorMode: 'priceDirection',
@@ -616,6 +625,12 @@ function clampTimeframeSettings(settings: Partial<TimeframeSettings>, tickSize: 
     ...(settings.volumeBarsMarketSource === undefined
       ? {}
       : { volumeBarsMarketSource: normalizeVolumeBarsMarketSource(settings.volumeBarsMarketSource) }),
+    ...(settings.volumeBarsFilterMode === undefined
+      ? {}
+      : { volumeBarsFilterMode: (settings.volumeBarsFilterMode === 'relative' ? 'relative' : 'absolute') as VolumeBarsFilterMode }),
+    ...(settings.volumeBarsMovingAverageLength === undefined
+      ? {}
+      : { volumeBarsMovingAverageLength: Math.max(1, Math.min(200, Number(settings.volumeBarsMovingAverageLength) || 20)) }),
     ...(settings.volumeBarsFilterMin === undefined
       ? {}
       : { volumeBarsFilterMin: clampVolumeBarsFilter(settings.volumeBarsFilterMin) }),
@@ -744,6 +759,7 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'cvdScaleMode', 'cvdFixedRange', 'cvdShowDivergence',
     'cvdDivergenceLookback', 'cvdMinimized',
     'volumeBarsEnabled', 'volumeBarsInputData', 'volumeBarsMarketSource',
+    'volumeBarsFilterMode', 'volumeBarsMovingAverageLength',
     'volumeBarsFilterMin', 'volumeBarsFilterMax', 'volumeBarsColorMode',
     'volumeBarsOpacity', 'volumeBarsHeightPct', 'volumeBarsShowValueText',
     'volumeBarsTextSize', 'volumeBarsAverageLineEnabled', 'volumeBarsAverageLength'
@@ -1072,6 +1088,12 @@ export const useChartStore = create<ChartState>()(
       setVolumeBarsMarketSource: (panelId, volumeBarsMarketSource) =>
         set((state) => updatePanel(state, panelId, { volumeBarsMarketSource: normalizeVolumeBarsMarketSource(volumeBarsMarketSource) })),
 
+      setVolumeBarsFilterMode: (panelId, volumeBarsFilterMode) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsFilterMode })),
+
+      setVolumeBarsMovingAverageLength: (panelId, volumeBarsMovingAverageLength) =>
+        set((state) => updatePanel(state, panelId, { volumeBarsMovingAverageLength: Math.max(1, Math.min(200, volumeBarsMovingAverageLength)) })),
+
       setVolumeBarsFilterMin: (panelId, volumeBarsFilterMin) =>
         set((state) => updatePanel(state, panelId, { volumeBarsFilterMin: clampVolumeBarsFilter(volumeBarsFilterMin) })),
 
@@ -1359,6 +1381,8 @@ export const useChartStore = create<ChartState>()(
             volumeBarsEnabled: p.volumeBarsEnabled ?? false,
             volumeBarsInputData: normalizeVolumeBarsInputData(p.volumeBarsInputData),
             volumeBarsMarketSource: normalizeVolumeBarsMarketSource(p.volumeBarsMarketSource),
+            volumeBarsFilterMode: p.volumeBarsFilterMode === 'relative' ? 'relative' : 'absolute',
+            volumeBarsMovingAverageLength: Math.max(1, Math.min(200, Number(p.volumeBarsMovingAverageLength) || 20)),
             volumeBarsFilterMin: clampVolumeBarsFilter(p.volumeBarsFilterMin),
             volumeBarsFilterMax: clampVolumeBarsFilter(p.volumeBarsFilterMax),
             volumeBarsColorMode: normalizeVolumeBarsColorMode(p.volumeBarsColorMode),
@@ -1450,6 +1474,8 @@ export const useChartStore = create<ChartState>()(
               volumeBarsMarketSource: normalizeVolumeBarsMarketSource(
                 persistedLeft.volumeBarsMarketSource ?? currentState.panels.left.volumeBarsMarketSource,
               ),
+              volumeBarsFilterMode: persistedLeft.volumeBarsFilterMode ?? currentState.panels.left.volumeBarsFilterMode,
+              volumeBarsMovingAverageLength: persistedLeft.volumeBarsMovingAverageLength ?? currentState.panels.left.volumeBarsMovingAverageLength,
               volumeBarsColorMode: normalizeVolumeBarsColorMode(
                 persistedLeft.volumeBarsColorMode ?? currentState.panels.left.volumeBarsColorMode,
               ),
@@ -1486,6 +1512,8 @@ export const useChartStore = create<ChartState>()(
               volumeBarsMarketSource: normalizeVolumeBarsMarketSource(
                 persistedRight.volumeBarsMarketSource ?? currentState.panels.right.volumeBarsMarketSource,
               ),
+              volumeBarsFilterMode: persistedRight.volumeBarsFilterMode ?? currentState.panels.right.volumeBarsFilterMode,
+              volumeBarsMovingAverageLength: persistedRight.volumeBarsMovingAverageLength ?? currentState.panels.right.volumeBarsMovingAverageLength,
               volumeBarsColorMode: normalizeVolumeBarsColorMode(
                 persistedRight.volumeBarsColorMode ?? currentState.panels.right.volumeBarsColorMode,
               ),
@@ -1573,6 +1601,8 @@ export const useChartStore = create<ChartState>()(
             volumeBarsEnabled: state.panels.left.volumeBarsEnabled,
             volumeBarsInputData: state.panels.left.volumeBarsInputData,
             volumeBarsMarketSource: state.panels.left.volumeBarsMarketSource,
+            volumeBarsFilterMode: state.panels.left.volumeBarsFilterMode,
+            volumeBarsMovingAverageLength: state.panels.left.volumeBarsMovingAverageLength,
             volumeBarsFilterMin: state.panels.left.volumeBarsFilterMin,
             volumeBarsFilterMax: state.panels.left.volumeBarsFilterMax,
             volumeBarsColorMode: state.panels.left.volumeBarsColorMode,
@@ -1678,6 +1708,8 @@ export const useChartStore = create<ChartState>()(
             volumeBarsEnabled: state.panels.right.volumeBarsEnabled,
             volumeBarsInputData: state.panels.right.volumeBarsInputData,
             volumeBarsMarketSource: state.panels.right.volumeBarsMarketSource,
+            volumeBarsFilterMode: state.panels.right.volumeBarsFilterMode,
+            volumeBarsMovingAverageLength: state.panels.right.volumeBarsMovingAverageLength,
             volumeBarsFilterMin: state.panels.right.volumeBarsFilterMin,
             volumeBarsFilterMax: state.panels.right.volumeBarsFilterMax,
             volumeBarsColorMode: state.panels.right.volumeBarsColorMode,

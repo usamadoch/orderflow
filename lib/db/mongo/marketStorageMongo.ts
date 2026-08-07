@@ -54,6 +54,7 @@ interface MongoCandleDocument {
   timeSec: number
   openTimeSec: number
   closeTimeSec: number
+  tradeCount?: number
   storedAt: Date
 }
 
@@ -191,6 +192,7 @@ function toCandleDocument(input: StoreClosedCandleInput): MongoCandleDocument {
     timeSec: openTimeSec,
     openTimeSec,
     closeTimeSec,
+    tradeCount: input.candle.tradeCount ?? 0,
     storedAt: new Date(),
   }
 }
@@ -281,6 +283,7 @@ function toCandleRow(document: MongoCandleDocument): CandleRow {
     low: toNumber(document.low),
     close: toNumber(document.close),
     volume: toNumber(document.volume),
+    trade_count: document.tradeCount ?? 0,
     close_time: document.closeTimeSec ?? document.timeSec,
     stored_at: toStoredAtSeconds(document.storedAt),
   }

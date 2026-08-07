@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Layers, Zap, X } from 'lucide-react';
-import { useChartStore, PanelId, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, IndicatorSettingsSection, SettingsFocusSection, VolumeBarsColorMode, VolumeBarsInputData } from '../../lib/store/chart';
+import { useChartStore, PanelId, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, IndicatorSettingsSection, SettingsFocusSection, VolumeBarsColorMode, VolumeBarsInputData, VolumeBarsFilterMode } from '../../lib/store/chart';
 import { getMinimumFineProfileResolutionTicks } from '../../lib/config/markets';
 
 const SETTINGS_WIDTH = 544;
@@ -138,6 +138,8 @@ export function ChartSettingsDropdown({
   const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
   const setVolumeBarsEnabled = useChartStore(s => s.setVolumeBarsEnabled);
   const setVolumeBarsInputData = useChartStore(s => s.setVolumeBarsInputData);
+  const setVolumeBarsFilterMode = useChartStore(s => s.setVolumeBarsFilterMode);
+  const setVolumeBarsMovingAverageLength = useChartStore(s => s.setVolumeBarsMovingAverageLength);
   const setVolumeBarsFilterMin = useChartStore(s => s.setVolumeBarsFilterMin);
   const setVolumeBarsFilterMax = useChartStore(s => s.setVolumeBarsFilterMax);
   const setVolumeBarsColorMode = useChartStore(s => s.setVolumeBarsColorMode);
@@ -726,28 +728,66 @@ export function ChartSettingsDropdown({
             </div>
           </div>
 
+          <div className="space-y-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Mode</label>
+              <span className="text-[11px] font-mono font-bold text-accent">
+                {panel.volumeBarsFilterMode === 'relative' ? 'Relative' : 'Absolute'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {['absolute', 'relative'].map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setVolumeBarsFilterMode(panelId, mode as VolumeBarsFilterMode)}
+                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsFilterMode === mode
+                    ? 'bg-[#1F1F1F] border-accent text-accent'
+                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
+                    }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {panel.volumeBarsFilterMode === 'relative' && (
+            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">MA Length</label>
+              <input
+                type="number"
+                value={panel.volumeBarsMovingAverageLength}
+                onChange={(e) => setVolumeBarsMovingAverageLength(panelId, Number(e.target.value))}
+                className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
+                min="1"
+                step="1"
+              />
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Min</label>
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min {panel.volumeBarsFilterMode === 'relative' ? '(x)' : ''}</label>
               <input
                 type="number"
                 value={panel.volumeBarsFilterMin}
                 onChange={(e) => setVolumeBarsFilterMin(panelId, Number(e.target.value))}
                 className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                 min="0"
-                step="1"
+                step={panel.volumeBarsFilterMode === 'relative' ? '0.1' : '1'}
               />
             </div>
 
             <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Max</label>
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Max {panel.volumeBarsFilterMode === 'relative' ? '(x)' : ''}</label>
               <input
                 type="number"
                 value={panel.volumeBarsFilterMax}
                 onChange={(e) => setVolumeBarsFilterMax(panelId, Number(e.target.value))}
                 className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
                 min="0"
-                step="1"
+                step={panel.volumeBarsFilterMode === 'relative' ? '0.1' : '1'}
               />
             </div>
           </div>

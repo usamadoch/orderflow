@@ -13,6 +13,7 @@ const DEFAULT_TICK_SIZE = 0.5
 const DEFAULT_RETENTION_DAYS = 7
 const DEFAULT_FLUSH_INTERVAL_MS = 1000
 const DEFAULT_STATUS_INTERVAL_MS = 30000
+const DEFAULT_MAX_DB_SIZE_BYTES = 450 * 1024 * 1024 // 450 MB
 const DEFAULT_MAX_DEDUPE_KEYS = 100000
 const DEFAULT_RECONNECT_MIN_MS = 1000
 const DEFAULT_RECONNECT_MAX_MS = 30000
@@ -159,6 +160,7 @@ function loadConfig() {
     retentionSeconds: Math.floor(getNumberEnv('MARKET_DATA_RETENTION_DAYS', DEFAULT_RETENTION_DAYS) * 24 * 60 * 60),
     flushIntervalMs: getIntegerEnv('COLLECTOR_FLUSH_INTERVAL_MS', DEFAULT_FLUSH_INTERVAL_MS),
     statusIntervalMs: getIntegerEnv('COLLECTOR_STATUS_INTERVAL_MS', DEFAULT_STATUS_INTERVAL_MS),
+    maxDbSizeBytes: getIntegerEnv('COLLECTOR_MAX_DB_SIZE_BYTES', DEFAULT_MAX_DB_SIZE_BYTES),
     maxDedupeKeys: getIntegerEnv('COLLECTOR_MAX_DEDUPE_KEYS', DEFAULT_MAX_DEDUPE_KEYS),
     aggregateBubbleFlushSize: getIntegerEnv('COLLECTOR_AGG_BUBBLE_FLUSH_SIZE', DEFAULT_AGG_BUBBLE_FLUSH_SIZE),
     aggregateBubbleMinVolume: getNumberEnv('COLLECTOR_AGG_BUBBLE_MIN_VOLUME_BTC', DEFAULT_AGG_BUBBLE_MIN_VOLUME_BTC),
@@ -335,8 +337,8 @@ async function ensureAggregateBubbleCollection() {
     { unique: true, name: 'uniq_aggregate_bubbles_source_id' },
   )
   await collection.createIndex(
-    { symbol: 1, contractType: 1, eventTime: 1 },
-    { name: 'idx_aggregate_bubbles_restore' },
+    { symbol: 1, contractType: 1, eventTime: 1, aggregateTradeId: 1 },
+    { name: 'idx_aggregate_bubbles_restore', background: true },
   )
 
   const indexes = await collection.indexes()
@@ -1086,6 +1088,36 @@ async function logStatus() {
         writeFailures: status.metrics.writeFailures,
       }),
     })
+    
+    // Size Manager: Cap DB size at maxDbSizeBytes (e.g. 450MB)
+    try {
+      const stats = await mongoDb.command({ dbStats: 1 })
+      const dbSize = stats.dataSize || 0
+      
+      if (dbSize > config.maxDbSizeBytes) {
+        logger.warn('database size exceeds limit, pruning oldest data...', {
+          currentSizeMB: (dbSize / 1024 / 1024).toFixed(2),
+          maxSizeMB: (config.maxDbSizeBytes / 1024 / 1024).toFixed(2)
+        })
+        
+        // Find the oldest record
+        const oldest = await mongoDb.collection(COLLECTIONS.footprint).find({}).sort({ time: 1 }).limit(1).toArray()
+        if (oldest.length > 0) {
+          const oldestTime = oldest[0].time
+          const cutoffTime = new Date(oldestTime.getTime() + (60 * 60 * 1000)) // Prune 1 hour
+          
+          await mongoDb.collection(COLLECTIONS.footprint).deleteMany({ time: { $lt: cutoffTime } })
+          await mongoDb.collection(COLLECTIONS.profile).deleteMany({ time: { $lt: cutoffTime } })
+          if (bubbleMongoDb) {
+             await bubbleMongoDb.collection(COLLECTIONS.aggregateBubbles).deleteMany({ eventTime: { $lt: cutoffTime } })
+          }
+          
+          logger.info('pruned oldest hour of data to enforce size cap', { cutoffTime })
+        }
+      }
+    } catch (e) {
+      logger.error('failed to check or prune database size', { error: getErrorMessage(e) })
+    }
   }
 }
 

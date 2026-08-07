@@ -178,6 +178,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             volumeBarsEnabled={panel.volumeBarsEnabled}
             volumeBarsInputData={panel.volumeBarsInputData}
             volumeBarsMarketSource={volumeFlowSource}
+            volumeBarsFilterMode={panel.volumeBarsFilterMode}
+            volumeBarsMovingAverageLength={panel.volumeBarsMovingAverageLength}
             volumeBarsFilterMin={panel.volumeBarsFilterMin}
             volumeBarsFilterMax={panel.volumeBarsFilterMax}
             volumeBarsColorMode={panel.volumeBarsColorMode}

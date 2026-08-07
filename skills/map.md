@@ -49,6 +49,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 └── pnpm-lock.yaml               # Locked dependency graph
 ```
 
+
+
 ## Current File Responsibilities
 
 ### Root / App
@@ -56,7 +58,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `package.json` → Project scripts and dependencies, including `@libsql/client`, `mongodb`, `ts-node`, and the MongoDB index maintenance script.
 - `pnpm-lock.yaml` → Locked pnpm dependency graph.
 - `.gitignore` → Excludes dependencies, build outputs, env files, and local DB files.
-- `.env.local` → Local runtime env values for DB drivers, MongoDB/libSQL, and retention settings.
+- `.env.local` → Local runtime env values for DB drivers, MongoDB/libSQL, retention settings, and aggregate bubble thresholds.
 - `next.config.mjs` → Next.js configuration, including instrumentation hook support.
 - `instrumentation.ts` → Server startup hook that initializes the selected storage adapter and runs libSQL cleanup only when using libSQL.
 - `app/layout.tsx` → Root layout and global app shell wiring.
@@ -114,7 +116,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawCvd.ts` → CVD renderer for candle, bar, line, histogram, labels, compact values, divergence markers, main canvas/axis backgrounds, and elevated crosshair value labels.
 - `components/chart/drawFootprint.ts` → Footprint renderer with visible-range drawing, normalized scaling, shared bullish/bearish thin-candle colors, and per-redraw footprint resolution support.
 - `components/chart/drawBubbles.ts` → Volume bubble overlay renderers for footprint-cell data and live aggregate-trade events with shared buy/sell colors, Flow Source filtering, Volume/Orders sizing, Min Volume/Min Orders filtering, source-count diagnostics, robust percentile scaling, linear/sqrt/log radius scale modes, placement/filter diagnostics, trade-count fallback diagnostics, optional Both-mode futures stroke distinction, and nearest footprint-bucket debug context.
-- `components/chart/drawVolumeBars.ts` → Volume bottom histogram renderer using visible candle history for Volume input or existing aggregate-trade buffers for Orders/Agg Trades, shared bullish/bearish color modes, Flow Source filtering via props, min/max filters, value text, average line, unavailable aggregate-data states, and visible/historical/live debug counts.
+- `components/chart/drawVolumeBars.ts` → Volume bottom histogram renderer using visible candle history for Volume input and native trade counts for Orders/Agg Trades, shared bullish/bearish color modes, Flow Source filtering via props, min/max filters, value text, average line, unavailable aggregate-data states, and visible/historical/live debug counts.
 - `components/chart/drawVolumeProfile.ts` → Default Volume Profile renderer with bar/filled modes, POC, VA, LVN, HVN-style accents, width clamping, per-row volume opacity, continuous adjacent row boundaries, and row readability options.
 - `components/chart/drawSelectionRect.ts` → Custom profile selection rectangle/profile renderer with handles, filled/bar profile modes, POC/VA/LVN accents, per-row volume opacity, continuous adjacent row boundaries, and resize/move support.
 - `components/chart/drawLines.ts` → Horizontal/vertical line, ray, box, Long/Short Position risk/reward zones using shared bearish/bullish colors, candle-overlap shading, conditional TradingView-style metric labels, elevated handle/delete/price-label surfaces, selected-state, and backward-compatible drawing style renderer.
@@ -217,7 +219,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Scripts
 
-- `scripts/collector/btcusdtCollector.mjs` -> Standalone BTCUSDT Binance spot/futures aggTrade collector for canonical MongoDB footprint and fine Volume Profile rows across spot/futures/both source identities plus non-fatal collector-only qualified aggregate bubble candidate persistence to the dedicated bubbles MongoDB database.
+- `scripts/collector/btcusdtCollector.mjs` -> Standalone BTCUSDT Binance spot/futures aggTrade collector for canonical MongoDB footprint and fine Volume Profile rows across spot/futures/both source identities, non-fatal collector-only qualified aggregate bubble candidate persistence to the dedicated bubbles MongoDB database, and dynamic database size capping to maximize storage within limits.
+- `scripts/collector/runBackfill.mjs` -> Standalone script for backward-paginating historical trade backfills to maximize database storage up to a configured size limit.
 
 ### Cache / Metrics / Config
 
@@ -256,6 +259,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `artifacts/collector_persistence_audit.md` -> Audit of current website-side footprint and fine Volume Profile persistence flow for future collector migration.
 - `artifacts/aggregate_bubble_persistence_audit.md` -> Audit of collector-only aggregate trade bubble persistence, current restore gaps, schema/index recommendations, and phased implementation plan.
 - `artifacts/node_collector_design.md` -> Design for a standalone Node.js collector that persists canonical footprint and fine Volume Profile rows to MongoDB.
+- `artifacts/collector_backfill_analysis.md` → Analysis and plan for backfilling 48 hours of historical data via the collector.
 - `skills/map.md` → Compact source-of-truth file responsibility map. Update existing lines only; do not append chronological task history.
 - `skills/log.md` → Chronological change history for feature/fix context and impact summaries.
 

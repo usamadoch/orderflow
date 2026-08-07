@@ -44,6 +44,7 @@ export interface CandleRow {
   low: number
   close: number
   volume: number
+  trade_count: number
   close_time: number
   stored_at: number
 }
@@ -63,7 +64,7 @@ export interface FootprintCellRow {
   stored_at: number
 }
 
-export type CandleInsertInput = Pick<Candle, 'open' | 'high' | 'low' | 'close' | 'volume'> & {
+export type CandleInsertInput = Pick<Candle, 'open' | 'high' | 'low' | 'close' | 'volume' | 'tradeCount'> & {
   time?: number
   open_time?: number
   close_time?: number
@@ -238,6 +239,7 @@ export async function initDatabase() {
             low         REAL    NOT NULL,
             close       REAL    NOT NULL,
             volume      REAL    NOT NULL,
+            trade_count INTEGER DEFAULT 0,
             close_time  INTEGER NOT NULL,
             stored_at   INTEGER NOT NULL DEFAULT (unixepoch()),
 
@@ -393,6 +395,14 @@ export async function initDatabase() {
 
   await ensureSourceScopedFootprintCellsSchema()
   await ensureSourceScopedFineProfileRowsSchema()
+  await ensureCandleTradeCountColumn()
+}
+
+async function ensureCandleTradeCountColumn() {
+  const tableInfo = await db.execute('PRAGMA table_info(candles)')
+  if (tableInfo.rows.some((row) => row.name === 'trade_count')) return
+
+  await db.execute('ALTER TABLE candles ADD COLUMN trade_count INTEGER DEFAULT 0')
 }
 
 async function ensureSourceScopedFootprintCellsSchema() {
@@ -568,9 +578,9 @@ export async function insertCandle(symbol: string, timeframe: string, candle: Ca
   await db.execute({
     sql: `
       INSERT OR REPLACE INTO candles (
-        symbol, timeframe, open_time, open, high, low, close, volume, close_time
+        symbol, timeframe, open_time, open, high, low, close, volume, trade_count, close_time
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     args: [
       symbol,
@@ -581,6 +591,7 @@ export async function insertCandle(symbol: string, timeframe: string, candle: Ca
       candle.low,
       candle.close,
       candle.volume,
+      candle.tradeCount ?? 0,
       candle.close_time ?? openTime,
     ],
   })
@@ -647,9 +658,9 @@ export async function persistClosedCandleSnapshot({
     {
       sql: `
         INSERT OR REPLACE INTO candles (
-          symbol, timeframe, open_time, open, high, low, close, volume, close_time
+          symbol, timeframe, open_time, open, high, low, close, volume, trade_count, close_time
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
         symbol,
@@ -660,6 +671,7 @@ export async function persistClosedCandleSnapshot({
         candle.low,
         candle.close,
         candle.volume,
+        candle.tradeCount ?? 0,
         candle.close_time ?? openTime,
       ],
     },

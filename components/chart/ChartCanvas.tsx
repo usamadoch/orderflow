@@ -569,6 +569,8 @@ interface ChartCanvasProps {
   volumeBarsEnabled: boolean;
   volumeBarsInputData: PanelState['volumeBarsInputData'];
   volumeBarsMarketSource: PanelState['volumeBarsMarketSource'];
+  volumeBarsFilterMode: PanelState['volumeBarsFilterMode'];
+  volumeBarsMovingAverageLength: number;
   volumeBarsFilterMin: number;
   volumeBarsFilterMax: number;
   volumeBarsColorMode: PanelState['volumeBarsColorMode'];
@@ -689,6 +691,8 @@ export function ChartCanvas({
   volumeBarsEnabled,
   volumeBarsInputData,
   volumeBarsMarketSource,
+  volumeBarsFilterMode,
+  volumeBarsMovingAverageLength,
   volumeBarsFilterMin,
   volumeBarsFilterMax,
   volumeBarsColorMode,
@@ -1015,6 +1019,8 @@ export function ChartCanvas({
             enabled: volumeBarsEnabled,
             inputData: volumeBarsInputData,
             marketSource: volumeBarsMarketSource,
+            filterMode: volumeBarsFilterMode,
+            movingAverageLength: volumeBarsMovingAverageLength,
             filterMin: volumeBarsFilterMin,
             filterMax: volumeBarsFilterMax,
             colorMode: volumeBarsColorMode,
@@ -1741,6 +1747,8 @@ export function ChartCanvas({
     volumeBarsEnabled,
     volumeBarsInputData,
     volumeBarsMarketSource,
+    volumeBarsFilterMode,
+    volumeBarsMovingAverageLength,
     volumeBarsFilterMin,
     volumeBarsFilterMax,
     volumeBarsColorMode,

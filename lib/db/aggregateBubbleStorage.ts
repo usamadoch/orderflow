@@ -339,19 +339,31 @@ export async function getAggregateBubbleEvents({
 }: GetAggregateBubbleEventsInput) {
   const collection = await ensureAggregateBubbleCollection()
   const boundedLimit = Math.max(1, Math.min(MAX_AGGREGATE_BUBBLE_RESTORE_LIMIT, Math.floor(limit)))
-  const rows = await collection
-    .find({
-      symbol,
-      contractType: { $in: contractTypes },
-      eventTime: {
-        $gte: new Date(startTime),
-        $lt: new Date(endTime),
-      },
-    })
-    .sort({ eventTime: 1, aggregateTradeId: 1 })
-    .allowDiskUse(true)
-    .limit(boundedLimit)
-    .toArray()
 
-  return rows.map(toAggregateBubbleEvent)
+  // By executing a separate query for each contractType, we turn the `$in` query 
+  // into exact equality matches for both `symbol` and `contractType`. This allows 
+  // MongoDB to perfectly use the index for the `{ eventTime: -1, aggregateTradeId: -1 }` sort
+  // without needing any in-memory sorting (which fails on Atlas Shared tiers).
+  const queries = contractTypes.map(contractType =>
+    collection
+      .find({
+        symbol,
+        contractType,
+        eventTime: {
+          $gte: new Date(startTime),
+          $lt: new Date(endTime),
+        },
+      })
+      .sort({ eventTime: -1, aggregateTradeId: -1 })
+      .limit(boundedLimit)
+      .toArray()
+  )
+
+  const results = await Promise.all(queries)
+  const rows = results
+    .flat()
+    .sort((a, b) => b.eventTime.getTime() - a.eventTime.getTime() || b.aggregateTradeId - a.aggregateTradeId)
+    .slice(0, boundedLimit)
+
+  return rows.map(toAggregateBubbleEvent).reverse()
 }

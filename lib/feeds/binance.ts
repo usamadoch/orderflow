@@ -41,6 +41,7 @@ export class BinanceAdapter implements FeedAdapter {
         low: parseFloat(k[3]),
         close: parseFloat(k[4]),
         volume: parseFloat(k[5]),
+        tradeCount: parseInt(k[8], 10),
         isClosed: Number(k[6]) < now
       }));
     } catch (e) {
@@ -144,6 +145,7 @@ export class BinanceAdapter implements FeedAdapter {
           low: parseFloat(k.l),
           close: parseFloat(k.c),
           volume: parseFloat(k.v),
+          tradeCount: k.n,
           isClosed: k.x
         };
         this.candleCb(candle);
