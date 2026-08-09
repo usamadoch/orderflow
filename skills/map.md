@@ -73,6 +73,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `app/api/history/trades/route.ts` → Raw trade history API with cursor/range support where used for fallback/hydration.
 - `app/api/history/aggregate-bubbles/route.ts` -> Aggregate Trade bubble candidate restore API using the dedicated bubbles MongoDB connection, spot/futures/both source selection, 6-hour range guard, bounded limits, and storage-threshold response headers.
 - `app/api/history/status/route.ts` → History/status API for selected driver metadata, counts, retention, and DB status.
+- `app/api/history/storage/route.ts` → Storage size query and manual data deletion route.
 
 ### Trading APIs
 
@@ -97,6 +98,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/TimeframeSelector.tsx` → Panel-scoped timeframe switcher with elevated active/hover control styling.
 - `components/ui/ChartModeToggle.tsx` → Candle/footprint mode toggle with elevated hover control styling.
 - `components/ui/BucketSizeInput.tsx` → Panel-scoped footprint bucket-size input using elevated control styling.
+- `components/ui/StorageManager.tsx` → Modal component for viewing daily storage sizes and manually deleting historical data.
 - `components/debug/DebugPanel.tsx` → Gated elevated floating internal debug panel with scoped inner-control contrast, Ctrl+Shift+D toggle, low-cadence polling, tabs for metrics/restore/runtime/bubbles/signals/store summaries, footprint restore range/chunk/failure fields, and trimmed snapshot copy including market debug data such as aggregate bubbles and Volume.
 
 ### Feed / Engine Context
@@ -219,7 +221,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Scripts
 
-- `scripts/collector/btcusdtCollector.mjs` -> Standalone BTCUSDT Binance spot/futures aggTrade collector for canonical MongoDB footprint and fine Volume Profile rows across spot/futures/both source identities, non-fatal collector-only qualified aggregate bubble candidate persistence to the dedicated bubbles MongoDB database, and dynamic database size capping to maximize storage within limits.
+- `scripts/collector/btcusdtCollector.mjs` -> Standalone BTCUSDT Binance spot/futures aggTrade collector for canonical MongoDB footprint and fine Volume Profile rows across spot/futures/both source identities, and non-fatal collector-only qualified aggregate bubble candidate persistence to the dedicated bubbles MongoDB database. Data retention is now managed manually via the web UI.
 - `scripts/collector/runBackfill.mjs` -> Standalone script for backward-paginating historical trade backfills to maximize database storage up to a configured size limit.
 
 ### Cache / Metrics / Config

@@ -190,7 +190,7 @@ async function getAggregateBubbleMongoClient() {
   return globalState.clientPromise
 }
 
-async function getAggregateBubbleMongoDb(): Promise<Db> {
+export async function getAggregateBubbleMongoDb(): Promise<Db> {
   const client = await getAggregateBubbleMongoClient()
   return client.db(getBubbleMongoDbName())
 }

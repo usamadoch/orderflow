@@ -1,5 +1,70 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-09] - Feature: Manual Storage Management
+- **What changed**:
+  - Removed all size-based automated pruning functions (`enforceSizeRetention`, `pruneOldestDataHour`) and related config values from `btcusdtCollector.mjs`.
+  - Created a new full-stack feature for manual storage management:
+    - `app/api/history/storage/route.ts` API that aggregates DB usage per day for footprint, profile, and bubble collections and allows deletion of specific days.
+    - `StorageManager.tsx` UI component that presents daily usage metrics in a modal and allows the user to selectively delete days.
+    - Added a trigger for the Storage Manager inside `Header.tsx`.
+- **Why it changed**:
+  - Automated deletion loops (both time-based and size-based) had proven dangerous on the 512MB Atlas tier, repeatedly compounding transient errors into complete historical data loss. The user wanted full control to prune old days manually (e.g., every week or two).
+- **Impact summary**:
+  - The collector is now purely a write-only daemon with no risk of deleting its own data.
+  - The user has direct visibility into storage consumption and full control over retention through the UI.
+
+
+## [2026-08-09] - Fix: Collector Reconnect Discard and Size-Based Retention
+- **What changed**:
+  - Replaced the fixed oldest-hour prune with a size-based rolling retention in `btcusdtCollector.mjs` (defaulting to 500MB) that runs every 5 minutes. Kept `pruneOldestDataHour()` as a safety net on write quota errors.
+  - Stopped discarding all unflushed pre-gap slices on WebSocket reconnect. The collector now accurately tracks the specific `taintedRangesBySource` and only discards slices that fall strictly inside the disconnected window, persisting everything else normally.
+- **Why it changed**:
+  - The previous reconnect handling incorrectly collapsed the entire runtime's coverage start forward, causing the collector to throw away completely valid data sitting in memory just because a gap occurred before it was flushed.
+  - The retention mechanism needed to be purely size-based to maximize historical capacity within the 512MB Atlas M0 hard limit, rather than relying on fixed time cutoffs.
+- **Impact summary**:
+  - WebSocket reconnects no longer cause unnecessary data loss for slices that were fully covered before the gap.
+  - The database safely accumulates data until it hits the configured 500MB ceiling, after which it smoothly prunes 50MB chunks.
+
+## [2026-08-09] - Hotfix: Collector Status Bug and Spot WebSocket AWS Block
+- **What changed**:
+  - Fixed a `ReferenceError: status is not defined` crash in `btcusdtCollector.mjs` caused by the previous logging compression.
+  - Swapped the Binance Spot WebSocket URL from `stream.binance.com:9443` to `data-stream.binance.vision`.
+- **Why it changed**:
+  - The `status` object was removed from the logging output but was still referenced in the database metadata upsert.
+  - The standard Binance Spot WebSocket endpoint aggressively blocks AWS EC2 IP ranges (especially in the US), causing an immediate `1006` disconnect loop on startup. `data-stream.binance.vision` is the official alternative for market data that doesn't strictly geo-block cloud providers.
+- **Impact summary**:
+  - The collector should no longer infinitely disconnect on AWS for spot data.
+  - The status logging is now clean and crash-free.
+
+## [2026-08-09] - Fix: Collector Erroneously Deleting Data on Transient Errors
+- **What changed**:
+  - Updated the error handling in `writeClosedSlice` inside `btcusdtCollector.mjs` to check if a write error is actually a quota/size error (e.g., checking for keywords like "quota", "limit", "size") before invoking `pruneOldestDataHour()`.
+  - Non-quota errors (such as transient network drops or duplicate key errors) now bypass pruning and are simply re-thrown, allowing the collector to safely retry the slice write on its next interval without losing any historical data.
+- **Why it changed**:
+  - The previous fix to prevent data loss (which removed the size manager) mistakenly assumed *any* write error was an Atlas quota error (512MB limit hit).
+  - When frequent transient network drops or duplicate key errors occurred on the AWS EC2 instance, the catch block blindly pruned 1 hour of data. Because the pruning cooldown is only 10 minutes, periodic transient errors caused the collector to constantly eat its own historical data, leaving the user with only ~1.5 hours of footprint data despite running for 24 hours.
+- **Impact summary**:
+  - The collector will no longer silently delete hours of historical data during normal network hiccups.
+  - Data accumulation will now properly continue up to the true Atlas limit without being derailed by transient connection errors.
+  
+## [2026-08-08] - Fix: Collector Only Retaining 4 Hours of Data
+- **What changed**:
+  - Removed the entire "Size Manager" pruning block from `logStatus()` in `btcusdtCollector.mjs`. This code ran every 30 seconds, checked `dbStats`, and deleted the oldest 1 hour of data if the metric exceeded 450MB.
+  - Changed `DEFAULT_RETENTION_DAYS` from `7` to `90` so the MongoDB time-series TTL does not prematurely delete data — the 512MB Atlas limit is the real constraint, not a time window.
+  - Changed `MARKET_DATA_RETENTION_DAYS` in `.env.local` from `7` to `90` to match, preventing the web app from resetting the TTL back to 7 days via `collMod`.
+  - Removed `DEFAULT_MAX_DB_SIZE_BYTES` constant and `config.maxDbSizeBytes` (no longer used).
+  - Added `pruneOldestDataHour()` with a 10-minute cooldown, triggered only when an actual write fails (Atlas quota reached).
+  - Wrapped `writeClosedSlice` to catch write failures → prune oldest hour → retry once.
+  - Replaced the size-cap block with an informational `database size report` log (dataSize, storageSize, indexSize) for monitoring without any automatic deletion.
+- **Why it changed**:
+  - **Root cause 1**: The pruning code used `storageSize` (Gemini's fix) or `dataSize` (original code) from `dbStats`, both of which are unreliable for this purpose. `dataSize` is inflated for time-series internal bucket overhead. `storageSize` does not decrease after WiredTiger deletes (freed pages are reused, not released). Both metrics caused the pruning to trigger in an infinite loop every 30 seconds, creating a death spiral that stabilized at ~4 hours of data.
+  - **Root cause 2**: The pruning ran every 30 seconds inside `logStatus()`. Even one false trigger would delete 1 hour, and since the metric never decreased after deletion, every subsequent check also triggered, compounding the data loss.
+  - **Root cause 3**: The 7-day TTL on the time-series collections conflicted with the goal of "store until 512MB fills up."
+- **Impact summary**:
+  - The collector will now accumulate data for days/weeks until the Atlas 512MB limit is actually reached. Only then will a write failure trigger a single oldest-hour prune with retry. The status log now reports actual database sizes for monitoring.
+  - `.env.local` updated to `MARKET_DATA_RETENTION_DAYS=90` for the web app side.
+
+
 ## [2026-08-07] - Feature: Native Trade Count for Volume Bars
 - **What changed**:
   - Added `trade_count` integer column to the `candles` SQLite schema (and the underlying MongoDB schema/adapter).

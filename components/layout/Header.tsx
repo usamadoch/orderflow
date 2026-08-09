@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useChartStore } from '../../lib/store/chart';
 import { ConnectionStatus } from '../ui/ConnectionStatus';
 import { AccountBalanceWidget } from '../ui/AccountBalanceWidget';
+import { StorageManager } from '../ui/StorageManager';
+import { Database } from 'lucide-react';
 
 export function Header() {
   const layoutMode = useChartStore(s => s.layoutMode);
@@ -14,6 +16,7 @@ export function Header() {
   const [pass, setPass] = useState('');
   const [showUnlock, setShowUnlock] = useState(false);
   const [error, setError] = useState(false);
+  const [showStorage, setShowStorage] = useState(false);
 
   const handleAuth = () => {
     if (authenticate(pass)) {
@@ -70,6 +73,14 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
+        <button
+          onClick={() => setShowStorage(true)}
+          className="p-1.5 rounded-md text-text-dim hover:text-accent hover:bg-accent/10 transition-colors"
+          title="Manage Storage"
+        >
+          <Database size={16} />
+        </button>
+
         {/* Premium Unlock UI */}
         <div className="flex items-center gap-2">
           {isAuthenticated ? (
@@ -126,6 +137,8 @@ export function Header() {
         {process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && <AccountBalanceWidget />}
         <ConnectionStatus />
       </div>
+      
+      <StorageManager isOpen={showStorage} onClose={() => setShowStorage(false)} />
     </header>
   );
 }

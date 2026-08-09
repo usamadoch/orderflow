@@ -1,7 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { inspect } from 'node:util'
+import { fileURLToPath } from 'url'
 import { MongoClient } from 'mongodb'
 
 const SYMBOL = 'BTCUSDT'
@@ -10,17 +7,16 @@ const BASE_TIMEFRAME_SECONDS = 60
 const FOOTPRINT_BUCKET_SIZE = 5
 const MIN_PROFILE_BASE_BUCKET_SIZE = 1.5
 const DEFAULT_TICK_SIZE = 0.5
-const DEFAULT_RETENTION_DAYS = 7
+const DEFAULT_RETENTION_DAYS = 90
 const DEFAULT_FLUSH_INTERVAL_MS = 1000
 const DEFAULT_STATUS_INTERVAL_MS = 30000
-const DEFAULT_MAX_DB_SIZE_BYTES = 450 * 1024 * 1024 // 450 MB
 const DEFAULT_MAX_DEDUPE_KEYS = 100000
 const DEFAULT_RECONNECT_MIN_MS = 1000
 const DEFAULT_RECONNECT_MAX_MS = 30000
 const DEFAULT_HEARTBEAT_MS = 30000
-const DEFAULT_AGG_BUBBLE_MIN_VOLUME_BTC = 15
-const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT = 75
-const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC = 3
+// const DEFAULT_AGG_BUBBLE_MIN_VOLUME_BTC = 15
+// const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT = 75
+// const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC = 3
 const DEFAULT_AGG_BUBBLE_FLUSH_SIZE = 1000
 
 const COLLECTIONS = {
@@ -39,8 +35,6 @@ const TARGETS = [
   { contractType: 'futures', dataSourceMode: 'futures', activeSources: ['futures'] },
   { contractType: 'futures', dataSourceMode: 'both', activeSources: ['spot', 'futures'] },
 ]
-
-loadLocalEnvFiles()
 
 const config = loadConfig()
 const logger = createLogger(config.logLevel)
@@ -87,10 +81,12 @@ const streamClients = []
 const queuedAggregateBubbleEvents = []
 const queuedAggregateBubbleKeys = new Set()
 
-main().catch((error) => {
-  logger.error('collector fatal error', { error: getErrorMessage(error) })
-  process.exitCode = 1
-})
+if (process.env.NODE_ENV !== 'test') {
+  main().catch((error) => {
+    logger.error('collector fatal error', { error: getErrorMessage(error) })
+    process.exitCode = 1
+  })
+}
 
 async function main() {
   assertRuntimeSupport()
@@ -150,73 +146,32 @@ async function main() {
 }
 
 function loadConfig() {
-  const tickSize = getNumberEnv('COLLECTOR_TICK_SIZE', DEFAULT_TICK_SIZE)
+  const tickSize = DEFAULT_TICK_SIZE
 
   return {
-    mongoUri: process.env.MONGODB_URI ?? '',
-    mongoDbName: process.env.MONGODB_DB_NAME ?? process.env.MONGODB_DB ?? 'orderflow',
-    bubblesMongoUri: process.env.BUBBLES_MONGODB_URI ?? '',
-    bubblesMongoDbName: process.env.BUBBLES_MONGODB_DB_NAME ?? '',
-    retentionSeconds: Math.floor(getNumberEnv('MARKET_DATA_RETENTION_DAYS', DEFAULT_RETENTION_DAYS) * 24 * 60 * 60),
-    flushIntervalMs: getIntegerEnv('COLLECTOR_FLUSH_INTERVAL_MS', DEFAULT_FLUSH_INTERVAL_MS),
-    statusIntervalMs: getIntegerEnv('COLLECTOR_STATUS_INTERVAL_MS', DEFAULT_STATUS_INTERVAL_MS),
-    maxDbSizeBytes: getIntegerEnv('COLLECTOR_MAX_DB_SIZE_BYTES', DEFAULT_MAX_DB_SIZE_BYTES),
-    maxDedupeKeys: getIntegerEnv('COLLECTOR_MAX_DEDUPE_KEYS', DEFAULT_MAX_DEDUPE_KEYS),
-    aggregateBubbleFlushSize: getIntegerEnv('COLLECTOR_AGG_BUBBLE_FLUSH_SIZE', DEFAULT_AGG_BUBBLE_FLUSH_SIZE),
-    aggregateBubbleMinVolume: getNumberEnv('COLLECTOR_AGG_BUBBLE_MIN_VOLUME_BTC', DEFAULT_AGG_BUBBLE_MIN_VOLUME_BTC),
-    aggregateBubbleMinTradeCount: getIntegerEnv('COLLECTOR_AGG_BUBBLE_MIN_TRADE_COUNT', DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT),
-    aggregateBubbleMinTradeCountVolume: getNumberEnv('COLLECTOR_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC', DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC),
-    reconnectMinMs: getIntegerEnv('COLLECTOR_RECONNECT_MIN_MS', DEFAULT_RECONNECT_MIN_MS),
-    reconnectMaxMs: getIntegerEnv('COLLECTOR_RECONNECT_MAX_MS', DEFAULT_RECONNECT_MAX_MS),
-    heartbeatMs: getIntegerEnv('COLLECTOR_HEARTBEAT_MS', DEFAULT_HEARTBEAT_MS),
-    exitAfterMs: getIntegerEnv('COLLECTOR_EXIT_AFTER_MS', 0),
+    mongoUri: 'mongodb://usamadoch_db_user:17ZvfflxOlDWgWOC@ac-nqzf95f-shard-00-00.vvdhsab.mongodb.net:27017,ac-nqzf95f-shard-00-01.vvdhsab.mongodb.net:27017,ac-nqzf95f-shard-00-02.vvdhsab.mongodb.net:27017/orderflow?ssl=true&replicaSet=atlas-1x7o74-shard-0&authSource=admin&appName=Cluster0',
+    mongoDbName: 'orderflow',
+    bubblesMongoUri: 'mongodb://usamadoch_db_user:3aAhUVGGWOQRyMRc@ac-skht2qq-shard-00-00.lx6pbxx.mongodb.net:27017,ac-skht2qq-shard-00-01.lx6pbxx.mongodb.net:27017,ac-skht2qq-shard-00-02.lx6pbxx.mongodb.net:27017/orderflow_bubbles?ssl=true&replicaSet=atlas-o30yvr-shard-0&authSource=admin&appName=Cluster0',
+    bubblesMongoDbName: 'orderflow_bubbles',
+    retentionSeconds: Math.floor(DEFAULT_RETENTION_DAYS * 24 * 60 * 60),
+    flushIntervalMs: DEFAULT_FLUSH_INTERVAL_MS,
+    statusIntervalMs: DEFAULT_STATUS_INTERVAL_MS,
+    maxDedupeKeys: DEFAULT_MAX_DEDUPE_KEYS,
+    aggregateBubbleFlushSize: DEFAULT_AGG_BUBBLE_FLUSH_SIZE,
+    aggregateBubbleMinVolume: 1,
+    aggregateBubbleMinTradeCount: 25,
+    aggregateBubbleMinTradeCountVolume: 0.5,
+    reconnectMinMs: DEFAULT_RECONNECT_MIN_MS,
+    reconnectMaxMs: DEFAULT_RECONNECT_MAX_MS,
+    heartbeatMs: DEFAULT_HEARTBEAT_MS,
+    exitAfterMs: 0,
     tickSize,
     profileBaseBucketSize: Math.max(MIN_PROFILE_BASE_BUCKET_SIZE, tickSize),
-    enableWrites: process.env.COLLECTOR_ENABLE_WRITES === 'true',
-    dryRun: process.env.COLLECTOR_DRY_RUN === 'true',
+    enableWrites: true,
+    dryRun: false,
     aggregateBubbleWritesEnabled: false,
-    logLevel: process.env.COLLECTOR_LOG_LEVEL === 'debug' ? 'debug' : 'info',
-    logFormat: process.env.COLLECTOR_LOG_FORMAT === 'json' ? 'json' : 'pretty',
-  }
-}
-
-function loadLocalEnvFiles() {
-  const scriptDir = path.dirname(fileURLToPath(import.meta.url))
-  const repoRoot = path.resolve(scriptDir, '..', '..')
-  const envPaths = [
-    path.join(repoRoot, '.env.local'),
-    path.join(repoRoot, '.env'),
-  ]
-
-  for (const envPath of envPaths) {
-    if (!existsSync(envPath)) continue
-    loadEnvFile(envPath)
-  }
-}
-
-function loadEnvFile(envPath) {
-  const contents = readFileSync(envPath, 'utf8')
-  const lines = contents.split(/\r?\n/)
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-
-    const separatorIndex = trimmed.indexOf('=')
-    if (separatorIndex <= 0) continue
-
-    const key = trimmed.slice(0, separatorIndex).trim()
-    if (!key || process.env[key] !== undefined) continue
-
-    let value = trimmed.slice(separatorIndex + 1).trim()
-    if (
-      (value.startsWith('"') && value.endsWith('"'))
-      || (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1)
-    }
-
-    process.env[key] = value
+    logLevel: 'info',
+    logFormat: 'pretty',
   }
 }
 
@@ -390,6 +345,7 @@ function createRuntime(target) {
     profileBaseBucketSize: config.profileBaseBucketSize,
     firstFullyCoveredBaseTimeBySource: { spot: null, futures: null },
     latestBaseTimeBySource: { spot: null, futures: null },
+    taintedRangesBySource: { spot: [], futures: [] },
     processedTradeKeys: new BoundedSet(config.maxDedupeKeys),
     persistedSlices: new BoundedSet(config.maxDedupeKeys),
     footprintSlices: new Map(),
@@ -400,7 +356,7 @@ function createRuntime(target) {
 function createBinanceStreamClient(source) {
   const lowerSymbol = SYMBOL.toLowerCase()
   const baseUrl = source === 'spot'
-    ? 'wss://stream.binance.com:9443/stream'
+    ? 'wss://data-stream.binance.vision/stream'
     : 'wss://fstream.binance.com/market/stream'
   const streams = [`${lowerSymbol}@aggTrade`, `${lowerSymbol}@kline_1m`]
   const url = `${baseUrl}?streams=${streams.join('/')}`
@@ -616,6 +572,21 @@ function ingestTrade(runtime, trade) {
     baseTime,
   )
 
+  const taintedRanges = runtime.taintedRangesBySource[trade.source]
+  if (taintedRanges.length > 0) {
+    const activeGap = taintedRanges[taintedRanges.length - 1]
+    if (activeGap.end === null) {
+      activeGap.end = baseTime
+      logger.warn('tainted range created', {
+        identity: runtime.identity,
+        source: trade.source,
+        start: activeGap.start,
+        end: activeGap.end,
+        sizeSeconds: activeGap.end - activeGap.start
+      })
+    }
+  }
+
   aggregateFootprint(runtime, baseTime, alignedPrice, trade)
   aggregateProfile(runtime, baseTime, alignedPrice, trade)
   metrics.tradesAccepted += 1
@@ -703,6 +674,7 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
     return
   }
 
+  let droppedTaintedSlices = 0
   for (const sliceTime of sliceTimes) {
     if (sliceTime < coverageStart) {
       deleteSlice(runtime, sliceTime)
@@ -710,6 +682,25 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
     }
 
     if (sliceTime >= closedBeforeTime) {
+      continue
+    }
+
+    let isTainted = false
+    let taintedBySource = null
+    for (const source of runtime.activeSources) {
+      for (const range of runtime.taintedRangesBySource[source]) {
+        if (range.end !== null && sliceTime > range.start && sliceTime < range.end) {
+          isTainted = true
+          taintedBySource = source
+          break
+        }
+      }
+      if (isTainted) break
+    }
+
+    if (isTainted) {
+      deleteSlice(runtime, sliceTime)
+      droppedTaintedSlices += 1
       continue
     }
 
@@ -756,7 +747,21 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
       return
     }
   }
+
+  if (droppedTaintedSlices > 0) {
+    logger.warn('discarded tainted slices', {
+      identity: runtime.identity,
+      droppedCount: droppedTaintedSlices
+    })
+  }
+
+  for (const source of runtime.activeSources) {
+    runtime.taintedRangesBySource[source] = runtime.taintedRangesBySource[source].filter(
+      (range) => range.end === null || range.end >= closedBeforeTime
+    )
+  }
 }
+
 
 async function writeClosedSlice(runtime, sliceTime, footprintRows, profileRows) {
   const footprintDocuments = toFootprintDocuments(runtime, sliceTime, footprintRows)
@@ -777,6 +782,20 @@ async function writeClosedSlice(runtime, sliceTime, footprintRows, profileRows) 
     }
   }
 
+  // Try the write; if it fails, just throw so it can be retried on the next interval
+  try {
+    return await executeSliceWrite(runtime, sliceTime, footprintDocuments, profileDocuments)
+  } catch (firstError) {
+    logger.warn('slice write failed, data remains in memory to retry on next interval', {
+      identity: runtime.identity,
+      candleTime: sliceTime,
+      error: getErrorMessage(firstError),
+    })
+    throw firstError
+  }
+}
+
+async function executeSliceWrite(runtime, sliceTime, footprintDocuments, profileDocuments) {
   const footprint = await insertMissingFootprintDocuments(footprintDocuments)
   const profile = await insertMissingProfileDocuments(profileDocuments)
 
@@ -1023,7 +1042,11 @@ async function updateCollectorMeta(values) {
 function markSourceGap(source) {
   for (const runtime of runtimes) {
     if (!runtime.activeSources.includes(source)) continue
-    runtime.firstFullyCoveredBaseTimeBySource[source] = null
+    
+    const gapStart = runtime.latestBaseTimeBySource[source]
+    if (gapStart !== null) {
+       runtime.taintedRangesBySource[source].push({ start: gapStart, end: null })
+    }
     runtime.latestBaseTimeBySource[source] = null
   }
   priceReferences[source] = null
@@ -1056,70 +1079,47 @@ function deleteSlice(runtime, sliceTime) {
 
 async function logStatus() {
   const pendingSlices = runtimes.reduce((total, runtime) => total + getSortedSliceTimes(runtime).length, 0)
-  const status = {
-    symbol: SYMBOL,
-    writesEnabled: config.enableWrites,
-    dryRun: config.dryRun,
-    aggregateBubbleWritesEnabled: config.aggregateBubbleWritesEnabled,
-    priceReferences,
+  const conciseStatus = {
     pendingSlices,
-    pendingAggregateBubbleEvents: queuedAggregateBubbleEvents.length,
-    metrics,
-    runtimes: runtimes.map((runtime) => ({
-      identity: runtime.identity,
-      coverageStart: getCoverageStart(runtime),
-      closedBeforeTime: getClosedBeforeTime(runtime),
-      pendingSlices: getSortedSliceTimes(runtime).length,
-    })),
+    pendingBubbles: queuedAggregateBubbleEvents.length,
+    trades: metrics.tradesReceived,
+    fails: metrics.writeFailures
   }
 
-  logger.info('collector status', status)
+  logger.info('collector status', conciseStatus)
 
   if (config.enableWrites && !config.dryRun) {
     await updateCollectorMeta({
       last_collector_heartbeat: new Date().toISOString(),
       collector_status: JSON.stringify({
-        symbol: status.symbol,
-        pendingSlices: status.pendingSlices,
-        pendingAggregateBubbleEvents: status.pendingAggregateBubbleEvents,
-        tradesReceived: status.metrics.tradesReceived,
-        aggregateBubbles: status.metrics.aggregateBubbles,
-        slicesPersisted: status.metrics.slicesPersisted,
-        writeFailures: status.metrics.writeFailures,
+        symbol: SYMBOL,
+        pendingSlices,
+        pendingAggregateBubbleEvents: queuedAggregateBubbleEvents.length,
+        tradesReceived: metrics.tradesReceived,
+        aggregateBubbles: metrics.aggregateBubbles,
+        slicesPersisted: metrics.slicesPersisted,
+        writeFailures: metrics.writeFailures,
       }),
     })
-    
-    // Size Manager: Cap DB size at maxDbSizeBytes (e.g. 450MB)
+
+    // Informational size log.
     try {
       const stats = await mongoDb.command({ dbStats: 1 })
-      const dbSize = stats.dataSize || 0
-      
-      if (dbSize > config.maxDbSizeBytes) {
-        logger.warn('database size exceeds limit, pruning oldest data...', {
-          currentSizeMB: (dbSize / 1024 / 1024).toFixed(2),
-          maxSizeMB: (config.maxDbSizeBytes / 1024 / 1024).toFixed(2)
-        })
-        
-        // Find the oldest record
-        const oldest = await mongoDb.collection(COLLECTIONS.footprint).find({}).sort({ time: 1 }).limit(1).toArray()
-        if (oldest.length > 0) {
-          const oldestTime = oldest[0].time
-          const cutoffTime = new Date(oldestTime.getTime() + (60 * 60 * 1000)) // Prune 1 hour
-          
-          await mongoDb.collection(COLLECTIONS.footprint).deleteMany({ time: { $lt: cutoffTime } })
-          await mongoDb.collection(COLLECTIONS.profile).deleteMany({ time: { $lt: cutoffTime } })
-          if (bubbleMongoDb) {
-             await bubbleMongoDb.collection(COLLECTIONS.aggregateBubbles).deleteMany({ eventTime: { $lt: cutoffTime } })
-          }
-          
-          logger.info('pruned oldest hour of data to enforce size cap', { cutoffTime })
-        }
-      }
+      const dataSizeMB = ((stats.dataSize || 0) / 1024 / 1024).toFixed(2)
+      const storageSizeMB = ((stats.storageSize || 0) / 1024 / 1024).toFixed(2)
+      const indexSizeMB = ((stats.indexSize || 0) / 1024 / 1024).toFixed(2)
+      logger.info('database size report', {
+        dataSizeMB,
+        storageSizeMB,
+        indexSizeMB,
+        retentionDays: DEFAULT_RETENTION_DAYS,
+      })
     } catch (e) {
-      logger.error('failed to check or prune database size', { error: getErrorMessage(e) })
+      logger.warn('could not read database size', { error: getErrorMessage(e) })
     }
   }
 }
+
 
 async function shutdown(signal, flushTimer, statusTimer) {
   if (shuttingDown) return
@@ -1217,18 +1217,27 @@ function createLogger(level) {
       return
     }
 
-    console.log(`[${timestamp}] ${levelStyles[severity]} ${message}`)
+    const isSerious = severity === 'error' || severity === 'warn'
+    const hr = useColors ? '\x1b[90m' + '─'.repeat(80) + '\x1b[0m' : '─'.repeat(80)
+
+    if (isSerious) console.log(hr)
+
+    let detailsStr = ''
     if (details !== undefined) {
-      console.log(
-        inspect(details, {
-          depth: null,
-          colors: useColors,
-          compact: false,
-          sorted: true,
-          breakLength: 120,
-        }),
-      )
+      if (typeof details === 'string') {
+        detailsStr = ` [${details}]`
+      } else {
+        try {
+          detailsStr = ' ' + JSON.stringify(details)
+        } catch {
+          detailsStr = ' [Object]'
+        }
+      }
     }
+
+    console.log(`[${timestamp}] ${levelStyles[severity]} ${message}${detailsStr}`)
+
+    if (isSerious) console.log(hr)
   }
 
   return {
@@ -1291,4 +1300,27 @@ class BoundedSet {
       this.values.delete(oldest)
     }
   }
+}
+
+export const _test = {
+  config,
+  runtimes,
+  metrics,
+  queuedAggregateBubbleEvents,
+  queuedAggregateBubbleKeys,
+  priceReferences,
+  createRuntime,
+  markSourceGap,
+  getCoverageStart,
+  getClosedBeforeTime,
+  getSortedSliceTimes,
+  deleteSlice,
+  ingestTrade,
+  persistRuntimeEligibleSlices,
+  setMongoDb: (db) => { mongoDb = db },
+  setBubbleMongoDb: (db) => { bubbleMongoDb = db },
+  setShuttingDown: (val) => { shuttingDown = val },
+  setPersistPromise: (val) => { persistPromise = val },
+  getRuntimes: () => runtimes,
+  setRuntimes: (val) => { runtimes.length = 0; runtimes.push(...val) }
 }

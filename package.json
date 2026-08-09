@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "collector:btc": "node scripts/collector/btcusdtCollector.mjs",
+    "test:collector": "node --test scripts/collector/btcusdtCollector.test.mjs",
     "db:indexes": "ts-node scripts/ensureIndexes.ts",
     "lint": "next lint"
   },
