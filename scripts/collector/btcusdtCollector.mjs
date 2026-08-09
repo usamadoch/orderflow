@@ -81,6 +81,11 @@ const streamClients = []
 const queuedAggregateBubbleEvents = []
 const queuedAggregateBubbleKeys = new Set()
 
+const sourceState = {
+  spot: { connected: false, isBackfilling: false, lastTradeTimeMs: null },
+  futures: { connected: false, isBackfilling: false, lastTradeTimeMs: null },
+}
+
 if (process.env.NODE_ENV !== 'test') {
   main().catch((error) => {
     logger.error('collector fatal error', { error: getErrorMessage(error) })
@@ -345,7 +350,6 @@ function createRuntime(target) {
     profileBaseBucketSize: config.profileBaseBucketSize,
     firstFullyCoveredBaseTimeBySource: { spot: null, futures: null },
     latestBaseTimeBySource: { spot: null, futures: null },
-    taintedRangesBySource: { spot: [], futures: [] },
     processedTradeKeys: new BoundedSet(config.maxDedupeKeys),
     persistedSlices: new BoundedSet(config.maxDedupeKeys),
     footprintSlices: new Map(),
@@ -384,6 +388,21 @@ function createBinanceStreamClient(source) {
     ws.onopen = () => {
       reconnectAttempts = 0
       logger.info('stream connected', { source, streams })
+      sourceState[source].connected = true
+      
+      const gapStart = sourceState[source].lastTradeTimeMs
+      if (gapStart) {
+        const gapEnd = Date.now()
+        sourceState[source].isBackfilling = true
+        runBackfill(source, gapStart, gapEnd).catch(error => {
+          logger.error('backfill fatal error', { source, error: getErrorMessage(error) })
+        }).finally(() => {
+          sourceState[source].isBackfilling = false
+        })
+      } else {
+        sourceState[source].isBackfilling = false
+      }
+
       heartbeatTimer = setInterval(() => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return
         try {
@@ -395,6 +414,7 @@ function createBinanceStreamClient(source) {
     }
 
     ws.onmessage = (event) => {
+      sourceState[source].lastTradeTimeMs = Date.now()
       handleStreamMessage(source, String(event.data)).catch((error) => {
         logger.error('stream message handling failed', { source, error: getErrorMessage(error) })
       })
@@ -406,9 +426,9 @@ function createBinanceStreamClient(source) {
 
     ws.onclose = (event) => {
       clearTimers()
+      sourceState[source].connected = false
       if (shuttingDown) return
       logger.warn('stream closed', { source, code: event.code, reason: event.reason })
-      markSourceGap(source)
       scheduleReconnect()
     }
   }
@@ -572,21 +592,6 @@ function ingestTrade(runtime, trade) {
     baseTime,
   )
 
-  const taintedRanges = runtime.taintedRangesBySource[trade.source]
-  if (taintedRanges.length > 0) {
-    const activeGap = taintedRanges[taintedRanges.length - 1]
-    if (activeGap.end === null) {
-      activeGap.end = baseTime
-      logger.warn('tainted range created', {
-        identity: runtime.identity,
-        source: trade.source,
-        start: activeGap.start,
-        end: activeGap.end,
-        sizeSeconds: activeGap.end - activeGap.start
-      })
-    }
-  }
-
   aggregateFootprint(runtime, baseTime, alignedPrice, trade)
   aggregateProfile(runtime, baseTime, alignedPrice, trade)
   metrics.tradesAccepted += 1
@@ -674,7 +679,6 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
     return
   }
 
-  let droppedTaintedSlices = 0
   for (const sliceTime of sliceTimes) {
     if (sliceTime < coverageStart) {
       deleteSlice(runtime, sliceTime)
@@ -682,25 +686,6 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
     }
 
     if (sliceTime >= closedBeforeTime) {
-      continue
-    }
-
-    let isTainted = false
-    let taintedBySource = null
-    for (const source of runtime.activeSources) {
-      for (const range of runtime.taintedRangesBySource[source]) {
-        if (range.end !== null && sliceTime > range.start && sliceTime < range.end) {
-          isTainted = true
-          taintedBySource = source
-          break
-        }
-      }
-      if (isTainted) break
-    }
-
-    if (isTainted) {
-      deleteSlice(runtime, sliceTime)
-      droppedTaintedSlices += 1
       continue
     }
 
@@ -746,19 +731,6 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
       })
       return
     }
-  }
-
-  if (droppedTaintedSlices > 0) {
-    logger.warn('discarded tainted slices', {
-      identity: runtime.identity,
-      droppedCount: droppedTaintedSlices
-    })
-  }
-
-  for (const source of runtime.activeSources) {
-    runtime.taintedRangesBySource[source] = runtime.taintedRangesBySource[source].filter(
-      (range) => range.end === null || range.end >= closedBeforeTime
-    )
   }
 }
 
@@ -1060,6 +1032,12 @@ function getCoverageStart(runtime) {
 }
 
 function getClosedBeforeTime(runtime) {
+  for (const source of runtime.activeSources) {
+    if (!sourceState[source].connected || sourceState[source].isBackfilling) {
+      return null
+    }
+  }
+
   const times = runtime.activeSources.map((source) => runtime.latestBaseTimeBySource[source])
   if (times.some((time) => time === null)) return null
   return Math.min(...times)
@@ -1190,6 +1168,67 @@ function getNumberEnv(name, fallback) {
 
 function getIntegerEnv(name, fallback) {
   return Math.floor(getNumberEnv(name, fallback))
+}
+
+async function runBackfill(source, startTime, endTime) {
+  if (endTime - startTime < 1000) return // Ignore gaps under 1s
+  
+  logger.info('starting auto-backfill for gap', { source, gapMs: endTime - startTime })
+  
+  const isSpot = source === 'spot'
+  const baseUrl = isSpot ? 'https://api.binance.com/api/v3' : 'https://fapi.binance.com/fapi/v1'
+  let currentStartTime = startTime
+  let totalFetched = 0
+
+  while (currentStartTime < endTime) {
+    if (shuttingDown) break
+    const url = `${baseUrl}/aggTrades?symbol=${SYMBOL}&startTime=${currentStartTime}&endTime=${endTime}&limit=1000`
+    
+    try {
+      const response = await fetch(url)
+      if (!response.ok) {
+        logger.error('backfill request failed', { source, status: response.status, statusText: response.statusText })
+        break
+      }
+      
+      const trades = await response.json()
+      if (trades.length === 0) break
+
+      for (const data of trades) {
+        const trade = {
+          source,
+          id: Number.isFinite(Number(data.a)) ? Number(data.a) : undefined,
+          firstTradeId: Number.isFinite(Number(data.f)) ? Number(data.f) : undefined,
+          lastTradeId: Number.isFinite(Number(data.l)) ? Number(data.l) : undefined,
+          time: Number(data.T),
+          price: Number(data.p),
+          quantity: Number(data.q),
+          isBuyerMaker: Boolean(data.m),
+        }
+
+        if (isValidTrade(trade)) {
+          queueAggregateBubbleCandidate(trade)
+          for (const runtime of runtimes) {
+            if (!runtime.activeSources.includes(source)) continue
+            ingestTrade(runtime, trade)
+          }
+        }
+      }
+      
+      totalFetched += trades.length
+      
+      const lastTradeTime = trades[trades.length - 1].T
+      if (trades.length < 1000) break
+      
+      currentStartTime = lastTradeTime + 1
+      await new Promise(resolve => setTimeout(resolve, 100))
+    } catch (error) {
+      logger.error('backfill network error', { source, error: getErrorMessage(error) })
+      break
+    }
+  }
+  
+  logger.info('auto-backfill completed', { source, totalFetched })
 }
 
 function createLogger(level) {
