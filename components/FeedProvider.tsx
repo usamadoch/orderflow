@@ -813,7 +813,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
     }, 100);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triggerFootprintRedraw, appendAggregateBubbleEvents, chartMode, panelId, setAbsorptionMap, setExhaustionMap, rebuildLiquidityVacuumZones, absorptionEnabled, exhaustionEnabled, exhaustionLookback]);
 
   // Handle display bucket size updates without reconnecting socket or clearing base cells.
@@ -856,14 +856,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   // Handle autoBucketSize toggle
   useEffect(() => {
     if (autoBucketSize) {
-        const currentCandles = useChartRuntimeStore.getState().panels[panelId].candles || [];
+      const currentCandles = useChartRuntimeStore.getState().panels[panelId].candles || [];
       if (currentCandles.length > 0) {
         const recentCandles = currentCandles.slice(-100);
         const avgRange = recentCandles.reduce((sum, c) => sum + (c.high - c.low), 0) / recentCandles.length;
         const targetTicks = avgRange / tickSize;
         const computedSize = Math.max(1, Math.round(targetTicks / 25));
         const displayBucketSize = Math.max(BASE_FOOTPRINT_BUCKET_SIZE, computedSize);
-        
+
         if (displayBucketSize !== bucketSize) {
           setComputedBucketSize(panelId, displayBucketSize);
         }
@@ -1532,7 +1532,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       // Score closed candles incrementally
       if (candle.isClosed && candle.time !== lastScoredCandleTimeRef.current) {
         lastScoredCandleTimeRef.current = candle.time;
-      const currentCandles = useChartRuntimeStore.getState().panels[panelId].candles || [];
+        const currentCandles = useChartRuntimeStore.getState().panels[panelId].candles || [];
         const newMap = absorptionEnabled
           ? scoreLatestCandle(currentCandles, engineRef.current, absorptionMapRef.current)
           : new Map<number, AbsorptionResult>();
@@ -1945,7 +1945,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
     };
 
-    const hydrateStoredFootprints = async (candles: Candle[]): Promise<FootprintHydrationStats> => {
+    const hydrateStoredFootprintRange = async (
+      startSeconds: number,
+      endSeconds: number,
+    ): Promise<FootprintHydrationStats> => {
       const stats: FootprintHydrationStats = {
         rowsFetched: 0,
         candlesHydrated: 0,
@@ -1962,43 +1965,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         restoreFailureReason: null,
       };
 
-      const plan = getFootprintRestorePlan(
-        candles,
-        useChartStore.getState().panels[panelId],
-        timeframeSeconds,
-      );
-      if (!plan || plan.clampedRange.endSeconds <= plan.clampedRange.startSeconds) return stats;
+      if (endSeconds <= startSeconds) return stats;
 
       const footprintCache = engineRef.current.getBaseCache();
       const restoreKey = `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`;
-      stats.requestedRange = plan.requestedRange;
-      stats.clampedRange = plan.clampedRange;
-      stats.skippedBecauseRangeTooLarge = plan.skippedBecauseRangeTooLarge;
+      const clampedRange = alignFootprintRange(startSeconds, endSeconds);
+      stats.requestedRange = { startSeconds, endSeconds };
+      stats.clampedRange = clampedRange;
 
-      if (plan.skippedBecauseRangeTooLarge) {
-        recordRestoreDiagnostic({
-          kind: 'footprint',
-          key: restoreKey,
-          timestamp: Date.now(),
-          rowsFetched: 0,
-          distinctCandleTimeCount: 0,
-          skippedRows: Math.max(0, Math.floor((plan.clampedRange.startSeconds - plan.requestedRange.startSeconds) / BASE_FOOTPRINT_TIMEFRAME_SECONDS)),
-          details: {
-            panelId,
-            status: 'range-clamped',
-            historyRange: plan.historyRange,
-            requestedRange: plan.requestedRange,
-            clampedRange: plan.clampedRange,
-            requestedVisibleBars: plan.requestedVisibleBars,
-            approximateVisibleBars: plan.approximateVisibleBars,
-            maxTotalSeconds: FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS,
-            maxChunkSeconds: FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS,
-            skippedBecauseRangeTooLarge: true,
-          },
-        });
-      }
-
-      const chunks = getFootprintRestoreChunks(plan.clampedRange);
+      const chunks = getFootprintRestoreChunks(clampedRange);
       stats.chunkCount = chunks.length;
 
       for (let index = 0; index < chunks.length; index += 1) {
@@ -2019,8 +1994,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               panelId,
               status: 'cache-covered',
               sourceKey: footprintCache.key,
-              requestedRange: plan.requestedRange,
-              clampedRange: plan.clampedRange,
+              requestedRange: stats.requestedRange,
+              clampedRange: stats.clampedRange,
               chunkIndex: index + 1,
               chunkCount: chunks.length,
               chunkStart: chunk.startSeconds,
@@ -2116,8 +2091,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
                 panelId,
                 status: 'chunk-complete',
                 sourceKey: footprintCache.key,
-                requestedRange: plan.requestedRange,
-                clampedRange: plan.clampedRange,
+                requestedRange: stats.requestedRange,
+                clampedRange: stats.clampedRange,
                 chunkIndex: index + 1,
                 chunkCount: chunks.length,
                 chunkStart: chunk.startSeconds,
@@ -2154,8 +2129,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               panelId,
               status: 'failed',
               sourceKey: footprintCache.key,
-              requestedRange: plan.requestedRange,
-              clampedRange: plan.clampedRange,
+              requestedRange: stats.requestedRange,
+              clampedRange: stats.clampedRange,
               chunkIndex: index + 1,
               chunkCount: chunks.length,
               chunkStart: chunk.startSeconds,
@@ -2174,6 +2149,52 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (stats.candlesHydrated > 0) {
         pendingFootprintRedrawRef.current = true;
         pendingProfileRedrawRef.current = true;
+      }
+
+      return stats;
+    };
+
+    const hydrateStoredFootprints = async (candles: Candle[]): Promise<FootprintHydrationStats> => {
+      const plan = getFootprintRestorePlan(
+        candles,
+        useChartStore.getState().panels[panelId],
+        timeframeSeconds,
+      );
+
+      if (!plan || plan.clampedRange.endSeconds <= plan.clampedRange.startSeconds) {
+        return {
+          rowsFetched: 0, candlesHydrated: 0, cellsHydrated: 0, bucketMatches: 0, bucketMisses: 0,
+          requestedRange: null, clampedRange: null, chunkCount: 0, chunksFetched: 0, chunksSkipped: 0,
+          rowsPerChunk: [], skippedBecauseRangeTooLarge: false, restoreFailureReason: null,
+        };
+      }
+
+      const stats = await hydrateStoredFootprintRange(plan.clampedRange.startSeconds, plan.clampedRange.endSeconds);
+      stats.skippedBecauseRangeTooLarge = plan.skippedBecauseRangeTooLarge;
+      stats.requestedRange = plan.requestedRange;
+      
+      if (plan.skippedBecauseRangeTooLarge) {
+        const restoreKey = `${pair}:${contractType}:${dataSourceMode}:${BASE_FOOTPRINT_TIMEFRAME}:footprint`;
+        recordRestoreDiagnostic({
+          kind: 'footprint',
+          key: restoreKey,
+          timestamp: Date.now(),
+          rowsFetched: 0,
+          distinctCandleTimeCount: 0,
+          skippedRows: Math.max(0, Math.floor((plan.clampedRange.startSeconds - plan.requestedRange.startSeconds) / BASE_FOOTPRINT_TIMEFRAME_SECONDS)),
+          details: {
+            panelId,
+            status: 'range-clamped',
+            historyRange: plan.historyRange,
+            requestedRange: plan.requestedRange,
+            clampedRange: plan.clampedRange,
+            requestedVisibleBars: plan.requestedVisibleBars,
+            approximateVisibleBars: plan.approximateVisibleBars,
+            maxTotalSeconds: FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS,
+            maxChunkSeconds: FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS,
+            skippedBecauseRangeTooLarge: true,
+          },
+        });
       }
 
       return stats;
@@ -2450,6 +2471,68 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
     };
 
+    let lazyFootprintRestoreRunning = false;
+    let lastLazyFootprintRestoreKey = '';
+
+    const getScrolledFootprintRestoreWindow = () => {
+      const panel = useChartStore.getState().panels[panelId];
+      const candles = useChartRuntimeStore.getState().panels[panelId].candles;
+      if (!getCurrentFootprintWorkNeed().needed || candles.length === 0) return null;
+
+      const safeBarWidth = Math.max(1, Number.isFinite(panel.barWidth) ? panel.barWidth : 1);
+      const barsFromLatest = Math.max(0, Math.floor(panel.scrollOffset / safeBarWidth));
+      
+      const rightIndex = Math.max(0, candles.length - 1 - barsFromLatest + 20);
+      const leftIndex = Math.max(0, rightIndex - 300);
+      
+      const firstTime = candles[leftIndex]?.time;
+      const lastTime = candles[rightIndex]?.time;
+      if (firstTime === undefined || lastTime === undefined) return null;
+
+      const range = alignFootprintRange(firstTime, lastTime + timeframeSeconds);
+      const footprintCache = engineRef.current.getBaseCache();
+      const missingTimes = footprintCache.getMissingBaseCandleTimes(range.startSeconds, range.endSeconds);
+
+      return missingTimes.length > 0 ? range : null;
+    };
+
+    const restoreLazyFootprintRange = async (
+      range: { startSeconds: number; endSeconds: number },
+      reason: 'lazy'
+    ) => {
+      if (lazyFootprintRestoreRunning || range.endSeconds <= range.startSeconds) return;
+
+      const restoreKey = `${reason}:${range.startSeconds}:${range.endSeconds}`;
+      if (restoreKey === lastLazyFootprintRestoreKey) return;
+
+      lazyFootprintRestoreRunning = true;
+      try {
+        publishRestoreStatus({
+          stage: 'candles',
+          message: 'Loading older footprints...',
+        });
+        
+        const stats = await hydrateStoredFootprintRange(range.startSeconds, range.endSeconds);
+        lastLazyFootprintRestoreKey = restoreKey;
+
+        if (stats.chunksFetched > 0 && active) {
+          publishRestoreStatus({
+            stage: 'complete',
+            message: 'Loaded older footprints',
+            candleCount: useChartRuntimeStore.getState().panels[panelId].candles.length,
+          });
+        }
+      } catch (error) {
+        console.warn(`[HistoryRestore:${panelId}] ${reason} footprint restore failed`, error);
+        publishRestoreStatus({
+          stage: 'error',
+          message: 'Footprint load failed',
+        });
+      } finally {
+        lazyFootprintRestoreRunning = false;
+      }
+    };
+
     let lazyCandlesRestoreRunning = false;
     let lastLazyCandlesRestoreKey = 0;
 
@@ -2460,7 +2543,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
       const safeBarWidth = Math.max(1, Number.isFinite(panel.barWidth) ? panel.barWidth : 1);
       const barsFromLatest = Math.max(0, Math.floor(panel.scrollOffset / safeBarWidth));
-      
+
       if (candles.length - barsFromLatest < 150) {
         return candles[0].time;
       }
@@ -2987,6 +3070,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const scrolledCandleUntil = getScrolledCandlesRestoreWindow();
       if (scrolledCandleUntil) {
         void restoreLazyCandlesRange(scrolledCandleUntil);
+      }
+
+      const scrolledFootprintRange = getScrolledFootprintRestoreWindow();
+      if (scrolledFootprintRange) {
+        void restoreLazyFootprintRange(scrolledFootprintRange, 'lazy');
       }
 
       const scrolledRange = getScrolledProfileRestoreWindow();
