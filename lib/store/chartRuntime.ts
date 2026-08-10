@@ -237,7 +237,7 @@ function mergeCandles(existing: Candle[], incoming: Candle[]) {
 
   return Array.from(byTime.values())
     .sort((a, b) => a.time - b.time)
-    .slice(-500);
+    .slice(-10000);
 }
 
 function getAggregateBubbleEventKey(event: BubbleEvent) {

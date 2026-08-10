@@ -12,7 +12,6 @@ import {
   MARKET_CACHE_MAX_CANDLES,
   MARKET_CACHE_RETENTION_MINUTES,
   getCleanupTimestamp,
-  getRetentionCutoffSeconds,
 } from '../cache/marketCachePolicy';
 import type { ContractType } from '../store/chart';
 import { subscribeCandleStream } from './feedRegistry';
@@ -62,7 +61,7 @@ function cloneCandles(candles: Candle[]) {
   return candles.map(cloneCandle);
 }
 
-function mergeCandles(existing: Candle[], incoming: Candle[]) {
+function mergeCandles(existing: Candle[], incoming: Candle[], focalTime?: number | null) {
   const byTime = new Map<number, Candle>();
 
   for (const candle of existing) {
@@ -75,9 +74,18 @@ function mergeCandles(existing: Candle[], incoming: Candle[]) {
     byTime.set(candle.time, cloneCandle(candle));
   }
 
-  return Array.from(byTime.values())
-    .sort((a, b) => a.time - b.time)
-    .slice(-MAX_SHARED_CANDLES);
+  let merged = Array.from(byTime.values());
+  if (merged.length > MAX_SHARED_CANDLES) {
+    if (focalTime != null) {
+      merged.sort((a, b) => Math.abs(a.time - focalTime) - Math.abs(b.time - focalTime));
+      merged = merged.slice(0, MAX_SHARED_CANDLES);
+    } else {
+      merged.sort((a, b) => a.time - b.time);
+      merged = merged.slice(-MAX_SHARED_CANDLES);
+    }
+  }
+
+  return merged.sort((a, b) => a.time - b.time);
 }
 
 function getRange(candles: Candle[]) {
@@ -106,6 +114,7 @@ export class CandleCache {
   private historyRestored = false;
   private unsubscribeLive: (() => void) | null = null;
   private inactiveSince: number | null = null;
+  private focalTime: number | null = null;
 
   constructor(
     readonly key: string,
@@ -193,8 +202,15 @@ export class CandleCache {
     };
   }
 
-  async restoreHistory(restore: () => Promise<CandleHistoryRestoreResult>) {
-    if (this.historyRestored && this.candles.length > 0) {
+  async restoreHistory(
+    restore: () => Promise<CandleHistoryRestoreResult>,
+    restoreWindow?: { startSeconds: number; endSeconds: number }
+  ) {
+    if (restoreWindow) {
+      this.focalTime = Math.floor((restoreWindow.startSeconds + restoreWindow.endSeconds) / 2);
+    }
+
+    if (!restoreWindow && this.historyRestored && this.candles.length > 0) {
       recordCacheAccess('candle', this.key, true, this.getMetricDetails());
       log('history restored from existing cache', {
         cacheKey: this.key,
@@ -237,7 +253,7 @@ export class CandleCache {
     this.restorePromise = restore()
       .then((result) => {
         if (result.candles.length > 0) {
-          this.candles = mergeCandles(this.candles, result.candles);
+          this.candles = mergeCandles(this.candles, result.candles, this.focalTime);
           this.rememberLoadedRange(this.candles);
           this.notify('history-restored');
         }
@@ -285,7 +301,7 @@ export class CandleCache {
   }
 
   private ingestLiveCandle(candle: Candle) {
-    this.candles = mergeCandles(this.candles, [candle]);
+    this.candles = mergeCandles(this.candles, [candle], this.focalTime);
     this.cleanupRetainedCandles();
     this.rememberLoadedRange(this.candles);
     updateCacheMetric('candle', this.key, this.getMetricDetails());
@@ -371,22 +387,15 @@ export class CandleCache {
   }
 
   private cleanupRetainedCandles() {
-    if (this.candles.length <= 1) return 0;
+    if (this.candles.length <= MAX_SHARED_CANDLES) return 0;
 
     const beforeCount = this.candles.length;
-    const latestCandle = this.candles[this.candles.length - 1];
-    const latestTime = latestCandle?.time;
-    if (!Number.isFinite(latestTime)) return 0;
-
-    const cutoffTime = getRetentionCutoffSeconds(latestTime);
-    this.candles = this.candles.filter((candle) => candle.time >= cutoffTime || candle.time === latestTime);
-
-    if (this.candles.length > MAX_SHARED_CANDLES) {
-      const preservedLatest = this.candles[this.candles.length - 1];
-      const older = this.candles
-        .slice(0, -1)
-        .slice(Math.max(0, this.candles.length - 1 - (MAX_SHARED_CANDLES - 1)));
-      this.candles = [...older, preservedLatest];
+    
+    if (this.focalTime != null) {
+      const sorted = [...this.candles].sort((a, b) => Math.abs(a.time - this.focalTime!) - Math.abs(b.time - this.focalTime!));
+      this.candles = sorted.slice(0, MAX_SHARED_CANDLES).sort((a, b) => a.time - b.time);
+    } else {
+      this.candles = this.candles.sort((a, b) => a.time - b.time).slice(-MAX_SHARED_CANDLES);
     }
 
     return beforeCount - this.candles.length;

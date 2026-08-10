@@ -16,7 +16,6 @@ import {
   MARKET_CACHE_MAX_FOOTPRINT_CELLS,
   MARKET_CACHE_RETENTION_MINUTES,
   getCleanupTimestamp,
-  getRetentionCutoffSeconds,
 } from '../cache/marketCachePolicy';
 import { normalizePriceToBucket } from '../utils/aggregation';
 
@@ -79,6 +78,7 @@ export class FootprintBaseCache {
   private loadedRanges: Array<{ startTime: number; endTime: number }> = [];
   private subscriberCountValue = 0;
   private inactiveSince: number | null = null;
+  private focalTime: number | null = null;
 
   constructor(readonly key: string) {}
 
@@ -212,10 +212,19 @@ export class FootprintBaseCache {
   trim(maxBaseCandles: number) {
     if (this.baseFootprintMap.size <= maxBaseCandles) return;
 
-    const keys = Array.from(this.baseFootprintMap.keys()).sort((a, b) => a - b);
-    const toDelete = keys.slice(0, keys.length - maxBaseCandles);
-    for (const key of toDelete) {
-      this.baseFootprintMap.delete(key);
+    if (this.focalTime != null) {
+      const keys = Array.from(this.baseFootprintMap.keys());
+      keys.sort((a, b) => Math.abs(a - this.focalTime!) - Math.abs(b - this.focalTime!));
+      const toDelete = keys.slice(maxBaseCandles);
+      for (const key of toDelete) {
+        this.baseFootprintMap.delete(key);
+      }
+    } else {
+      const keys = Array.from(this.baseFootprintMap.keys()).sort((a, b) => a - b);
+      const toDelete = keys.slice(0, keys.length - maxBaseCandles);
+      for (const key of toDelete) {
+        this.baseFootprintMap.delete(key);
+      }
     }
     updateCacheMetric('footprint', this.key, this.getMetricDetails());
   }
@@ -224,33 +233,21 @@ export class FootprintBaseCache {
     const before = this.getMetricDetails();
     const beforeSlices = this.baseFootprintMap.size;
     const beforeCells = this.getRowCellCount();
-    const latestTime = this.getLatestBaseTime();
     let removedSlices = 0;
     let removedCells = 0;
 
-    if (latestTime !== null) {
-      const cutoffTime = getRetentionCutoffSeconds(latestTime);
-      const removableTimes = Array.from(this.baseFootprintMap.keys())
-        .filter((time) => time < cutoffTime && time !== latestTime)
-        .sort((a, b) => a - b);
-
-      for (const time of removableTimes) {
-        removedCells += this.deleteBaseSlice(time);
-        removedSlices += 1;
-      }
-    }
-
+    // Use focalTime-based trimming instead of time-based cuts
     while (this.baseFootprintMap.size > MARKET_CACHE_MAX_BASE_SLICES) {
-      const oldestTime = this.getOldestBaseTimeExceptLatest();
-      if (oldestTime === null) break;
-      removedCells += this.deleteBaseSlice(oldestTime);
+      const timeToRemove = this.getFurthestBaseTime();
+      if (timeToRemove === null) break;
+      removedCells += this.deleteBaseSlice(timeToRemove);
       removedSlices += 1;
     }
 
     while (this.getRowCellCount() > MARKET_CACHE_MAX_FOOTPRINT_CELLS) {
-      const oldestTime = this.getOldestBaseTimeExceptLatest();
-      if (oldestTime === null) break;
-      removedCells += this.deleteBaseSlice(oldestTime);
+      const timeToRemove = this.getFurthestBaseTime();
+      if (timeToRemove === null) break;
+      removedCells += this.deleteBaseSlice(timeToRemove);
       removedSlices += 1;
     }
 
@@ -308,6 +305,7 @@ export class FootprintBaseCache {
   }
 
   async runRestoreOnce<T>(startTime: number, endTime: number, restore: () => Promise<T>): Promise<T> {
+    this.focalTime = Math.floor((startTime + endTime) / 2);
     const restoreKey = this.getRestoreKey(startTime, endTime);
     const existing = this.restorePromises.get(restoreKey) as Promise<T> | undefined;
     if (existing) {
@@ -366,8 +364,21 @@ export class FootprintBaseCache {
     return Math.max(...this.baseFootprintMap.keys());
   }
 
-  private getOldestBaseTimeExceptLatest() {
+  private getFurthestBaseTime() {
     if (this.baseFootprintMap.size <= 1) return null;
+
+    if (this.focalTime != null) {
+      let furthest = -1;
+      let maxDist = -1;
+      for (const time of this.baseFootprintMap.keys()) {
+        const dist = Math.abs(time - this.focalTime);
+        if (dist > maxDist) {
+          maxDist = dist;
+          furthest = time;
+        }
+      }
+      return furthest === -1 ? null : furthest;
+    }
 
     const latestTime = this.getLatestBaseTime();
     const sortedTimes = Array.from(this.baseFootprintMap.keys()).sort((a, b) => a - b);
