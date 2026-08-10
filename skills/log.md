@@ -1,6 +1,21 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-10] - Feature: Panel-Specific Refresh Buttons
+- **What changed**:
+  - Added a `refreshKey` property to each panel's `PanelRuntimeState` in `lib/store/chartRuntime.ts`, initialized to `0`.
+  - Added a new `triggerPanelRefresh` action in `useChartRuntimeStore` to increment a specific panel's `refreshKey`.
+  - Bound the `refreshKey` as a React `key` prop on the `<PanelFeedProvider>` for the left and right panels in `app/page.tsx` (`key={"left-refresh-" + leftRefreshKey}`).
+  - Added a "Refresh panel data" button using the `RefreshCw` icon from `lucide-react` to `components/ui/PanelToolbar.tsx`, positioned next to the settings button.
+- **Why it changed**:
+  - Users experienced transient glitches (e.g., three candles rendering next to each other, Volume Profiles hanging on load) that were easily resolved by refreshing the page. However, a full page refresh disrupts the entire application.
+  - Adding a panel-specific refresh button that forcefully deletes the shared memory caches (candles, footprint, volume profile) for that panel's configuration and then completely unmounts/recreates the `<PanelFeedProvider>`, acting as a clean slate for just that panel. This forces a true database re-fetch and resolves glitches without affecting the global store settings.
+- **Impact summary**:
+  - The UI now has a dedicated refresh button per panel.
+  - Clicking the refresh button destroys the in-memory shared caches for that panel's active symbol/timeframe, as well as all transient runtime data, local caches, and engines for that panel, forcing a fresh connection and restore lifecycle from the database.
+  - Global application state (like the `chartStore` settings and `tradingStatus`) remains completely unaffected.
+
 ## [2026-08-09] - Feature: Manual Storage Management
+
 - **What changed**:
   - Removed all size-based automated pruning functions (`enforceSizeRetention`, `pruneOldestDataHour`) and related config values from `btcusdtCollector.mjs`.
   - Created a new full-stack feature for manual storage management:

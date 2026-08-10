@@ -448,6 +448,11 @@ export function cleanupSharedFootprintCaches() {
   }
 }
 
+export function deleteSharedFootprintCache(parts: FootprintCacheKeyParts) {
+  const key = getFootprintCacheKey(parts);
+  sharedFootprintCaches.delete(key);
+}
+
 export function getSharedFootprintCache(parts: FootprintCacheKeyParts) {
   ensureFootprintCleanupTimer();
   const key = getFootprintCacheKey(parts);

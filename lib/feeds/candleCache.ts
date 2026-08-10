@@ -438,6 +438,19 @@ export function cleanupSharedCandleCaches() {
   }
 }
 
+export function deleteSharedCandleCache(parts: CandleCacheKeyParts) {
+  const normalizedParts = {
+    ...parts,
+    symbol: normalizeSymbol(parts.symbol),
+  };
+  const key = getCandleCacheKey(normalizedParts);
+  const cache = sharedCandleCaches.get(key);
+  if (cache) {
+    cache.dispose();
+    sharedCandleCaches.delete(key);
+  }
+}
+
 export function getSharedCandleCache(parts: CandleCacheKeyParts) {
   ensureCandleCleanupTimer();
   const normalizedParts = {

@@ -62,7 +62,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `next.config.mjs` → Next.js configuration, including instrumentation hook support.
 - `instrumentation.ts` → Server startup hook that initializes the selected storage adapter and runs libSQL cleanup only when using libSQL.
 - `app/layout.tsx` → Root layout and global app shell wiring.
-- `app/page.tsx` → Main app scaffold with Header, Sidebar, chart panel layout, draggable split, focus layout mode, gated internal debug panel mount, and main `#0F0F0F` app surface.
+- `app/page.tsx` → Main app scaffold with Header, Sidebar, chart panel layout, draggable split, focus layout mode, gated internal debug panel mount, main `#0F0F0F` app surface, and panel-specific React key boundaries for independent refresh.
 - `app/globals.css` → Tailwind base styles, dark theme surface variables, TradingView-style bullish/bearish CSS variables, popup contrast utilities, panel loading-dot animation, and shared scoped scrollbar styling utilities.
 
 ### History APIs
@@ -88,7 +88,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/layout/Header.tsx` → Top toolbar, layout controls, connection status, auth controls, and main-surface header styling.
 - `components/layout/Sidebar.tsx` → Thin icon-rail tools sidebar with active-panel context, main-surface sidebar styling, and elevated chart/tool status tooltips.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection indicator using shared semantic status colors.
-- `components/ui/PanelToolbar.tsx` → Per-panel header controls for the symbol selector, timeframe, chart mode, Long/Short Position drawing tool selection, panel-targeted settings access, whole-layout focus toggle, and main/elevated dark toolbar styling.
+- `components/ui/PanelToolbar.tsx` → Per-panel header controls for the symbol selector, timeframe, chart mode, Long/Short Position drawing tool selection, independent panel refresh, panel-targeted settings access, whole-layout focus toggle, and main/elevated dark toolbar styling.
 - `components/ui/OrderTicket.tsx` → Draggable floating order ticket modal with smart default quantity logic, local side/type/quantity/price/confirmation state, latest-price estimates, safe validation, risk/live/kill-switch warnings, balance display from runtime snapshot data, and Binance testnet spot order submission loading/success/error feedback through runtime actions.
 - `components/ui/AccountBalanceWidget.tsx` → Header widget displaying available and total balance for the primary asset (e.g. USDT) based on live snapshot data.
 - `components/ui/OrdersPanel.tsx` → Bottom pane table listing all open orders with real-time status and integrated cancellation controls.
@@ -147,7 +147,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 ### State / Hooks
 
 - `lib/store/chart.ts` → Persisted Zustand chart settings, selected market/timeframe/mode, drawing/profile/session/CVD/bubble/Volume/signal/liquidity/heatmap preferences, layout/auth/settings-window state, restore status shape including footprint range/chunk/failure fields, shared CVD default colors, crosshair sync setting, and migration normalization that strips legacy runtime fields and maps legacy semantic colors.
-- `lib/store/chartRuntime.ts` → Non-persisted Zustand runtime panel state for candles, trades, connection/loading/restore status, signal result maps, aggregate bubble buffers, profile/measurement selection, liquidity zones, footprint redraw triggers, shared trading health/account snapshot/user-stream/order action/risk status state, drag-modify preview/modify action state and risk preflight actions, reconciliation fields, virtual positions, bracket orders, bracket drag state (with upsert/remove/setBracketDrag/updateVirtualPnl actions), and shared crosshair sync payload with selector subscriptions.
+- `lib/store/chartRuntime.ts` → Non-persisted Zustand runtime panel state for candles, trades, connection/loading/restore status, signal result maps, aggregate bubble buffers, profile/measurement selection, liquidity zones, footprint redraw triggers, panel refresh keys, shared trading health/account snapshot/user-stream/order action/risk status state, drag-modify preview/modify action state and risk preflight actions, reconciliation fields, virtual positions, bracket orders, bracket drag state (with upsert/remove/setBracketDrag/updateVirtualPnl actions), and shared crosshair sync payload with selector subscriptions.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcuts for chart modes, tools, sessions, liquidity, signal toggles, focus mode, and active panel targeting.
 
 ### Feeds / Shared Live Data

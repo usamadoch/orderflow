@@ -47,6 +47,7 @@ export interface PanelRuntimeState {
   liquidityZones: LiquidityZone[];
   measureToolActive: boolean;
   activeMeasurement: Measurement | null;
+  refreshKey: number;
 }
 
 export interface TradingRuntimeStatus {
@@ -97,6 +98,7 @@ interface ChartRuntimeState {
   crosshair: GlobalCrosshair;
   tradingStatus: TradingRuntimeStatus;
   resetPanelRuntime: (panelId: PanelId) => void;
+  triggerPanelRefresh: (panelId: PanelId) => void;
   setConnected: (panelId: PanelId, connected: boolean) => void;
   setLoadingHistory: (panelId: PanelId, isLoadingHistory: boolean) => void;
   setHistoryRestoreStatus: (panelId: PanelId, status: HistoryRestoreStatus | null) => void;
@@ -154,6 +156,7 @@ function createDefaultRuntimePanel(): PanelRuntimeState {
     liquidityZones: [],
     measureToolActive: false,
     activeMeasurement: null,
+    refreshKey: 0,
   };
 }
 
@@ -277,6 +280,9 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
 
   resetPanelRuntime: (panelId) =>
     set((state) => updateRuntimePanel(state, panelId, createDefaultRuntimePanel())),
+
+  triggerPanelRefresh: (panelId) =>
+    set((state) => updateRuntimePanel(state, panelId, { refreshKey: state.panels[panelId].refreshKey + 1 })),
 
   setConnected: (panelId, connected) =>
     set((state) => updateRuntimePanel(state, panelId, { connected })),

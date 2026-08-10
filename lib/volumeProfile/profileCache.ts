@@ -740,6 +740,11 @@ export function cleanupSharedVolumeProfileCaches() {
   }
 }
 
+export function deleteSharedVolumeProfileCache(parts: VolumeProfileCacheKeyParts) {
+  const key = getVolumeProfileCacheKey(parts);
+  sharedVolumeProfileCaches.delete(key);
+}
+
 export function getSharedVolumeProfileCache(parts: VolumeProfileCacheKeyParts) {
   ensureVolumeProfileCleanupTimer();
   const key = getVolumeProfileCacheKey(parts);

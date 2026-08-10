@@ -1,11 +1,15 @@
 'use client';
 
 import React from 'react';
-import { Maximize2, Minimize2, Settings, TrendingDown, TrendingUp } from 'lucide-react';
+import { Maximize2, Minimize2, Settings, TrendingDown, TrendingUp, RefreshCw } from 'lucide-react';
 import { useChartStore, PanelId, type SettingsOpenRequest } from '../../lib/store/chart';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 import { ChartSettingsDropdown } from './ChartSettingsDropdown';
 import { PairSelector } from './PairSelector';
+import { deleteSharedCandleCache } from '../../lib/feeds/candleCache';
+import { deleteSharedFootprintCache } from '../../lib/aggregation/footprintCache';
+import { deleteSharedVolumeProfileCache } from '../../lib/volumeProfile/profileCache';
+import { getFineProfileBaseBucketSize } from '../../lib/config/markets';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h'];
 
@@ -15,6 +19,7 @@ interface PanelToolbarProps {
 
 export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const panel = useChartStore(s => s.panels[panelId]);
+  const tickSize = useChartStore(s => s.tickSize);
   const setTimeframe = useChartStore(s => s.setTimeframe);
   const setChartMode = useChartStore(s => s.setChartMode);
   const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
@@ -23,6 +28,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const setFocusMode = useChartStore(s => s.setFocusMode);
   const setActivePanel = useChartStore(s => s.setActivePanel);
   const settingsOpenRequest = useChartStore(s => s.settingsOpenRequest);
+  const triggerPanelRefresh = useChartRuntimeStore(s => s.triggerPanelRefresh);
   const [showSettings, setShowSettings] = React.useState(false);
   const [settingsAnchor, setSettingsAnchor] = React.useState<{ x: number; y: number } | null>(null);
   const [settingsFocusRequest, setSettingsFocusRequest] = React.useState<SettingsOpenRequest | null>(null);
@@ -146,6 +152,38 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
       </div>
 
       <div className="ml-auto flex items-center gap-1 border-l border-[#1F1F1F] pl-3 h-5">
+        <button
+          onClick={() => {
+            deleteSharedCandleCache({
+              symbol: panel.pair,
+              contractType: panel.contractType,
+              timeframe: panel.timeframe,
+            });
+            deleteSharedFootprintCache({
+              symbol: panel.pair,
+              contractType: panel.contractType,
+              dataSourceMode: 'trades',
+            });
+            deleteSharedFootprintCache({
+              symbol: panel.pair,
+              contractType: panel.contractType,
+              dataSourceMode: 'aggregateTrades',
+            });
+            deleteSharedVolumeProfileCache({
+              symbol: panel.pair,
+              contractType: panel.contractType,
+              dataSourceMode: 'trades',
+              baseBucketSize: getFineProfileBaseBucketSize(tickSize),
+            });
+            triggerPanelRefresh(panelId);
+          }}
+          className="h-6 w-6 flex items-center justify-center rounded border border-[#1F1F1F] bg-[#0F0F0F] text-[#787B86] transition-all duration-200 hover:border-accent/60 hover:text-[#E8E8E8]"
+          title={`${panelId === 'left' ? 'Left' : 'Right'} panel refresh`}
+          aria-label={`Refresh ${panelId} panel`}
+        >
+          <RefreshCw size={11} strokeWidth={2.5} />
+        </button>
+
         <div ref={settingsContainerRef} className="relative">
           <button
             ref={settingsButtonRef}

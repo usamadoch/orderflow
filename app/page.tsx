@@ -8,6 +8,7 @@ import { ChartPanel } from '../components/chart/ChartPanel';
 import { OrdersPanel } from '../components/ui/OrdersPanel';
 import { DebugPanel } from '../components/debug/DebugPanel';
 import { useChartStore } from '../lib/store/chart';
+import { useChartRuntimeStore } from '../lib/store/chartRuntime';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useTradingSync } from '../hooks/useTradingSync';
 
@@ -16,6 +17,8 @@ export default function Home() {
   const splitRatio = useChartStore(s => s.splitRatio);
   const focusMode = useChartStore(s => s.focusMode);
   const setSplitRatio = useChartStore(s => s.setSplitRatio);
+  const leftRefreshKey = useChartRuntimeStore(s => s.panels.left.refreshKey);
+  const rightRefreshKey = useChartRuntimeStore(s => s.panels.right.refreshKey);
   useKeyboardShortcuts();
   useTradingSync();
 
@@ -61,7 +64,7 @@ export default function Home() {
           <div className="flex-1 relative flex min-h-0">
             {/* Left Panel — always visible */}
             <div style={{ width: leftPercent }} className="h-full flex min-w-0">
-              <PanelFeedProvider panelId="left">
+              <PanelFeedProvider panelId="left" key={`left-refresh-${leftRefreshKey}`}>
                 <ChartPanel panelId="left" />
               </PanelFeedProvider>
             </div>
@@ -82,7 +85,7 @@ export default function Home() {
             {/* Right Panel — only in dual mode */}
             {layoutMode === 'dual' && (
               <div style={{ width: rightPercent }} className="h-full flex min-w-0">
-                <PanelFeedProvider panelId="right">
+                <PanelFeedProvider panelId="right" key={`right-refresh-${rightRefreshKey}`}>
                   <ChartPanel panelId="right" />
                 </PanelFeedProvider>
               </div>
