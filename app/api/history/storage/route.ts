@@ -49,7 +49,7 @@ export async function GET() {
       }
     ]).toArray()
 
-    let bubbleAgg: any[] = []
+    let bubbleAgg: { _id: string, count: number }[] = []
     if (bubbleDb) {
       bubbleAgg = await bubbleDb.collection(AGGREGATE_BUBBLE_COLLECTION).aggregate([
         {
@@ -58,7 +58,7 @@ export async function GET() {
             count: { $sum: 1 }
           }
         }
-      ]).toArray()
+      ]).toArray() as { _id: string, count: number }[]
     }
 
     const dailyUsage = new Map<string, { mainMb: number, bubbleMb: number }>()
@@ -119,9 +119,10 @@ export async function GET() {
       },
       days
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to get storage summary:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
 
@@ -172,8 +173,9 @@ export async function DELETE(request: Request) {
     }
 
     return NextResponse.json({ success: true, deletedCount: totalDeleted })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to delete storage data:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }

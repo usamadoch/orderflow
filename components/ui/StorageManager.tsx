@@ -54,8 +54,8 @@ export function StorageManager({ isOpen, onClose }: StorageManagerProps) {
       const data = await res.json();
       setDays(data.days || []);
       setDatabases(data.databases || null);
-    } catch (err: any) {
-      setError(err.message || 'Error loading storage data');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error loading storage data');
     } finally {
       setIsLoading(false);
     }
@@ -107,8 +107,8 @@ export function StorageManager({ isOpen, onClose }: StorageManagerProps) {
       // Refresh the list
       await fetchStorage();
       setSelectedDays(new Set());
-    } catch (err: any) {
-      setError(err.message || 'Error deleting storage data');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error deleting storage data');
     } finally {
       setIsDeleting(false);
     }
