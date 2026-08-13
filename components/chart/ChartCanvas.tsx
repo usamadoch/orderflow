@@ -263,25 +263,31 @@ function getModifyBlockReason(input: {
   return null;
 }
 
-function findNearestOrderLine(
-  orders: Order[],
+function getOrderHitZone(
+  order: Order,
   x: number,
   y: number,
   chartWidth: number,
   chartHeight: number,
   priceToY: (price: number) => number,
-) {
-  if (x < 0 || x > chartWidth || y < 0 || y > chartHeight) return null;
+): boolean {
+  if (x < 0 || x > chartWidth || y < 0 || y > chartHeight) return false;
+  if (order.type !== 'limit' || !Number.isFinite(order.price) || !order.price) return false;
+  
+  const oy = priceToY(order.price);
+  if (Math.abs(y - oy) > 7) return false;
 
-  let nearest: { order: Order; distance: number } | null = null;
-  for (const order of orders) {
-    if (order.type !== 'limit' || !Number.isFinite(order.price) || !order.price) continue;
-    const distance = Math.abs(y - priceToY(order.price));
-    if (distance > 7) continue;
-    if (!nearest || distance < nearest.distance) nearest = { order, distance };
-  }
+  // Exact geometry hit: The line visually spans the chart, and unified top-down 
+  // hit testing ensures it doesn't steal Custom Profile clicks accidentally.
+  return true;
+}
 
-  return nearest?.order ?? null;
+function distanceToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number) {
+  const l2 = (x2 - x1)**2 + (y2 - y1)**2;
+  if (l2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
 }
 
 function buildPositionFromRiskDrag(
@@ -340,20 +346,23 @@ function getDrawingHitZone(
   priceToY: (price: number) => number,
   chartWidth: number,
   chartHeight: number,
-  barWidth: number
+  barWidth: number,
+  isSelected: boolean
 ): DrawingHitZone | null {
+  const pad = 7;
+
   if (line.type === 'horizontal') {
     const ly = priceToY(line.value);
-    if (Math.abs(y - ly) < 6 && x <= chartWidth) {
-      return Math.abs(x - (chartWidth - 6)) < 8 && Math.abs(y - ly) < 8 ? 'delete' : 'move';
+    if (Math.abs(y - ly) <= pad && x <= chartWidth) {
+      return Math.abs(x - (chartWidth - 6)) <= pad ? 'delete' : 'move';
     }
     return null;
   }
 
   if (line.type === 'vertical') {
     const lx = indexToX(line.value);
-    if (lx !== null && Math.abs(x - lx) < 6 && y <= chartHeight) {
-      return Math.abs(x - lx) < 8 && Math.abs(y - 10) < 8 ? 'delete' : 'move';
+    if (lx !== null && Math.abs(x - lx) <= pad && y <= chartHeight) {
+      return Math.abs(y - 10) <= pad ? 'delete' : 'move';
     }
     return null;
   }
@@ -364,9 +373,15 @@ function getDrawingHitZone(
     const ly = priceToY(line.value);
     if (lx === null || ly < 0 || ly > chartHeight) return null;
 
-    if (Math.abs(x - (chartWidth - 6)) < 8 && Math.abs(y - ly) < 8) return 'delete';
-    if (Math.abs(x - lx) < 8 && Math.abs(y - ly) < 8) return 'resize-left';
-    if (x >= Math.max(0, lx) && x <= chartWidth && Math.abs(y - ly) < 6) return 'move';
+    if (Math.abs(x - (chartWidth - 6)) <= pad && Math.abs(y - ly) <= pad) return 'delete';
+    
+    // Use geometric distance for the ray segment
+    const startX = Math.max(0, lx);
+    const dist = distanceToSegment(x, y, startX, ly, chartWidth, ly);
+    if (dist <= pad) {
+      if (Math.abs(x - lx) <= pad) return 'resize-left';
+      return 'move';
+    }
     return null;
   }
 
@@ -387,14 +402,33 @@ function getDrawingHitZone(
     const bottom = priceToY(line.priceLow);
     const minY = Math.min(top, bottom);
     const maxY = Math.max(top, bottom);
-    const pad = 7;
 
-    if (Math.abs(x - right) < 8 && Math.abs(y - minY) < 8) return 'delete';
-    if (x < left - pad || x > right + pad || y < minY - pad || y > maxY + pad) return null;
-    if (Math.abs(x - left) <= pad) return 'resize-left';
-    if (Math.abs(x - right) <= pad) return 'resize-right';
-    if (Math.abs(y - minY) <= pad) return 'resize-top';
-    if (Math.abs(y - maxY) <= pad) return 'resize-bottom';
+    if (isSelected && Math.abs(x - right) <= pad && Math.abs(y - minY) <= pad) return 'delete';
+
+    const onLeftEdge = Math.abs(x - left) <= pad && y >= minY - pad && y <= maxY + pad;
+    const onRightEdge = Math.abs(x - right) <= pad && y >= minY - pad && y <= maxY + pad;
+    const onTopEdge = Math.abs(y - minY) <= pad && x >= left - pad && x <= right + pad;
+    const onBottomEdge = Math.abs(y - maxY) <= pad && x >= left - pad && x <= right + pad;
+
+    if (!onLeftEdge && !onRightEdge && !onTopEdge && !onBottomEdge) {
+      return null;
+    }
+
+    if (isSelected) {
+      const cornerPad = 12;
+      const nearLeft = Math.abs(x - left) <= cornerPad;
+      const nearRight = Math.abs(x - right) <= cornerPad;
+      const nearTop = Math.abs(y - minY) <= cornerPad;
+      const nearBottom = Math.abs(y - maxY) <= cornerPad;
+
+      if (nearLeft || nearRight || nearTop || nearBottom) {
+        if (onLeftEdge && nearLeft) return 'resize-left';
+        if (onRightEdge && nearRight) return 'resize-right';
+        if (onTopEdge && nearTop) return 'resize-top';
+        if (onBottomEdge && nearBottom) return 'resize-bottom';
+      }
+    }
+
     return 'move';
   }
 
@@ -407,18 +441,28 @@ function getDrawingHitZone(
     const right = Math.max(x1, x2) + barWidth / 2;
     const entryY = priceToY(line.value);
     const stopY = priceToY(line.stopPrice!);
-    const targetY = priceToY(line.targetPrice!);
-    const minY = Math.min(entryY, stopY, targetY);
-    const maxY = Math.max(entryY, stopY, targetY);
-    const pad = 7;
+    const targetY = line.targetPrice !== undefined ? priceToY(line.targetPrice) : undefined;
+    const minY = targetY !== undefined ? Math.min(entryY, stopY, targetY) : Math.min(entryY, stopY);
+    const maxY = targetY !== undefined ? Math.max(entryY, stopY, targetY) : Math.max(entryY, stopY);
 
-    if (Math.abs(x - right) < 8 && Math.abs(y - minY) < 8) return 'delete';
-    if (x < left - pad || x > right + pad || y < minY - pad || y > maxY + pad) return null;
-    if (Math.abs(y - entryY) <= pad) return 'resize-entry';
-    if (Math.abs(y - stopY) <= pad) return 'resize-stop';
-    if (Math.abs(y - targetY) <= pad) return 'resize-target';
-    if (Math.abs(x - left) <= pad) return 'resize-left';
-    if (Math.abs(x - right) <= pad) return 'resize-right';
+    if (isSelected && Math.abs(x - right) <= pad && Math.abs(y - minY) <= pad) return 'delete';
+
+    const onEntry = Math.abs(y - entryY) <= pad && x >= left - pad && x <= right + pad;
+    const onStop = Math.abs(y - stopY) <= pad && x >= left - pad && x <= right + pad;
+    const onTarget = targetY !== undefined && Math.abs(y - targetY) <= pad && x >= left - pad && x <= right + pad;
+    const onLeft = Math.abs(x - left) <= pad && y >= minY - pad && y <= maxY + pad;
+    const onRight = Math.abs(x - right) <= pad && y >= minY - pad && y <= maxY + pad;
+
+    if (!onEntry && !onStop && !onTarget && !onLeft && !onRight) {
+      return null;
+    }
+
+    if (onStop) return 'resize-stop';
+    if (onTarget) return 'resize-target';
+    if (onLeft) return 'resize-left';
+    if (onRight) return 'resize-right';
+    if (onEntry) return 'move'; // Dragging entry moves the position
+    
     return 'move';
   }
 
@@ -498,7 +542,8 @@ function getCustomProfileHitZone(
   profileWidth: number,
   priceMin: number,
   priceMax: number,
-  isLocked: boolean
+  isLocked: boolean,
+  isSelected: boolean
 ): CustomProfileHitZone | null {
   if (!customProfileRange || candlesLength === 0 || x > chartWidth || y > chartHeight) return null;
 
@@ -513,16 +558,33 @@ function getCustomProfileHitZone(
   const maxY = Math.max(ry1, ry2);
   const handlePad = 6;
 
-  if (x < minX - handlePad || x > maxX + handlePad || y < minY - handlePad || y > maxY + handlePad) {
-    return null;
+  const onLeft = Math.abs(x - minX) <= handlePad && y >= minY - handlePad && y <= maxY + handlePad;
+  const onRight = Math.abs(x - maxX) <= handlePad && y >= minY - handlePad && y <= maxY + handlePad;
+  const onTop = Math.abs(y - minY) <= handlePad && x >= minX - handlePad && x <= maxX + handlePad;
+  const onBottom = Math.abs(y - maxY) <= handlePad && x >= minX - handlePad && x <= maxX + handlePad;
+
+  if (!onLeft && !onRight && !onTop && !onBottom) {
+    return null; // Click-through interior
   }
 
   if (isLocked) return 'move';
-  if (Math.abs(x - minX) <= handlePad) return 'resize-left';
-  if (Math.abs(x - maxX) <= handlePad) return 'resize-right';
-  if (Math.abs(y - minY) <= handlePad) return 'resize-top';
-  if (Math.abs(y - maxY) <= handlePad) return 'resize-bottom';
-  return 'move';
+
+  if (isSelected) {
+    const cornerPad = 12;
+    const nearLeft = Math.abs(x - minX) <= cornerPad;
+    const nearRight = Math.abs(x - maxX) <= cornerPad;
+    const nearTop = Math.abs(y - minY) <= cornerPad;
+    const nearBottom = Math.abs(y - maxY) <= cornerPad;
+
+    if (nearLeft || nearRight || nearTop || nearBottom) {
+      if (onLeft && nearLeft) return 'resize-left';
+      if (onRight && nearRight) return 'resize-right';
+      if (onTop && nearTop) return 'resize-top';
+      if (onBottom && nearBottom) return 'resize-bottom';
+    }
+  }
+
+  return 'move'; // Dragging border away from corners moves it
 }
 
 interface ChartCanvasProps {
@@ -910,7 +972,8 @@ export function ChartCanvas({
               profileWidth,
               priceMin,
               priceMax,
-              customProfileLocked
+              customProfileLocked,
+              useChartRuntimeStore.getState().panels[panelId]?.isProfileSelected ?? false
             )
           : null;
 
@@ -1593,7 +1656,8 @@ export function ChartCanvas({
           profileWidth,
           priceMin,
           priceMax,
-          customProfileLocked
+          customProfileLocked,
+          useChartRuntimeStore.getState().panels[panelId]?.isProfileSelected ?? false
         );
         if (profileHitZone) return false;
       }
@@ -1633,7 +1697,8 @@ export function ChartCanvas({
         profileWidth,
         priceMin,
         priceMax,
-        customProfileLocked
+        customProfileLocked,
+        useChartRuntimeStore.getState().panels[panelId]?.isProfileSelected ?? false
       );
 
       if (profileHitZone) {
@@ -1989,35 +2054,6 @@ export function ChartCanvas({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // 0. Line Drawing, Deletion, Selection, and Drawing Movement
-      if (hoveredLineId.current && isHoveringDeleteDot.current) {
-        useChartStore.getState().removeLine(panelId, hoveredLineId.current);
-        if (selectedDrawingId === hoveredLineId.current) {
-          setSelectedDrawingId(null);
-        }
-        hoveredLineId.current = null;
-        isHoveringDeleteDot.current = false;
-        hoveredDrawingZone.current = null;
-        redraw();
-        return;
-      }
-
-      if (hoveredLineId.current && hoveredDrawingZone.current) {
-        const targetLine = useChartStore.getState().panels[panelId].drawnLines.find((line) => line.id === hoveredLineId.current);
-        if (targetLine) {
-          setSelectedDrawingId(targetLine.id);
-          useChartRuntimeStore.getState().setProfileSelected(panelId, false);
-          if (!targetLine.locked && hoveredDrawingZone.current !== 'hover') {
-            dragAnchor.current = { x, y };
-            drawingSnapshot.current = targetLine;
-            drawingDragZone.current = hoveredDrawingZone.current;
-            isDraggingDrawing.current = true;
-          }
-          redraw();
-          return;
-        }
-      }
-
       if (lineDrawMode !== 'none') {
         const chartWidth = rect.width - priceAxisWidth;
         const chartHeight = rect.height - timeAxisHeight;
@@ -2057,17 +2093,12 @@ export function ChartCanvas({
         return;
       }
 
-      // Interaction Priority:
-      // 1. Draw mode / Measurement tool
       if (isDrawMode || measureToolActive) {
-        // Only start if within chart area
         const chartWidth = rect.width - priceAxisWidth;
         const chartHeight = rect.height - timeAxisHeight;
-        if (x > chartWidth || y > chartHeight) {
-          return;
-        }
+        if (x > chartWidth || y > chartHeight) return;
         dragStart.current = { x, y };
-        dragEnd.current = { x, y }; // Initialize end at start
+        dragEnd.current = { x, y };
         isDragging.current = true;
         
         if (isDrawMode) {
@@ -2078,137 +2109,158 @@ export function ChartCanvas({
         return;
       }
 
-      // Interaction with React overlay buttons is handled by React DOM events
-      // No manual hit detection needed for Clear/Lock here anymore.
 
-      // 4. Move/Resize Profile
+    const getUnifiedHitTarget = (x: number, y: number) => {
       const chartWidth = rect.width - priceAxisWidth;
       const chartHeight = rect.height - timeAxisHeight;
       const pCenter = priceCenter.current ?? 0;
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
-      const orderLine = findNearestOrderLine(
-        openOrders,
-        x,
-        y,
-        chartWidth,
-        chartHeight,
-        (price) => calcPriceToY(price, priceMin, priceMax, chartHeight)
-      );
+      const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
+      const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
-      if (orderLine) {
-        const blockReason = getModifyBlockReason({
-          order: orderLine,
-          symbol: tradingSymbol,
-          contractType: tradingContractType,
-          mode: currentTradingMode,
-          modeBadge,
-          riskStatus,
-        });
+      // 1. Bracket Handles
+      for (const vp of virtualPositions) {
+        if (vp.status !== 'open') continue;
+        const slBox = bracketHitZones.current.slHandles.get(vp.id);
+        const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
+        const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
+        const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
+        if (hitSL || hitTP) {
+          const bracket = bracketOrders.find((b) => b.positionId === vp.id);
+          const handle = hitSL ? 'sl' : 'tp';
+          const startPrice = hitSL ? (bracket?.stopLossPrice ?? vp.entryPrice) : (bracket?.takeProfitPrice ?? vp.entryPrice);
+          return { type: 'bracket' as const, positionId: vp.id, handle, startPrice, side: vp.side, entryPrice: vp.entryPrice };
+        }
+      }
 
-        if (blockReason) {
-          setChartOrderMessage({ type: 'error', text: blockReason });
+      // 2. Open Orders
+      for (const order of openOrders) {
+        if (getOrderHitZone(order, x, y, chartWidth, chartHeight, priceToY)) {
+          return { type: 'order' as const, order };
+        }
+      }
+
+      const storeState = useChartStore.getState();
+      const runtimeState = useChartRuntimeStore.getState();
+      const currentPanel = storeState.panels[panelId];
+
+      // 3. Custom Profile
+      if (currentPanel.customProfileRange) {
+        const resolvedRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
+        const isSelected = runtimeState.panels[panelId]?.isProfileSelected ?? false;
+        const hitZone = getCustomProfileHitZone(
+          resolvedRange, x, y, candles.length, scrollOffset.current, barWidth.current,
+          chartWidth, chartHeight, profileWidth, priceMin, priceMax, currentPanel.customProfileLocked, isSelected
+        );
+        if (hitZone) return { type: 'custom-profile' as const, hitZone, resolvedRange };
+      }
+
+      // 4. Drawing Tools (reverse creation order)
+      const currentSelectedId = selectedDrawingId;
+      const drawnLines = currentPanel.drawnLines;
+      const resolvedDrawnLines = drawnLines.map(l => resolveLineForRender(l, candles)).filter(Boolean) as DrawnLine[];
+      for (let i = resolvedDrawnLines.length - 1; i >= 0; i--) {
+        const line = resolvedDrawnLines[i];
+        const isSelected = line.id === currentSelectedId;
+        const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current, isSelected);
+        if (hitZone) return { type: 'drawing' as const, id: line.id, hitZone, line };
+      }
+
+      return null;
+    };
+
+      const hitTarget = getUnifiedHitTarget(x, y);
+
+      if (hitTarget) {
+        if (hitTarget.type === 'bracket') {
+          isDraggingBracket.current = true;
+          bracketDragEntryPrice.current = hitTarget.entryPrice;
+          bracketDragSide.current = hitTarget.side;
+          bracketDragRef.current = { positionId: hitTarget.positionId, handle: hitTarget.handle as 'sl' | 'tp', previewPrice: hitTarget.startPrice };
+          useChartRuntimeStore.getState().setBracketDrag({ positionId: hitTarget.positionId, handle: hitTarget.handle as 'sl' | 'tp', previewPrice: hitTarget.startPrice });
+          setSelectedDrawingId(null);
+          useChartRuntimeStore.getState().setProfileSelected(panelId, false);
           redraw();
           return;
         }
 
-        setSelectedDrawingId(null);
-        useChartRuntimeStore.getState().setProfileSelected(panelId, false);
-        orderDragSnapshot.current = orderLine;
-        orderDragOriginalPrice.current = orderLine.price!;
-        isDraggingOrderLine.current = true;
-        setPendingModifyOrder(null);
-        setShowModifyConfirm(false);
-        setChartOrderMessage(null);
-        setTradingStatus({
-          modifyingOrderId: orderLine.id,
-          dragPreviewPrice: orderLine.price!,
-          modifyError: null,
-          modifySuccess: null,
-        });
-        redraw();
-        return;
-      }
+        if (hitTarget.type === 'order') {
+          const blockReason = getModifyBlockReason({
+            order: hitTarget.order,
+            symbol: tradingSymbol,
+            contractType: tradingContractType,
+            mode: currentTradingMode,
+            modeBadge,
+            riskStatus,
+          });
+          if (blockReason) {
+            setChartOrderMessage({ type: 'error', text: blockReason });
+            redraw();
+            return;
+          }
+          setSelectedDrawingId(null);
+          useChartRuntimeStore.getState().setProfileSelected(panelId, false);
+          orderDragSnapshot.current = hitTarget.order;
+          orderDragOriginalPrice.current = hitTarget.order.price!;
+          isDraggingOrderLine.current = true;
+          setPendingModifyOrder(null);
+          setShowModifyConfirm(false);
+          setChartOrderMessage(null);
+          setTradingStatus({
+            modifyingOrderId: hitTarget.order.id,
+            dragPreviewPrice: hitTarget.order.price!,
+            modifyError: null,
+            modifySuccess: null,
+          });
+          redraw();
+          return;
+        }
 
-      // ── Bracket SL/TP handle hit (onMouseDown) ─────────────────────────────
-      {
-        const chartWidth2 = rect.width - priceAxisWidth;
-        const chartHeight2 = rect.height - timeAxisHeight;
-        if (x <= chartWidth2 && y <= chartHeight2) {
-          for (const vp of virtualPositions) {
-            if (vp.status !== 'open') continue;
-
-            const slBox = bracketHitZones.current.slHandles.get(vp.id);
-            const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
-
-            const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
-            const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
-
-            if (hitSL || hitTP) {
-              const bracket = bracketOrders.find((b) => b.positionId === vp.id);
-              const handle: 'sl' | 'tp' = hitSL ? 'sl' : 'tp';
-              const startPrice = hitSL
-                ? (bracket?.stopLossPrice ?? vp.entryPrice)
-                : (bracket?.takeProfitPrice ?? vp.entryPrice);
-
-              isDraggingBracket.current    = true;
-              bracketDragEntryPrice.current = vp.entryPrice;
-              bracketDragSide.current       = vp.side;
-              bracketDragRef.current        = { positionId: vp.id, handle, previewPrice: startPrice };
-              useChartRuntimeStore.getState().setBracketDrag({ positionId: vp.id, handle, previewPrice: startPrice });
-              setSelectedDrawingId(null);
-              useChartRuntimeStore.getState().setProfileSelected(panelId, false);
-              redraw();
-              return;
+        if (hitTarget.type === 'custom-profile') {
+          const currentPanel = useChartStore.getState().panels[panelId];
+          setSelectedDrawingId(null);
+          useChartRuntimeStore.getState().setProfileSelected(panelId, true);
+          
+          if (!currentPanel.customProfileLocked && hitTarget.resolvedRange) {
+            dragAnchor.current = { x, y };
+            profileSnapshot.current = hitTarget.resolvedRange;
+            if (hitTarget.hitZone === 'move') {
+              isDraggingProfile.current = true;
+            } else {
+              isDraggingResize.current = true;
+              resizeEdge.current = hitTarget.hitZone.replace('resize-', '') as 'left' | 'right' | 'top' | 'bottom';
             }
           }
+          redraw();
+          return;
+        }
+
+        if (hitTarget.type === 'drawing') {
+          if (hitTarget.hitZone === 'delete') {
+            useChartStore.getState().removeLine(panelId, hitTarget.id);
+            if (selectedDrawingId === hitTarget.id) setSelectedDrawingId(null);
+            hoveredLineId.current = null;
+            isHoveringDeleteDot.current = false;
+            hoveredDrawingZone.current = null;
+            redraw();
+            return;
+          }
+
+          setSelectedDrawingId(hitTarget.id);
+          useChartRuntimeStore.getState().setProfileSelected(panelId, false);
+          if (!hitTarget.line.locked) {
+            dragAnchor.current = { x, y };
+            drawingSnapshot.current = hitTarget.line;
+            drawingDragZone.current = hitTarget.hitZone;
+            isDraggingDrawing.current = true;
+          }
+          redraw();
+          return;
         }
       }
 
-      const currentPanel = useChartStore.getState().panels[panelId];
-      const resolvedCurrentProfileRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
-      const profileHitZone = getCustomProfileHitZone(
-        resolvedCurrentProfileRange,
-        x,
-        y,
-        candles.length,
-        scrollOffset.current,
-        barWidth.current,
-        chartWidth,
-        chartHeight,
-        profileWidth,
-        priceMin,
-        priceMax,
-        currentPanel.customProfileLocked
-      );
-
-      hoverZone.current = profileHitZone;
-
-      if (profileHitZone && !currentPanel.customProfileLocked) {
-        setSelectedDrawingId(null);
-        dragAnchor.current = { x, y };
-        profileSnapshot.current = resolvedCurrentProfileRange;
-
-        if (profileHitZone === 'move') {
-          isDraggingProfile.current = true;
-        } else {
-          isDraggingResize.current = true;
-          resizeEdge.current = profileHitZone.replace('resize-', '') as 'left' | 'right' | 'top' | 'bottom';
-        }
-        useChartRuntimeStore.getState().setProfileSelected(panelId, true);
-        return;
-      }
-
-      // 5. Select Profile (if clicked inside while locked)
-      if (profileHitZone) {
-        setSelectedDrawingId(null);
-        useChartRuntimeStore.getState().setProfileSelected(panelId, true);
-        redraw();
-        return;
-      }
-
-      // 6. Click outside -> deselect profile and drawing
       setSelectedDrawingId(null);
       useChartRuntimeStore.getState().setProfileSelected(panelId, false);
       redraw();
@@ -2219,7 +2271,6 @@ export function ChartCanvas({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // Centralized Cursor Logic
       let cursor = 'crosshair';
 
       if (lineDrawMode !== 'none') {
@@ -2227,9 +2278,7 @@ export function ChartCanvas({
         hoveredLineId.current = null;
         hoveredDrawingZone.current = null;
         isHoveringDeleteDot.current = false;
-      } else if (measureToolActive) {
-        cursor = 'crosshair';
-      } else if (isDragging.current || isDrawMode) {
+      } else if (measureToolActive || isDragging.current || isDrawMode) {
         cursor = 'crosshair';
       } else if (isDraggingDrawing.current) {
         cursor = drawingDragZone.current === 'move' ? 'grabbing' : 'crosshair';
@@ -2237,253 +2286,182 @@ export function ChartCanvas({
         cursor = 'grabbing';
       } else if (isDraggingResize.current) {
         cursor = (resizeEdge.current === 'left' || resizeEdge.current === 'right') ? 'ew-resize' : 'ns-resize';
-      } else if (isDraggingOrderLine.current) {
-        cursor = 'ns-resize';
-      } else if (isDraggingBracket.current) {
+      } else if (isDraggingOrderLine.current || isDraggingBracket.current) {
         cursor = 'ns-resize';
       } else if (isPanZoomDragging.current) {
         if (panZoomDragMode.current === 'price') cursor = 'ns-resize';
         else if (panZoomDragMode.current === 'time') cursor = 'ew-resize';
         else cursor = 'grabbing';
-      } else if (lineDrawMode === 'none') {
-        // Hover Detection
+      } else {
         hoverZone.current = null;
-        const hoveringAction = false; 
+        hoveredLineId.current = null;
+        hoveredDrawingZone.current = null;
+        isHoveringDeleteDot.current = false;
 
-        if (!hoveringAction) {
-          if (customProfileRange) {
-            const chartWidth = rect.width - priceAxisWidth;
-            const chartHeight = rect.height - timeAxisHeight;
-            const pCenter = priceCenter.current ?? 0;
-            const pRange = priceRange.current ?? 100;
-            const priceMin = pCenter - pRange / 2;
-            const priceMax = pCenter + pRange / 2;
-            const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
 
-            hoverZone.current = getCustomProfileHitZone(
-              resolvedCustomProfileRange,
-              x,
-              y,
-              candles.length,
-              scrollOffset.current,
-              barWidth.current,
-              chartWidth,
-              chartHeight,
-              profileWidth,
-              priceMin,
-              priceMax,
-              useChartStore.getState().panels[panelId].customProfileLocked
-            );
+    const getUnifiedHitTarget = (x: number, y: number) => {
+      const chartWidth = rect.width - priceAxisWidth;
+      const chartHeight = rect.height - timeAxisHeight;
+      const pCenter = priceCenter.current ?? 0;
+      const pRange = priceRange.current ?? 100;
+      const priceMin = pCenter - pRange / 2;
+      const priceMax = pCenter + pRange / 2;
+      const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
+      const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
-            if (hoverZone.current) {
-              if (useChartStore.getState().panels[panelId].customProfileLocked) cursor = 'pointer';
-              else if (hoverZone.current === 'move') cursor = 'grab';
-              else if (hoverZone.current.includes('left') || hoverZone.current.includes('right')) cursor = 'ew-resize';
-              else cursor = 'ns-resize';
-            } else {
-              // Check Axes
-              if (x > rect.width - priceAxisWidth) cursor = 'ns-resize';
-              else if (y > rect.height - timeAxisHeight) cursor = 'ew-resize';
-              else cursor = 'crosshair';
+      // 1. Bracket Handles
+      for (const vp of virtualPositions) {
+        if (vp.status !== 'open') continue;
+        const slBox = bracketHitZones.current.slHandles.get(vp.id);
+        const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
+        const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
+        const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
+        if (hitSL || hitTP) {
+          const bracket = bracketOrders.find((b) => b.positionId === vp.id);
+          const handle = hitSL ? 'sl' : 'tp';
+          const startPrice = hitSL ? (bracket?.stopLossPrice ?? vp.entryPrice) : (bracket?.takeProfitPrice ?? vp.entryPrice);
+          return { type: 'bracket' as const, positionId: vp.id, handle, startPrice, side: vp.side, entryPrice: vp.entryPrice };
+        }
+      }
+
+      // 2. Open Orders
+      for (const order of openOrders) {
+        if (getOrderHitZone(order, x, y, chartWidth, chartHeight, priceToY)) {
+          return { type: 'order' as const, order };
+        }
+      }
+
+      const storeState = useChartStore.getState();
+      const runtimeState = useChartRuntimeStore.getState();
+      const currentPanel = storeState.panels[panelId];
+
+      // 3. Custom Profile
+      if (currentPanel.customProfileRange) {
+        const resolvedRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
+        const isSelected = runtimeState.panels[panelId]?.isProfileSelected ?? false;
+        const hitZone = getCustomProfileHitZone(
+          resolvedRange, x, y, candles.length, scrollOffset.current, barWidth.current,
+          chartWidth, chartHeight, profileWidth, priceMin, priceMax, currentPanel.customProfileLocked, isSelected
+        );
+        if (hitZone) return { type: 'custom-profile' as const, hitZone, resolvedRange };
+      }
+
+      // 4. Drawing Tools (reverse creation order)
+      const currentSelectedId = selectedDrawingId;
+      const drawnLines = currentPanel.drawnLines;
+      const resolvedDrawnLines = drawnLines.map(l => resolveLineForRender(l, candles)).filter(Boolean) as DrawnLine[];
+      for (let i = resolvedDrawnLines.length - 1; i >= 0; i--) {
+        const line = resolvedDrawnLines[i];
+        const isSelected = line.id === currentSelectedId;
+        const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current, isSelected);
+        if (hitZone) return { type: 'drawing' as const, id: line.id, hitZone, line };
+      }
+
+      return null;
+    };
+
+        const hitTarget = getUnifiedHitTarget(x, y);
+
+        if (hitTarget) {
+          if (hitTarget.type === 'bracket' || hitTarget.type === 'order') {
+            cursor = 'ns-resize';
+          } else if (hitTarget.type === 'custom-profile') {
+            hoverZone.current = hitTarget.hitZone;
+            if (hitTarget.hitZone.startsWith('resize-')) {
+              cursor = (hitTarget.hitZone === 'resize-left' || hitTarget.hitZone === 'resize-right') ? 'ew-resize' : 'ns-resize';
+            } else if (hitTarget.hitZone === 'move') {
+              cursor = 'grab';
             }
-          }
-
-          // Line Hover Detection
-          hoveredLineId.current = null;
-          isHoveringDeleteDot.current = false;
-          hoveredDrawingZone.current = null;
-          hoveredOrderLineId.current = null;
-
-          if (!hoveringAction && !hoverZone.current) {
-            const chartWidth = rect.width - priceAxisWidth;
-            const chartHeight = rect.height - timeAxisHeight;
-            const pCenter = priceCenter.current ?? 0;
-            const pRange = priceRange.current ?? 100;
-            const priceMin = pCenter - pRange / 2;
-            const priceMax = pCenter + pRange / 2;
-
-            const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
-            const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-
-            const resolvedDrawnLines = drawnLines
-              .map((line) => resolveLineForRender(line, candles))
-              .filter((line): line is DrawnLine => line !== null);
-
-            for (const line of resolvedDrawnLines) {
-              const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current);
-              if (hitZone) {
-                hoveredLineId.current = line.id;
-                hoveredDrawingZone.current = hitZone;
-                isHoveringDeleteDot.current = hitZone === 'delete';
-                if (line.locked && hitZone !== 'delete') cursor = 'pointer';
-                else if (hitZone === 'move') cursor = 'grab';
-                else if (hitZone === 'resize-left' || hitZone === 'resize-right') cursor = 'ew-resize';
-                else if (
-                  hitZone === 'resize-top' ||
-                  hitZone === 'resize-bottom' ||
-                  hitZone === 'resize-entry' ||
-                  hitZone === 'resize-stop' ||
-                  hitZone === 'resize-target'
-                ) cursor = 'ns-resize';
-                else cursor = 'pointer';
-                break;
-              }
+          } else if (hitTarget.type === 'drawing') {
+            hoveredLineId.current = hitTarget.id;
+            hoveredDrawingZone.current = hitTarget.hitZone;
+            if (hitTarget.hitZone === 'delete') {
+              isHoveringDeleteDot.current = true;
+              cursor = 'pointer';
+            } else if (hitTarget.hitZone.startsWith('resize-')) {
+              cursor = (hitTarget.hitZone === 'resize-left' || hitTarget.hitZone === 'resize-right') ? 'ew-resize' : 'ns-resize';
+            } else if (hitTarget.hitZone === 'move') {
+              cursor = 'grab';
             }
-
-            if (!hoveredLineId.current) {
-              const orderLine = findNearestOrderLine(openOrders, x, y, chartWidth, chartHeight, priceToY);
-              if (orderLine) {
-                hoveredOrderLineId.current = orderLine.id;
-                cursor = getModifyBlockReason({
-                  order: orderLine,
-                  symbol: tradingSymbol,
-                  contractType: tradingContractType,
-                  mode: currentTradingMode,
-                  modeBadge,
-                  riskStatus,
-                })
-                  ? 'not-allowed'
-                  : 'ns-resize';
-              }
-            }
-          }
-
-          if (!hoveredLineId.current && !hoveredOrderLineId.current && !hoveringAction && !hoverZone.current) {
-            // Check Axes
-            if (x > rect.width - priceAxisWidth) cursor = 'ns-resize';
-            else if (y > rect.height - timeAxisHeight) cursor = 'ew-resize';
-            else cursor = 'crosshair';
           }
         }
 
-        // Absorption Hover Detection
-        let foundAbs = false;
-        if (!hoverZone.current && absorptionEnabled && absorptionMap.size > 0) {
+        // Exhaustion Hover Detection
+        let foundEx = false;
+        if (!hitTarget && exhaustionEnabled && exhaustionMap.size > 0) {
           const chartWidth = rect.width - priceAxisWidth;
           const chartHeight = rect.height - timeAxisHeight;
           const pCenter = priceCenter.current ?? 0;
           const pRange = priceRange.current ?? 100;
           const priceMin = pCenter - pRange / 2;
           const priceMax = pCenter + pRange / 2;
-
           const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
           const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-
           const { firstIndex, lastIndex } = getVisibleRange(candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
           for (let i = firstIndex; i <= lastIndex && i < candles.length; i++) {
             const candle = candles[i];
-            const result = absorptionMap.get(candle.time);
-            if (!result || result.score < absorptionMinScore) continue;
-            if (absorptionSide !== 'both' && result.direction !== absorptionSide) continue;
+            const result = exhaustionMap.get(candle.time);
+            if (!result || result.score < exhaustionMinScore) continue;
+            if (exhaustionSide !== 'both' && result.direction !== exhaustionSide) continue;
+            if (result.provisional && !exhaustionShowProvisional) continue;
+            const ex = indexToX(i);
+            if (ex === null) continue;
 
-            const ax = indexToX(i);
-            const radius = result.rank === 'extreme' ? 11 : result.rank === 'strong' ? 8 : 5;
-            let ay: number;
-            if (result.direction === 'seller') {
-              ay = priceToY(candle.low) + 8 + radius;
-            } else {
-              ay = priceToY(candle.high) - 8 - radius;
-            }
+            const isBuyer = result.direction === 'buyer';
+            const rankOffset = result.rank === 'extreme' ? 5 : result.rank === 'strong' ? 4 : result.rank === 'moderate' ? 3 : 2;
+            const ey = isBuyer 
+              ? priceToY(candle.high) - 6 - rankOffset
+              : priceToY(candle.low) + 6 + rankOffset;
 
-            const dist = Math.sqrt((x - ax) ** 2 + (y - ay) ** 2);
-            if (dist < radius + 5) {
-              setHoveredAbs({ result, x: ax, y: ay });
+            const dist = Math.sqrt((x - ex) ** 2 + (y - ey) ** 2);
+            if (dist < 14) {
+              setHoveredExhaustion({ result, x: ex, y: ey });
               cursor = 'help';
-              foundAbs = true;
+              foundEx = true;
               break;
             }
           }
         }
-        if (!foundAbs) {
-          setHoveredAbs(null);
+        if (!foundEx) {
+          setHoveredExhaustion(null);
 
-          // Exhaustion Hover Detection
-          let foundEx = false;
-          if (!hoverZone.current && exhaustionEnabled && exhaustionMap.size > 0) {
+          let foundIceberg = false;
+          if (!hitTarget && icebergEnabled && icebergLevels.length > 0) {
             const chartWidth = rect.width - priceAxisWidth;
             const chartHeight = rect.height - timeAxisHeight;
             const pCenter = priceCenter.current ?? 0;
             const pRange = priceRange.current ?? 100;
             const priceMin = pCenter - pRange / 2;
             const priceMax = pCenter + pRange / 2;
-
             const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
             const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
-            const { firstIndex, lastIndex } = getVisibleRange(candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+            for (const level of icebergLevels) {
+              if (level.score < icebergMinScore) continue;
+              if (!icebergShowSuspected && level.rank === 'suspected') continue;
+              const end = Number.isFinite(level.windowEndIndex) ? level.windowEndIndex : candles.length - 1;
+              const start = Number.isFinite(level.windowStartIndex)
+                ? level.windowStartIndex
+                : Math.max(0, end - icebergLookback + 1);
+              const x1 = indexToX(Math.max(0, Math.min(candles.length - 1, start)));
+              const x2 = indexToX(Math.max(0, Math.min(candles.length - 1, end)));
+              if (x1 === null || x2 === null) continue;
 
-            for (let i = firstIndex; i <= lastIndex && i < candles.length; i++) {
-              const candle = candles[i];
-              const result = exhaustionMap.get(candle.time);
-              if (!result || result.score < exhaustionMinScore) continue;
-              if (exhaustionSide !== 'both' && result.direction !== exhaustionSide) continue;
-              if (result.provisional && !exhaustionShowProvisional) continue;
+              const minX = Math.min(x1, x2) - barWidth.current / 2;
+              const maxX = Math.max(x1, x2) + barWidth.current / 2;
+              const iy = priceToY(level.price + bucketSize / 2);
 
-              const ex = indexToX(i);
-              if (ex === null) continue;
-
-              const isBuyer = result.direction === 'buyer';
-              const rankOffset = result.rank === 'extreme' ? 5 : result.rank === 'strong' ? 4 : result.rank === 'moderate' ? 3 : 2;
-              const ey = isBuyer 
-                ? priceToY(candle.high) - 6 - rankOffset
-                : priceToY(candle.low) + 6 + rankOffset;
-
-              const dist = Math.sqrt((x - ex) ** 2 + (y - ey) ** 2);
-              if (dist < 14) {
-                setHoveredExhaustion({ result, x: ex, y: ey });
+              if (x >= minX && x <= maxX && Math.abs(y - iy) <= 8) {
+                setHoveredIceberg({ level, x: Math.min(maxX, x + 8), y: iy });
                 cursor = 'help';
-                foundEx = true;
+                foundIceberg = true;
                 break;
               }
             }
           }
-          if (!foundEx) {
-            setHoveredExhaustion(null);
-
-            // Iceberg Hover Detection
-            let foundIceberg = false;
-            if (!hoverZone.current && icebergEnabled && icebergLevels.length > 0) {
-              const chartWidth = rect.width - priceAxisWidth;
-              const chartHeight = rect.height - timeAxisHeight;
-              const pCenter = priceCenter.current ?? 0;
-              const pRange = priceRange.current ?? 100;
-              const priceMin = pCenter - pRange / 2;
-              const priceMax = pCenter + pRange / 2;
-
-              const priceToY = (p: number) => calcPriceToY(p, priceMin, priceMax, chartHeight);
-              const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-
-              for (const level of icebergLevels) {
-                if (level.score < icebergMinScore) continue;
-                if (!icebergShowSuspected && level.rank === 'suspected') continue;
-
-                const end = Number.isFinite(level.windowEndIndex) ? level.windowEndIndex : candles.length - 1;
-                const start = Number.isFinite(level.windowStartIndex)
-                  ? level.windowStartIndex
-                  : Math.max(0, end - icebergLookback + 1);
-                const x1 = indexToX(Math.max(0, Math.min(candles.length - 1, start)));
-                const x2 = indexToX(Math.max(0, Math.min(candles.length - 1, end)));
-                if (x1 === null || x2 === null) continue;
-
-                const minX = Math.min(x1, x2) - barWidth.current / 2;
-                const maxX = Math.max(x1, x2) + barWidth.current / 2;
-                const iy = priceToY(level.price + bucketSize / 2);
-
-                if (x >= minX && x <= maxX && Math.abs(y - iy) <= 8) {
-                  setHoveredIceberg({ level, x: Math.min(maxX, x + 8), y: iy });
-                  cursor = 'help';
-                  foundIceberg = true;
-                  break;
-                }
-              }
-            }
-            if (!foundIceberg) setHoveredIceberg(null);
-          } else {
-            setHoveredIceberg(null);
-          }
+          if (!foundIceberg) setHoveredIceberg(null);
         } else {
-          setHoveredExhaustion(null);
           setHoveredIceberg(null);
         }
       }
@@ -2503,16 +2481,15 @@ export function ChartCanvas({
         const side       = bracketDragSide.current ?? 'long';
         const { handle, positionId } = bracketDragRef.current;
 
-        // Clamping: Long → TP above entry, SL below. Short → SL above entry, TP below.
         let clampedPrice = rawPrice;
         if (handle === 'sl') {
           clampedPrice = side === 'long'
-            ? Math.min(rawPrice, entryPrice - 1)   // SL must be strictly below long entry
-            : Math.max(rawPrice, entryPrice + 1);   // SL must be strictly above short entry
+            ? Math.min(rawPrice, entryPrice - 1)
+            : Math.max(rawPrice, entryPrice + 1);
         } else {
           clampedPrice = side === 'long'
-            ? Math.max(rawPrice, entryPrice + 1)   // TP must be strictly above long entry
-            : Math.min(rawPrice, entryPrice - 1);   // TP must be strictly below short entry
+            ? Math.max(rawPrice, entryPrice + 1)
+            : Math.min(rawPrice, entryPrice - 1);
         }
 
         if (Number.isFinite(clampedPrice)) {
@@ -2660,7 +2637,7 @@ export function ChartCanvas({
             updates.lastTime = candles[updates.lastIndex]?.time;
             updates.value = snapshot.value + priceDelta;
             updates.stopPrice = snapshot.stopPrice! + priceDelta;
-            updates.targetPrice = snapshot.targetPrice! + priceDelta;
+            if (snapshot.targetPrice !== undefined) updates.targetPrice = snapshot.targetPrice! + priceDelta;
           } else if (zone === 'resize-left' || zone === 'resize-right') {
             const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
             if (zone === 'resize-left') {
@@ -2672,9 +2649,9 @@ export function ChartCanvas({
             }
           } else if (zone === 'resize-entry') {
             if (isLong) {
-              updates.value = Math.max(snapshot.stopPrice! + minGap, Math.min(snapshot.targetPrice! - minGap, priceAtCurrent));
+              updates.value = Math.max(snapshot.stopPrice! + minGap, snapshot.targetPrice !== undefined ? Math.min(snapshot.targetPrice! - minGap, priceAtCurrent) : priceAtCurrent);
             } else {
-              updates.value = Math.min(snapshot.stopPrice! - minGap, Math.max(snapshot.targetPrice! + minGap, priceAtCurrent));
+              updates.value = Math.min(snapshot.stopPrice! - minGap, snapshot.targetPrice !== undefined ? Math.max(snapshot.targetPrice! + minGap, priceAtCurrent) : priceAtCurrent);
             }
           } else if (zone === 'resize-stop') {
             updates.stopPrice = isLong
@@ -2691,7 +2668,6 @@ export function ChartCanvas({
         }
       } else if (isDraggingProfile.current && dragAnchor.current && profileSnapshot.current) {
         const deltaX = x - dragAnchor.current.x;
-
         const currentBarWidth = barWidth.current;
         const indexDelta = Math.round(deltaX / currentBarWidth);
         const baseFirstIndex = resolveIndexFromTimeOrFallback(profileSnapshot.current.firstTime, profileSnapshot.current.firstIndex, candles);
@@ -2760,7 +2736,6 @@ export function ChartCanvas({
         }
 
         const bucketSizeVal = useChartStore.getState().panels[panelId].bucketSize;
-        // Enforce min size
         if (Math.abs(updatedRange.lastIndex - updatedRange.firstIndex) >= 2 &&
           Math.abs(updatedRange.priceHigh - updatedRange.priceLow) >= bucketSizeVal) {
           useChartStore.getState().setCustomProfileRange(panelId, updatedRange);
@@ -2769,7 +2744,7 @@ export function ChartCanvas({
       }
     };
 
-    const onMouseUp = () => {
+const onMouseUp = () => {
       if (
         !isDragging.current &&
         !isDraggingProfile.current &&
