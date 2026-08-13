@@ -37,6 +37,7 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
   const setDefaultProfileEnabled = useChartStore(s => s.setDefaultProfileEnabled);
   const setLiquidityEnabled = useChartStore(s => s.setLiquidityEnabled);
   const setLiquidityHeatmapEnabled = useChartStore(s => s.setLiquidityHeatmapEnabled);
+  const setStatsIndicatorEnabled = useChartStore(s => s.setStatsIndicatorEnabled);
   const openIndicatorSettings = useChartStore(s => s.openIndicatorSettings);
   const connected = useChartRuntimeStore(s => s.panels[panelId].connected);
   const contractLabel = panel.contractType === 'futures' ? 'Futures' : 'Spot';
@@ -83,6 +84,12 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
       label: 'Liquidity',
       enabled: panel.liquidityEnabled,
       onToggle: () => setLiquidityEnabled(panelId, !panel.liquidityEnabled),
+    },
+    {
+      id: 'stats',
+      label: 'Stats',
+      enabled: panel.statsIndicatorEnabled,
+      onToggle: () => setStatsIndicatorEnabled(panelId, !panel.statsIndicatorEnabled),
     },
   ];
 

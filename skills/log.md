@@ -1,5 +1,18 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-13] - Feature: Stats Indicator
+- **What changed**:
+  - Added `statsIndicatorEnabled`, `statsIndicatorCount`, and `statsIndicatorItems` to `lib/store/chart.ts` with default state and persistence mapping.
+  - Added Stats toggle to `IndicatorLabels.tsx`.
+  - Added Stats settings tab to `ChartSettingsDropdown.tsx` allowing users to choose up to 4 compact stats (Volume, Delta, CVD, Liquidity) and their order.
+  - Created `StatsIndicator.tsx` to render a floating overlay of the selected stats using existing chart engine and liquidity history calculations.
+  - Integrated `StatsIndicator` into `ChartPanel.tsx`.
+- **Why it changed**:
+  - The user requested a compact, customizable stats box at the bottom of the chart to display real-time metrics without duplicating existing data calculations.
+- **Impact summary**:
+  - Users can now track key aggregate metrics (Volume, Delta, CVD, Liquidity) globally across the visible chart range in a customizable floating overlay.
+
+
 ## [2026-08-10] - Feature: Panel-Specific Refresh Buttons
 - **What changed**:
   - Added a `refreshKey` property to each panel's `PanelRuntimeState` in `lib/store/chartRuntime.ts`, initialized to `0`.

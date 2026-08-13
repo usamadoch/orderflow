@@ -25,8 +25,9 @@ export type VolumeBarsInputData = 'volume' | 'orders' | 'aggregateTrades';
 export type VolumeBarsMarketSource = 'active' | 'spot' | 'futures' | 'both';
 export type VolumeBarsColorMode = 'fixed' | 'priceDirection' | 'delta' | 'volumeSlope';
 export type VolumeBarsFilterMode = 'absolute' | 'relative';
-export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap';
+export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap' | 'stats';
 export type SettingsFocusSection = IndicatorSettingsSection | 'profiles';
+export type StatsIndicatorItem = 'volume' | 'delta' | 'cvd';
 export type HistoryRestoreStage = 'idle' | 'connecting' | 'candles' | 'volumeProfile' | 'rawTrades' | 'footprint' | 'complete' | 'error';
 
 export interface HistoryRestoreStatus {
@@ -299,6 +300,7 @@ export interface PanelState {
   liquidityHistoryDepth: number;          // max snapshots, default 200, persisted
   liquidityHeatmapEnabled: boolean;
   liquidityHeatmapOpacity: number;
+
   liquidityHeatmapAgeFade: number;
   liquidityHeatmapWidth: number;
   liquidityHeatmapShowPulled: boolean;
@@ -306,6 +308,10 @@ export interface PanelState {
   liquidityHeatmapShowPersistence: boolean;
   liquidityHeatmapShowCurrentLabel: boolean;
   liquidityHeatmapProfileSync: boolean;
+  // Stats Indicator
+  statsIndicatorEnabled: boolean;
+  statsIndicatorCount: number;
+  statsIndicatorItems: StatsIndicatorItem[];
 }
 
 interface ChartState {
@@ -437,6 +443,11 @@ interface ChartState {
   setLiquidityHeatmapShowPersistence: (panelId: PanelId, show: boolean) => void;
   setLiquidityHeatmapShowCurrentLabel: (panelId: PanelId, show: boolean) => void;
   setLiquidityHeatmapProfileSync: (panelId: PanelId, sync: boolean) => void;
+
+  // Stats Indicator
+  setStatsIndicatorEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setStatsIndicatorCount: (panelId: PanelId, count: number) => void;
+  setStatsIndicatorItems: (panelId: PanelId, items: StatsIndicatorItem[]) => void;
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
@@ -585,6 +596,10 @@ function createDefaultPanel(id: PanelId): PanelState {
     liquidityHeatmapShowPersistence: true,
     liquidityHeatmapShowCurrentLabel: true,
     liquidityHeatmapProfileSync: false,
+    // Stats Indicator
+    statsIndicatorEnabled: false,
+    statsIndicatorCount: 3,
+    statsIndicatorItems: ['volume', 'delta', 'cvd'],
   };
 }
 
@@ -1173,6 +1188,16 @@ export const useChartStore = create<ChartState>()(
       setLiquidityHeatmapProfileSync: (panelId, liquidityHeatmapProfileSync) =>
         set((state) => updatePanel(state, panelId, { liquidityHeatmapProfileSync })),
 
+      // Stats Indicator actions
+      setStatsIndicatorEnabled: (panelId, statsIndicatorEnabled) =>
+        set((state) => updatePanel(state, panelId, { statsIndicatorEnabled })),
+
+      setStatsIndicatorCount: (panelId, statsIndicatorCount) =>
+        set((state) => updatePanel(state, panelId, { statsIndicatorCount: Math.max(1, Math.min(4, Math.round(statsIndicatorCount))) })),
+
+      setStatsIndicatorItems: (panelId, statsIndicatorItems) =>
+        set((state) => updatePanel(state, panelId, { statsIndicatorItems })),
+
       setSessionEnabled: (panelId, sessionId, enabled) =>
         set((state) => {
           const panel = state.panels[panelId];
@@ -1266,7 +1291,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 35,
+      version: 36,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {
@@ -1417,6 +1442,10 @@ export const useChartStore = create<ChartState>()(
             liquidityHeatmapShowPersistence: p.liquidityHeatmapShowPersistence ?? true,
             liquidityHeatmapShowCurrentLabel: p.liquidityHeatmapShowCurrentLabel ?? true,
             liquidityHeatmapProfileSync: p.liquidityHeatmapProfileSync ?? false,
+            // Stats Indicator (v36)
+            statsIndicatorEnabled: p.statsIndicatorEnabled ?? false,
+            statsIndicatorCount: Math.max(1, Math.min(4, p.statsIndicatorCount ?? 4)),
+            statsIndicatorItems: p.statsIndicatorItems ?? ['volume', 'delta', 'cvd', 'liquidity'],
           };
         };
         if (persisted.panels) {

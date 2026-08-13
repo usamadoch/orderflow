@@ -42,6 +42,7 @@ import { drawLiquidityVacuum } from '@/lib/draw/drawLiquidityVacuum';
 import { buildHeatmapRows } from '@/lib/liquidity/heatmap';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
+import { drawStatsGrid, STATS_GRID_ROW_HEIGHT } from './drawStatsGrid';
 import { recordAggregateBubbleDebug, recordVolumeBarsDebug } from '@/lib/debug/marketMetrics';
 import { MeasurementPanel } from './MeasurementPanel';
 import { HeatmapRow, LiquidityZone } from '@/types/liquidity';
@@ -641,6 +642,8 @@ interface ChartCanvasProps {
   liquidityHeatmapShowPersistence: boolean;
   liquidityHeatmapShowCurrentLabel: boolean;
   liquidityHeatmapProfileSync: boolean;
+  statsIndicatorEnabled: boolean;
+  statsIndicatorItems: string[];
   showTimeAxis?: boolean;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
@@ -756,6 +759,8 @@ export function ChartCanvas({
   liquidityHeatmapShowPersistence,
   liquidityHeatmapShowCurrentLabel,
   liquidityHeatmapProfileSync,
+  statsIndicatorEnabled,
+  statsIndicatorItems,
   showTimeAxis = true,
   onBarWidthChange,
   onScrollOffsetChange,
@@ -860,7 +865,8 @@ export function ChartCanvas({
       const logicalHeight = heightRef.current;
 
       const chartWidth = logicalWidth - priceAxisWidth;
-      const chartHeight = logicalHeight - timeAxisHeight;
+      const statsGridHeight = statsIndicatorEnabled ? statsIndicatorItems.length * STATS_GRID_ROW_HEIGHT : 0;
+      const chartHeight = logicalHeight - timeAxisHeight - statsGridHeight;
 
       ctx.clearRect(0, 0, logicalWidth, logicalHeight);
       ctx.fillStyle = '#0F0F0F';
@@ -1517,9 +1523,25 @@ export function ChartCanvas({
           }
         }
       }
+
+      if (statsIndicatorEnabled && statsIndicatorItems.length > 0) {
+        drawStatsGrid(
+          ctx,
+          candles,
+          firstIndex,
+          lastIndex,
+          indexToX,
+          chartHeight,
+          statsIndicatorItems,
+          engine,
+          liquidityHistory,
+          logicalWidth,
+          priceAxisWidth
+        );
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, aggregateBubbleEvents, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, showTimeAxis, openOrders, positions, recentFills, modifyingOrderId, dragPreviewPrice]);
+  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, aggregateBubbleEvents, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, statsIndicatorEnabled, statsIndicatorItems, showTimeAxis, openOrders, positions, recentFills, modifyingOrderId, dragPreviewPrice]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);

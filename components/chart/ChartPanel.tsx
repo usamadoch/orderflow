@@ -175,7 +175,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             bracketOrders={chartBracketOrders}
             bracketDrag={tradingBracketDrag}
             recentFills={chartRecentTrades}
-            volumeBarsEnabled={panel.volumeBarsEnabled}
+            volumeBarsEnabled={panel.statsIndicatorEnabled ? false : panel.volumeBarsEnabled}
             volumeBarsInputData={panel.volumeBarsInputData}
             volumeBarsMarketSource={volumeFlowSource}
             volumeBarsFilterMode={panel.volumeBarsFilterMode}
@@ -185,7 +185,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             volumeBarsColorMode={panel.volumeBarsColorMode}
             volumeBarsOpacity={panel.volumeBarsOpacity}
             volumeBarsHeightPct={panel.volumeBarsHeightPct}
-            volumeBarsShowValueText={panel.volumeBarsShowValueText}
+            volumeBarsShowValueText={panel.statsIndicatorEnabled ? false : panel.volumeBarsShowValueText}
             volumeBarsTextSize={panel.volumeBarsTextSize}
             volumeBarsAverageLineEnabled={panel.volumeBarsAverageLineEnabled}
             volumeBarsAverageLength={panel.volumeBarsAverageLength}
@@ -243,6 +243,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             liquidityHeatmapShowPersistence={panel.liquidityHeatmapShowPersistence}
             liquidityHeatmapShowCurrentLabel={panel.liquidityHeatmapShowCurrentLabel}
             liquidityHeatmapProfileSync={panel.liquidityHeatmapProfileSync}
+            statsIndicatorEnabled={panel.statsIndicatorEnabled}
+            statsIndicatorItems={panel.statsIndicatorItems}
             showTimeAxis={!panel.cvdEnabled || panel.cvdMinimized}
             onBarWidthChange={(v) => setBarWidth(panelId, v)}
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
