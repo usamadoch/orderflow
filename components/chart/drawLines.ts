@@ -337,7 +337,8 @@ function drawPositionCandleOverlap(
   ];
 
   ctx.save();
-  for (let index = startIndex; index <= endIndex; index += 1) {
+  const maxIndex = Math.min(endIndex, candles.length - 1);
+  for (let index = startIndex; index <= maxIndex; index += 1) {
     const candle = candles[index];
     const x = indexToX(index);
     if (!candle || x === null) continue;

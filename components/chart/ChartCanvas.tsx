@@ -125,16 +125,34 @@ function findExactTimeIndex(time: number, candles: Candle[]) {
 }
 
 function resolveIndexFromTimeOrFallback(time: number | undefined, fallbackIndex: number | undefined, candles: Candle[]) {
+  if (candles.length === 0) return null;
+
   if (time !== undefined) {
-    return findExactTimeIndex(time, candles);
+    const lastCandle = candles[candles.length - 1];
+    if (time > lastCandle.time) {
+      if (fallbackIndex !== undefined) return fallbackIndex;
+      const firstCandle = candles[0];
+      const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
+      const indexDiff = (time - lastCandle.time) / avgInterval;
+      return (candles.length - 1) + Math.round(indexDiff);
+    }
+
+    const exactIndex = findExactTimeIndex(time, candles);
+    if (exactIndex !== null) return exactIndex;
   }
-  if (fallbackIndex === undefined || candles.length === 0) return null;
-  if (fallbackIndex < 0 || fallbackIndex > candles.length - 1) return null;
+  
+  if (fallbackIndex === undefined || fallbackIndex < 0) return null;
   return fallbackIndex;
 }
 
 function candleTimeAt(index: number | null, candles: Candle[]) {
-  return index !== null ? candles[index]?.time : undefined;
+  if (index === null || candles.length === 0) return undefined;
+  if (index >= 0 && index < candles.length) return candles[index].time;
+  
+  const lastCandle = candles[candles.length - 1];
+  const firstCandle = candles[0];
+  const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
+  return lastCandle.time + (index - (candles.length - 1)) * avgInterval;
 }
 
 function resolveLineForRender(line: DrawnLine, candles: Candle[]): DrawnLine | null {
@@ -176,8 +194,8 @@ function resolveCustomProfileRange(range: PanelState['customProfileRange'], cand
 }
 
 function getCustomProfileTimeBounds(range: CustomProfileRange, candles: Candle[]) {
-  const firstTime = range.firstTime ?? candles[range.firstIndex]?.time;
-  const lastTime = range.lastTime ?? candles[range.lastIndex]?.time;
+  const firstTime = range.firstTime ?? candleTimeAt(range.firstIndex, candles);
+  const lastTime = range.lastTime ?? candleTimeAt(range.lastIndex, candles);
   if (firstTime === undefined || lastTime === undefined) return null;
   return {
     startTime: Math.min(firstTime, lastTime),
@@ -331,8 +349,8 @@ function buildPositionFromRiskDrag(
     value: entryPrice,
     firstIndex,
     lastIndex,
-    firstTime: candles[firstIndex]?.time,
-    lastTime: candles[lastIndex]?.time,
+    firstTime: candleTimeAt(firstIndex, candles),
+    lastTime: candleTimeAt(lastIndex, candles),
     stopPrice,
     ...(targetPrice === undefined ? {} : { targetPrice }),
   };
@@ -1212,8 +1230,8 @@ export function ChartCanvas({
             latestFiltered: null,
             visibleWindow: candles[firstIndex] && candles[lastIndex]
               ? {
-                startTime: candles[firstIndex].time,
-                endTime: candles[lastIndex].time,
+                startTime: candleTimeAt(firstIndex, candles) as number,
+                endTime: candleTimeAt(lastIndex, candles) as number,
               }
               : null,
             settings: {
@@ -2073,10 +2091,10 @@ export function ChartCanvas({
           const priceMax = pCenter + pRange / 2;
           const price = yToPrice(y, priceMin, priceMax, chartHeight);
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal-ray', value: price, startIndex: index, startTime: candles[index]?.time });
+          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal-ray', value: price, startIndex: index, startTime: candleTimeAt(index, candles) });
         } else if (lineDrawMode === 'vertical') {
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'vertical', value: index, time: candles[index]?.time });
+          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'vertical', value: index, time: candleTimeAt(index, candles) });
         } else if (lineDrawMode === 'box') {
           dragStart.current = { x, y };
           dragEnd.current = { x, y };
@@ -2541,7 +2559,7 @@ export function ChartCanvas({
             const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
             useChartStore.getState().updateLine(panelId, snapshot.id, {
               value: index,
-              time: candles[index]?.time,
+              time: candleTimeAt(index, candles),
             });
           }
           redraw();
@@ -2555,15 +2573,15 @@ export function ChartCanvas({
             const startIndex = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
             useChartStore.getState().updateLine(panelId, snapshot.id, {
               startIndex,
-              startTime: candles[startIndex]?.time,
+              startTime: candleTimeAt(startIndex, candles),
               value: priceAtCurrent,
             });
           } else if (zone === 'move' && baseStartIndex !== null) {
             const indexDelta = Math.round((x - dragAnchor.current.x) / barWidth.current);
-            const startIndex = Math.max(0, Math.min(candles.length - 1, baseStartIndex + indexDelta));
+            const startIndex = Math.max(0, baseStartIndex + indexDelta);
             useChartStore.getState().updateLine(panelId, snapshot.id, {
               startIndex,
-              startTime: candles[startIndex]?.time,
+              startTime: candleTimeAt(startIndex, candles),
               value: snapshot.value + priceDelta,
             });
           }
@@ -2588,10 +2606,10 @@ export function ChartCanvas({
             const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
             const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
             const priceDelta = priceAtCurrent - priceAtAnchor;
-            updates.firstIndex = Math.max(0, Math.min(candles.length - 1, baseFirstIndex + indexDelta));
-            updates.lastIndex = Math.max(0, Math.min(candles.length - 1, baseLastIndex + indexDelta));
-            updates.firstTime = candles[updates.firstIndex]?.time;
-            updates.lastTime = candles[updates.lastIndex]?.time;
+            updates.firstIndex = Math.max(0, baseFirstIndex + indexDelta);
+            updates.lastIndex = Math.max(0, baseLastIndex + indexDelta);
+            updates.firstTime = candleTimeAt(updates.firstIndex, candles);
+            updates.lastTime = candleTimeAt(updates.lastIndex, candles);
             updates.priceHigh = snapshot.priceHigh + priceDelta;
             updates.priceLow = snapshot.priceLow + priceDelta;
           } else if (zone === 'resize-left' || zone === 'resize-right') {
@@ -2631,10 +2649,10 @@ export function ChartCanvas({
             const indexDelta = Math.round((x - dragAnchor.current.x) / barWidth.current);
             const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
             const priceDelta = priceAtCurrent - priceAtAnchor;
-            updates.firstIndex = Math.max(0, Math.min(candles.length - 1, baseFirstIndex + indexDelta));
-            updates.lastIndex = Math.max(0, Math.min(candles.length - 1, baseLastIndex + indexDelta));
-            updates.firstTime = candles[updates.firstIndex]?.time;
-            updates.lastTime = candles[updates.lastIndex]?.time;
+            updates.firstIndex = Math.max(0, baseFirstIndex + indexDelta);
+            updates.lastIndex = Math.max(0, baseLastIndex + indexDelta);
+            updates.firstTime = candleTimeAt(updates.firstIndex, candles);
+            updates.lastTime = candleTimeAt(updates.lastIndex, candles);
             updates.value = snapshot.value + priceDelta;
             updates.stopPrice = snapshot.stopPrice! + priceDelta;
             if (snapshot.targetPrice !== undefined) updates.targetPrice = snapshot.targetPrice! + priceDelta;
@@ -2688,15 +2706,15 @@ export function ChartCanvas({
         const priceDelta = priceAtCurrent - priceAtAnchor;
 
         const newRange = {
-          firstIndex: Math.max(0, Math.min(candles.length - 1, baseFirstIndex + indexDelta)),
-          lastIndex: Math.max(0, Math.min(candles.length - 1, baseLastIndex + indexDelta)),
+          firstIndex: Math.max(0, baseFirstIndex + indexDelta),
+          lastIndex: Math.max(0, baseLastIndex + indexDelta),
           priceHigh: profileSnapshot.current.priceHigh + priceDelta,
           priceLow: profileSnapshot.current.priceLow + priceDelta,
         };
         const nextRange = {
           ...newRange,
-          firstTime: candles[newRange.firstIndex]?.time,
-          lastTime: candles[newRange.lastIndex]?.time,
+          firstTime: candleTimeAt(newRange.firstIndex, candles),
+          lastTime: candleTimeAt(newRange.lastIndex, candles),
         };
 
         useChartStore.getState().setCustomProfileRange(panelId, nextRange);
@@ -2981,8 +2999,8 @@ const onMouseUp = () => {
             value: priceHigh,
             firstIndex,
             lastIndex,
-            firstTime: candles[firstIndex]?.time,
-            lastTime: candles[lastIndex]?.time,
+            firstTime: candleTimeAt(firstIndex, candles),
+            lastTime: candleTimeAt(lastIndex, candles),
             priceHigh,
             priceLow,
           });
@@ -3035,8 +3053,8 @@ const onMouseUp = () => {
           useChartStore.getState().setCustomProfileRange(panelId, {
             firstIndex,
             lastIndex,
-            firstTime: candles[firstIndex]?.time,
-            lastTime: candles[lastIndex]?.time,
+            firstTime: candleTimeAt(firstIndex, candles),
+            lastTime: candleTimeAt(lastIndex, candles),
             priceHigh,
             priceLow
           });

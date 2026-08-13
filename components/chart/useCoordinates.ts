@@ -99,7 +99,7 @@ export function xToIndex(
   const safeBarWidth = Math.max(1, Number.isFinite(barWidth) ? barWidth : 1);
   const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
   const index = (candles.length - 1) + (x - drawableWidth + safeBarWidth / 2 - scrollOffset) / safeBarWidth;
-  return Math.max(0, Math.min(candles.length - 1, Math.round(index)));
+  return Math.max(0, Math.round(index));
 }
 
 export function timeToIndex(time: number, candles: Candle[]) {

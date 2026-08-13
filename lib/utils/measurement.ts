@@ -75,7 +75,8 @@ export function computeFootprintMetrics(
   let isPartial = false;
   let foundAny = false;
 
-  for (let i = metrics.startIndex; i <= metrics.endIndex; i++) {
+  const maxIndex = Math.min(metrics.endIndex, candles.length - 1);
+  for (let i = metrics.startIndex; i <= maxIndex; i++) {
     const candle = candles[i];
     if (!candle) continue;
 
