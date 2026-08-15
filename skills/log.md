@@ -1,5 +1,13 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-15] - Fix: Pagination Infinite Fetch Loop on Scroll
+- **What changed**:
+  - Updated `alignFootprintRange` and `alignFineProfileRange` in `FeedProvider.tsx` to align requested ranges to fixed 2-hour chunk boundaries (`FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS` / `FINE_PROFILE_RESTORE_CHUNK_SECONDS`) instead of 1-minute bounds.
+  - Updated `skills/map.md` to reflect the fixed chunk boundaries change.
+- **Why it changed**:
+  - The previous 1-minute snapping caused the `requestedRange` (and thus the `restoreKey`) to change on nearly every scroll frame. This repeatedly triggered chunked network requests for slightly-shifted 2-hour windows, bypassing the cache deduplication and spamming infinite overlapping GET requests.
+- **Impact summary**:
+  - The footprint and volume profile restores now correctly snap to absolute 2-hour time boundaries. Scrolling back smoothly fires one single GET request per 2-hour window and properly skips network fetching if the data is already cached.
 ## [2026-08-15] - UI: Remove Floating Footprint Delta Numbers
 - **What changed**:
   - Removed the `drawDelta` function from `lib/utils/canvas.ts`.

@@ -526,13 +526,12 @@ async function ensureTimeSeriesCollection(db: Db, name: string) {
         metaField: META_FIELD,
         granularity: 'seconds',
       },
-      expireAfterSeconds: MONGO_RETENTION_SECONDS,
     })
     return
   }
 
   validateTimeSeriesCollection(name, existing)
-  await setTimeSeriesRetention(db, name)
+  await disableTimeSeriesRetention(db, name)
 }
 
 async function findCollectionInfo(db: Db, name: string) {
@@ -558,11 +557,12 @@ function validateTimeSeriesCollection(name: string, collectionInfo: Awaited<Retu
   }
 }
 
-async function setTimeSeriesRetention(db: Db, name: string) {
+async function disableTimeSeriesRetention(db: Db, name: string) {
   try {
-    await db.command({ collMod: name, expireAfterSeconds: MONGO_RETENTION_SECONDS })
+    // Explicitly disable TTL on existing time-series collections
+    await db.command({ collMod: name, expireAfterSeconds: 'off' })
   } catch (error) {
-    console.warn(`[MongoDB] Could not update TTL for ${name}; existing collection options remain in effect.`, error)
+    console.warn(`[MongoDB] Could not disable TTL for ${name}; existing collection options remain in effect.`, error)
   }
 }
 

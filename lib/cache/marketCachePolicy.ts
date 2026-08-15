@@ -30,7 +30,7 @@ export const MARKET_CACHE_MAX_PROFILE_ROWS = getNumberEnv(
 
 export const MARKET_CACHE_MAX_CANDLES = getNumberEnv(
   ['NEXT_PUBLIC_MARKET_CACHE_MAX_CANDLES', 'MARKET_CACHE_MAX_CANDLES'],
-  500,
+  20000,
 );
 
 export function getRetentionCutoffSeconds(latestTimeSeconds: number) {

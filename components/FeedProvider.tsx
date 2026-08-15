@@ -377,8 +377,8 @@ function inferCandleSpanSeconds(candles: Candle[], index: number, fallbackSecond
 
 function alignFootprintRange(startSeconds: number, endSeconds: number): FootprintRestoreRange {
   return {
-    startSeconds: Math.floor(startSeconds / BASE_FOOTPRINT_TIMEFRAME_SECONDS) * BASE_FOOTPRINT_TIMEFRAME_SECONDS,
-    endSeconds: Math.ceil(endSeconds / BASE_FOOTPRINT_TIMEFRAME_SECONDS) * BASE_FOOTPRINT_TIMEFRAME_SECONDS,
+    startSeconds: Math.floor(startSeconds / FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS) * FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS,
+    endSeconds: Math.ceil(endSeconds / FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS) * FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS,
   };
 }
 
@@ -413,11 +413,6 @@ function getFootprintRestorePlan(
     candles[firstIndex].time,
     candles[lastIndex].time + inferCandleSpanSeconds(candles, lastIndex, timeframeSeconds),
   );
-  const clampedStartSeconds = Math.max(
-    requestedRange.startSeconds,
-    requestedRange.endSeconds - FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS,
-  );
-  const clampedRange = alignFootprintRange(clampedStartSeconds, requestedRange.endSeconds);
 
   return {
     historyRange: {
@@ -425,10 +420,10 @@ function getFootprintRestorePlan(
       endSeconds: historyRange.endSeconds,
     },
     requestedRange,
-    clampedRange,
+    clampedRange: requestedRange,
     requestedVisibleBars: lastIndex - firstIndex + 1,
     approximateVisibleBars,
-    skippedBecauseRangeTooLarge: requestedRange.endSeconds - requestedRange.startSeconds > FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS,
+    skippedBecauseRangeTooLarge: false,
   };
 }
 
@@ -476,8 +471,8 @@ function formatMilliseconds(milliseconds: number | null) {
 
 function alignFineProfileRange(startSeconds: number, endSeconds: number) {
   return {
-    startSeconds: Math.floor(startSeconds / 60) * 60,
-    endSeconds: Math.ceil(endSeconds / 60) * 60,
+    startSeconds: Math.floor(startSeconds / FINE_PROFILE_RESTORE_CHUNK_SECONDS) * FINE_PROFILE_RESTORE_CHUNK_SECONDS,
+    endSeconds: Math.ceil(endSeconds / FINE_PROFILE_RESTORE_CHUNK_SECONDS) * FINE_PROFILE_RESTORE_CHUNK_SECONDS,
   };
 }
 
