@@ -88,22 +88,18 @@ export function drawAbsorption(
 
     // ── Glow ──
     if (cfg.glow && !isProvisional) {
-      ctx.beginPath();
-      ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
       ctx.fillStyle = rgba(color, 0.15);
-      ctx.fill();
+      ctx.fillRect(x - radius * 2, y - radius * 2, radius * 4, radius * 4);
     }
 
-    // ── Main circle ──
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    // ── Main square ──
     ctx.fillStyle = rgba(color, effectiveAlpha);
-    ctx.fill();
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
 
     if (cfg.stroke && !isProvisional) {
       ctx.strokeStyle = rgba(color, effectiveAlpha);
       ctx.lineWidth = 1.5 * tfScale;
-      ctx.stroke();
+      ctx.strokeRect(x - radius, y - radius, radius * 2, radius * 2);
     }
 
     if (isProvisional) {
@@ -111,7 +107,7 @@ export function drawAbsorption(
       ctx.setLineDash([3, 3]);
       ctx.strokeStyle = rgba(color, 0.4);
       ctx.lineWidth = 1;
-      ctx.stroke();
+      ctx.strokeRect(x - radius, y - radius, radius * 2, radius * 2);
       ctx.restore();
     }
 

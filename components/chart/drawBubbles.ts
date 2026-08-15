@@ -37,16 +37,19 @@ interface AggregateBubbleDebugContext {
 
 type SourceCountMap = Record<BubbleEventContractType, number>;
 
-function scaleBubbleValue(value: number, maxValue: number, scaleMode: BubbleScaleMode) {
-  if (!Number.isFinite(value) || !Number.isFinite(maxValue) || value <= 0 || maxValue <= 0) {
+function scaleBubbleValue(value: number, minValue: number, maxValue: number, scaleMode: BubbleScaleMode) {
+  if (!Number.isFinite(value) || !Number.isFinite(maxValue) || !Number.isFinite(minValue) || value <= minValue || maxValue <= minValue) {
     return 0;
   }
 
-  const ratio = value / maxValue;
+  const range = maxValue - minValue;
+  const normalizedValue = value - minValue;
+  const ratio = normalizedValue / range;
+
   const scaled = scaleMode === 'sqrt'
     ? Math.sqrt(ratio)
     : scaleMode === 'log'
-      ? Math.log(1 + value) / Math.log(1 + maxValue)
+      ? Math.log(1 + normalizedValue) / Math.log(1 + range)
       : ratio;
 
   if (!Number.isFinite(scaled)) return 0;
@@ -320,7 +323,7 @@ export function drawBubbles(
       const y = priceToY(price + bucketSize / 2);
       if (!Number.isFinite(y)) continue;
 
-      const t = scaleBubbleValue(vol, maxVol, bubbleScaleMode);
+      const t = scaleBubbleValue(vol, actualThreshold, maxVol, bubbleScaleMode);
       const radius = bubbleMinRadius + t * (bubbleMaxRadius - bubbleMinRadius);
       const opacity = 0.4 + t * 0.5;
 
@@ -609,7 +612,7 @@ export function drawAggregateTradeBubbles(
     }
 
     const sizing = getAggregateBubbleSizingValue(event, bubbleSizeBy);
-    const t = scaleBubbleValue(sizing.value, maxValue, bubbleScaleMode);
+    const t = scaleBubbleValue(sizing.value, actualThreshold, maxValue, bubbleScaleMode);
     const radius = bubbleMinRadius + t * (bubbleMaxRadius - bubbleMinRadius);
     const opacity = 0.4 + t * 0.5;
 
