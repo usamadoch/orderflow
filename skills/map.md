@@ -117,7 +117,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/usePanZoom.ts` → Shared pan/zoom hook with anchored zoom, drag handling, crosshair interaction, and sibling canvas sync.
 - `components/chart/drawCandles.ts` → Candlestick renderer using shared bullish/bearish chart colors for bodies, borders, and wicks.
 - `components/chart/drawCvd.ts` → CVD renderer for candle, bar, line, histogram, labels, compact values, divergence markers, main canvas/axis backgrounds, and elevated crosshair value labels.
-- `components/chart/drawFootprint.ts` → Footprint renderer with visible-range drawing, normalized scaling, shared bullish/bearish thin-candle colors, and per-redraw footprint resolution support.
+- `components/chart/drawFootprint.ts` → Footprint renderer with visible-range drawing, normalized scaling, and shared bullish/bearish thin-candle colors.
 - `components/chart/drawBubbles.ts` → Volume bubble overlay renderers for footprint-cell data and live aggregate-trade events with shared buy/sell colors, Flow Source filtering, Volume/Orders sizing, Min Volume/Min Orders filtering, source-count diagnostics, robust percentile scaling, linear/sqrt/log radius scale modes, placement/filter diagnostics, trade-count fallback diagnostics, optional Both-mode futures stroke distinction, and nearest footprint-bucket debug context.
 - `components/chart/drawVolumeBars.ts` → Volume bottom histogram renderer using visible candle history for Volume input and native trade counts for Orders/Agg Trades, shared bullish/bearish color modes, Flow Source filtering via props, min/max filters, value text, average line, unavailable aggregate-data states, and visible/historical/live debug counts.
 - `components/chart/drawVolumeProfile.ts` → Default Volume Profile renderer with bar/filled modes, POC, VA, LVN, HVN-style accents, width clamping, per-row volume opacity, continuous adjacent row boundaries, and row readability options.
@@ -235,7 +235,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Utilities / Types
 
-- `lib/utils/canvas.ts` → Canvas primitives for footprint bid/ask/delta cells using shared bullish/bearish colors and stable drawing helpers.
+- `lib/utils/canvas.ts` → Canvas primitives for footprint bid/ask/delta cells and stable drawing helpers.
 - `lib/utils/chartUtils.ts` → Shared chart utility helpers.
 - `lib/utils/delta.ts` → CVD series, reset/smoothing, compact CVD values, and lightweight divergence detection.
 - `lib/utils/format.ts` → Price, volume, delta, and timeframe formatting.

@@ -156,38 +156,3 @@ export function drawDeltaCell(
     }
   }
 }
-
-export function drawDelta(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  delta: number,
-  canvasHeight: number,
-  width: number
-) {
-  const y = canvasHeight - 20;
-  
-  ctx.fillStyle = delta >= 0 ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
-  
-  let fontSize = 11;
-  if (width < 30) fontSize = 9;
-  ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  let text = '';
-  if (Math.abs(delta) >= 1000) {
-    const abbreviated = (delta / 1000).toFixed(1);
-    text = delta > 0 ? `+${abbreviated}k` : `${abbreviated}k`;
-  } else {
-    // Avoid floating point mess (e.g. 5.4427400000000)
-    const rounded = Number(delta.toFixed(3));
-    text = delta > 0 ? `+${rounded}` : `${rounded}`;
-  }
-
-  if (width >= 20) {
-    ctx.fillText(text, x, y);
-  } else {
-    // Too narrow, maybe just a colored dot or small rect
-    ctx.fillRect(x - width/2, y - 2, width, 4);
-  }
-}

@@ -1,5 +1,16 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-15] - UI: Remove Floating Footprint Delta Numbers
+- **What changed**:
+  - Removed the `drawDelta` function from `lib/utils/canvas.ts`.
+  - Removed the call to `drawDelta` inside `drawFootprint.ts` that rendered floating green/red delta numbers at the bottom of the chart canvas.
+  - Updated `skills/map.md` to reflect these responsibility changes.
+- **Why it changed**:
+  - The floating delta numbers above the time axis were redundant and visually confusing now that the dedicated Stats Indicator Dashboard provides a clear, color-coded "Delta" row for every candle.
+- **Impact summary**:
+  - The chart canvas is cleaner at the bottom.
+  - Delta is now exclusively read from the Stats grid, improving visual consistency and reducing clutter above the time axis.
+
 ## [2026-08-15] - Fix: Candlestick Body Width
 - **What changed**:
   - Increased the body width multiplier in `drawCandles.ts` from 0.6 to 0.82 of the available bar width.
@@ -104,6 +115,18 @@
 - **Impact summary**:
   - The collector should no longer infinitely disconnect on AWS for spot data.
   - The status logging is now clean and crash-free.
+
+## [2026-08-15] - Architecture: Unlimited Historical Retention & On-Demand Pagination
+- **What changed**:
+  - Removed MongoDB TTL indexes (`expireAfterSeconds`) on all time-series collections (`marketStorageMongo.ts`) and disabled automatic libSQL background deletion (`cleanupJob.ts`).
+  - Removed the artificial 4-hour scrolling limit clamp in `FeedProvider.tsx` (`getFootprintRestorePlan`) to allow continuous backward pagination.
+  - Increased `MARKET_CACHE_MAX_CANDLES` to 50,000 candles to provide a much larger anchor for the index-based canvas coordinate system, ensuring unbounded UI scrolls don't break.
+  - Verified `footprintCache` dynamically evicts oldest data when bounds (100k cells) are exceeded, while seamlessly reloading chunks from the local DB via `getMissingBaseCandleTimes` when scrolled back into view.
+- **Why it changed**:
+  - The previous architecture utilized a strict 7-day TTL and a 4-hour fetch clamp to prevent memory overload, limiting historical capability. The new design shifts to unlimited DB persistence with dynamic on-demand front-end chunk loading to satisfy unlimited user-controlled retention.
+- **Impact summary**:
+  - The database is now the permanent source of truth for all fetched history. The UI seamlessly infinite-scrolls backwards over weeks of data without memory runaway or infinite fetch loops.
+  - `npx tsc --noEmit` passes cleanly.
 
 ## [2026-08-09] - Fix: Collector Erroneously Deleting Data on Transient Errors
 - **What changed**:

@@ -1,6 +1,6 @@
 import { Candle } from "@/types/candle";
 import { AggregationEngine } from "@/lib/aggregation/engine";
-import { drawFootprintCell, drawDelta, drawDeltaCell } from "@/lib/utils/canvas";
+import { drawFootprintCell, drawDeltaCell } from "@/lib/utils/canvas";
 import { FootprintMode } from "@/types/footprint";
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
 
@@ -180,16 +180,5 @@ export function drawFootprint(
         );
       }
     });
-  }
-
-  // Step 4 - Draw delta per candle
-  for (let i = firstIndex; i <= lastIndex; i++) {
-    const c = candles[i];
-    if (!c) continue;
-    const x = indexToX(i);
-    const fpCandle = engine.getFootprintCandle(c.time);
-    if (!fpCandle) continue;
-
-    drawDelta(ctx, Math.round(x), fpCandle.delta, canvasHeight, barWidth);
   }
 }
