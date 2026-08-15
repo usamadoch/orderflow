@@ -4,6 +4,9 @@ import { CHART_BEARISH_RGB, CHART_BULLISH_RGB, chartColorToRgba } from '@/lib/co
 import { recordAggregateBubbleDebug } from '@/lib/debug/marketMetrics';
 import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleSource } from '@/types/bubble';
 
+const BUBBLE_BULLISH_RGB: { r: number; g: number; b: number } = { r: 13, g: 91, b: 11 }; // #0D5B0B
+const BUBBLE_BEARISH_RGB: { r: number; g: number; b: number } = { r: 74, g: 30, b: 111 }; // #4A1E6F
+
 export type BubbleSide = 'both' | 'buy' | 'sell';
 export type BubbleScaleMode = 'linear' | 'sqrt' | 'log';
 
@@ -322,7 +325,7 @@ export function drawBubbles(
       const opacity = 0.4 + t * 0.5;
 
       const isBuy = side === 'buy';
-      const rgb = isBuy ? CHART_BULLISH_RGB : CHART_BEARISH_RGB;
+      const rgb = isBuy ? BUBBLE_BULLISH_RGB : BUBBLE_BEARISH_RGB;
 
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -611,7 +614,7 @@ export function drawAggregateTradeBubbles(
     const opacity = 0.4 + t * 0.5;
 
     const isBuy = event.side === 'buy';
-    const rgb = isBuy ? CHART_BULLISH_RGB : CHART_BEARISH_RGB;
+    const rgb = isBuy ? BUBBLE_BULLISH_RGB : BUBBLE_BEARISH_RGB;
 
     ctx.beginPath();
     ctx.arc(placement.x, y, radius, 0, Math.PI * 2);

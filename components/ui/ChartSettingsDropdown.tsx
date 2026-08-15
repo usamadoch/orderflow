@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Layers, Zap, X } from 'lucide-react';
 import { useChartStore, PanelId, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, IndicatorSettingsSection, SettingsFocusSection, VolumeBarsColorMode, VolumeBarsInputData, VolumeBarsFilterMode, StatsIndicatorItem } from '../../lib/store/chart';
 import { getMinimumFineProfileResolutionTicks } from '../../lib/config/markets';
+import { BubblesDocsModal } from './BubblesDocsModal';
 
 const SETTINGS_WIDTH = 544;
 const SETTINGS_MIN_HEIGHT = 350;
@@ -177,6 +178,7 @@ export function ChartSettingsDropdown({
   const setStatsIndicatorItems = useChartStore(s => s.setStatsIndicatorItems);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
+  const [showBubblesDocs, setShowBubblesDocs] = useState(false);
   const [activeTab, setActiveTab] = useState<'chart' | 'profiles' | 'signals'>('chart');
   const minManualProfileResolutionTicks = getMinimumFineProfileResolutionTicks(tickSize);
   const effectiveProfileRowSize = tickSize > 0 ? panel.profileResolutionTicks * tickSize : 0;
@@ -916,7 +918,10 @@ export function ChartSettingsDropdown({
   const renderBubbleSettings = () => (
     <div ref={bubblesSectionRef} className="scroll-mt-5 space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Bubbles</div>
+        <div className="flex items-center gap-2">
+          <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Bubbles</div>
+          <button onClick={() => setShowBubblesDocs(true)} className="text-[10px] font-bold text-accent hover:underline">DOCS</button>
+        </div>
         <button
           onClick={() => setBubblesEnabled(panelId, !panel.bubblesEnabled)}
           className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.bubblesEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
@@ -1604,6 +1609,7 @@ export function ChartSettingsDropdown({
             {renderIndicatorSettingsContent(indicatorSection)}
           </div>
         </div>
+        {showBubblesDocs && <BubblesDocsModal onClose={() => setShowBubblesDocs(false)} />}
       </div>
     );
   }
@@ -2077,8 +2083,9 @@ export function ChartSettingsDropdown({
         className="h-3 shrink-0 cursor-row-resize bg-[#1F1F1F]/60 border-t border-[#1F1F1F] flex items-center justify-center"
         title="Resize settings panel"
       >
-        <div className="h-1 w-12 rounded-full bg-[#1F1F1F]" />
+        <div className="w-16 h-1 rounded-full bg-[#1F1F1F] opacity-50" />
       </div>
+      {showBubblesDocs && <BubblesDocsModal onClose={() => setShowBubblesDocs(false)} />}
     </div>
   );
 }

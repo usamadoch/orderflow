@@ -1,5 +1,16 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-16] - Feature/UI: Bubble Customization and Docs
+- **What changed**:
+  - Replaced semantic bubble colors with custom hex values `#0D5B0B` (Buy) and `#4A1E6F` (Sell) in `drawBubbles.ts`.
+  - Updated default bubble radius limits in `lib/store/chart.ts` to `bubbleMinRadius: 2` and `bubbleMaxRadius: 8`.
+  - Created `BubblesDocsModal.tsx` containing a detailed tutorial/reference on bubble sizing and opacity.
+  - Added a "DOCS" link to the Bubbles section of `ChartSettingsDropdown.tsx` to toggle the new modal.
+- **Why it changed**:
+  - The user requested specific color replacements for bubbles and desired smaller default sizes (2px - 8px) with a dedicated pop-up modal to explain the relationship between volume, opacity, and bubble radius for future reference.
+- **Impact summary**:
+  - The bubbles feature is visually updated and easier to understand thanks to the integrated documentation modal accessible directly from the settings panel.
+
 ## [2026-08-15] - Fix: Pagination Infinite Fetch Loop on Scroll
 - **What changed**:
   - Updated `alignFootprintRange` and `alignFineProfileRange` in `FeedProvider.tsx` to align requested ranges to fixed 2-hour chunk boundaries (`FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS` / `FINE_PROFILE_RESTORE_CHUNK_SECONDS`) instead of 1-minute bounds.
