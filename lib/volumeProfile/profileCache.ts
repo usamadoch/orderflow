@@ -105,6 +105,7 @@ export class VolumeProfileBaseCache {
   private versionValue = 0;
   private subscriberCountValue = 0;
   private inactiveSince: number | null = null;
+  private protectedRangesByOwner = new Map<string, Array<{ startSeconds: number; endSeconds: number }>>();
 
   constructor(
     readonly key: string,
@@ -134,6 +135,29 @@ export class VolumeProfileBaseCache {
   setMaxTrades(maxTrades: number) {
     this.maxTrades = Math.max(0, maxTrades);
     this.enforceTradeLimit();
+  }
+
+  setProtectedRanges(ownerId: string, ranges: Array<{ startSeconds: number; endSeconds: number }>) {
+    console.debug(`[DIAGNOSTIC] setProtectedRanges called on cache: ${this.key} for owner: ${ownerId}`, {
+      ranges,
+      currentSize: this.protectedRangesByOwner.size
+    });
+    if (ranges.length === 0) {
+      this.protectedRangesByOwner.delete(ownerId);
+    } else {
+      this.protectedRangesByOwner.set(ownerId, ranges);
+    }
+  }
+
+  private isProtectedTime(timeSeconds: number) {
+    for (const ranges of this.protectedRangesByOwner.values()) {
+      for (const range of ranges) {
+        if (timeSeconds >= range.startSeconds && timeSeconds < range.endSeconds) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   acquire() {
@@ -341,6 +365,13 @@ export class VolumeProfileBaseCache {
     let removedRows = 0;
     let removedTrades = 0;
 
+    console.debug(`[DIAGNOSTIC] cleanup() running on cache: ${this.key}`, {
+      baseSlicesCount: this.fineRowsByCandle.size,
+      rowCount: this.rowCount,
+      protectedOwners: Array.from(this.protectedRangesByOwner.keys()),
+      latestTime
+    });
+
     if (latestTime !== null) {
       const cutoffSeconds = getRetentionCutoffSeconds(latestTime);
       const result = this.deleteRowsBefore(cutoffSeconds, latestTime);
@@ -374,9 +405,17 @@ export class VolumeProfileBaseCache {
 
     const after = this.getMetricDetails();
     if (removedSlices > 0 || removedRows > 0 || removedTrades > 0) {
+      console.debug(`[DIAGNOSTIC] cleanup() removed items on cache: ${this.key}`, {
+        removedSlices,
+        removedRows,
+        removedTrades,
+        clearingLoadedRanges: true
+      });
       this.loadedRanges = [];
       this.versionValue += 1;
       updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
+    } else {
+      console.debug(`[DIAGNOSTIC] cleanup() removed NOTHING on cache: ${this.key}`);
     }
 
     recordCacheCleanup('volumeProfile', this.key, {
@@ -650,7 +689,7 @@ export class VolumeProfileBaseCache {
     };
 
     for (const candleTime of Array.from(this.fineRowsByCandle.keys())) {
-      if (candleTime >= timeSeconds || candleTime === preservedTime) continue;
+      if (candleTime >= timeSeconds || candleTime === preservedTime || this.isProtectedTime(candleTime)) continue;
 
       result.rowsRemoved += this.deleteFineRowSlice(candleTime);
       result.slicesRemoved += 1;
@@ -682,7 +721,7 @@ export class VolumeProfileBaseCache {
 
     const latestTime = this.getLatestFineRowTime();
     const sortedTimes = Array.from(this.fineRowsByCandle.keys()).sort((a, b) => a - b);
-    return sortedTimes.find((time) => time !== latestTime) ?? null;
+    return sortedTimes.find((time) => time !== latestTime && !this.isProtectedTime(time)) ?? null;
   }
 
   private getMetricDetails() {

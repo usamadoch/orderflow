@@ -56,6 +56,7 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
     key: string;
     profile: VolumeProfile | null;
   } | null = null;
+  private protectedRanges = new Map<string, Array<{ startSeconds: number; endSeconds: number }>>();
 
   constructor(maxTrades: number = DEFAULT_MAX_TRADES) {
     this.maxTrades = maxTrades;
@@ -152,6 +153,9 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
     }
     this.baseCache = cache;
     this.baseCache.setMaxTrades(this.maxTrades);
+    for (const [ownerId, ranges] of this.protectedRanges.entries()) {
+      this.baseCache.setProtectedRanges(ownerId, ranges);
+    }
     this.cachedProfile = null;
   }
 
@@ -176,9 +180,16 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
 
     this.sharedBaseCache.release();
     this.sharedBaseCache = null;
-    this.baseCache = new VolumeProfileBaseCache('panel-local::spot::spot::1', 1);
-    this.baseCache.setMaxTrades(this.maxTrades);
-    this.cachedProfile = null;
+    this.setBaseCache(new VolumeProfileBaseCache('panel-local::spot::spot::1', 1));
+  }
+
+  setProtectedRanges(ownerId: string, ranges: Array<{ startSeconds: number; endSeconds: number }>) {
+    if (ranges.length === 0) {
+      this.protectedRanges.delete(ownerId);
+    } else {
+      this.protectedRanges.set(ownerId, ranges);
+    }
+    this.baseCache.setProtectedRanges(ownerId, ranges);
   }
 
   private buildProfileFromRowsAndTrades(

@@ -3192,6 +3192,53 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       volumeProfileEngine.releaseSharedBaseCache();
     };
   }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, rebuildLiquidityVacuumZones, absorptionEnabled, exhaustionEnabled, bubblesEnabled, bubbleSource, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
+  // Register protected ranges for Volume Profile cache to prevent eviction
+  useEffect(() => {
+    return useChartStore.subscribe((state) => {
+      const panel = state.panels[panelId];
+      const runtimePanel = useChartRuntimeStore.getState().panels[panelId];
+      
+      const ranges: Array<{ startSeconds: number; endSeconds: number }> = [];
+      const timeframeSeconds = getTimeframeSeconds(panel.timeframe);
+      
+      if (panel.customProfileRange && runtimePanel.candles.length > 0) {
+        const range = panel.customProfileRange;
+        const firstTime = range.firstTime ?? runtimePanel.candles[range.firstIndex]?.time;
+        const lastTime = range.lastTime ?? runtimePanel.candles[range.lastIndex]?.time;
+        if (firstTime !== undefined && lastTime !== undefined) {
+          ranges.push({
+            startSeconds: Math.min(firstTime, lastTime),
+            endSeconds: Math.max(firstTime, lastTime) + timeframeSeconds,
+          });
+        }
+      }
+      
+      if (panel.defaultProfileEnabled && runtimePanel.candles.length > 0) {
+        // Simple history window fallback since getHistoryWindow is internal to another effect
+        const visibleCandles = runtimePanel.candles;
+        if (visibleCandles.length > 0) {
+          const lastCandle = visibleCandles[visibleCandles.length - 1];
+          const firstCandle = visibleCandles[0];
+          const endSeconds = (lastCandle.time / 1000) + timeframeSeconds;
+          const startSeconds = (firstCandle.time / 1000);
+          
+          ranges.push({
+            startSeconds: Math.max(startSeconds, endSeconds - FINE_PROFILE_DEFAULT_RESTORE_SECONDS),
+            endSeconds: endSeconds,
+          });
+        }
+      }
+      
+      volumeProfileEngineRef.current.setProtectedRanges(panelId, ranges);
+    });
+  }, [panelId]);
+
+  // Clear protected ranges on unmount
+  useEffect(() => {
+    return () => {
+      volumeProfileEngineRef.current.setProtectedRanges(panelId, []);
+    };
+  }, [panelId]);
 
   // Temporary Verification Hotkey
   useEffect(() => {

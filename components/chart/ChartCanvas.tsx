@@ -106,7 +106,9 @@ function resolveProfileBucketSize(
       : calcAutoBucketSize(priceHigh, priceLow, canvasHeightPx, tickSize)
     : Math.max(1, fallbackBucketSize / 4);
 
-  return Math.max(MIN_FINE_PROFILE_BASE_BUCKET_SIZE, requestedProfileBucketSize);
+  const baseBucketSize = Math.max(MIN_FINE_PROFILE_BASE_BUCKET_SIZE, tickSize);
+  const multiple = Math.max(1, Math.round(requestedProfileBucketSize / baseBucketSize));
+  return multiple * baseBucketSize;
 }
 
 function findExactTimeIndex(time: number, candles: Candle[]) {
@@ -1617,7 +1619,8 @@ export function ChartCanvas({
           engine,
           liquidityHistory,
           logicalWidth,
-          priceAxisWidth
+          priceAxisWidth,
+          currentBarWidth
         );
       }
     });

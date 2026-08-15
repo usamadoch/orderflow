@@ -10,7 +10,7 @@ export function drawCandles(
   priceToY: (price: number) => number,
   barWidth: number
 ) {
-  const bodyWidth = Math.max(1, Math.floor(barWidth * 0.6));
+  const bodyWidth = Math.max(1, Math.floor(barWidth * 0.82));
 
   for (let i = firstIndex; i <= lastIndex; i++) {
     const c = candles[i];

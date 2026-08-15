@@ -1,18 +1,60 @@
 import { Candle } from '@/types/candle';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
-import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
+import { CHART_BEARISH_RGB, CHART_BULLISH_RGB, chartColorToRgba } from '@/lib/config/chartColors';
 
-export const STATS_GRID_ROW_HEIGHT = 18;
-const FONT = '10px Inter, sans-serif';
+export const STATS_GRID_ROW_HEIGHT = 24;
+const FONT = '600 11px "JetBrains Mono", monospace';
 
 export function formatStatValue(value: number, isSigned: boolean): string {
   if (!Number.isFinite(value)) return '';
-  const formatted = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(Math.abs(value));
+  const absVal = Math.abs(value);
+  let formatted = '';
+  if (absVal >= 1000000) {
+    formatted = (absVal / 1000000).toFixed(1) + 'M';
+  } else if (absVal >= 1000) {
+    formatted = (absVal / 1000).toFixed(1) + 'k';
+  } else {
+    formatted = Number(absVal.toFixed(2)).toString();
+  }
+  
   if (isSigned) {
     return value > 0 ? `+${formatted}` : value < 0 ? `-${formatted}` : '0';
   }
-  return value < 0 ? `-${formatted}` : formatted;
+  return formatted;
+}
+
+function percentile(values: number[], p: number) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * p)));
+  return sorted[index];
+}
+
+function getSoftScale(maxValue: number, avgValue: number, visibleScale: number) {
+  if (maxValue <= 0) return 0;
+  const dominance = avgValue > 0 ? maxValue / avgValue : 1;
+  const maxFactor = dominance >= 4 ? 1.08 : dominance >= 2.5 ? 1.22 : 1.55;
+  return Math.max(
+    visibleScale,
+    avgValue * 2.2,
+    maxValue * maxFactor
+  );
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function getVisualStrength(value: number, scale: number) {
+  if (value <= 0 || scale <= 0) return 0;
+  return clamp01(value / scale);
+}
+
+function getCellOpacity(value: number, scale: number) {
+  const strength = getVisualStrength(value, scale);
+  if (strength <= 0) return 0.08;
+  return 0.12 + Math.pow(strength, 0.85) * 0.88;
 }
 
 export function drawStatsGrid(
@@ -26,7 +68,8 @@ export function drawStatsGrid(
   engine: AggregationEngine,
   liquidityHistory: LiquidityHistoryManager | null,
   logicalWidth: number,
-  priceAxisWidth: number
+  priceAxisWidth: number,
+  barWidth: number
 ) {
   if (items.length === 0 || candles.length === 0) return;
 
@@ -37,35 +80,20 @@ export function drawStatsGrid(
   ctx.rect(0, startY, chartWidth, items.length * STATS_GRID_ROW_HEIGHT);
   ctx.clip();
 
-  // Background for the grid area
   ctx.fillStyle = '#0F0F0F';
   ctx.fillRect(0, startY, chartWidth, items.length * STATS_GRID_ROW_HEIGHT);
 
-  // Top border
-  ctx.strokeStyle = '#222';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, startY);
-  ctx.lineTo(chartWidth, startY);
-  ctx.stroke();
-
-  ctx.font = FONT;
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-
   const rowLabels = items.map(id => {
     switch(id) {
-      case 'volume': return 'Volume';
+      case 'volume': return 'Vol';
       case 'delta': return 'Delta';
       case 'cvd': return 'CVD';
-      default: return id;
+      default: return id.substring(0, 3);
     }
   });
 
-  // Calculate stats for visible candles
   const statsByCandle = new Map<number, { volume: number, delta: number, cvd: number }>();
   
-  // Build CVD up to the current visible range
   const allFootprints = engine.getAllFootprintCandles();
   let runningCvd = 0;
   const cvdMap = new Map<number, number>();
@@ -73,6 +101,14 @@ export function drawStatsGrid(
     runningCvd += fp.delta;
     cvdMap.set(fp.time, runningCvd);
   }
+
+  const visibleVolumes: number[] = [];
+  const visibleDeltas: number[] = [];
+  const visibleCvds: number[] = [];
+  
+  let maxVol = 0, totalVol = 0, volCount = 0;
+  let maxDelta = 0, totalDelta = 0, deltaCount = 0;
+  let maxCvd = 0, totalCvd = 0, cvdCount = 0;
 
   for (let i = firstIndex; i <= lastIndex; i++) {
     const candle = candles[i];
@@ -82,57 +118,114 @@ export function drawStatsGrid(
     const volume = candle.volume;
     const delta = fp?.delta ?? 0;
     const cvd = cvdMap.get(candle.time) ?? 0;
+    
     statsByCandle.set(i, { volume, delta, cvd });
+
+    if (volume > 0) {
+      if (volume > maxVol) maxVol = volume;
+      visibleVolumes.push(volume);
+      totalVol += volume;
+      volCount++;
+    }
+
+    const absDelta = Math.abs(delta);
+    if (absDelta > 0) {
+      if (absDelta > maxDelta) maxDelta = absDelta;
+      visibleDeltas.push(absDelta);
+      totalDelta += absDelta;
+      deltaCount++;
+    }
+
+    const absCvd = Math.abs(cvd);
+    if (absCvd > 0) {
+      if (absCvd > maxCvd) maxCvd = absCvd;
+      visibleCvds.push(absCvd);
+      totalCvd += absCvd;
+      cvdCount++;
+    }
   }
 
-  // Draw rows
+  const volumeScale = getSoftScale(
+    maxVol, 
+    volCount > 0 ? totalVol / volCount : 0, 
+    percentile(visibleVolumes, 0.85)
+  );
+  
+  const deltaScale = getSoftScale(
+    maxDelta, 
+    deltaCount > 0 ? totalDelta / deltaCount : 0, 
+    percentile(visibleDeltas, 0.85)
+  );
+
+  const cvdScale = getSoftScale(
+    maxCvd,
+    cvdCount > 0 ? totalCvd / cvdCount : 0,
+    percentile(visibleCvds, 0.85)
+  );
+
+  const gap = 1;
+  const cellWidth = Math.max(1, barWidth - gap);
+
+  ctx.font = FONT;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+
   for (let r = 0; r < items.length; r++) {
     const itemId = items[r];
-    const rowY = startY + r * STATS_GRID_ROW_HEIGHT + STATS_GRID_ROW_HEIGHT / 2;
-
+    const rowY = startY + r * STATS_GRID_ROW_HEIGHT;
+    
     for (let i = firstIndex; i <= lastIndex; i++) {
       const stats = statsByCandle.get(i);
       if (!stats) continue;
 
       const x = indexToX(i);
-      if (x < 0 || x > chartWidth) continue;
+      const cellLeft = x - barWidth / 2 + gap / 2;
+      
+      if (cellLeft > chartWidth || cellLeft + cellWidth < 0) continue;
 
+      let bgColor = '#1A1A1A';
+      let textColor = '#E8E8E8';
       let text = '';
-      let color = '#888';
 
       if (itemId === 'volume') {
+        const opacity = getCellOpacity(stats.volume, volumeScale);
+        bgColor = `rgba(150, 150, 150, ${opacity})`;
         text = formatStatValue(stats.volume, false);
-        color = '#aaa';
       } else if (itemId === 'delta') {
+        const opacity = getCellOpacity(Math.abs(stats.delta), deltaScale);
+        bgColor = stats.delta >= 0 
+          ? chartColorToRgba(CHART_BULLISH_RGB, opacity)
+          : chartColorToRgba(CHART_BEARISH_RGB, opacity);
         text = formatStatValue(stats.delta, true);
-        color = stats.delta > 0 ? CHART_BULLISH_COLOR : stats.delta < 0 ? CHART_BEARISH_COLOR : '#aaa';
       } else if (itemId === 'cvd') {
+        const opacity = getCellOpacity(Math.abs(stats.cvd), cvdScale);
+        bgColor = stats.cvd >= 0 
+          ? chartColorToRgba(CHART_BULLISH_RGB, opacity)
+          : chartColorToRgba(CHART_BEARISH_RGB, opacity);
         text = formatStatValue(stats.cvd, true);
-        color = stats.cvd > 0 ? CHART_BULLISH_COLOR : stats.cvd < 0 ? CHART_BEARISH_COLOR : '#aaa';
       }
 
-      ctx.fillStyle = color;
-      ctx.fillText(text, x, rowY);
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(cellLeft, rowY + gap, cellWidth, STATS_GRID_ROW_HEIGHT - gap);
+
+      if (cellWidth >= 20) {
+        ctx.fillStyle = textColor;
+        ctx.fillText(text, cellLeft + cellWidth / 2, rowY + STATS_GRID_ROW_HEIGHT / 2 + gap / 2);
+      }
     }
   }
 
-  // Draw row labels on the left edge with a subtle background gradient
   ctx.textAlign = 'left';
+  ctx.font = '600 11px Inter, sans-serif';
   for (let r = 0; r < items.length; r++) {
     const rowTop = startY + r * STATS_GRID_ROW_HEIGHT;
     const rowY = rowTop + STATS_GRID_ROW_HEIGHT / 2;
     
-    // Gradient fade so the text doesn't clash with candle stats underneath it
-    const grad = ctx.createLinearGradient(0, 0, 50, 0);
-    grad.addColorStop(0, '#0F0F0F');
-    grad.addColorStop(0.7, '#0F0F0F');
-    grad.addColorStop(1, 'rgba(15, 15, 15, 0)');
+    ctx.fillStyle = 'rgba(15, 15, 15, 0.85)';
+    ctx.fillRect(0, rowTop + gap, 40, STATS_GRID_ROW_HEIGHT - gap);
     
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, rowTop, 50, STATS_GRID_ROW_HEIGHT);
-    
-    ctx.fillStyle = '#666';
-    ctx.fillText(rowLabels[r], 4, rowY);
+    ctx.fillStyle = '#AAAAAA';
+    ctx.fillText(rowLabels[r], 4, rowY + gap / 2);
   }
 
   ctx.restore();
