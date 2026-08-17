@@ -210,3 +210,15 @@
   - The collector runs safely at capacity, and the frontend smoothly backfills UI history on scroll.
   - `npx tsc --noEmit` passes cleanly.
 
+## [2026-08-17] - Fix: Historical Session Volume Profile (HSVP) Disappearing
+- **What changed**:
+  - Identified that the HSVP fine rows were correctly fetching and hydrating but were immediately being evicted by the 45-second `cleanup()` interval in the `VolumeProfileBaseCache`.
+  - Added the calculated `sessionRanges` from `getHistoricalSessionRanges` to the `protectedRanges` array in `FeedProvider.tsx` (`volumeProfileEngineRef.current.setProtectedRanges`).
+  - Fixed parameter ordering bug in `drawCustomProfile` within `ChartCanvas.tsx` to correctly pass boolean UI settings.
+- **Why it changed**:
+  - The default cache eviction policy (6 hours) was destroying historical session data because the sessions often occurred hours or days in the past. Without being explicitly registered as "protected ranges," the engine continuously threw the hydrated data away right after fetching it, creating a visual flicker or complete disappearance.
+- **Impact summary**:
+  - Historical Session Volume Profiles now persist permanently on the canvas and survive background cache cleanup sweeps.
+  - The chart gracefully skips fetching over the network if the data is already held in the protected memory range.
+
+-   * * A u g u s t   2 0 2 6 * * :   A d d e d   H i s t o r i c a l   S e s s i o n   V o l u m e   P r o f i l e   ( H S V P ) .   U s e r s   c a n   d e f i n e   m a r k e t   s e s s i o n s   b y   l o c a l   t i m e z o n e ,   c o n f i g u r e   s t a r t / e n d   t i m e s ,   a n d   r e n d e r   h i s t o r i c a l   s e s s i o n   v o l u m e   p r o f i l e s   u s i n g   t h e   c a n o n i c a l   f o o t p r i n t   b a s e   s l i c e .

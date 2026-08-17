@@ -25,7 +25,7 @@ export type VolumeBarsInputData = 'volume' | 'orders' | 'aggregateTrades';
 export type VolumeBarsMarketSource = 'active' | 'spot' | 'futures' | 'both';
 export type VolumeBarsColorMode = 'fixed' | 'priceDirection' | 'delta' | 'volumeSlope';
 export type VolumeBarsFilterMode = 'absolute' | 'relative';
-export type IndicatorSettingsSection = 'sessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap' | 'stats';
+export type IndicatorSettingsSection = 'sessions' | 'historicalSessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap' | 'stats';
 export type SettingsFocusSection = IndicatorSettingsSection | 'profiles';
 export type StatsIndicatorItem = 'volume' | 'delta' | 'cvd';
 export type HistoryRestoreStage = 'idle' | 'connecting' | 'candles' | 'volumeProfile' | 'rawTrades' | 'footprint' | 'complete' | 'error';
@@ -289,6 +289,15 @@ export interface PanelState {
     london: SessionConfig;
     newYork: SessionConfig;
   };
+  // Historical Session Volume Profile
+  historicalSessionProfileEnabled: boolean;
+  historicalSessionProfileStartHour: number;
+  historicalSessionProfileStartMin: number;
+  historicalSessionProfileEndHour: number;
+  historicalSessionProfileEndMin: number;
+  historicalSessionProfileCount: number;
+  historicalSessionProfileMinTimeframe: string;
+
   settingsByTimeframe: Record<string, Partial<TimeframeSettings>>;
   // Liquidity Map
   liquidityEnabled: boolean;              // default true, persisted
@@ -330,6 +339,8 @@ interface ChartState {
   settingsDropdownHeight: number;
   settingsOpenRequest: SettingsOpenRequest | null;
   crosshairSyncEnabled: boolean;
+  globalTimezone: string;
+  globalTimeFormat: '12h' | '24h';
 
   // Per-panel actions
   setPair: (panelId: PanelId, pair: string) => void;
@@ -426,6 +437,11 @@ interface ChartState {
   setSessionTime: (panelId: PanelId, sessionId: SessionId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
   setSessionColor: (panelId: PanelId, sessionId: SessionId, color: string) => void;
 
+  setHistoricalSessionProfileEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setHistoricalSessionProfileTime: (panelId: PanelId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
+  setHistoricalSessionProfileCount: (panelId: PanelId, count: number) => void;
+  setHistoricalSessionProfileMinTimeframe: (panelId: PanelId, minTimeframe: string) => void;
+
   // Liquidity
   setLiquidityEnabled: (panelId: PanelId, enabled: boolean) => void;
   setLiquidityBucketSize: (panelId: PanelId, size: number) => void;
@@ -454,6 +470,8 @@ interface ChartState {
   setActivePanel: (panelId: PanelId) => void;
   setSplitRatio: (ratio: number) => void;
   setTickSize: (size: number) => void;
+  setGlobalTimezone: (timezone: string) => void;
+  setGlobalTimeFormat: (format: '12h' | '24h') => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setFocusMode: (focusMode: boolean) => void;
   setSettingsDropdownHeight: (height: number) => void;
@@ -578,6 +596,13 @@ function createDefaultPanel(id: PanelId): PanelState {
         color: '#81C784',
       },
     },
+    historicalSessionProfileEnabled: false,
+    historicalSessionProfileStartHour: 13,
+    historicalSessionProfileStartMin: 0,
+    historicalSessionProfileEndHour: 22,
+    historicalSessionProfileEndMin: 0,
+    historicalSessionProfileCount: 1,
+    historicalSessionProfileMinTimeframe: '15m',
     settingsByTimeframe: {},
     // Liquidity Map
     liquidityEnabled: false,
@@ -823,6 +848,8 @@ export const useChartStore = create<ChartState>()(
       settingsDropdownHeight: 500,
       settingsOpenRequest: null,
       crosshairSyncEnabled: true,
+      globalTimezone: 'local',
+      globalTimeFormat: '24h',
       isAuthenticated: false,
 
       // Per-panel actions
@@ -1243,6 +1270,36 @@ export const useChartStore = create<ChartState>()(
           });
         }),
 
+      setHistoricalSessionProfileEnabled: (panelId, historicalSessionProfileEnabled) =>
+        set((state) => updatePanel(state, panelId, { historicalSessionProfileEnabled })),
+
+      setHistoricalSessionProfileTime: (panelId, field, value) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          const startTotal = (field === 'startHour' ? value : panel.historicalSessionProfileStartHour) * 60 +
+            (field === 'startMin' ? value : panel.historicalSessionProfileStartMin);
+          const endTotal = (field === 'endHour' ? value : panel.historicalSessionProfileEndHour) * 60 +
+            (field === 'endMin' ? value : panel.historicalSessionProfileEndMin);
+
+          if (endTotal <= startTotal && startTotal - endTotal < 12 * 60) {
+              // Allows crossing midnight by just setting it. We don't strictly revert here because midnight crossing is valid
+          }
+          
+          if (field === 'startHour') return updatePanel(state, panelId, { historicalSessionProfileStartHour: value });
+          if (field === 'startMin') return updatePanel(state, panelId, { historicalSessionProfileStartMin: value });
+          if (field === 'endHour') return updatePanel(state, panelId, { historicalSessionProfileEndHour: value });
+          if (field === 'endMin') return updatePanel(state, panelId, { historicalSessionProfileEndMin: value });
+          return {};
+        }),
+
+      setHistoricalSessionProfileCount: (panelId, historicalSessionProfileCount) =>
+        set((state) => updatePanel(state, panelId, { historicalSessionProfileCount: Math.max(1, Math.min(15, historicalSessionProfileCount)) })),
+
+      setHistoricalSessionProfileMinTimeframe: (panelId, historicalSessionProfileMinTimeframe) =>
+        set((state) => updatePanel(state, panelId, { historicalSessionProfileMinTimeframe })),
+
+
+
       // Global actions
       setLayoutMode: (layoutMode) => set({ layoutMode }),
       setActivePanel: (activePanel) => set({ activePanel }),
@@ -1262,6 +1319,8 @@ export const useChartStore = create<ChartState>()(
           },
         },
       })),
+      setGlobalTimezone: (globalTimezone) => set({ globalTimezone }),
+      setGlobalTimeFormat: (globalTimeFormat) => set({ globalTimeFormat }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setFocusMode: (focusMode) => set({ focusMode }),
       setSettingsDropdownHeight: (settingsDropdownHeight) =>
@@ -1423,6 +1482,25 @@ export const useChartStore = create<ChartState>()(
               london: { enabled: true, startHour: 7, startMin: 0, endHour: 16, endMin: 0, color: '#4FC3F7' },
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
+            historicalSessionProfileEnabled: p.historicalSessionProfileEnabled ?? false,
+            historicalSessionProfileTimezone: p.historicalSessionProfileTimezone ?? 'America/New_York',
+            historicalSessionProfileStartHour: p.historicalSessionProfileStartHour ?? 9,
+            historicalSessionProfileStartMin: p.historicalSessionProfileStartMin ?? 30,
+            historicalSessionProfileEndHour: p.historicalSessionProfileEndHour ?? 16,
+            historicalSessionProfileEndMin: p.historicalSessionProfileEndMin ?? 0,
+            historicalSessionProfileCount: p.historicalSessionProfileCount ?? 1,
+            historicalSessionProfileMinTimeframe: p.historicalSessionProfileMinTimeframe ?? '15m',
+            historicalSessionProfileResolutionTicks: clampProfileResolutionTicks(p.historicalSessionProfileResolutionTicks ?? 0, tickSize),
+            historicalSessionProfileMinRowHeight: p.historicalSessionProfileMinRowHeight ?? 1,
+            historicalSessionProfileOpacity: p.historicalSessionProfileOpacity ?? 0.3,
+            historicalSessionProfileMinRowWidth: p.historicalSessionProfileMinRowWidth ?? 2,
+            historicalSessionProfileScaleMode: p.historicalSessionProfileScaleMode || 'linear',
+            historicalSessionProfileShowPocHighlight: p.historicalSessionProfileShowPocHighlight ?? true,
+            historicalSessionProfileShowVaFill: p.historicalSessionProfileShowVaFill ?? true,
+            historicalSessionProfileShowPocLine: p.historicalSessionProfileShowPocLine ?? true,
+            historicalSessionProfileShowVaLines: p.historicalSessionProfileShowVaLines ?? true,
+            historicalSessionProfileShowDelta: p.historicalSessionProfileShowDelta ?? true,
+            historicalSessionProfileDeltaWidth: p.historicalSessionProfileDeltaWidth ?? 80,
             settingsByTimeframe: clampSettingsByTimeframe(p.settingsByTimeframe, tickSize),
             // Liquidity Map (v13 & v14)
             liquidityEnabled: p.liquidityEnabled ?? false,
@@ -1659,6 +1737,13 @@ export const useChartStore = create<ChartState>()(
             liquidityHeatmapShowPersistence: state.panels.left.liquidityHeatmapShowPersistence,
             liquidityHeatmapShowCurrentLabel: state.panels.left.liquidityHeatmapShowCurrentLabel,
             liquidityHeatmapProfileSync: state.panels.left.liquidityHeatmapProfileSync,
+            historicalSessionProfileEnabled: state.panels.left.historicalSessionProfileEnabled,
+            historicalSessionProfileStartHour: state.panels.left.historicalSessionProfileStartHour,
+            historicalSessionProfileStartMin: state.panels.left.historicalSessionProfileStartMin,
+            historicalSessionProfileEndHour: state.panels.left.historicalSessionProfileEndHour,
+            historicalSessionProfileEndMin: state.panels.left.historicalSessionProfileEndMin,
+            historicalSessionProfileCount: state.panels.left.historicalSessionProfileCount,
+            historicalSessionProfileMinTimeframe: state.panels.left.historicalSessionProfileMinTimeframe,
             settingsByTimeframe: state.panels.left.settingsByTimeframe,
           },
           right: {
@@ -1766,6 +1851,13 @@ export const useChartStore = create<ChartState>()(
             liquidityHeatmapShowPersistence: state.panels.right.liquidityHeatmapShowPersistence,
             liquidityHeatmapShowCurrentLabel: state.panels.right.liquidityHeatmapShowCurrentLabel,
             liquidityHeatmapProfileSync: state.panels.right.liquidityHeatmapProfileSync,
+            historicalSessionProfileEnabled: state.panels.right.historicalSessionProfileEnabled,
+            historicalSessionProfileStartHour: state.panels.right.historicalSessionProfileStartHour,
+            historicalSessionProfileStartMin: state.panels.right.historicalSessionProfileStartMin,
+            historicalSessionProfileEndHour: state.panels.right.historicalSessionProfileEndHour,
+            historicalSessionProfileEndMin: state.panels.right.historicalSessionProfileEndMin,
+            historicalSessionProfileCount: state.panels.right.historicalSessionProfileCount,
+            historicalSessionProfileMinTimeframe: state.panels.right.historicalSessionProfileMinTimeframe,
             settingsByTimeframe: state.panels.right.settingsByTimeframe,
           },
         },
@@ -1773,6 +1865,8 @@ export const useChartStore = create<ChartState>()(
         sidebarCollapsed: state.sidebarCollapsed,
         settingsDropdownHeight: state.settingsDropdownHeight,
         crosshairSyncEnabled: state.crosshairSyncEnabled,
+        globalTimezone: state.globalTimezone,
+        globalTimeFormat: state.globalTimeFormat,
         isAuthenticated: state.isAuthenticated,
       }),
     }

@@ -176,6 +176,15 @@ export function ChartSettingsDropdown({
   const setStatsIndicatorEnabled = useChartStore(s => s.setStatsIndicatorEnabled);
   const setStatsIndicatorCount = useChartStore(s => s.setStatsIndicatorCount);
   const setStatsIndicatorItems = useChartStore(s => s.setStatsIndicatorItems);
+  const setGlobalTimezone = useChartStore(s => s.setGlobalTimezone);
+  const setGlobalTimeFormat = useChartStore(s => s.setGlobalTimeFormat);
+  const globalTimezone = useChartStore(s => s.globalTimezone);
+  const globalTimeFormat = useChartStore(s => s.globalTimeFormat);
+
+  const setHistoricalSessionProfileEnabled = useChartStore(s => s.setHistoricalSessionProfileEnabled);
+  const setHistoricalSessionProfileTime = useChartStore(s => s.setHistoricalSessionProfileTime);
+  const setHistoricalSessionProfileCount = useChartStore(s => s.setHistoricalSessionProfileCount);
+  const setHistoricalSessionProfileMinTimeframe = useChartStore(s => s.setHistoricalSessionProfileMinTimeframe);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const [showBubblesDocs, setShowBubblesDocs] = useState(false);
@@ -192,11 +201,13 @@ export function ChartSettingsDropdown({
   const bubblesSectionRef = useRef<HTMLDivElement>(null);
   const volumeBarsSectionRef = useRef<HTMLDivElement>(null);
   const volumeProfileSectionRef = useRef<HTMLDivElement>(null);
+  const hsvpSectionRef = useRef<HTMLDivElement>(null);
   const heatmapSectionRef = useRef<HTMLDivElement>(null);
   const liquidityMapSectionRef = useRef<HTMLDivElement>(null);
   const statsSectionRef = useRef<HTMLDivElement>(null);
   const indicatorDialogTitles: Record<IndicatorSettingsSection, string> = {
     sessions: 'Sessions',
+    historicalSessions: 'Historical Sessions',
     cvd: 'CVD',
     bubbles: 'Volume Bubbles',
     volumeBars: 'Volume',
@@ -441,6 +452,36 @@ export function ChartSettingsDropdown({
         </button>
       </div>
 
+      <div className="grid grid-cols-2 gap-2 pb-2">
+        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
+          <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Timezone</label>
+          <select
+            value={globalTimezone}
+            onChange={(e) => setGlobalTimezone(e.target.value)}
+            className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
+          >
+            <option value="local">Local (PC)</option>
+            <option value="UTC">UTC</option>
+            <option value="America/New_York">New York</option>
+            <option value="Europe/London">London</option>
+            <option value="America/Chicago">Chicago</option>
+            <option value="America/Los_Angeles">Los Angeles</option>
+            <option value="Asia/Karachi">Pakistan</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
+          <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Time Format</label>
+          <select
+            value={globalTimeFormat}
+            onChange={(e) => setGlobalTimeFormat(e.target.value as '12h' | '24h')}
+            className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
+          >
+            <option value="24h">24-hour</option>
+            <option value="12h">12-hour (AM/PM)</option>
+          </select>
+        </div>
+      </div>
+
       <div className="space-y-6 pt-2">
         {(['tokyo', 'london', 'newYork'] as SessionId[]).map((sid) => {
           const session = panel.sessions[sid];
@@ -480,7 +521,7 @@ export function ChartSettingsDropdown({
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
-                  <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time (UTC)</label>
+                  <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time</label>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
@@ -496,13 +537,15 @@ export function ChartSettingsDropdown({
                       className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
                     >
                       <option value="0">00</option>
+                      <option value="15">15</option>
                       <option value="30">30</option>
+                      <option value="45">45</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
-                  <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time (UTC)</label>
+                  <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time</label>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
@@ -518,7 +561,9 @@ export function ChartSettingsDropdown({
                       className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
                     >
                       <option value="0">00</option>
+                      <option value="15">15</option>
                       <option value="30">30</option>
+                      <option value="45">45</option>
                     </select>
                   </div>
                 </div>
@@ -1301,6 +1346,97 @@ export function ChartSettingsDropdown({
     </div>
   );
 
+  const renderHistoricalSessionProfileSettings = () => (
+    <div ref={hsvpSectionRef} className="scroll-mt-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Historical Session Volume Profile</div>
+        <button
+          onClick={() => setHistoricalSessionProfileEnabled(panelId, !panel.historicalSessionProfileEnabled)}
+          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.historicalSessionProfileEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'}`}
+        >
+          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.historicalSessionProfileEnabled ? 'left-5' : 'left-1'}`} />
+        </button>
+      </div>
+
+      {panel.historicalSessionProfileEnabled && (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={panel.historicalSessionProfileStartHour}
+                  onChange={(e) => {
+                    let val = Number(e.target.value);
+                    if (val < 0) val = 23;
+                    if (val > 23) val = 0;
+                    setHistoricalSessionProfileTime(panelId, 'startHour', val);
+                  }}
+                  className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
+                  min="0" max="23" step="1"
+                />
+                <span className="text-text-dim/40">:</span>
+                <select
+                  value={panel.historicalSessionProfileStartMin}
+                  onChange={(e) => setHistoricalSessionProfileTime(panelId, 'startMin', Number(e.target.value))}
+                  className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
+                >
+                  <option value="0">00</option>
+                  <option value="15">15</option>
+                  <option value="30">30</option>
+                  <option value="45">45</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={panel.historicalSessionProfileEndHour}
+                  onChange={(e) => {
+                    let val = Number(e.target.value);
+                    if (val < 0) val = 23;
+                    if (val > 23) val = 0;
+                    setHistoricalSessionProfileTime(panelId, 'endHour', val);
+                  }}
+                  className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
+                  min="0" max="23" step="1"
+                />
+                <span className="text-text-dim/40">:</span>
+                <select
+                  value={panel.historicalSessionProfileEndMin}
+                  onChange={(e) => setHistoricalSessionProfileTime(panelId, 'endMin', Number(e.target.value))}
+                  className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
+                >
+                  <option value="0">00</option>
+                  <option value="15">15</option>
+                  <option value="30">30</option>
+                  <option value="45">45</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sessions to Display</label>
+            <select
+              value={panel.historicalSessionProfileCount}
+              onChange={(e) => setHistoricalSessionProfileCount(panelId, Number(e.target.value))}
+              className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
+            >
+              {[1, 2, 3, 4, 5, 8, 10, 12, 15].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const renderLiquidityMapSettings = () => (
     <div ref={liquidityMapSectionRef} className="scroll-mt-5 space-y-4">
       <div className="flex items-center justify-between">
@@ -1554,6 +1690,8 @@ export function ChartSettingsDropdown({
     switch (section) {
       case 'sessions':
         return renderSessionsSettings();
+      case 'historicalSessions':
+        return renderHistoricalSessionProfileSettings();
       case 'cvd':
         return renderCvdSettings();
       case 'bubbles':
@@ -1784,6 +1922,7 @@ export function ChartSettingsDropdown({
                 )}
 
                 {renderVolumeProfileSettings()}
+                {renderHistoricalSessionProfileSettings()}
               </>
             )}
 

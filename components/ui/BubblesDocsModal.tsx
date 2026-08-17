@@ -7,9 +7,16 @@ interface BubblesDocsModalProps {
 
 export function BubblesDocsModal({ onClose }: BubblesDocsModalProps) {
   const [demoRadius, setDemoRadius] = useState(5);
-  // Calculate a demo opacity so it gets darker as it gets bigger
+  // Calculate a demo opacity and volume so it scales realistically
   const t = (demoRadius - 2) / (12 - 2);
   const demoOpacity = 0.4 + (Math.max(0, Math.min(1, t))) * 0.5;
+  const ratio = t * t; // Simulating SQRT scaling
+  const demoVolume = Math.round(100 + ratio * (50000 - 100));
+
+  const abbreviateVol = (vol: number) => {
+    if (vol >= 1000) return (vol / 1000).toFixed(1) + 'k';
+    return vol.toFixed(0);
+  };
 
   return (
     <div 
@@ -94,7 +101,7 @@ export function BubblesDocsModal({ onClose }: BubblesDocsModalProps) {
                       opacity: demoOpacity 
                     }} 
                   >
-                    {demoRadius >= 6 && <span className="text-[9px] text-[#E8E8E8] font-mono">1.2k</span>}
+                    {demoRadius >= 6 && <span className="text-[9px] text-[#E8E8E8] font-mono">{abbreviateVol(demoVolume)}</span>}
                   </div>
                 </div>
                 <div className="flex-1">

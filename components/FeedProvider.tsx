@@ -21,6 +21,7 @@ import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/eng
 import { IcebergEngine } from '../lib/iceberg/engine';
 import { buildLiquidityVacuumZones } from '../lib/liquidityVacuum/engine';
 import { getCandleTimeForTrade, normalizePriceToBucket } from '../lib/utils/aggregation';
+import { getHistoricalSessionRanges } from '../lib/utils/historicalSessions';
 import { ChartEngineContext } from './ChartEngineContext';
 import { FineProfileRow, RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
 import { Candle } from '../types/candle';
@@ -957,7 +958,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     const shouldHydrateStoredFineProfiles = () => {
       const panel = useChartStore.getState().panels[panelId];
-      return Boolean(panel.defaultProfileEnabled || panel.customProfileRange);
+      return Boolean(panel.defaultProfileEnabled || panel.customProfileRange || panel.historicalSessionProfileEnabled);
     };
 
     const shouldRunProfileWork = () => shouldHydrateStoredFineProfiles() || ENABLE_BROWSER_MARKET_WRITES;
@@ -2198,7 +2199,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const hydrateStoredFineProfileRange = async (
       startSeconds: number,
       endSeconds: number,
-      reason: 'default' | 'lazy' | 'custom',
+      reason: 'default' | 'lazy' | 'custom' | 'historical',
     ): Promise<FineProfileHydrationStats> => {
       const stats: FineProfileHydrationStats = {
         rowsFetched: 0,
@@ -2240,11 +2241,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
 
         const chunkLabel = chunks.length > 1 ? ` ${index + 1}/${chunks.length}` : '';
+        const baseMessage = reason === 'custom' 
+          ? 'Loading custom profile' 
+          : reason === 'historical'
+            ? 'Loading historical session'
+            : 'Loading profile history';
+
         publishRestoreStatus({
           stage: 'volumeProfile',
-          message: reason === 'custom'
-            ? `Loading custom profile${chunkLabel}...`
-            : `Loading profile history${chunkLabel}...`,
+          message: `${baseMessage}${chunkLabel}...`,
           candleCount: useChartRuntimeStore.getState().panels[panelId].candles.length,
           profileRowCount: stats.rowsFetched,
           profileCandleCount: stats.candlesHydrated,
@@ -2430,9 +2435,39 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         : null;
     };
 
+    const getHistoricalSessionProfileRestoreWindow = () => {
+      const panel = useChartStore.getState().panels[panelId];
+      if (!panel.historicalSessionProfileEnabled) return null;
+      const candles = useChartRuntimeStore.getState().panels[panelId].candles;
+      if (candles.length === 0) return null;
+
+      const latestTimeMs = candles[candles.length - 1].time * 1000;
+      const ranges = getHistoricalSessionRanges(
+        latestTimeMs,
+        panel.historicalSessionProfileCount,
+        panel.historicalSessionProfileStartHour,
+        panel.historicalSessionProfileStartMin,
+        panel.historicalSessionProfileEndHour,
+        panel.historicalSessionProfileEndMin
+      );
+
+      if (ranges.length === 0) return null;
+
+      // Find the min start time and max end time across all requested sessions
+      const minStartMs = Math.min(...ranges.map(r => r.startTimeMs));
+      const maxEndMs = Math.max(...ranges.map(r => r.endTimeMs));
+
+      const range = alignFineProfileRange(minStartMs / 1000, maxEndMs / 1000);
+      const profileCache = volumeProfileEngineRef.current.getBaseCache();
+      
+      return profileCache.getMissingBaseCandleTimes(range.startSeconds, range.endSeconds).length > 0
+        ? range
+        : null;
+    };
+
     const restoreLazyProfileRange = async (
       range: { startSeconds: number; endSeconds: number },
-      reason: 'default' | 'lazy' | 'custom',
+      reason: 'default' | 'lazy' | 'custom' | 'historical',
     ) => {
       if (lazyProfileRestoreRunning || range.endSeconds <= range.startSeconds) return;
 
@@ -2448,7 +2483,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         if ((stats.chunksFetched ?? 0) > 0) {
           publishRestoreStatus({
             stage: 'complete',
-            message: reason === 'custom' ? 'Loaded custom profile' : 'Loaded profile history',
+            message: reason === 'custom' 
+              ? 'Loaded custom profile' 
+              : reason === 'historical'
+                ? 'Loaded historical session'
+                : 'Loaded profile history',
             candleCount: useChartRuntimeStore.getState().panels[panelId].candles.length,
             profileRowCount: stats.rowsFetched,
             profileCandleCount: stats.candlesHydrated,
@@ -2458,7 +2497,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         console.warn(`[HistoryRestore:${panelId}] ${reason} fine profile restore failed`, error);
         publishRestoreStatus({
           stage: 'error',
-          message: reason === 'custom' ? 'Custom profile load failed' : 'Profile history load failed',
+          message: reason === 'custom' 
+            ? 'Custom profile load failed' 
+            : reason === 'historical'
+              ? 'Historical session load failed'
+              : 'Profile history load failed',
           candleCount: useChartRuntimeStore.getState().panels[panelId].candles.length,
         });
       } finally {
@@ -3062,6 +3105,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         return;
       }
 
+      const historicalRange = getHistoricalSessionProfileRestoreWindow();
+      if (historicalRange) {
+        void restoreLazyProfileRange(historicalRange, 'historical');
+        return;
+      }
+
       const scrolledCandleUntil = getScrolledCandlesRestoreWindow();
       if (scrolledCandleUntil) {
         void restoreLazyCandlesRange(scrolledCandleUntil);
@@ -3214,12 +3263,31 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         if (visibleCandles.length > 0) {
           const lastCandle = visibleCandles[visibleCandles.length - 1];
           const firstCandle = visibleCandles[0];
-          const endSeconds = (lastCandle.time / 1000) + timeframeSeconds;
-          const startSeconds = (firstCandle.time / 1000);
+          const endSeconds = lastCandle.time + timeframeSeconds;
+          const startSeconds = firstCandle.time;
           
           ranges.push({
             startSeconds: Math.max(startSeconds, endSeconds - FINE_PROFILE_DEFAULT_RESTORE_SECONDS),
             endSeconds: endSeconds,
+          });
+        }
+      }
+
+      // Protect historical session profile ranges from cache eviction
+      if (panel.historicalSessionProfileEnabled && runtimePanel.candles.length > 0) {
+        const latestTimeMs = runtimePanel.candles[runtimePanel.candles.length - 1].time * 1000;
+        const sessionRanges = getHistoricalSessionRanges(
+          latestTimeMs,
+          panel.historicalSessionProfileCount,
+          panel.historicalSessionProfileStartHour,
+          panel.historicalSessionProfileStartMin,
+          panel.historicalSessionProfileEndHour,
+          panel.historicalSessionProfileEndMin,
+        );
+        for (const sr of sessionRanges) {
+          ranges.push({
+            startSeconds: Math.floor(sr.startTimeMs / 1000),
+            endSeconds: Math.ceil(sr.endTimeMs / 1000),
           });
         }
       }

@@ -1,5 +1,6 @@
 import { Candle } from "@/types/candle";
-import { formatPrice, formatTime12h } from "@/lib/utils/format";
+import { formatPrice, formatTime } from "@/lib/utils/format";
+import { useChartStore } from "@/lib/store/chart";
 
 export function calculatePriceStep(priceRange: number, chartHeight: number, minSpacing: number = 50) {
   const pricePerPixel = priceRange / chartHeight;
@@ -174,7 +175,8 @@ export function drawTimeAxis(
       }
 
       if (time > 0) {
-        const label = formatTime12h(time);
+        const state = useChartStore.getState();
+        const label = formatTime(time, state.globalTimezone, state.globalTimeFormat);
         ctx.fillText(label, x, chartHeight + 8);
       }
     }

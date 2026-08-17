@@ -1,5 +1,6 @@
-import { SessionConfig } from '../store/chart';
+import { SessionConfig, useChartStore } from '../store/chart';
 import { Candle } from '../../types/candle';
+import { getZonedTimeParts } from './format';
 
 export interface SessionOccurrence {
   firstIndex: number;
@@ -22,13 +23,13 @@ export function getSessionOccurrences(
   const startIdx = Math.max(0, Math.floor(visibleRange.firstIndex));
   const endIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.lastIndex));
 
+  const timezone = useChartStore.getState().globalTimezone;
+
   for (let i = startIdx; i <= endIdx; i++) {
     const candle = candles[i];
-    const date = new Date(candle.time * 1000);
-    const utcHour = date.getUTCHours();
-    const utcMin = date.getUTCMinutes();
+    const { hour, minute } = getZonedTimeParts(candle.time * 1000, timezone);
 
-    const candleTimeInMins = utcHour * 60 + utcMin;
+    const candleTimeInMins = hour * 60 + minute;
     const sessionStartTimeInMins = session.startHour * 60 + session.startMin;
     const sessionEndTimeInMins = session.endHour * 60 + session.endMin;
 

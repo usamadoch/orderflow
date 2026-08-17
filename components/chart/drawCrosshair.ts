@@ -1,4 +1,5 @@
-import { formatPrice, formatTime12h } from "@/lib/utils/format";
+import { formatPrice, formatTime } from "@/lib/utils/format";
+import { useChartStore } from "@/lib/store/chart";
 
 const CROSSHAIR_FONT = '12px "Inter", -apple-system, system-ui, sans-serif';
 const CROSSHAIR_BG = '#1F1F1F';
@@ -76,7 +77,8 @@ export function drawCrosshairTimeLabel(
 ) {
   if (mouseX < 0 || mouseX > chartWidth) return;
 
-  const label = formatTime12h(time);
+  const state = useChartStore.getState();
+  const label = formatTime(time, state.globalTimezone, state.globalTimeFormat);
 
   ctx.font = CROSSHAIR_FONT;
   const textWidth = ctx.measureText(label).width;

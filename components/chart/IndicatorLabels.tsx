@@ -34,6 +34,7 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
   const setCvdEnabled = useChartStore(s => s.setCvdEnabled);
   const setVolumeBarsEnabled = useChartStore(s => s.setVolumeBarsEnabled);
   const setSessionsEnabled = useChartStore(s => s.setSessionsEnabled);
+  const setHistoricalSessionProfileEnabled = useChartStore(s => s.setHistoricalSessionProfileEnabled);
   const setDefaultProfileEnabled = useChartStore(s => s.setDefaultProfileEnabled);
   const setLiquidityEnabled = useChartStore(s => s.setLiquidityEnabled);
   const setLiquidityHeatmapEnabled = useChartStore(s => s.setLiquidityHeatmapEnabled);
@@ -66,6 +67,12 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
       label: 'Sessions',
       enabled: panel.sessionsEnabled,
       onToggle: () => setSessionsEnabled(panelId, !panel.sessionsEnabled),
+    },
+    {
+      id: 'historicalSessions',
+      label: 'HSVP',
+      enabled: panel.historicalSessionProfileEnabled,
+      onToggle: () => setHistoricalSessionProfileEnabled(panelId, !panel.historicalSessionProfileEnabled),
     },
     {
       id: 'profile',

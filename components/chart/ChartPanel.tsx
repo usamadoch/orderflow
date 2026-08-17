@@ -5,6 +5,7 @@ import { Maximize2, Minimize2 } from 'lucide-react';
 import { useChartStore, PanelId } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { buildCvdSeries } from '@/lib/utils/delta';
+import { getHistoricalSessionRanges } from '@/lib/utils/historicalSessions';
 import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine } from '../ChartEngineContext';
 import { ChartCanvas } from './ChartCanvas';
 import { CvdPanel } from './CvdPanel';
@@ -80,6 +81,27 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
     () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingBracketOrders.filter((b) => chartVirtualPositions.some((vp) => vp.id === b.positionId)),
     [chartVirtualPositions, tradingBracketOrders],
   );
+  
+  const historicalSessionRanges = React.useMemo(() => {
+    if (!panel.historicalSessionProfileEnabled) return [];
+    const latestTimeMs = panel.candles.length > 0 ? panel.candles[panel.candles.length - 1].time * 1000 : Date.now();
+    return getHistoricalSessionRanges(
+      latestTimeMs,
+      panel.historicalSessionProfileCount,
+      panel.historicalSessionProfileStartHour,
+      panel.historicalSessionProfileStartMin,
+      panel.historicalSessionProfileEndHour,
+      panel.historicalSessionProfileEndMin,
+    );
+  }, [
+    panel.historicalSessionProfileEnabled,
+    panel.historicalSessionProfileCount,
+    panel.historicalSessionProfileStartHour,
+    panel.historicalSessionProfileStartMin,
+    panel.historicalSessionProfileEndHour,
+    panel.historicalSessionProfileEndMin,
+    panel.candles.length > 0 ? panel.candles[panel.candles.length - 1].time : 0,
+  ]);
 
   React.useEffect(() => {
     if (restoreStatus?.stage !== 'complete') return;
@@ -224,6 +246,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             profileShowPocLine={panel.profileShowPocLine}
             profileShowVaLines={panel.profileShowVaLines}
             profileShowDelta={panel.profileShowDelta}
+            historicalSessionProfileEnabled={panel.historicalSessionProfileEnabled}
+            historicalSessionRanges={historicalSessionRanges}
             deltaProfileWidth={panel.deltaProfileWidth}
             measureToolActive={panel.measureToolActive}
             activeMeasurement={panel.activeMeasurement}

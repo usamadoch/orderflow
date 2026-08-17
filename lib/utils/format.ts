@@ -54,18 +54,66 @@ export function formatPrice(price: number, precision?: number): string {
 }
 
 /**
- * Formats a timestamp into a 12-hour AM/PM string.
+ * Gets date parts (year, month, day, hour, minute) in the specified timezone.
  */
-export function formatTime12h(timestamp: number): string {
-  const date = new Date(timestamp * 1000);
-  let hours = date.getHours();
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
+export function getZonedTimeParts(timestampMs: number, timezone: string) {
+  const dtFormat = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone === 'local' ? undefined : timezone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  });
+  const parts = dtFormat.formatToParts(new Date(timestampMs));
+  const result: Record<string, number> = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') {
+      result[part.type] = parseInt(part.value, 10);
+    }
+  }
+  if (result.hour === 24) result.hour = 0;
+  return result as { year: number; month: number; day: number; hour: number; minute: number };
+}
 
-  hours = hours % 12;
-  hours = hours ? hours : 12; // the hour '0' should be '12'
+/**
+ * Iteratively finds the exact Unix timestamp (in milliseconds) for a given year, month, date, hour, and minute in a specific timezone.
+ * @param month 1-indexed (1 = January)
+ */
+export function getTimestampForZonedDate(year: number, month: number, date: number, hour: number, minute: number, timezone: string): number {
+  if (timezone === 'local') {
+    return new Date(year, month - 1, date, hour, minute).getTime();
+  }
+  
+  // Approximate with UTC first
+  let t = Date.UTC(year, month - 1, date, hour, minute);
+  
+  // Converge to the correct timestamp (handles DST boundaries)
+  for (let i = 0; i < 3; i++) {
+    const parts = getZonedTimeParts(t, timezone);
+    const currentNaive = new Date(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute).getTime();
+    const targetNaive = new Date(year, month - 1, date, hour, minute).getTime();
+    
+    const diffMs = targetNaive - currentNaive;
+    if (diffMs === 0) break;
+    
+    t += diffMs;
+  }
+  return t;
+}
 
-  return `${hours}:${minutes} ${ampm}`;
+/**
+ * Formats a timestamp (in seconds) into a localized time string.
+ */
+export function formatTime(timestamp: number, timezone: string = 'local', format: '12h' | '24h' = '24h'): string {
+  const dtFormat = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone === 'local' ? undefined : timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: format === '12h',
+  });
+  return dtFormat.format(new Date(timestamp * 1000));
 }
 
 /**

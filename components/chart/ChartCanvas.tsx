@@ -50,6 +50,7 @@ import { IcebergTooltip } from './IcebergTooltip';
 import { MIN_FINE_PROFILE_BASE_BUCKET_SIZE } from '@/lib/config/markets';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 import { formatPrice, formatVol } from '@/lib/utils/format';
+import { HistoricalSessionRange } from '@/lib/utils/historicalSessions';
 
 type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
 type DrawingHitZone = 'hover' | 'move' | 'delete' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom' | 'resize-entry' | 'resize-stop' | 'resize-target';
@@ -705,6 +706,8 @@ interface ChartCanvasProps {
   profileShowPocLine: boolean;
   profileShowVaLines: boolean;
   profileShowDelta: boolean;
+  historicalSessionProfileEnabled: boolean;
+  historicalSessionRanges: HistoricalSessionRange[];
   deltaProfileWidth: number;
   measureToolActive: boolean;
   activeMeasurement: Measurement | null;
@@ -822,6 +825,8 @@ export function ChartCanvas({
   profileShowPocLine,
   profileShowVaLines,
   profileShowDelta,
+  historicalSessionProfileEnabled,
+  historicalSessionRanges,
   deltaProfileWidth,
   measureToolActive,
   activeMeasurement,
@@ -1396,6 +1401,101 @@ export function ChartCanvas({
             profileShowVaLines,
             liquidityHeatmapProfileSync ? heatmapRows : undefined
           );
+        }
+      }
+
+      // Historical Session Volume Profiles
+      if (historicalSessionProfileEnabled && historicalSessionRanges.length > 0) {
+        for (const sessionRange of historicalSessionRanges) {
+          const startTime = sessionRange.startTimeMs / 1000;
+          const endTime = sessionRange.endTimeMs / 1000;
+          
+          const sessionCandles = candles.filter((c) => c.time >= startTime && c.time < endTime);
+          if (sessionCandles.length === 0) continue;
+          
+          let sHigh = -Infinity;
+          let sLow = Infinity;
+          for (const c of sessionCandles) {
+            if (c.high > sHigh) sHigh = c.high;
+            if (c.low < sLow) sLow = c.low;
+          }
+          if (sHigh === -Infinity || sLow === Infinity) continue;
+          
+          const firstIndex = candles.indexOf(sessionCandles[0]);
+          const lastIndex = candles.indexOf(sessionCandles[sessionCandles.length - 1]);
+          if (firstIndex === -1 || lastIndex === -1) continue;
+          
+          const sessionProfileRange = {
+            firstIndex,
+            lastIndex,
+            priceHigh: sHigh,
+            priceLow: sLow,
+          };
+          
+          const sessionProfileHeightPx = Math.abs(priceToY(sLow) - priceToY(sHigh));
+          const sessionProfileBucketSize = resolveProfileBucketSize(
+            sHigh,
+            sLow,
+            sessionProfileHeightPx,
+            profileResolutionTicks,
+            tickSize,
+            bucketSize
+          );
+          
+          const sessionProfile = volumeProfileEngine.buildProfile({
+            candles: sessionCandles,
+            profileBucketSize: sessionProfileBucketSize,
+            priceHigh: sHigh,
+            priceLow: sLow,
+            debugContext: {
+              label: 'historical-session-profile-render',
+              panelId,
+              selectedStartTime: startTime,
+              selectedEndTime: endTime,
+            },
+          });
+          
+          drawCustomProfile(
+            ctx,
+            sessionProfileRange,
+            sessionProfile,
+            indexToX,
+            priceToY,
+            currentBarWidth,
+            bucketSize,
+            false, // isHovered
+            true, // isLocked
+            false, // isSelected
+            profileScaleMode,
+            sessionProfileBucketSize,
+            profileWidthPct,
+            profileOpacity,
+            profileMinRowWidth,
+            profileMinRowHeight,
+            profileShowPocHighlight,
+            profileShowVaFill,
+            profileShowPocLine,
+            profileShowVaLines
+          );
+
+          if (profileShowDelta && sessionProfile) {
+            const sessionX1 = indexToX(sessionProfileRange.firstIndex) - currentBarWidth / 2;
+            const sessionX2 = indexToX(sessionProfileRange.lastIndex) + currentBarWidth / 2;
+            const sessionRectX = Math.min(sessionX1, sessionX2);
+
+            drawDeltaProfile(
+              ctx,
+              sessionProfile,
+              priceToY,
+              sessionRectX,
+              deltaProfileWidth,
+              sessionProfileBucketSize,
+              profileOpacity,
+              profileMinRowWidth,
+              profileMinRowHeight,
+              profileScaleMode
+            );
+          }
         }
       }
       
