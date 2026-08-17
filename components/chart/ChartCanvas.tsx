@@ -1410,20 +1410,33 @@ export function ChartCanvas({
           const startTime = sessionRange.startTimeMs / 1000;
           const endTime = sessionRange.endTimeMs / 1000;
           
-          const sessionCandles = candles.filter((c) => c.time >= startTime && c.time < endTime);
-          if (sessionCandles.length === 0) continue;
-          
+          // Binary search for first candle with time >= startTime
+          let lo = 0, hi = candles.length;
+          while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (candles[mid].time < startTime) lo = mid + 1; else hi = mid;
+          }
+          const firstIndex = lo;
+
+          // Binary search for last candle with time < endTime
+          lo = firstIndex; hi = candles.length;
+          while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (candles[mid].time < endTime) lo = mid + 1; else hi = mid;
+          }
+          const lastIndex = lo - 1;
+
+          if (firstIndex > lastIndex || firstIndex >= candles.length) continue;
+
           let sHigh = -Infinity;
           let sLow = Infinity;
-          for (const c of sessionCandles) {
-            if (c.high > sHigh) sHigh = c.high;
-            if (c.low < sLow) sLow = c.low;
+          for (let ci = firstIndex; ci <= lastIndex; ci++) {
+            if (candles[ci].high > sHigh) sHigh = candles[ci].high;
+            if (candles[ci].low < sLow) sLow = candles[ci].low;
           }
           if (sHigh === -Infinity || sLow === Infinity) continue;
-          
-          const firstIndex = candles.indexOf(sessionCandles[0]);
-          const lastIndex = candles.indexOf(sessionCandles[sessionCandles.length - 1]);
-          if (firstIndex === -1 || lastIndex === -1) continue;
+
+          const sessionCandles = candles.slice(firstIndex, lastIndex + 1);
           
           const sessionProfileRange = {
             firstIndex,

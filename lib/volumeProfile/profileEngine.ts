@@ -52,10 +52,8 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
   private baseCache = new VolumeProfileBaseCache('panel-local::spot::spot::1', 1);
   private sharedBaseCache: VolumeProfileBaseCache | null = null;
   private maxTrades: number;
-  private cachedProfile: {
-    key: string;
-    profile: VolumeProfile | null;
-  } | null = null;
+  private profileCache = new Map<string, VolumeProfile | null>();
+  private static readonly MAX_PROFILE_CACHE_SIZE = 20;
   private protectedRanges = new Map<string, Array<{ startSeconds: number; endSeconds: number }>>();
 
   constructor(maxTrades: number = DEFAULT_MAX_TRADES) {
@@ -66,14 +64,14 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
   ingestTrade(trade: Trade) {
     const inserted = this.baseCache.ingestTrade(trade, 'live');
     if (inserted) {
-      this.cachedProfile = null;
+      this.profileCache.clear();
     }
   }
 
   hydrateTrades(trades: Trade[]) {
     const inserted = this.baseCache.hydrateTrades(trades);
     if (inserted > 0) {
-      this.cachedProfile = null;
+      this.profileCache.clear();
     }
   }
 
@@ -89,25 +87,25 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
     });
 
     if (stats.rowsInserted > 0) {
-      this.cachedProfile = null;
+      this.profileCache.clear();
     }
   }
 
   removeTradesInTimeRange(startMs: number, endMs: number) {
     const changed = this.baseCache.removeTradesInTimeRange(startMs, endMs);
     if (changed) {
-      this.cachedProfile = null;
+      this.profileCache.clear();
     }
   }
 
   reset() {
-    this.cachedProfile = null;
+    this.profileCache.clear();
   }
 
   pruneBefore(timeMs: number) {
     const changed = this.baseCache.pruneBefore(timeMs);
     if (changed) {
-      this.cachedProfile = null;
+      this.profileCache.clear();
     }
   }
 
@@ -125,23 +123,18 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
       priceLow ?? '',
     ].join(':');
 
-    if (this.cachedProfile?.key === cacheKey) {
-      if (debugContext) {
-        console.debug('[VPROFILE_DEBUG] Render selected profile from cached engine result', {
-          ...debugContext,
-          candleCount: candles.length,
-          selectedStartTime: debugContext.selectedStartTime ?? candles[0]?.time ?? null,
-          selectedEndTime: debugContext.selectedEndTime ?? candles[candles.length - 1]?.time ?? null,
-          profileBucketSize,
-          visiblePriceRows: this.cachedProfile.profile?.rows.length ?? 0,
-          totalVolume: this.cachedProfile.profile?.totalVol ?? 0,
-        });
-      }
-      return this.cachedProfile.profile;
+    if (this.profileCache.has(cacheKey)) {
+      return this.profileCache.get(cacheKey)!;
     }
 
     const profile = this.buildProfileFromRowsAndTrades(candles, startMs, endMs, profileBucketSize, priceHigh, priceLow, debugContext);
-    this.cachedProfile = { key: cacheKey, profile };
+
+    // Evict oldest entries if cache is full
+    if (this.profileCache.size >= RawTradeVolumeProfileEngine.MAX_PROFILE_CACHE_SIZE) {
+      const firstKey = this.profileCache.keys().next().value;
+      if (firstKey !== undefined) this.profileCache.delete(firstKey);
+    }
+    this.profileCache.set(cacheKey, profile);
 
     return profile;
   }
@@ -156,7 +149,7 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
     for (const [ownerId, ranges] of this.protectedRanges.entries()) {
       this.baseCache.setProtectedRanges(ownerId, ranges);
     }
-    this.cachedProfile = null;
+    this.profileCache.clear();
   }
 
   setSharedBaseCache(parts: VolumeProfileCacheKeyParts) {

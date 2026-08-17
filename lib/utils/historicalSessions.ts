@@ -29,8 +29,8 @@ export function getHistoricalSessionRanges(
   let currentMonth = currentZoned.month;
   let currentDate = currentZoned.day;
   
-  // Search back up to 30 days to avoid infinite loops
-  for (let i = 0; i < 30; i++) {
+  // Search back up to 60 days to find enough completed sessions
+  for (let i = 0; i < 60; i++) {
     if (ranges.length >= count) break;
 
     const sTime = getTimestampForZonedDate(currentYear, currentMonth, currentDate, startHour, startMin, timezone);
