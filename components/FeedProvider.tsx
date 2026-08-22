@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 
 // Types
 import type { PanelId, HistoryRestoreStatus } from '../lib/store/chart';
@@ -11,8 +11,6 @@ import type { BubbleEvent } from '../types/bubble';
 import type { FootprintCell } from '../types/footprint';
 import type { AbsorptionResult } from '../types/absorption';
 import type { ExhaustionResult } from '../types/exhaustion';
-import type { IcebergLevel } from '../types/iceberg';
-import type { LiquidityVacuumZone } from '../types/liquidityVacuum';
 import type { DepthUpdate } from '../lib/liquidity/orderbook';
 import type {
   TradeSource,
@@ -39,7 +37,6 @@ import {
   AGGREGATE_BUBBLE_RESTORE_LIMIT,
   FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS,
   FOOTPRINT_RESTORE_MAX_TOTAL_SECONDS,
-  MAX_DEDUPE_KEYS,
   ENABLE_BROWSER_MARKET_WRITES,
   ENABLE_RAW_TRADE_RESTORE
 } from '../lib/config/constants';
@@ -50,30 +47,22 @@ import { useChartRuntimeStore } from '../lib/store/chartRuntime';
 
 // Engines & Cache
 import {
-  AggregationEngine,
   BASE_FOOTPRINT_BUCKET_SIZE,
   BASE_FOOTPRINT_TIMEFRAME,
   BASE_FOOTPRINT_TIMEFRAME_SECONDS,
 } from '../lib/aggregation/engine';
-import { RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
-import { OrderbookManager } from '../lib/liquidity/orderbook';
-import { LiquidityHistoryManager } from '../lib/liquidity/history';
 import { CandleHistoryRestoreResult, getSharedCandleCache } from '../lib/feeds/candleCache';
-import { IcebergEngine } from '../lib/iceberg/engine';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
-import { buildLiquidityVacuumZones } from '../lib/liquidityVacuum/engine';
 
 // Utilities
 import { normalizePriceToBucket } from '../lib/utils/aggregation';
 import { getHistoricalSessionRanges } from '../lib/utils/historicalSessions';
 import { aggregateOrderbook } from '../lib/liquidity/aggregation';
 import {
-  getFootprintWorkNeed,
   getTradeSourcesForDataSourceMode,
   getTradeSourcesForAggregateMarketSource,
   needsAggregateEvents,
-  getTradeDedupeKey,
   createAggregateBubbleEvent,
   getTimeframeSeconds,
   yieldToBrowser,
@@ -109,6 +98,8 @@ import { recordAggregateBubbleRestoreDebug, recordRestoreDiagnostic } from '../l
 
 // Local Context
 import { ChartEngineContext } from './ChartEngineContext';
+import { useFeedAggregation } from './feed/hooks/useFeedAggregation';
+import { useSignalEngine } from './feed/hooks/useSignalEngine';
 
 interface PanelFeedProviderProps {
   panelId: PanelId;
@@ -136,14 +127,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const triggerFootprintRedraw = useChartRuntimeStore(s => s.triggerFootprintRedraw);
   const appendAggregateBubbleEvents = useChartRuntimeStore(s => s.appendAggregateBubbleEvents);
   const setComputedBucketSize = useChartStore(s => s.setComputedBucketSize);
-  const setAbsorptionMap = useChartRuntimeStore(s => s.setAbsorptionMap);
-  const setExhaustionMap = useChartRuntimeStore(s => s.setExhaustionMap);
   const exhaustionLookback = useChartStore(s => s.panels[panelId].exhaustionLookback);
-  const setIcebergLevels = useChartRuntimeStore(s => s.setIcebergLevels);
   const icebergEnabled = useChartStore(s => s.panels[panelId].icebergEnabled);
   const icebergMinScore = useChartStore(s => s.panels[panelId].icebergMinScore);
   const icebergLookback = useChartStore(s => s.panels[panelId].icebergLookback);
-  const setLiquidityVacuumZones = useChartRuntimeStore(s => s.setLiquidityVacuumZones);
   const liquidityVacuumEnabled = useChartStore(s => s.panels[panelId].liquidityVacuumEnabled);
   const liquidityVacuumMinScore = useChartStore(s => s.panels[panelId].liquidityVacuumMinScore);
   const liquidityVacuumMaxZones = useChartStore(s => s.panels[panelId].liquidityVacuumMaxZones);
@@ -159,43 +146,60 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const exhaustionEnabled = useChartStore(s => s.panels[panelId].exhaustionEnabled);
   const cvdEnabled = useChartStore(s => s.panels[panelId].cvdEnabled);
 
-  const connectedRef = useRef(false);
-  const bucketSizeRef = useRef(bucketSize);
-  const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
-  const volumeProfileEngineRef = useRef(new RawTradeVolumeProfileEngine());
-  const pendingFootprintRedrawRef = useRef(false);
-  const pendingProfileRedrawRef = useRef(false);
-  const pendingAggregateBubbleEventsRef = useRef<BubbleEvent[]>([]);
-  const rawTradeQueueRef = useRef<Trade[]>([]);
-  const fineProfileQueueRef = useRef<FineProfileRow[]>([]);
-  const liveFineProfileRowsRef = useRef<Map<number, Map<number, FineProfileRow>>>(new Map());
-  const contractPriceRef = useRef<number | null>(null);
-  const processedTradeIdsRef = useRef<Set<string>>(new Set());
-  const firstFullyCoveredCandleTimeRef = useRef<Record<TradeSource, number | null>>({ spot: null, futures: null });
-  const latestTradeBaseCandleTimeRef = useRef<Record<TradeSource, number | null>>({ spot: null, futures: null });
-  const lastProfileRevisionAtRef = useRef(0);
-  const [volumeProfileRevision, setVolumeProfileRevision] = useState(0);
-  const absorptionMapRef = useRef<Map<number, AbsorptionResult>>(new Map());
-  const exhaustionMapRef = useRef<Map<number, ExhaustionResult>>(new Map());
-  const icebergEngineRef = useRef<IcebergEngine>(new IcebergEngine(bucketSize, icebergLookback));
-  const icebergLevelsRef = useRef<IcebergLevel[]>([]);
-  const liquidityVacuumZonesRef = useRef<LiquidityVacuumZone[]>([]);
-  const lastScoredCandleTimeRef = useRef<number | null>(null);
-  // Orderbook manager per panel
-  const orderbookRef = useRef<OrderbookManager>(new OrderbookManager());
-  const pendingAggregationRef = useRef(false);
-  const liquidityHistoryRef = useRef<LiquidityHistoryManager>(new LiquidityHistoryManager(liquidityBucketSize, liquidityHistoryDepth));
-  const bubblesEnabledRef = useRef(bubblesEnabled);
-  const bubbleSourceRef = useRef(bubbleSource);
-  const aggregateEventsNeededRef = useRef(false);
-  const footprintIngestionSkippedRef = useRef(0);
-  const icebergDisabledNoopSkippedRef = useRef(0);
+  // --- Refs & engine initialization (extracted to useFeedAggregation) ---
+  const {
+    connectedRef,
+    bucketSizeRef,
+    engineRef,
+    volumeProfileEngineRef,
+    pendingFootprintRedrawRef,
+    pendingProfileRedrawRef,
+    pendingAggregateBubbleEventsRef,
+    rawTradeQueueRef,
+    fineProfileQueueRef,
+    liveFineProfileRowsRef,
+    contractPriceRef,
+    processedTradeIdsRef,
+    firstFullyCoveredCandleTimeRef,
+    latestTradeBaseCandleTimeRef,
+    lastProfileRevisionAtRef,
+    volumeProfileRevision,
+    setVolumeProfileRevision,
+    orderbookRef,
+    pendingAggregationRef,
+    liquidityHistoryRef,
+    bubblesEnabledRef,
+    bubbleSourceRef,
+    aggregateEventsNeededRef,
+    footprintIngestionSkippedRef,
+    icebergDisabledNoopSkippedRef,
+  } = useFeedAggregation(bucketSize, liquidityBucketSize, liquidityHistoryDepth);
   const aggregateBubbleMarketSource = dataSourceMode;
   const volumeBarsMarketSource = dataSourceMode;
 
-  useEffect(() => {
-    bucketSizeRef.current = bucketSize;
-  }, [bucketSize]);
+  // --- Signal refs & callbacks (extracted to useSignalEngine) ---
+  const {
+    absorptionMapRef,
+    exhaustionMapRef,
+    icebergEngineRef,
+    icebergLevelsRef,
+    liquidityVacuumZonesRef,
+    lastScoredCandleTimeRef,
+    setAbsorptionMap,
+    setExhaustionMap,
+    setIcebergLevels,
+    setLiquidityVacuumZones,
+    markProcessedTrade,
+    getCurrentFootprintWorkNeed,
+    clearIcebergLevelsIfNeeded,
+    rebuildLiquidityVacuumZones,
+  } = useSignalEngine(
+    panelId, bucketSize, engineRef, bucketSizeRef,
+    exhaustionLookback, icebergLookback, icebergEnabled, icebergMinScore,
+    liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumMaxZones,
+    absorptionEnabled, exhaustionEnabled,
+    processedTradeIdsRef, icebergDisabledNoopSkippedRef,
+  );
 
   useEffect(() => {
     const aggregateEventsNeeded = needsAggregateEvents(useChartStore.getState().panels[panelId]);
@@ -205,47 +209,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     if (!aggregateEventsNeeded) {
       pendingAggregateBubbleEventsRef.current = [];
     }
-  }, [bubblesEnabled, bubbleSource, contractType, dataSourceMode, panelId, volumeBarsEnabled, volumeBarsInputData]);
-
-  const markProcessedTrade = useCallback((trade: Trade, source: TradeSource) => {
-    const key = getTradeDedupeKey(trade, source);
-    if (processedTradeIdsRef.current.has(key)) return false;
-
-    processedTradeIdsRef.current.add(key);
-    while (processedTradeIdsRef.current.size > MAX_DEDUPE_KEYS) {
-      const oldest = processedTradeIdsRef.current.values().next().value;
-      if (oldest === undefined) break;
-      processedTradeIdsRef.current.delete(oldest);
-    }
-
-    return true;
-  }, []);
-
-  const getCurrentFootprintWorkNeed = useCallback(() => (
-    getFootprintWorkNeed(useChartStore.getState().panels[panelId])
-  ), [panelId]);
-
-  const clearIcebergLevelsIfNeeded = useCallback((reason: string) => {
-    if (icebergLevelsRef.current.length === 0) {
-      icebergDisabledNoopSkippedRef.current += 1;
-      return;
-    }
-
-    icebergLevelsRef.current = [];
-    setIcebergLevels(panelId, []);
-    recordRestoreDiagnostic({
-      kind: 'footprint',
-      key: `${panelId}:iceberg-disabled-clear`,
-      timestamp: Date.now(),
-      rowsFetched: 0,
-      distinctCandleTimeCount: 0,
-      details: {
-        panelId,
-        status: 'iceberg-disabled-cleared',
-        reason,
-      },
-    });
-  }, [panelId, setIcebergLevels]);
+  }, [bubblesEnabled, bubbleSource, contractType, dataSourceMode, panelId, volumeBarsEnabled, volumeBarsInputData, bubblesEnabledRef, bubbleSourceRef, aggregateEventsNeededRef, pendingAggregateBubbleEventsRef]);
 
   useEffect(() => {
     const requiredSources = new Set<TradeSource>();
@@ -276,27 +240,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [aggregateBubbleMarketSource, bubblesEnabled, bubbleSource, contractType, dataSourceMode, markProcessedTrade, pair]);
-
-  const rebuildLiquidityVacuumZones = useCallback((candles = useChartRuntimeStore.getState().panels[panelId].candles || []) => {
-    if (!liquidityVacuumEnabled) {
-      if (liquidityVacuumZonesRef.current.length > 0) {
-        liquidityVacuumZonesRef.current = [];
-        setLiquidityVacuumZones(panelId, []);
-      }
-      return [];
-    }
-
-    const displayBucketSize = Math.max(BASE_FOOTPRINT_BUCKET_SIZE, bucketSizeRef.current);
-    const zones = buildLiquidityVacuumZones(candles, engineRef.current, displayBucketSize, {
-      minScore: liquidityVacuumMinScore,
-      maxZones: liquidityVacuumMaxZones,
-    });
-
-    liquidityVacuumZonesRef.current = zones;
-    setLiquidityVacuumZones(panelId, zones);
-    return zones;
-  }, [liquidityVacuumEnabled, liquidityVacuumMaxZones, liquidityVacuumMinScore, panelId, setLiquidityVacuumZones]);
+  }, [aggregateBubbleMarketSource, bubblesEnabled, bubbleSource, contractType, dataSourceMode, markProcessedTrade, pair, pendingAggregateBubbleEventsRef]);
 
   useEffect(() => {
     rebuildLiquidityVacuumZones();
@@ -319,15 +263,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       : [];
     icebergLevelsRef.current = levels;
     setIcebergLevels(panelId, levels);
-  }, [icebergLookback, icebergEnabled, icebergMinScore, panelId, setIcebergLevels, clearIcebergLevelsIfNeeded]);
+  }, [icebergLookback, icebergEnabled, icebergMinScore, panelId, setIcebergLevels, clearIcebergLevelsIfNeeded, icebergLevelsRef, engineRef, icebergEngineRef]);
 
-  useEffect(() => {
-    liquidityHistoryRef.current.setBucketSize(liquidityBucketSize);
-  }, [liquidityBucketSize]);
-
-  useEffect(() => {
-    liquidityHistoryRef.current.setMaxSnapshots(liquidityHistoryDepth);
-  }, [liquidityHistoryDepth]);
 
   // Throttled redraw loop for footprint updates
   useEffect(() => {

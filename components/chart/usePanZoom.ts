@@ -10,7 +10,7 @@ export interface PanZoomRefs {
 
 export function usePanZoom(
   canvasRef: React.RefObject<HTMLCanvasElement>,
-  onRedraw: () => void,
+  onRedraw: (layer?: 'all' | 'overlay' | 'background' | 'live') => void,
   getCandlesLength: () => number,
   priceAxisWidth: number,
   timeAxisHeight: number,
@@ -106,7 +106,11 @@ export function usePanZoom(
 
       // Always redraw on move if we are the active panel or dragging
       if (isOver || isDragging.current) {
-        onRedraw();
+        if (!isDragging.current) {
+          onRedraw('overlay');
+        } else {
+          onRedraw();
+        }
       }
 
       if (!isDragging.current) return;
@@ -164,7 +168,7 @@ export function usePanZoom(
       isMouseOver.current = false;
       // Don't clear mouseX/Y immediately, as they are needed for the final frame of redraw
       onCrosshairChange?.(null, null);
-      onRedraw();
+      onRedraw('overlay');
     };
 
     const onWheel = (e: WheelEvent) => {

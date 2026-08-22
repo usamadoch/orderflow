@@ -336,10 +336,16 @@ export function ChartCanvas({
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
+  const liveCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const bgCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const liveCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const scheduledLayers = useRef(new Set<string>());
   const isRedrawScheduled = useRef(false);
+  const prevCandlesRef = useRef<Candle[]>([]);
 
   // Drawing refs
   const dragStart = useRef<{ x: number, y: number } | null>(null);
@@ -420,17 +426,23 @@ export function ChartCanvas({
     profileWidth += liquidityHeatmapWidth;
   }
 
-  const redraw = useCallback(() => {
+  const redraw = useCallback((layer: 'all' | 'overlay' | 'background' | 'live' | 'live-dirty' = 'all') => {
+    scheduledLayers.current.add(layer);
     if (isRedrawScheduled.current) return;
 
     isRedrawScheduled.current = true;
     requestAnimationFrame(() => {
       isRedrawScheduled.current = false;
+      const layersToDraw = new Set(scheduledLayers.current);
+      scheduledLayers.current.clear();
+      const drawAll = layersToDraw.has('all');
 
       const canvas = canvasRef.current;
       const ctx = ctxRef.current;
+      const bgCtx = bgCtxRef.current;
+      const liveCtx = liveCtxRef.current;
       const container = containerRef.current;
-      if (!canvas || !ctx || !container) return;
+      if (!canvas || !ctx || !bgCtx || !liveCtx || !container) return;
 
       const logicalWidth = widthRef.current;
       const logicalHeight = heightRef.current;
@@ -439,9 +451,14 @@ export function ChartCanvas({
       const statsGridHeight = statsIndicatorEnabled ? statsIndicatorItems.length * STATS_GRID_ROW_HEIGHT : 0;
       const chartHeight = logicalHeight - timeAxisHeight - statsGridHeight;
 
-      ctx.clearRect(0, 0, logicalWidth, logicalHeight);
-      ctx.fillStyle = '#0F0F0F';
-      ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+      if (drawAll || layersToDraw.has('background')) {
+        bgCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+        bgCtx.fillStyle = '#0F0F0F';
+        bgCtx.fillRect(0, 0, logicalWidth, logicalHeight);
+      }
+      if (drawAll || layersToDraw.has('overlay')) {
+        ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+      }
 
       if (candles.length === 0) return;
 
@@ -503,347 +520,379 @@ export function ChartCanvas({
         bucketSize
       );
 
-      drawLines(ctx, resolvedNonPositionLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, hoveredLineId.current, selectedDrawingId, isHoveringDeleteDot.current);
+      if (drawAll || layersToDraw.has('overlay')) {
+        drawLines(ctx, resolvedNonPositionLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, hoveredLineId.current, selectedDrawingId, isHoveringDeleteDot.current);
+      }
 
-      drawGrid(ctx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
+      if (drawAll || layersToDraw.has('background')) {
+        drawGrid(bgCtx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
 
-      // Session boxes - drawn behind everything
-      drawSessions(
-        ctx,
-        candles,
-        { firstIndex, lastIndex },
-        indexToX,
-        currentBarWidth,
-        logicalHeight,
-        timeAxisHeight,
-        sessions,
-        sessionsEnabled
-      );
+        // Session boxes - drawn behind everything
+        drawSessions(
+          bgCtx,
+          candles,
+          { firstIndex, lastIndex },
+          indexToX,
+          currentBarWidth,
+          logicalHeight,
+          timeAxisHeight,
+          sessions,
+          sessionsEnabled
+        );
+      }
 
       // Liquidity zones - drawn between grid and sessions/candles
-      if (liquidityEnabled && liquidityZones.length > 0) {
-        const lastCandlePrice = candles.length > 0 ? candles[candles.length - 1].close : null;
-        drawLiquidity(
-          ctx,
-          liquidityZones,
-          priceToY,
-          logicalWidth,
-          logicalHeight,
-          priceAxisWidth,
-          profileWidth,
-          liquidityOpacity,
-          liquidityBucketSize,
-          timeAxisHeight,
-          priceMin,
-          priceMax,
-          lastCandlePrice
-        );
-      }
-
-      if (liquidityVacuumEnabled && liquidityVacuumZones.length > 0) {
-        drawLiquidityVacuum(
-          ctx,
-          liquidityVacuumZones,
-          candles,
-          indexToX,
-          priceToY,
-          currentBarWidth,
-          logicalWidth,
-          logicalHeight,
-          {
-            minScore: liquidityVacuumMinScore,
-            opacity: liquidityVacuumOpacity,
-            showLabels: liquidityVacuumShowLabels,
-            profileWidth,
-            priceAxisWidth,
-            timeAxisHeight,
+      const isDirty = !drawAll && !layersToDraw.has('live') && layersToDraw.has('live-dirty');
+      if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
+        if (isDirty && candles.length > 0) {
+          const x = indexToX(candles.length - 1);
+          if (x !== null) {
+            const colStartX = x - currentBarWidth / 2 - 2;
+            const colWidth = currentBarWidth + 4;
+            liveCtx.save();
+            liveCtx.beginPath();
+            liveCtx.rect(colStartX, 0, colWidth, logicalHeight);
+            liveCtx.clip();
+            liveCtx.clearRect(colStartX, 0, colWidth, logicalHeight);
+          } else {
+            liveCtx.clearRect(0, 0, logicalWidth, logicalHeight);
           }
-        );
-      }
-
-      // Selection Rectangle (drawn below candles)
-      drawSelectionRect(
-        ctx,
-        isDrawMode ? dragStart.current : null,
-        isDrawMode ? dragEnd.current : null,
-        resolvedCustomProfileRange,
-        (idx) => indexToX(idx),
-        (p) => priceToY(p),
-        currentBarWidth
-      );
-
-      if (chartMode === 'candle') {
-        drawCandles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
-      } else {
-        drawFootprint(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, chartHeight, footprintMode);
-      }
-
-      if (volumeBarsEnabled) {
-        drawVolumeBars(
-          ctx,
-          candles,
-          firstIndex,
-          lastIndex,
-          indexToX,
-          currentBarWidth,
-          chartWidth,
-          chartHeight,
-          timeAxisHeight,
-          profileWidth,
-          engine,
-          aggregateBubbleEvents,
-          {
-            panelId,
-            enabled: volumeBarsEnabled,
-            inputData: volumeBarsInputData,
-            marketSource: volumeBarsMarketSource,
-            filterMode: volumeBarsFilterMode,
-            movingAverageLength: volumeBarsMovingAverageLength,
-            filterMin: volumeBarsFilterMin,
-            filterMax: volumeBarsFilterMax,
-            colorMode: volumeBarsColorMode,
-            opacity: volumeBarsOpacity,
-            heightPct: volumeBarsHeightPct,
-            showValueText: volumeBarsShowValueText,
-            textSize: volumeBarsTextSize,
-            averageLineEnabled: volumeBarsAverageLineEnabled,
-            averageLength: volumeBarsAverageLength,
-            activeChartContractType,
-            activeDataSourceMode,
-            onDebug: recordVolumeBarsDebug,
-          },
-        );
-      }
-
-      // Volume bubbles — drawn above candles/footprint, below volume profile
-      if (bubblesEnabled) {
-        if (bubbleSource === 'aggregateTrades') {
-          drawAggregateTradeBubbles(ctx, aggregateBubbleEvents, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, {
-            bubbleSizeBy,
-            aggregateBubbleMarketSource,
-            activeChartContractType,
-            activeDataSourceMode,
-            bubbleThreshold,
-            bubbleThresholdMode,
-            bubbleMinOrders,
-            bubbleMinRadius,
-            bubbleMaxRadius,
-            bubbleSide,
-            bubbleScaleMode,
-          }, {
-            panelId,
-            bubbleSource,
-            bufferSize: aggregateBubbleEvents.length,
-            maxBufferSize: MAX_AGGREGATE_BUBBLE_EVENTS,
-            activeChartContractType,
-            activeDataSourceMode,
-            engine,
-            bucketSize,
-          });
         } else {
-          const latestAggregateEvent = aggregateBubbleEvents[aggregateBubbleEvents.length - 1] ?? null;
-          const restoredAggregateEvents = aggregateBubbleEvents.filter((event) => event.origin === 'restored');
-          const restoredAggregateTimes = restoredAggregateEvents
-            .map((event) => event.time)
-            .filter((time) => Number.isFinite(time));
-          const restoredEventCountBySource = restoredAggregateEvents.reduce((counts, event) => {
-            if (event.contractType === 'spot' || event.contractType === 'futures') {
-              counts[event.contractType] += 1;
+          liveCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+        }
+
+        if (liquidityEnabled && liquidityZones.length > 0) {
+          const lastCandlePrice = candles.length > 0 ? candles[candles.length - 1].close : null;
+          drawLiquidity(
+            liveCtx,
+            liquidityZones,
+            priceToY,
+            logicalWidth,
+            logicalHeight,
+            priceAxisWidth,
+            profileWidth,
+            liquidityOpacity,
+            liquidityBucketSize,
+            timeAxisHeight,
+            priceMin,
+            priceMax,
+            lastCandlePrice
+          );
+        }
+
+        if (liquidityVacuumEnabled && liquidityVacuumZones.length > 0) {
+          drawLiquidityVacuum(
+            liveCtx,
+            liquidityVacuumZones,
+            candles,
+            indexToX,
+            priceToY,
+            currentBarWidth,
+            logicalWidth,
+            logicalHeight,
+            {
+              minScore: liquidityVacuumMinScore,
+              opacity: liquidityVacuumOpacity,
+              showLabels: liquidityVacuumShowLabels,
+              profileWidth,
+              priceAxisWidth,
+              timeAxisHeight,
             }
-            return counts;
-          }, { spot: 0, futures: 0 });
-          const totalEventCountBySource = aggregateBubbleEvents.reduce((counts, event) => {
-            if (event.contractType === 'spot' || event.contractType === 'futures') {
-              counts[event.contractType] += 1;
-            }
-            return counts;
-          }, { spot: 0, futures: 0 });
-          recordAggregateBubbleDebug({
-            panelId,
-            bubbleSource,
-            bubbleSizeBy,
-            aggregateBubbleMarketSource,
-            activeChartMarketSource: {
-              contractType: activeChartContractType,
-              dataSourceMode: activeDataSourceMode,
+          );
+        }
+      }
+
+      if (drawAll || layersToDraw.has('overlay')) {
+        // Selection Rectangle (drawn below candles)
+        drawSelectionRect(
+          ctx,
+          isDrawMode ? dragStart.current : null,
+          isDrawMode ? dragEnd.current : null,
+          resolvedCustomProfileRange,
+          (idx) => indexToX(idx),
+          (p) => priceToY(p),
+          currentBarWidth
+        );
+      }
+
+      if (drawAll || layersToDraw.has('live')) {
+        if (chartMode === 'candle') {
+          drawCandles(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
+        } else {
+          drawFootprint(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, chartHeight, footprintMode);
+        }
+      }
+
+      if (drawAll || layersToDraw.has('live')) {
+        if (volumeBarsEnabled) {
+          drawVolumeBars(
+            liveCtx,
+            candles,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            currentBarWidth,
+            chartWidth,
+            chartHeight,
+            timeAxisHeight,
+            profileWidth,
+            engine,
+            aggregateBubbleEvents,
+            {
+              panelId,
+              enabled: volumeBarsEnabled,
+              inputData: volumeBarsInputData,
+              marketSource: volumeBarsMarketSource,
+              filterMode: volumeBarsFilterMode,
+              movingAverageLength: volumeBarsMovingAverageLength,
+              filterMin: volumeBarsFilterMin,
+              filterMax: volumeBarsFilterMax,
+              colorMode: volumeBarsColorMode,
+              opacity: volumeBarsOpacity,
+              heightPct: volumeBarsHeightPct,
+              showValueText: volumeBarsShowValueText,
+              textSize: volumeBarsTextSize,
+              averageLineEnabled: volumeBarsAverageLineEnabled,
+              averageLength: volumeBarsAverageLength,
+              activeChartContractType,
+              activeDataSourceMode,
+              onDebug: recordVolumeBarsDebug,
             },
-            bufferSize: aggregateBubbleEvents.length,
-            maxBufferSize: MAX_AGGREGATE_BUBBLE_EVENTS,
-            restoredEventCount: restoredAggregateEvents.length,
-            liveEventCount: Math.max(0, aggregateBubbleEvents.length - restoredAggregateEvents.length),
-            totalHydratedCount: aggregateBubbleEvents.length,
-            duplicateSkippedCount: 0,
-            restoreQueryRange: null,
-            restoredSpotCount: restoredEventCountBySource.spot,
-            restoredFuturesCount: restoredEventCountBySource.futures,
-            minRestoredEventTime: restoredAggregateTimes.length > 0 ? Math.min(...restoredAggregateTimes) : null,
-            maxRestoredEventTime: restoredAggregateTimes.length > 0 ? Math.max(...restoredAggregateTimes) : null,
-            storageThresholds: null,
-            currentRenderedCountAfterRestore: null,
-            visibleEventCount: 0,
-            renderedCount: 0,
-            totalEventCountBySource,
-            visibleEventCountBySource: {
-              spot: 0,
-              futures: 0,
-            },
-            renderedCountBySource: {
-              spot: 0,
-              futures: 0,
-            },
-            visibleEventCountBySizeMode: {
-              volume: 0,
-              orders: 0,
-            },
-            renderedCountBySizeMode: {
-              volume: 0,
-              orders: 0,
-            },
-            filteredCount: aggregateBubbleEvents.length,
-            filterReasons: aggregateBubbleEvents.length > 0 ? { sourceNotSelected: aggregateBubbleEvents.length } : {},
-            tradeCountFallbackCount: 0,
-            tradeCountFallbackPolicy: bubbleSizeBy === 'orders' ? 'missing-or-invalid-trade-count-treated-as-1' : null,
-            latestEvent: latestAggregateEvent
-              ? {
-                time: latestAggregateEvent.time,
-                price: latestAggregateEvent.price,
-                volume: latestAggregateEvent.volume,
-                side: latestAggregateEvent.side,
-                source: latestAggregateEvent.source,
-                symbol: latestAggregateEvent.symbol,
-                contractType: latestAggregateEvent.contractType,
-                tradeCount: typeof latestAggregateEvent.tradeCount === 'number' && Number.isFinite(latestAggregateEvent.tradeCount)
-                  ? latestAggregateEvent.tradeCount
-                  : null,
+          );
+        }
+
+        // Volume bubbles — drawn above candles/footprint, below volume profile
+        if (bubblesEnabled) {
+          if (bubbleSource === 'aggregateTrades') {
+            drawAggregateTradeBubbles(liveCtx, aggregateBubbleEvents, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, {
+              bubbleSizeBy,
+              aggregateBubbleMarketSource,
+              activeChartContractType,
+              activeDataSourceMode,
+              bubbleThreshold,
+              bubbleThresholdMode,
+              bubbleMinOrders,
+              bubbleMinRadius,
+              bubbleMaxRadius,
+              bubbleSide,
+              bubbleScaleMode,
+            }, {
+              panelId,
+              bubbleSource,
+              bufferSize: aggregateBubbleEvents.length,
+              maxBufferSize: MAX_AGGREGATE_BUBBLE_EVENTS,
+              activeChartContractType,
+              activeDataSourceMode,
+              engine,
+              bucketSize,
+            });
+          } else {
+            const latestAggregateEvent = aggregateBubbleEvents[aggregateBubbleEvents.length - 1] ?? null;
+            const restoredAggregateEvents = aggregateBubbleEvents.filter((event) => event.origin === 'restored');
+            const restoredAggregateTimes = restoredAggregateEvents
+              .map((event) => event.time)
+              .filter((time) => Number.isFinite(time));
+            const restoredEventCountBySource = restoredAggregateEvents.reduce((counts, event) => {
+              if (event.contractType === 'spot' || event.contractType === 'futures') {
+                counts[event.contractType] += 1;
               }
-              : null,
-            latestRendered: null,
-            latestFiltered: null,
-            visibleWindow: candles[firstIndex] && candles[lastIndex]
-              ? {
-                startTime: candleTimeAt(firstIndex, candles) as number,
-                endTime: candleTimeAt(lastIndex, candles) as number,
+              return counts;
+            }, { spot: 0, futures: 0 });
+            const totalEventCountBySource = aggregateBubbleEvents.reduce((counts, event) => {
+              if (event.contractType === 'spot' || event.contractType === 'futures') {
+                counts[event.contractType] += 1;
               }
-              : null,
-            settings: {
-              sizeBy: bubbleSizeBy,
-              marketSource: aggregateBubbleMarketSource,
-              resolvedMarketSource: activeDataSourceMode === 'both' ? 'both' : activeDataSourceMode || activeChartContractType,
-              minVolume: bubbleThreshold,
-              minOrders: bubbleMinOrders,
-              thresholdMode: bubbleThresholdMode,
-              side: bubbleSide,
-              scaleMode: bubbleScaleMode,
-              minRadius: bubbleMinRadius,
-              maxRadius: bubbleMaxRadius,
-              actualThreshold: null,
-              actualThresholdMode: null,
-            },
-          });
-          drawBubbles(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, bucketSize, engine, currentBarWidth, {
-            bubbleThreshold,
-            bubbleThresholdMode,
-            bubbleMinRadius,
-            bubbleMaxRadius,
-            bubbleSide,
-            bubbleScaleMode,
+              return counts;
+            }, { spot: 0, futures: 0 });
+            recordAggregateBubbleDebug({
+              panelId,
+              bubbleSource,
+              bubbleSizeBy,
+              aggregateBubbleMarketSource,
+              activeChartMarketSource: {
+                contractType: activeChartContractType,
+                dataSourceMode: activeDataSourceMode,
+              },
+              bufferSize: aggregateBubbleEvents.length,
+              maxBufferSize: MAX_AGGREGATE_BUBBLE_EVENTS,
+              restoredEventCount: restoredAggregateEvents.length,
+              liveEventCount: Math.max(0, aggregateBubbleEvents.length - restoredAggregateEvents.length),
+              totalHydratedCount: aggregateBubbleEvents.length,
+              duplicateSkippedCount: 0,
+              restoreQueryRange: null,
+              restoredSpotCount: restoredEventCountBySource.spot,
+              restoredFuturesCount: restoredEventCountBySource.futures,
+              minRestoredEventTime: restoredAggregateTimes.length > 0 ? Math.min(...restoredAggregateTimes) : null,
+              maxRestoredEventTime: restoredAggregateTimes.length > 0 ? Math.max(...restoredAggregateTimes) : null,
+              storageThresholds: null,
+              currentRenderedCountAfterRestore: null,
+              visibleEventCount: 0,
+              renderedCount: 0,
+              totalEventCountBySource,
+              visibleEventCountBySource: {
+                spot: 0,
+                futures: 0,
+              },
+              renderedCountBySource: {
+                spot: 0,
+                futures: 0,
+              },
+              visibleEventCountBySizeMode: {
+                volume: 0,
+                orders: 0,
+              },
+              renderedCountBySizeMode: {
+                volume: 0,
+                orders: 0,
+              },
+              filteredCount: aggregateBubbleEvents.length,
+              filterReasons: aggregateBubbleEvents.length > 0 ? { sourceNotSelected: aggregateBubbleEvents.length } : {},
+              tradeCountFallbackCount: 0,
+              tradeCountFallbackPolicy: bubbleSizeBy === 'orders' ? 'missing-or-invalid-trade-count-treated-as-1' : null,
+              latestEvent: latestAggregateEvent
+                ? {
+                  time: latestAggregateEvent.time,
+                  price: latestAggregateEvent.price,
+                  volume: latestAggregateEvent.volume,
+                  side: latestAggregateEvent.side,
+                  source: latestAggregateEvent.source,
+                  symbol: latestAggregateEvent.symbol,
+                  contractType: latestAggregateEvent.contractType,
+                  tradeCount: typeof latestAggregateEvent.tradeCount === 'number' && Number.isFinite(latestAggregateEvent.tradeCount)
+                    ? latestAggregateEvent.tradeCount
+                    : null,
+                }
+                : null,
+              latestRendered: null,
+              latestFiltered: null,
+              visibleWindow: candles[firstIndex] && candles[lastIndex]
+                ? {
+                  startTime: candleTimeAt(firstIndex, candles) as number,
+                  endTime: candleTimeAt(lastIndex, candles) as number,
+                }
+                : null,
+              settings: {
+                sizeBy: bubbleSizeBy,
+                marketSource: aggregateBubbleMarketSource,
+                resolvedMarketSource: activeDataSourceMode === 'both' ? 'both' : activeDataSourceMode || activeChartContractType,
+                minVolume: bubbleThreshold,
+                minOrders: bubbleMinOrders,
+                thresholdMode: bubbleThresholdMode,
+                side: bubbleSide,
+                scaleMode: bubbleScaleMode,
+                minRadius: bubbleMinRadius,
+                maxRadius: bubbleMaxRadius,
+                actualThreshold: null,
+                actualThresholdMode: null,
+              },
+            });
+            drawBubbles(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, bucketSize, engine, currentBarWidth, {
+              bubbleThreshold,
+              bubbleThresholdMode,
+              bubbleMinRadius,
+              bubbleMaxRadius,
+              bubbleSide,
+              bubbleScaleMode,
+            });
+          }
+        }
+
+        // 5. Absorption markers
+        if (absorptionEnabled && absorptionMap.size > 0) {
+          drawAbsorption(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, absorptionMap, absorptionShowLabels, absorptionMinScore, absorptionSide, timeframe);
+        }
+
+        // 5b. Exhaustion markers
+        if (exhaustionEnabled && exhaustionMap.size > 0) {
+          drawExhaustion(liveCtx, candles, { firstIndex, lastIndex }, indexToX, priceToY, currentBarWidth, exhaustionMap, { exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, timeframe });
+        }
+
+        // 5c. Iceberg level markers
+        if (icebergEnabled && icebergLevels.length > 0) {
+          drawIceberg(liveCtx, icebergLevels, candles, indexToX, priceToY, currentBarWidth, bucketSize, {
+            icebergMinScore,
+            icebergShowSuspected,
+            icebergShowLabels,
+            icebergShowTint,
+            icebergLookback,
+            absorptionMap,
           });
         }
       }
 
-      // 5. Absorption markers
-      if (absorptionEnabled && absorptionMap.size > 0) {
-        drawAbsorption(ctx, candles, firstIndex, lastIndex, indexToX, priceToY, absorptionMap, absorptionShowLabels, absorptionMinScore, absorptionSide, timeframe);
-      }
-
-      // 5b. Exhaustion markers
-      if (exhaustionEnabled && exhaustionMap.size > 0) {
-        drawExhaustion(ctx, candles, { firstIndex, lastIndex }, indexToX, priceToY, currentBarWidth, exhaustionMap, { exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, timeframe });
-      }
-
-      // 5c. Iceberg level markers
-      if (icebergEnabled && icebergLevels.length > 0) {
-        drawIceberg(ctx, icebergLevels, candles, indexToX, priceToY, currentBarWidth, bucketSize, {
-          icebergMinScore,
-          icebergShowSuspected,
-          icebergShowLabels,
-          icebergShowTint,
-          icebergLookback,
-          absorptionMap,
-        });
-      }
-
-      // 6. Custom Profile (on top of candles and other overlays)
-      if (resolvedCustomProfileRange) {
-        const customTimeBounds = getCustomProfileTimeBounds(resolvedCustomProfileRange, candles);
-        const customCandles = customTimeBounds
-          ? candles.filter((candle) => candle.time >= customTimeBounds.startTime && candle.time <= customTimeBounds.endTime)
-          : [];
-        const customStartTime = customTimeBounds?.startTime ?? null;
-        const customEndTime = customTimeBounds?.endTime ?? null;
-        const customProfileHeightPx = Math.abs(
-          priceToY(resolvedCustomProfileRange.priceLow) - priceToY(resolvedCustomProfileRange.priceHigh)
-        );
-        const customProfileBucketSize = resolveProfileBucketSize(
-          resolvedCustomProfileRange.priceHigh,
-          resolvedCustomProfileRange.priceLow,
-          customProfileHeightPx,
-          profileResolutionTicks,
-          tickSize,
-          bucketSize
-        );
-        const customProfile = volumeProfileEngine.buildProfile({
-          candles: customCandles,
-          profileBucketSize: customProfileBucketSize,
-          priceHigh: resolvedCustomProfileRange.priceHigh,
-          priceLow: resolvedCustomProfileRange.priceLow,
-          debugContext: {
-            label: 'selected-custom-profile-render',
-            panelId,
-            selectedStartTime: customStartTime ?? undefined,
-            selectedEndTime: customEndTime ?? undefined,
-          },
-        });
-        drawCustomProfile(
-          ctx,
-          resolvedCustomProfileRange,
-          customProfile,
-          indexToX,
-          priceToY,
-          currentBarWidth,
-          bucketSize,
-          hoverZone.current !== null,
-          customProfileLocked,
-          isProfileSelected,
-          profileScaleMode,
-          customProfileBucketSize,
-          profileWidthPct,
-          profileOpacity,
-          profileMinRowWidth,
-          profileMinRowHeight,
-          profileShowPocHighlight,
-          profileShowVaFill,
-          profileShowPocLine,
-          profileShowVaLines
-        );
-
-        if (profileShowDelta && customProfile) {
-          const customX1 = indexToX(resolvedCustomProfileRange.firstIndex) - currentBarWidth / 2;
-          const customX2 = indexToX(resolvedCustomProfileRange.lastIndex) + currentBarWidth / 2;
-          const customRectX = Math.min(customX1, customX2);
-
-          drawDeltaProfile(
+      if (drawAll || layersToDraw.has('overlay')) {
+        // 6. Custom Profile (on top of candles and other overlays)
+        if (resolvedCustomProfileRange) {
+          const customTimeBounds = getCustomProfileTimeBounds(resolvedCustomProfileRange, candles);
+          const customCandles = customTimeBounds
+            ? candles.filter((candle) => candle.time >= customTimeBounds.startTime && candle.time <= customTimeBounds.endTime)
+            : [];
+          const customStartTime = customTimeBounds?.startTime ?? null;
+          const customEndTime = customTimeBounds?.endTime ?? null;
+          const customProfileHeightPx = Math.abs(
+            priceToY(resolvedCustomProfileRange.priceLow) - priceToY(resolvedCustomProfileRange.priceHigh)
+          );
+          const customProfileBucketSize = resolveProfileBucketSize(
+            resolvedCustomProfileRange.priceHigh,
+            resolvedCustomProfileRange.priceLow,
+            customProfileHeightPx,
+            profileResolutionTicks,
+            tickSize,
+            bucketSize
+          );
+          const customProfile = volumeProfileEngine.buildProfile({
+            candles: customCandles,
+            profileBucketSize: customProfileBucketSize,
+            priceHigh: resolvedCustomProfileRange.priceHigh,
+            priceLow: resolvedCustomProfileRange.priceLow,
+            debugContext: {
+              label: 'selected-custom-profile-render',
+              panelId,
+              selectedStartTime: customStartTime ?? undefined,
+              selectedEndTime: customEndTime ?? undefined,
+            },
+          });
+          drawCustomProfile(
             ctx,
+            resolvedCustomProfileRange,
             customProfile,
+            indexToX,
             priceToY,
-            customRectX,
-            deltaProfileWidth,
+            currentBarWidth,
+            bucketSize,
+            hoverZone.current !== null,
+            customProfileLocked,
+            isProfileSelected,
+            profileScaleMode,
             customProfileBucketSize,
+            profileWidthPct,
             profileOpacity,
             profileMinRowWidth,
             profileMinRowHeight,
-            profileScaleMode
+            profileShowPocHighlight,
+            profileShowVaFill,
+            profileShowPocLine,
+            profileShowVaLines
           );
+
+          if (profileShowDelta && customProfile) {
+            const customX1 = indexToX(resolvedCustomProfileRange.firstIndex) - currentBarWidth / 2;
+            const customX2 = indexToX(resolvedCustomProfileRange.lastIndex) + currentBarWidth / 2;
+            const customRectX = Math.min(customX1, customX2);
+
+            drawDeltaProfile(
+              ctx,
+              customProfile,
+              priceToY,
+              customRectX,
+              deltaProfileWidth,
+              customProfileBucketSize,
+              profileOpacity,
+              profileMinRowWidth,
+              profileMinRowHeight,
+              profileScaleMode
+            );
+          }
         }
       }
 
@@ -856,161 +905,167 @@ export function ChartCanvas({
       }
 
       // Volume Profile
-      if (defaultProfileEnabled) {
-        const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
-        const profile = volumeProfileEngine.buildProfile({
-          candles: visibleCandles,
-          profileBucketSize: defaultProfileBucketSize,
-        });
-
-        if (profile) {
-          drawVolumeProfile(
-            ctx,
-            profile,
-            priceToY,
-            logicalWidth,
-            baseProfileWidth,
-            priceAxisWidth,
-            bucketSize,
-            !!resolvedCustomProfileRange,
-            profileWidthPct,
-            profileOpacity,
-            profileMinRowWidth,
-            profileMinRowHeight,
-            defaultProfileBucketSize,
-            profileScaleMode,
-            profileShowPocHighlight,
-            profileShowVaFill,
-            profileShowPocLine,
-            profileShowVaLines,
-            liquidityHeatmapProfileSync ? heatmapRows : undefined
-          );
-        }
-      }
-
-      // Historical Session Volume Profiles
-      if (historicalSessionProfileEnabled && historicalSessionRanges.length > 0) {
-        for (const sessionRange of historicalSessionRanges) {
-          const startTime = sessionRange.startTimeMs / 1000;
-          const endTime = sessionRange.endTimeMs / 1000;
-          
-          // Binary search for first candle with time >= startTime
-          let lo = 0, hi = candles.length;
-          while (lo < hi) {
-            const mid = (lo + hi) >>> 1;
-            if (candles[mid].time < startTime) lo = mid + 1; else hi = mid;
-          }
-          const firstIndex = lo;
-
-          // Binary search for last candle with time < endTime
-          lo = firstIndex; hi = candles.length;
-          while (lo < hi) {
-            const mid = (lo + hi) >>> 1;
-            if (candles[mid].time < endTime) lo = mid + 1; else hi = mid;
-          }
-          const lastIndex = lo - 1;
-
-          if (firstIndex > lastIndex || firstIndex >= candles.length) continue;
-
-          let sHigh = -Infinity;
-          let sLow = Infinity;
-          for (let ci = firstIndex; ci <= lastIndex; ci++) {
-            if (candles[ci].high > sHigh) sHigh = candles[ci].high;
-            if (candles[ci].low < sLow) sLow = candles[ci].low;
-          }
-          if (sHigh === -Infinity || sLow === Infinity) continue;
-
-          const sessionCandles = candles.slice(firstIndex, lastIndex + 1);
-          
-          const sessionProfileRange = {
-            firstIndex,
-            lastIndex,
-            priceHigh: sHigh,
-            priceLow: sLow,
-          };
-          
-          const sessionProfileHeightPx = Math.abs(priceToY(sLow) - priceToY(sHigh));
-          const sessionProfileBucketSize = resolveProfileBucketSize(
-            sHigh,
-            sLow,
-            sessionProfileHeightPx,
-            profileResolutionTicks,
-            tickSize,
-            bucketSize
-          );
-          
-          const sessionProfile = volumeProfileEngine.buildProfile({
-            candles: sessionCandles,
-            profileBucketSize: sessionProfileBucketSize,
-            priceHigh: sHigh,
-            priceLow: sLow,
-            debugContext: {
-              label: 'historical-session-profile-render',
-              panelId,
-              selectedStartTime: startTime,
-              selectedEndTime: endTime,
-            },
+      if (drawAll || layersToDraw.has('live')) {
+        if (defaultProfileEnabled) {
+          const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
+          const profile = volumeProfileEngine.buildProfile({
+            candles: visibleCandles,
+            profileBucketSize: defaultProfileBucketSize,
           });
-          
-          drawCustomProfile(
-            ctx,
-            sessionProfileRange,
-            sessionProfile,
-            indexToX,
-            priceToY,
-            currentBarWidth,
-            bucketSize,
-            false, // isHovered
-            true, // isLocked
-            false, // isSelected
-            profileScaleMode,
-            sessionProfileBucketSize,
-            profileWidthPct,
-            profileOpacity,
-            profileMinRowWidth,
-            profileMinRowHeight,
-            profileShowPocHighlight,
-            profileShowVaFill,
-            profileShowPocLine,
-            profileShowVaLines
-          );
 
-          if (profileShowDelta && sessionProfile) {
-            const sessionX1 = indexToX(sessionProfileRange.firstIndex) - currentBarWidth / 2;
-            const sessionX2 = indexToX(sessionProfileRange.lastIndex) + currentBarWidth / 2;
-            const sessionRectX = Math.min(sessionX1, sessionX2);
-
-            drawDeltaProfile(
-              ctx,
-              sessionProfile,
+          if (profile) {
+            drawVolumeProfile(
+              liveCtx,
+              profile,
               priceToY,
-              sessionRectX,
-              deltaProfileWidth,
-              sessionProfileBucketSize,
+              logicalWidth,
+              baseProfileWidth,
+              priceAxisWidth,
+              bucketSize,
+              !!resolvedCustomProfileRange,
+              profileWidthPct,
               profileOpacity,
               profileMinRowWidth,
               profileMinRowHeight,
-              profileScaleMode
+              defaultProfileBucketSize,
+              profileScaleMode,
+              profileShowPocHighlight,
+              profileShowVaFill,
+              profileShowPocLine,
+              profileShowVaLines,
+              liquidityHeatmapProfileSync ? heatmapRows : undefined
             );
           }
         }
+
+        // Historical Session Volume Profiles
+        if (historicalSessionProfileEnabled && historicalSessionRanges.length > 0) {
+          for (const sessionRange of historicalSessionRanges) {
+            const startTime = sessionRange.startTimeMs / 1000;
+            const endTime = sessionRange.endTimeMs / 1000;
+            
+            // Binary search for first candle with time >= startTime
+            let lo = 0, hi = candles.length;
+            while (lo < hi) {
+              const mid = (lo + hi) >>> 1;
+              if (candles[mid].time < startTime) lo = mid + 1; else hi = mid;
+            }
+            const firstIndex = lo;
+
+            // Binary search for last candle with time < endTime
+            lo = firstIndex; hi = candles.length;
+            while (lo < hi) {
+              const mid = (lo + hi) >>> 1;
+              if (candles[mid].time < endTime) lo = mid + 1; else hi = mid;
+            }
+            const lastIndex = lo - 1;
+
+            if (firstIndex > lastIndex || firstIndex >= candles.length) continue;
+
+            let sHigh = -Infinity;
+            let sLow = Infinity;
+            for (let ci = firstIndex; ci <= lastIndex; ci++) {
+              if (candles[ci].high > sHigh) sHigh = candles[ci].high;
+              if (candles[ci].low < sLow) sLow = candles[ci].low;
+            }
+            if (sHigh === -Infinity || sLow === Infinity) continue;
+
+            const sessionCandles = candles.slice(firstIndex, lastIndex + 1);
+            
+            const sessionProfileRange = {
+              firstIndex,
+              lastIndex,
+              priceHigh: sHigh,
+              priceLow: sLow,
+            };
+            
+            const sessionProfileHeightPx = Math.abs(priceToY(sLow) - priceToY(sHigh));
+            const sessionProfileBucketSize = resolveProfileBucketSize(
+              sHigh,
+              sLow,
+              sessionProfileHeightPx,
+              profileResolutionTicks,
+              tickSize,
+              bucketSize
+            );
+            
+            const sessionProfile = volumeProfileEngine.buildProfile({
+              candles: sessionCandles,
+              profileBucketSize: sessionProfileBucketSize,
+              priceHigh: sHigh,
+              priceLow: sLow,
+              debugContext: {
+                label: 'historical-session-profile-render',
+                panelId,
+                selectedStartTime: startTime,
+                selectedEndTime: endTime,
+              },
+            });
+            
+            drawCustomProfile(
+              liveCtx,
+              sessionProfileRange,
+              sessionProfile,
+              indexToX,
+              priceToY,
+              currentBarWidth,
+              bucketSize,
+              false, // isHovered
+              true, // isLocked
+              false, // isSelected
+              profileScaleMode,
+              sessionProfileBucketSize,
+              profileWidthPct,
+              profileOpacity,
+              profileMinRowWidth,
+              profileMinRowHeight,
+              profileShowPocHighlight,
+              profileShowVaFill,
+              profileShowPocLine,
+              profileShowVaLines
+            );
+
+            if (profileShowDelta && sessionProfile) {
+              const sessionX1 = indexToX(sessionProfileRange.firstIndex) - currentBarWidth / 2;
+              const sessionX2 = indexToX(sessionProfileRange.lastIndex) + currentBarWidth / 2;
+              const sessionRectX = Math.min(sessionX1, sessionX2);
+
+              drawDeltaProfile(
+                liveCtx,
+                sessionProfile,
+                priceToY,
+                sessionRectX,
+                deltaProfileWidth,
+                sessionProfileBucketSize,
+                profileOpacity,
+                profileMinRowWidth,
+                profileMinRowHeight,
+                profileScaleMode
+              );
+            }
+          }
+        }
+        if (isDirty && candles.length > 0) {
+          liveCtx.restore();
+        }
       }
       
-      // Measurement Rect (on top of profiles, below axes)
-      if (activeMeasurement) {
-        drawMeasurementRect(ctx, activeMeasurement, currentBarWidth);
-      } else if (measureToolActive && isDragging.current && dragStart.current && dragEnd.current) {
-        // Live measurement rendering during drag
-        drawMeasurementRect(ctx, {
-          startX: dragStart.current.x,
-          startY: dragStart.current.y,
-          endX: dragEnd.current.x,
-          endY: dragEnd.current.y,
-          live: true,
-          metrics: null,
-          footprintMetrics: null
-        }, currentBarWidth);
-      } else if (lineDrawMode === 'box' && isDragging.current && dragStart.current && dragEnd.current) {
+      if (drawAll || layersToDraw.has('overlay')) {
+        // Measurement Rect (on top of profiles, below axes)
+        if (activeMeasurement) {
+          drawMeasurementRect(ctx, activeMeasurement, currentBarWidth);
+        } else if (measureToolActive && isDragging.current && dragStart.current && dragEnd.current) {
+          // Live measurement rendering during drag
+          drawMeasurementRect(ctx, {
+            startX: dragStart.current.x,
+            startY: dragStart.current.y,
+            endX: dragEnd.current.x,
+            endY: dragEnd.current.y,
+            live: true,
+            metrics: null,
+            footprintMetrics: null
+          }, currentBarWidth);
+        } else if (lineDrawMode === 'box' && isDragging.current && dragStart.current && dragEnd.current) {
         const firstIndex = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
         const lastIndex = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
         const priceHigh = Math.max(
@@ -1045,180 +1100,192 @@ export function ChartCanvas({
           false
         );
       }
-
-      drawPriceAxis(ctx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight);
-      drawDrawingPriceLabels(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth);
-      if (showTimeAxis) {
-        drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
       }
 
-      if (heatmapRows && liquidityHistory) {
-        // The heatmap strip is drawn right before the volume profile
-        const stripX = chartWidth - profileWidth; // start of reserved space (heatmap comes first from the left)
-        drawLiquidityHeatmap(ctx, heatmapRows, priceToY, stripX, liquidityHeatmapWidth, liquidityBucketSize, {
-          heatmapOpacity: liquidityHeatmapOpacity,
-          ageFadeFactor: liquidityHeatmapAgeFade,
-          showPulled: liquidityHeatmapShowPulled,
-          showConsumed: liquidityHeatmapShowConsumed,
-          showPersistence: liquidityHeatmapShowPersistence,
-          totalSnapshots: liquidityHistory.getHistory().length,
-          currentPrice: lastCandle?.close || 0,
-          isScrolled,
-          showCurrentLabel: liquidityHeatmapShowCurrentLabel,
-          canvasHeight: chartHeight
-        });
-      }
-
-      let activePosition: DrawnLine | null = null;
-      if (
-        (lineDrawMode === 'long-position' || lineDrawMode === 'short-position') &&
-        isDragging.current &&
-        dragStart.current &&
-        dragEnd.current
-      ) {
-        activePosition = buildPositionFromRiskDrag(
-          lineDrawMode,
-          dragStart.current,
-          dragEnd.current,
-          candles,
-          currentScrollOffset,
-          currentBarWidth,
-          chartWidth,
-          profileWidth,
-          priceMin,
-          priceMax,
-          chartHeight,
-          Math.max(tickSize, bucketSize * 0.01),
-          null
-        );
-
-        if (activePosition) {
-          activePosition.id = 'active-position';
+      if (drawAll || layersToDraw.has('background')) {
+        drawPriceAxis(bgCtx, priceMin, priceMax, priceToY, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight);
+        if (showTimeAxis) {
+          drawTimeAxis(bgCtx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
         }
       }
 
-      const positionLines = activePosition ? [...resolvedPositionLines, activePosition] : resolvedPositionLines;
-      if (positionLines.length > 0) {
-        drawLines(
-          ctx,
-          positionLines,
-          indexToX,
-          priceToY,
-          logicalWidth,
-          logicalHeight,
-          timeAxisHeight,
-          priceAxisWidth,
-          currentBarWidth,
-          activePosition ? 'active-position' : hoveredLineId.current,
-          selectedDrawingId,
-          isHoveringDeleteDot.current,
-          candles
-        );
+      if (drawAll || layersToDraw.has('overlay')) {
+        drawDrawingPriceLabels(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth);
       }
 
-      const activePositions = tradingContractType === 'futures'
-        ? positions.filter(p => p.side !== 'flat').map(p => ({
-            id: p.symbol,
-            status: 'open' as const,
-            symbol: p.symbol,
-            side: p.side as 'long' | 'short',
-            quantity: p.quantity,
-            entryPrice: p.entryPrice ?? 0,
-            unrealizedPnl: p.unrealizedPnl,
-            liquidationPrice: p.liquidationPrice,
-            openedAt: p.updatedAt ?? Date.now(),
-            fillIds: [],
-          }))
-        : virtualPositions;
-
-      if (openOrders.length > 0 || activePositions.length > 0 || recentFills.length > 0) {
-        bracketHitZones.current = drawTradingOverlays(
-          ctx,
-          candles,
-          { firstIndex, lastIndex },
-          indexToX,
-          priceToY,
-          chartWidth,
-          chartHeight,
-          priceAxisWidth,
-          openOrders,
-          activePositions,
-          bracketOrders,
-          recentFills,
-          modifyingOrderId && dragPreviewPrice !== null
-            ? { orderId: modifyingOrderId, price: dragPreviewPrice }
-            : null,
-          bracketDrag,
-        );
-      }
-
-      if (lastCandle) {
-        drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
-      }
-
-      // Draw Crosshair
-      const crosshair = useChartRuntimeStore.getState().crosshair;
-      const crosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
-      let mx: number | null = null;
-      let my: number | null = null;
-
-      if (isMouseOver.current && mouseX.current !== null && mouseY.current !== null && !localProfileHitZone) {
-        mx = mouseX.current;
-        my = mouseY.current;
-      } else if (crosshairSyncEnabled && crosshair.activePanel && (crosshair.activePanel !== panelId || !isMouseOver.current)) {
-        if (crosshair.time !== null) {
-          const syncedIndex = timeToIndex(crosshair.time, candles);
-          mx = indexToX(syncedIndex);
-        }
-        if (crosshair.price !== null) {
-          my = priceToY(crosshair.price);
+      if (drawAll || layersToDraw.has('live')) {
+        if (heatmapRows && liquidityHistory) {
+          // The heatmap strip is drawn right before the volume profile
+          const stripX = chartWidth - profileWidth; // start of reserved space (heatmap comes first from the left)
+          drawLiquidityHeatmap(liveCtx, heatmapRows, priceToY, stripX, liquidityHeatmapWidth, liquidityBucketSize, {
+            heatmapOpacity: liquidityHeatmapOpacity,
+            ageFadeFactor: liquidityHeatmapAgeFade,
+            showPulled: liquidityHeatmapShowPulled,
+            showConsumed: liquidityHeatmapShowConsumed,
+            showPersistence: liquidityHeatmapShowPersistence,
+            totalSnapshots: liquidityHistory.getHistory().length,
+            currentPrice: lastCandle?.close || 0,
+            isScrolled,
+            showCurrentLabel: liquidityHeatmapShowCurrentLabel,
+            canvasHeight: chartHeight
+          });
         }
       }
 
-      if (mx !== null || my !== null) {
-        drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
+      if (drawAll || layersToDraw.has('overlay')) {
+        let activePosition: DrawnLine | null = null;
+        if (
+          (lineDrawMode === 'long-position' || lineDrawMode === 'short-position') &&
+          isDragging.current &&
+          dragStart.current &&
+          dragEnd.current
+        ) {
+          activePosition = buildPositionFromRiskDrag(
+            lineDrawMode,
+            dragStart.current,
+            dragEnd.current,
+            candles,
+            currentScrollOffset,
+            currentBarWidth,
+            chartWidth,
+            profileWidth,
+            priceMin,
+            priceMax,
+            chartHeight,
+            Math.max(tickSize, bucketSize * 0.01),
+            null
+          );
 
-        // Price Label
-        if (my !== null && my >= 0 && my <= chartHeight) {
-          const price = yToPrice(my, priceMin, priceMax, chartHeight);
-          const step = calculatePriceStep(priceMax - priceMin, chartHeight);
-          const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
-          drawCrosshairPriceLabel(ctx, my, price, chartWidth, priceAxisWidth, chartHeight, precision);
-        }
-
-        // Time Label
-        if (mx !== null && mx >= 0 && mx <= chartWidth) {
-          const index = xToIndex(mx, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
-          let time = 0;
-          if (candles[index]) {
-            time = candles[index].time;
-          } else if (candles.length > 0) {
-            const lastCandle = candles[candles.length - 1];
-            const firstCandle = candles[0];
-            const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
-            time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
-          }
-          if (showTimeAxis) {
-            drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
+          if (activePosition) {
+            activePosition.id = 'active-position';
           }
         }
+
+        const positionLines = activePosition ? [...resolvedPositionLines, activePosition] : resolvedPositionLines;
+        if (positionLines.length > 0) {
+          drawLines(
+            ctx,
+            positionLines,
+            indexToX,
+            priceToY,
+            logicalWidth,
+            logicalHeight,
+            timeAxisHeight,
+            priceAxisWidth,
+            currentBarWidth,
+            activePosition ? 'active-position' : hoveredLineId.current,
+            selectedDrawingId,
+            isHoveringDeleteDot.current,
+            candles
+          );
+        }
+
+        const activePositions = tradingContractType === 'futures'
+          ? positions.filter(p => p.side !== 'flat').map(p => ({
+              id: p.symbol,
+              status: 'open' as const,
+              symbol: p.symbol,
+              side: p.side as 'long' | 'short',
+              quantity: p.quantity,
+              entryPrice: p.entryPrice ?? 0,
+              unrealizedPnl: p.unrealizedPnl,
+              liquidationPrice: p.liquidationPrice,
+              openedAt: p.updatedAt ?? Date.now(),
+              fillIds: [],
+            }))
+          : virtualPositions;
+
+        if (openOrders.length > 0 || activePositions.length > 0 || recentFills.length > 0) {
+          bracketHitZones.current = drawTradingOverlays(
+            ctx,
+            candles,
+            { firstIndex, lastIndex },
+            indexToX,
+            priceToY,
+            chartWidth,
+            chartHeight,
+            priceAxisWidth,
+            openOrders,
+            activePositions,
+            bracketOrders,
+            recentFills,
+            modifyingOrderId && dragPreviewPrice !== null
+              ? { orderId: modifyingOrderId, price: dragPreviewPrice }
+              : null,
+            bracketDrag,
+          );
+        }
+
+        if (lastCandle) {
+          drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
+        }
+
+        // Draw Crosshair
+        const crosshair = useChartRuntimeStore.getState().crosshair;
+        const crosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
+        let mx: number | null = null;
+        let my: number | null = null;
+
+        if (isMouseOver.current && mouseX.current !== null && mouseY.current !== null && !localProfileHitZone) {
+          mx = mouseX.current;
+          my = mouseY.current;
+        } else if (crosshairSyncEnabled && crosshair.activePanel && (crosshair.activePanel !== panelId || !isMouseOver.current)) {
+          if (crosshair.time !== null) {
+            const syncedIndex = timeToIndex(crosshair.time, candles);
+            mx = indexToX(syncedIndex);
+          }
+          if (crosshair.price !== null) {
+            my = priceToY(crosshair.price);
+          }
+        }
+
+        if (mx !== null || my !== null) {
+          drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
+
+          // Price Label
+          if (my !== null && my >= 0 && my <= chartHeight) {
+            const price = yToPrice(my, priceMin, priceMax, chartHeight);
+            const step = calculatePriceStep(priceMax - priceMin, chartHeight);
+            const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
+            drawCrosshairPriceLabel(ctx, my, price, chartWidth, priceAxisWidth, chartHeight, precision);
+          }
+
+          // Time Label
+          if (mx !== null && mx >= 0 && mx <= chartWidth) {
+            const index = xToIndex(mx, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+            let time = 0;
+            if (candles[index]) {
+              time = candles[index].time;
+            } else if (candles.length > 0) {
+              const lastCandle = candles[candles.length - 1];
+              const firstCandle = candles[0];
+              const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
+              time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
+            }
+            if (showTimeAxis) {
+              drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
+            }
+          }
+        }
       }
 
-      if (statsIndicatorEnabled && statsIndicatorItems.length > 0) {
-        drawStatsGrid(
-          ctx,
-          candles,
-          firstIndex,
-          lastIndex,
-          indexToX,
-          chartHeight,
-          statsIndicatorItems,
-          engine,
-          liquidityHistory,
-          logicalWidth,
-          priceAxisWidth,
-          currentBarWidth
-        );
+      if (drawAll || layersToDraw.has('live')) {
+        if (statsIndicatorEnabled && statsIndicatorItems.length > 0) {
+          drawStatsGrid(
+            liveCtx,
+            candles,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            chartHeight,
+            statsIndicatorItems,
+            engine,
+            liquidityHistory,
+            logicalWidth,
+            priceAxisWidth,
+            currentBarWidth
+          );
+        }
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1389,10 +1456,12 @@ export function ChartCanvas({
     if (!canvas || !container) return;
 
     const setupCanvas = (w: number, h: number) => {
+      if (bgCanvasRef.current) bgCtxRef.current = initCanvas(bgCanvasRef.current, w, h);
+      if (liveCanvasRef.current) liveCtxRef.current = initCanvas(liveCanvasRef.current, w, h);
       ctxRef.current = initCanvas(canvas, w, h);
       widthRef.current = w;
       heightRef.current = h;
-      redrawRef.current();
+      redrawRef.current('all');
     };
 
     // Initial setup with current bounds
@@ -1433,11 +1502,25 @@ export function ChartCanvas({
     };
   }, []);
 
-  // Redraw when data changes
+  // Redraw when candles change (optimized for live ticks)
   useEffect(() => {
-    redraw();
+    const prev = prevCandlesRef.current;
+    prevCandlesRef.current = candles;
+
+    if (prev.length > 0 && candles.length > 0) {
+      // If we just appended one candle or updated the last candle
+      if ((candles.length === prev.length || candles.length === prev.length + 1) && candles[0] === prev[0]) {
+        redraw('live-dirty');
+        return;
+      }
+    }
+    redraw('all');
+  }, [candles, redraw]);
+
+  // Redraw when configuration/state changes
+  useEffect(() => {
+    redraw('all');
   }, [
-    candles,
     chartMode,
     footprintMode,
     bucketSize,
@@ -1484,7 +1567,7 @@ export function ChartCanvas({
   // Real-time countdown timer
   useEffect(() => {
     const timer = setInterval(() => {
-      redraw();
+      redraw('background');
     }, 1000);
     return () => clearInterval(timer);
   }, [redraw]);
@@ -2722,8 +2805,16 @@ const onMouseUp = () => {
   return (
     <div ref={containerRef} className="w-full h-full relative bg-[#0F0F0F] overflow-hidden">
       <canvas
+        ref={bgCanvasRef}
+        className="absolute top-0 left-0 outline-none pointer-events-none z-0"
+      />
+      <canvas
+        ref={liveCanvasRef}
+        className="absolute top-0 left-0 outline-none pointer-events-none z-10"
+      />
+      <canvas
         ref={canvasRef}
-        className="absolute top-0 left-0 outline-none"
+        className="absolute top-0 left-0 outline-none z-20"
         tabIndex={0}
       />
       {hoveredAbs && (

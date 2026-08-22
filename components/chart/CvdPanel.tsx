@@ -61,12 +61,18 @@ export function CvdPanel({
   cvdShowDivergence,
   cvdDivergenceLookback,
 }: CvdPanelProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
+  const liveCanvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null); // Overlay
   const containerRef = useRef<HTMLDivElement>(null);
+  const bgCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const liveCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const widthRef = useRef(0);
   const heightRef = useRef(0);
+  const scheduledLayers = useRef<Set<'background' | 'live' | 'overlay' | 'live-dirty'>>(new Set(['background', 'live', 'overlay']));
   const isRedrawScheduled = useRef(false);
+  const prevCandlesRef = useRef<Candle[]>([]);
   const isDragging = useRef(false);
   const dragMode = useRef<CvdDragMode | null>(null);
   const lastY = useRef(0);
@@ -130,17 +136,33 @@ export function CvdPanel({
     return currentScale;
   }, [getViewportScale]);
 
-  const redraw = useCallback(() => {
+  const redraw = useCallback((layers: 'all' | Set<'background' | 'live' | 'overlay' | 'live-dirty'> | 'overlay' | 'live' | 'background' | 'live-dirty' = 'all') => {
+    if (layers === 'all') {
+      scheduledLayers.current.add('background');
+      scheduledLayers.current.add('live');
+      scheduledLayers.current.add('overlay');
+    } else if (typeof layers === 'string') {
+      scheduledLayers.current.add(layers);
+    } else {
+      layers.forEach((l) => scheduledLayers.current.add(l));
+    }
+
     if (isRedrawScheduled.current) return;
 
     isRedrawScheduled.current = true;
     requestAnimationFrame(() => {
       isRedrawScheduled.current = false;
+      const layersToDraw = new Set(scheduledLayers.current);
+      scheduledLayers.current.clear();
+      const drawAll = layersToDraw.size === 3;
 
+      const bgCtx = bgCtxRef.current;
+      const liveCtx = liveCtxRef.current;
       const ctx = ctxRef.current;
       const logicalWidth = widthRef.current;
       const logicalHeight = heightRef.current;
-      if (!ctx || logicalWidth <= 0 || logicalHeight <= 0) return;
+
+      if (!bgCtx || !liveCtx || !ctx || logicalWidth <= 0 || logicalHeight <= 0) return;
 
       const chartWidth = logicalWidth - priceAxisWidth;
       const chartHeight = logicalHeight - timeAxisHeight;
@@ -159,62 +181,87 @@ export function CvdPanel({
       });
       const autoScale = getCvdScale(points, firstIndex, lastIndex, cvdMode, cvdScaleMode, cvdFixedRange, chartHeight);
       const scale = getViewportScale(chartHeight, autoScale);
-      const divergenceMarkers = cvdShowDivergence
-        ? detectLocalCvdDivergences(candles, points, cvdDivergenceLookback)
-        : [];
 
-      ctx.clearRect(0, 0, logicalWidth, logicalHeight);
-      drawCvd(ctx, points, firstIndex, lastIndex, indexToX, scale, {
-        mode: cvdMode,
-        scaleMode: cvdScaleMode,
-        fixedRange: cvdFixedRange,
-        positiveColor: cvdPositiveColor,
-        negativeColor: cvdNegativeColor,
-        showDivergenceMarkers: cvdShowDivergence,
-        divergenceMarkers,
-        chartWidth,
-        chartHeight,
-        canvasWidth: logicalWidth,
-        canvasHeight: logicalHeight,
-        priceAxisWidth,
-        timeAxisHeight,
-        barWidth: barWidthProp,
-      });
-
-      drawTimeAxis(ctx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, barWidthProp);
-
-      const crosshair = useChartRuntimeStore.getState().crosshair;
-      const crosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
-      let mx: number | null = null;
-      let my: number | null = null;
-
-      if (
-        isMouseOver.current &&
-        mouseX.current !== null &&
-        mouseY.current !== null &&
-        mouseX.current >= 0 &&
-        mouseX.current <= chartWidth &&
-        mouseY.current >= 0 &&
-        mouseY.current <= chartHeight
-      ) {
-        mx = mouseX.current;
-        my = mouseY.current;
-      } else if (crosshairSyncEnabled && crosshair.activePanel && crosshair.time !== null && candles.length > 0) {
-        mx = indexToX(timeToIndex(crosshair.time, candles));
+      if (drawAll || layersToDraw.has('background')) {
+        bgCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+        drawTimeAxis(bgCtx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, barWidthProp);
       }
 
-      if (mx !== null || my !== null) {
-        drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
+      const isDirty = !drawAll && !layersToDraw.has('live') && layersToDraw.has('live-dirty');
+      if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
+        if (isDirty && candles.length > 0) {
+          const x = indexToX(candles.length - 1);
+          const colStartX = x - barWidthProp / 2 - 2;
+          const colWidth = barWidthProp + 4;
+          liveCtx.save();
+          liveCtx.beginPath();
+          liveCtx.rect(colStartX, 0, colWidth, logicalHeight);
+          liveCtx.clip();
+          liveCtx.clearRect(colStartX, 0, colWidth, logicalHeight);
+        } else {
+          liveCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+        }
+        const divergenceMarkers = cvdShowDivergence
+          ? detectLocalCvdDivergences(candles, points, cvdDivergenceLookback)
+          : [];
 
-        if (my !== null) {
-          drawCvdCrosshairValueLabel(ctx, my, scale.yToValue(my), chartWidth, priceAxisWidth, chartHeight);
+        drawCvd(liveCtx, points, firstIndex, lastIndex, indexToX, scale, {
+          mode: cvdMode,
+          scaleMode: cvdScaleMode,
+          fixedRange: cvdFixedRange,
+          positiveColor: cvdPositiveColor,
+          negativeColor: cvdNegativeColor,
+          showDivergenceMarkers: cvdShowDivergence,
+          divergenceMarkers,
+          chartWidth,
+          chartHeight,
+          canvasWidth: logicalWidth,
+          canvasHeight: logicalHeight,
+          priceAxisWidth,
+          timeAxisHeight,
+          barWidth: barWidthProp,
+        });
+        
+        if (isDirty && candles.length > 0) {
+          liveCtx.restore();
+        }
+      }
+
+      if (drawAll || layersToDraw.has('overlay')) {
+        ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+        const crosshair = useChartRuntimeStore.getState().crosshair;
+        const crosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
+        let mx: number | null = null;
+        let my: number | null = null;
+
+        if (
+          isMouseOver.current &&
+          mouseX.current !== null &&
+          mouseY.current !== null &&
+          mouseX.current >= 0 &&
+          mouseX.current <= chartWidth &&
+          mouseY.current >= 0 &&
+          mouseY.current <= chartHeight
+        ) {
+          mx = mouseX.current;
+          my = mouseY.current;
+        } else if (crosshairSyncEnabled && crosshair.activePanel && crosshair.time !== null && candles.length > 0) {
+          mx = indexToX(timeToIndex(crosshair.time, candles));
         }
 
-        if (mx !== null && mx >= 0 && mx <= chartWidth) {
-          const index = xToIndex(mx, candles, scrollOffsetProp, barWidthProp, chartWidth, profileWidth);
-          const time = candles[index]?.time ?? crosshair.time ?? 0;
-          if (time > 0) {
-            drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
+        if (mx !== null || my !== null) {
+          drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
+
+          if (my !== null) {
+            drawCvdCrosshairValueLabel(ctx, my, scale.yToValue(my), chartWidth, priceAxisWidth, chartHeight);
+          }
+
+          if (mx !== null && mx >= 0 && mx <= chartWidth) {
+            const index = xToIndex(mx, candles, scrollOffsetProp, barWidthProp, chartWidth, profileWidth);
+            const time = candles[index]?.time ?? crosshair.time ?? 0;
+            if (time > 0) {
+              drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
+            }
           }
         }
       }
@@ -277,10 +324,12 @@ export function CvdPanel({
     if (!canvas || !container) return;
 
     const setupCanvas = (w: number, h: number) => {
-      ctxRef.current = initCanvas(canvas, w, h);
+      if (bgCanvasRef.current) bgCtxRef.current = initCanvas(bgCanvasRef.current, w, h);
+      if (liveCanvasRef.current) liveCtxRef.current = initCanvas(liveCanvasRef.current, w, h);
+      if (canvasRef.current) ctxRef.current = initCanvas(canvasRef.current, w, h);
       widthRef.current = w;
       heightRef.current = h;
-      redrawRef.current();
+      redrawRef.current('all');
     };
 
     const rect = container.getBoundingClientRect();
@@ -463,10 +512,25 @@ export function CvdPanel({
     };
   }, [ensureManualScale, updateCrosshair]);
 
+  // Redraw when candles change (optimized for live ticks)
   useEffect(() => {
-    redraw();
+    const prev = prevCandlesRef.current;
+    prevCandlesRef.current = candles;
+
+    if (prev.length > 0 && candles.length > 0) {
+      // If we just appended one candle or updated the last candle
+      if ((candles.length === prev.length || candles.length === prev.length + 1) && candles[0] === prev[0]) {
+        redraw('live-dirty');
+        return;
+      }
+    }
+    redraw('all');
+  }, [candles, redraw]);
+
+  // Redraw when configuration/state changes
+  useEffect(() => {
+    redraw('all');
   }, [
-    candles,
     footprintTrigger,
     volumeProfileRevision,
     barWidthProp,
@@ -511,6 +575,14 @@ export function CvdPanel({
   return (
     <div ref={containerRef} className="w-full h-full relative bg-[#0F0F0F] overflow-hidden">
       <canvas
+        ref={bgCanvasRef}
+        className="absolute top-0 left-0 pointer-events-none"
+      />
+      <canvas
+        ref={liveCanvasRef}
+        className="absolute top-0 left-0 pointer-events-none"
+      />
+      <canvas
         ref={canvasRef}
         className="absolute top-0 left-0 outline-none"
         tabIndex={0}
@@ -518,3 +590,4 @@ export function CvdPanel({
     </div>
   );
 }
+  

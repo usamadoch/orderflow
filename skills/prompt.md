@@ -1,14 +1,15 @@
 TASK:
-Implement: 
+Implement:
 
 task1.md
 
-
 CONTEXT RULES:
-- 
+
+-
 
 map.md = source of truth for file structure
-- 
+
+-
 
 log.md = history of changes
 
@@ -25,13 +26,14 @@ STRICT EXECUTION FLOW:
 3. AFTER CODE CHANGES:
    - update map.md (MANDATORY)
      format:
-       file_path → responsibility (short line)
+     file_path → responsibility (short line)
    - update log.md:
-       - what changed
-       - why it changed
-       - impact summary
+     - what changed
+     - why it changed
+     - impact summary
 
 HARD RULES:
+
 - Never modify files outside inferred scope
 - Never skip map.md update
 - Never skip log.md update
@@ -40,11 +42,9 @@ HARD RULES:
 Do not start the Next dev server unless the change specifically requires browser/runtime UI verification. Prefer TypeScript checks and targeted code review first.
 ...
 
+Work only on the approved plan. Before making changes, identify the exact implementation steps. Execute them sequentially. After each major step, validate the result. Do not start additional investigation or implementation loops. If you encounter an issue outside the plan, stop and report it. Do not continue autonomously.
 
-
-
--------------------------------------------------------------------------
-
+---
 
 After completing the task:
 
@@ -65,14 +65,7 @@ After completing the task:
    git push origin main
 
 RULES:
+
 - Do NOT push if working directory has unfinished task.md changes
 - Do NOT include unrelated files
 - Always confirm repo is in clean state before pushing
-
-
-
-
-
-
-
-
