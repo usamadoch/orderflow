@@ -1,17 +1,20 @@
 'use client';
 
+// 1. External packages
 import { useState } from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, Settings } from 'lucide-react';
+
+// 2. Internal packages & stores
 import { useChartStore, type DataSourceMode, type PanelId, type IndicatorSettingsSection } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { ChartSettingsDropdown } from '@/components/ui/ChartSettingsDropdown';
+import type { IndicatorLabelConfig } from '@/types/chart';
 
 interface IndicatorLabelsProps {
   panelId: PanelId;
   isLoading?: boolean;
 }
 
-import type { IndicatorLabelConfig } from '@/types/chart';
 const SOURCE_OPTIONS: { label: string; value: DataSourceMode }[] = [
   { label: 'Spot', value: 'spot' },
   { label: 'Futures', value: 'futures' },

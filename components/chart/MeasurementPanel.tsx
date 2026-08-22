@@ -1,8 +1,11 @@
 'use client';
 
+// 1. External packages
 import React from 'react';
-import { Measurement } from '@/lib/store/chart';
+
+// 2. Internal packages & stores
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
+import type { Measurement } from '@/lib/store/chart';
 import { formatPrice, formatVol, formatDelta } from '@/lib/utils/format';
 
 interface MeasurementPanelProps {

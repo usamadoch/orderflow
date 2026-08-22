@@ -1,17 +1,23 @@
 'use client';
 
+// 1. External packages
 import React, { useCallback, useEffect, useRef } from 'react';
-import { AggregationEngine } from '@/lib/aggregation/engine';
-import { buildCvdSeries, detectLocalCvdDivergences } from '@/lib/utils/delta';
-import { initCanvas } from '@/lib/utils/canvas';
+
+// 2. Internal packages & stores
 import { useChartStore, PanelId, PanelState } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
-import { Candle } from '@/types/candle';
-import { getVisibleRange, indexToX as calcIndexToX, xToIndex, timeToIndex } from './useCoordinates';
+import { AggregationEngine } from '@/lib/aggregation/engine';
+import { initCanvas } from '@/lib/utils/canvas';
+import { buildCvdSeries, detectLocalCvdDivergences } from '@/lib/utils/delta';
+import type { Candle } from '@/types/candle';
+import type { CvdScale, CvdDragMode } from '@/types/cvd';
+
+// 3. Relative component & utility imports
+import { createManualScale } from './cvdPanelUtils';
 import { drawTimeAxis } from './drawAxes';
 import { drawCrosshair, drawCrosshairTimeLabel } from './drawCrosshair';
 import { drawCvd, drawCvdCrosshairValueLabel, getCvdScale } from './drawCvd';
-import type { CvdScale, CvdDragMode } from '../../types/cvd';
+import { getVisibleRange, indexToX as calcIndexToX, xToIndex, timeToIndex } from './useCoordinates';
 
 interface CvdPanelProps {
   panelId: PanelId;
@@ -511,15 +517,4 @@ export function CvdPanel({
       />
     </div>
   );
-}
-
-function createManualScale(center: number, range: number, chartHeight: number): CvdScale {
-  const safeRange = Math.max(1, range);
-  const min = center - safeRange / 2;
-  const max = center + safeRange / 2;
-
-  const valueToY = (value: number) => ((max - value) / safeRange) * chartHeight;
-  const yToValue = (y: number) => max - (y / Math.max(1, chartHeight)) * safeRange;
-
-  return { min, max, valueToY, yToValue };
 }

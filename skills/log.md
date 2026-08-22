@@ -1,5 +1,19 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-22] - Refactor: Modularize Chart Components & Categorize Imports
+- **What changed**:
+  - Refactored `components/chart/ChartCanvas.tsx` (~3.4k lines) by extracting pure math and index functions into `components/chart/chartCanvasUtils.ts`, hit testing calculations into `components/chart/chartCanvasHitTest.ts`, and floating toolbar UI components into `components/chart/CanvasDrawingToolbar.tsx`.
+  - Refactored `components/chart/ChartPanel.tsx` by delegating panel symbol filtering and historical session range calculations to `components/chart/chartPanelUtils.ts` and wrapping the `panel` combined object in `React.useMemo` to stabilize dependencies across renders.
+  - Refactored `components/chart/CvdPanel.tsx` by delegating scale calculations to `components/chart/cvdPanelUtils.ts`.
+  - Fixed misplaced import in `components/chart/IndicatorLabels.tsx`.
+  - Organized imports across all `components/chart/` components into 3 standard groups: 1. External packages, 2. Internal packages/stores (`@/...`), 3. Relative imports (`./...`).
+- **Why it changed**:
+  - To comply strictly with `skills/client_code_refector.md` guidelines for file length limits, single-responsibility functions, and categorized import ordering.
+- **Impact summary**:
+  - `ChartCanvas.tsx` size was reduced significantly (~500+ lines extracted into modular helpers).
+  - All chart components now follow a consistent import structure.
+  - Verification via `npx tsc --noEmit` passed with exit code 0 and zero compilation errors.
+
 ## [2026-08-22] - Refactor: Extract FeedProvider Utilities & Organize Imports
 - **What changed**:
   - Extracted ~400 lines of pure utility functions and module-level bounded caches (`queuedRawTradeStorageKeys`, etc.) from `components/FeedProvider.tsx` into a new `lib/utils/feedUtils.ts` file.

@@ -1,9 +1,12 @@
 'use client';
 
+// 1. External packages
 import React from 'react';
-import { IcebergLevel } from '@/types/iceberg';
+
+// 2. Internal packages & stores
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 import { formatDelta, formatPrice, formatVol } from '@/lib/utils/format';
+import type { IcebergLevel } from '@/types/iceberg';
 
 interface IcebergTooltipProps {
   level: IcebergLevel;

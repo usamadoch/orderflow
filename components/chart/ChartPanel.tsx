@@ -1,19 +1,31 @@
 'use client';
 
+// 1. External packages
 import React from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
+
+// 2. Internal packages & stores
 import { useChartStore, PanelId } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { buildCvdSeries } from '@/lib/utils/delta';
-import { getHistoricalSessionRanges } from '@/lib/utils/historicalSessions';
+
+// 3. Relative component & utility imports
+import { DrawingFavoritesToolbar } from '../ui/DrawingFavoritesToolbar';
+import { OrderTicket } from '../ui/OrderTicket';
+import { PanelToolbar } from '../ui/PanelToolbar';
 import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine } from '../ChartEngineContext';
 import { ChartCanvas } from './ChartCanvas';
+import {
+  filterOrdersBySymbol,
+  filterPositionsBySymbol,
+  filterRecentTradesBySymbol,
+  filterVirtualPositionsBySymbol,
+  filterBracketOrdersForVirtualPositions,
+  computeHistoricalSessionRanges,
+} from './chartPanelUtils';
 import { CvdPanel } from './CvdPanel';
 import { formatCvdValue } from './drawCvd';
-import { PanelToolbar } from '../ui/PanelToolbar';
-import { DrawingFavoritesToolbar } from '../ui/DrawingFavoritesToolbar';
 import { IndicatorLabels } from './IndicatorLabels';
-import { OrderTicket } from '../ui/OrderTicket';
 
 interface ChartPanelProps {
   panelId: PanelId;
@@ -22,7 +34,7 @@ interface ChartPanelProps {
 export function ChartPanel({ panelId }: ChartPanelProps) {
   const panelSettings = useChartStore(s => s.panels[panelId]);
   const panelRuntime = useChartRuntimeStore(s => s.panels[panelId]);
-  const panel = { ...panelSettings, ...panelRuntime };
+  const panel = React.useMemo(() => ({ ...panelSettings, ...panelRuntime }), [panelSettings, panelRuntime]);
   const setActivePanel = useChartStore(s => s.setActivePanel);
   const setBarWidth = useChartStore(s => s.setBarWidth);
   const setScrollOffset = useChartStore(s => s.setScrollOffset);
@@ -62,46 +74,30 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const volumeFlowSource = flowSource === panel.contractType ? 'active' : flowSource;
   const panelSymbol = panel.pair.toUpperCase();
   const chartOpenOrders = React.useMemo(
-    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingOpenOrders.filter((order) => order.symbol.toUpperCase() === panelSymbol),
+    () => filterOrdersBySymbol(tradingOpenOrders, panelSymbol),
     [panelSymbol, tradingOpenOrders],
   );
   const chartPositions = React.useMemo(
-    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingPositions.filter((position) => position.symbol.toUpperCase() === panelSymbol),
+    () => filterPositionsBySymbol(tradingPositions, panelSymbol),
     [panelSymbol, tradingPositions],
   );
   const chartRecentTrades = React.useMemo(
-    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingRecentTrades.filter((trade) => trade.symbol.toUpperCase() === panelSymbol),
+    () => filterRecentTradesBySymbol(tradingRecentTrades, panelSymbol),
     [panelSymbol, tradingRecentTrades],
   );
   const chartVirtualPositions = React.useMemo(
-    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingVirtualPositions.filter((vp) => vp.symbol.toUpperCase() === panelSymbol && vp.status === 'open'),
+    () => filterVirtualPositionsBySymbol(tradingVirtualPositions, panelSymbol),
     [panelSymbol, tradingVirtualPositions],
   );
   const chartBracketOrders = React.useMemo(
-    () => process.env.NEXT_PUBLIC_DISABLE_TRADING === 'true' ? [] : tradingBracketOrders.filter((b) => chartVirtualPositions.some((vp) => vp.id === b.positionId)),
+    () => filterBracketOrdersForVirtualPositions(tradingBracketOrders, chartVirtualPositions),
     [chartVirtualPositions, tradingBracketOrders],
   );
-  
-  const historicalSessionRanges = React.useMemo(() => {
-    if (!panel.historicalSessionProfileEnabled) return [];
-    const latestTimeMs = panel.candles.length > 0 ? panel.candles[panel.candles.length - 1].time * 1000 : Date.now();
-    return getHistoricalSessionRanges(
-      latestTimeMs,
-      panel.historicalSessionProfileCount,
-      panel.historicalSessionProfileStartHour,
-      panel.historicalSessionProfileStartMin,
-      panel.historicalSessionProfileEndHour,
-      panel.historicalSessionProfileEndMin,
-    );
-  }, [
-    panel.historicalSessionProfileEnabled,
-    panel.historicalSessionProfileCount,
-    panel.historicalSessionProfileStartHour,
-    panel.historicalSessionProfileStartMin,
-    panel.historicalSessionProfileEndHour,
-    panel.historicalSessionProfileEndMin,
-    panel.candles.length > 0 ? panel.candles[panel.candles.length - 1].time : 0,
-  ]);
+
+  const historicalSessionRanges = React.useMemo(
+    () => computeHistoricalSessionRanges(panel, panel.candles),
+    [panel]
+  );
 
   React.useEffect(() => {
     if (restoreStatus?.stage !== 'complete') return;

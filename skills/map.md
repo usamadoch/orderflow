@@ -1,8 +1,7 @@
-
-
 # OrderFlow Chart - Project Map
 
 ## Project Overview
+
 A personal order-flow charting tool for learning market microstructure. It fetches live market data through REST/WebSocket feeds, stores selected market history, and renders candlestick charts, footprint charts, CVD, liquidity/heatmap tools, and Volume Profiles. The app supports single or split chart panels with independent panel settings.
 
 ## Folder Structure
@@ -48,8 +47,6 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 ├── package.json                 # Scripts and dependencies
 └── pnpm-lock.yaml               # Locked dependency graph
 ```
-
-
 
 ## Current File Responsibilities
 
@@ -109,10 +106,15 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Chart Rendering
 
-- `components/chart/ChartPanel.tsx` → Panel bridge combining persisted chart settings with non-persisted runtime candles/status/signals/bubbles/liquidity/trading results into chart props, including Bubbles/Volume Flow Source routing, panel-scoped trading order/fill/position/virtual-position/bracket-order filtering, panel-scoped chart info loading state wiring without normal restore-detail badge UI, indicator labels, the panel-scoped basic order ticket overlay, CVD canvases, main panel background styling, orderbook heatmap engine/settings wiring, fixed floating drawing toolbar ownership, persistent panel toolbar visibility, and compact CVD values.
-- `components/chart/IndicatorLabels.tsx` → TradingView-style top-left independent chart info row and labels for source controls, connection dot, loading dots, Bubbles, CVD, Volume, Sessions, VOP, Heatmap, and Liquidity with per-panel persisted collapse state that hides both chart info and indicators, readable text-first layout, elevated hover controls, per-panel eye toggles, per-indicator settings dialogs for indicator labels, and VOP gear routing to the global Profiles tab.
-- `components/chart/ChartCanvas.tsx` → Main canvas render orchestration, explicit main canvas background fill, runtime-store crosshair sync via direct selector subscription, bubble source switching, aggregate bubble and Volume prop routing, active market/trading context routing, aggregate bubble and Volume debug publication, auto-sized Volume Profile bucket selection for default, custom, and historical session profiles, real orderbook heatmap same-snapshot cell/geometry-aware late-label draw order, dev-only force-label fallback, passive/interaction redraw throttling, overlay draw order including panel-scoped trading order/position/fill overlays, chart-line cancel controls, and open spot Limit order drag-modify preview/confirmation controls with risk/live/kill-switch blocking, hit-testing, local-ref hover/drag state, time-anchored unclamped drawing placement and movement including Long/Short Position risk-only preview, finalized default target creation, top-layer drawing pass, position-aware toolbar spacing, and entry/stop/target dragging, selectable elevated drawing toolbar with scoped inner-control contrast plus style/lock/delete controls, custom profile interactions including lock/remove/settings controls, render metrics, and visible footprint/profile/CVD wiring.
-- `components/chart/CvdPanel.tsx` → Attached CVD canvas with synced horizontal geometry, main panel background styling, runtime-store crosshair sync via direct selector subscription, vertical scaling, memoized CVD series/divergence, and render metrics.
+- `components/chart/ChartPanel.tsx` → Panel bridge combining persisted chart settings with non-persisted runtime state, delegating symbol filtering and historical session calculations to `chartPanelUtils.ts`.
+- `components/chart/chartPanelUtils.ts` → Panel symbol filtering for open orders, positions, fills, virtual positions, bracket orders, and historical session ranges.
+- `components/chart/IndicatorLabels.tsx` → TradingView-style top-left independent chart info row and indicator toggles with categorized imports.
+- `components/chart/ChartCanvas.tsx` → Main canvas render orchestration and event dispatcher, delegating pure math to `chartCanvasUtils.ts`, hit testing to `chartCanvasHitTest.ts`, and floating toolbars to `CanvasDrawingToolbar.tsx`.
+- `components/chart/chartCanvasUtils.ts` → Pure bucket calculation, time/index mapping, order modification checks, and segment distance utilities for chart canvas.
+- `components/chart/chartCanvasHitTest.ts` → Hit testing calculations for open limit orders, drawing shapes, position risk drags, drawing toolbar anchors, and custom profile bounds.
+- `components/chart/CanvasDrawingToolbar.tsx` → Floating selected drawing toolbar, custom profile toolbar, and modify order confirmation dialog UI components.
+- `components/chart/CvdPanel.tsx` → Attached CVD canvas renderer with synced horizontal geometry, delegating scale calculations to `cvdPanelUtils.ts`.
+- `components/chart/cvdPanelUtils.ts` → Auto/manual scale derivation and viewport scale calculations for the CVD panel.
 - `components/chart/drawStatsGrid.ts` → Stats indicator canvas overlay rendering selected volume, delta, and CVD stats as intensity-colored dashboard cells.
 - `components/chart/useCoordinates.ts` → Coordinate math for price/time/unclamped index mapping, visible range, and drawable width.
 - `components/chart/usePanZoom.ts` → Shared pan/zoom hook with anchored zoom, drag handling, crosshair interaction, and sibling canvas sync.
@@ -130,10 +132,10 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawCrosshair.ts` → Crosshair and elevated axis-label renderer.
 - `components/chart/drawAbsorption.ts` → Absorption signal marker renderer using shared bullish/bearish semantic colors.
 - `components/chart/drawExhaustion.ts` → Exhaustion signal marker renderer.
-- `components/chart/AbsorptionTooltip.tsx` → Elevated Absorption hover tooltip using shared bullish/bearish semantic colors.
-- `components/chart/ExhaustionTooltip.tsx` → Elevated Exhaustion hover tooltip.
-- `components/chart/IcebergTooltip.tsx` → Elevated Iceberg hover tooltip using shared bid/ask defense colors.
-- `components/chart/MeasurementPanel.tsx` → Elevated Measurement overlay UI with shared bullish/bearish metric colors.
+- `components/chart/AbsorptionTooltip.tsx` → Elevated Absorption hover tooltip with categorized imports and shared bullish/bearish semantic colors.
+- `components/chart/ExhaustionTooltip.tsx` → Elevated Exhaustion hover tooltip with categorized imports.
+- `components/chart/IcebergTooltip.tsx` → Elevated Iceberg hover tooltip with categorized imports and shared bid/ask defense colors.
+- `components/chart/MeasurementPanel.tsx` → Elevated Measurement overlay UI with categorized imports and shared bullish/bearish metric colors.
 
 ### Drawing Helpers
 
@@ -198,8 +200,6 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `types/iceberg.ts` → Iceberg level/side/rank types.
 - `types/liquidityVacuum.ts` → Liquidity Vacuum zone/anchor/rank/direction types.
 
-
-
 ### Liquidity / Orderbook
 
 - `lib/liquidity/orderbook.ts` → Local in-memory orderbook manager with REST snapshot plus buffered diff-depth bridging, stale/gap detection, per-source sync debug state, WebSocket reset snapshots, incremental updates, and normalized map replacement for combined depth.
@@ -255,6 +255,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `types/measurement.ts` → Measurement tool data types.
 - `types/trading.ts` → Shared generic trading types for modes, broker adapters, order/cancel/modify requests and results, orders, positions, balances, fills, optional-symbol account snapshots, safe health/risk payloads, safe Binance user-stream status payloads, `VirtualPosition` (client-side spot position abstraction derived from fills), `BracketOrder` (separate SL/TP model supporting future multi-TP and trailing stops), and `BracketDragState` (chart canvas drag context for SL/TP handles).
 - `types/cvd.ts` → Types for CVD points, divergence markers, and rendering configuration.
+
 ### Artifacts / Skills
 
 - `artifacts/timeframe_behavior_report.md` → Report on settings behavior across timeframes.

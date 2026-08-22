@@ -1,9 +1,12 @@
 'use client';
 
+// 1. External packages
 import React from 'react';
-import { AbsorptionResult } from '@/types/absorption';
+
+// 2. Internal packages & stores
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 import { useChartStore } from '@/lib/store/chart';
+import type { AbsorptionResult } from '@/types/absorption';
 
 interface AbsorptionTooltipProps {
   result: AbsorptionResult;

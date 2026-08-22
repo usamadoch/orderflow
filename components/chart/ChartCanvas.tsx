@@ -1,604 +1,96 @@
 'use client';
 
+// 1. External packages
 import React, { useRef, useEffect, useCallback, useMemo } from 'react';
-import { Lock, Settings, Unlock, X } from 'lucide-react';
-import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelState, ExhaustionSide, Measurement, DrawnLine, DrawingStrokeWidth, ContractType, DataSourceMode, MAX_AGGREGATE_BUBBLE_EVENTS } from '@/lib/store/chart';
+import { X } from 'lucide-react';
+
+// 2. Internal packages & stores
+import {
+  PanelId,
+  ChartMode,
+  AbsorptionSide,
+  BubbleSide,
+  useChartStore,
+  PanelState,
+  ExhaustionSide,
+  Measurement,
+  DrawnLine,
+  ContractType,
+  DataSourceMode,
+  MAX_AGGREGATE_BUBBLE_EVENTS,
+} from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
-import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
-import type { VolumeProfileSource } from '@/types/volumeProfile';
-import { usePanZoom } from './usePanZoom';
-import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex, timeToIndex } from './useCoordinates';
-import { drawCandles } from './drawCandles';
-import { drawFootprint } from './drawFootprint';
-import { drawVolumeBars } from './drawVolumeBars';
-import { drawTradingOverlays, TradingOverlayHitZones } from './drawTradingOverlays';
-import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
-import { drawPriceLine } from './drawPriceLine';
-import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
-import { drawVolumeProfile } from './drawVolumeProfile';
-import { drawAbsorption } from './drawAbsorption';
-import { drawAggregateTradeBubbles, drawBubbles } from './drawBubbles';
-import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
-import { drawDrawingPriceLabels, drawLines } from './drawLines';
-import { initCanvas } from '@/lib/utils/canvas';
-import { Candle } from '@/types/candle';
-import type { BracketDragState, BracketOrder, Order, Position, TradeFill, TradingRiskStatusPayload, VirtualPosition, PendingModifyOrder } from '@/types/trading';
-import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource, BubbleScaleMode } from '@/types/bubble';
-import { AbsorptionResult } from '@/types/absorption';
-import { ExhaustionResult } from '@/types/exhaustion';
-import { IcebergLevel } from '@/types/iceberg';
-import { LiquidityVacuumZone } from '@/types/liquidityVacuum';
-import { AbsorptionTooltip } from './AbsorptionTooltip';
-import { drawExhaustion } from './drawExhaustion';
-import { ExhaustionTooltip } from './ExhaustionTooltip';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
+import { recordAggregateBubbleDebug, recordVolumeBarsDebug } from '@/lib/debug/marketMetrics';
 import { drawDeltaProfile } from '@/lib/draw/drawDeltaProfile';
-import { drawMeasurementRect } from '@/lib/draw/drawMeasurement';
-import { drawSessions } from '@/lib/draw/drawSessions';
+import { drawIceberg } from '@/lib/draw/drawIceberg';
 import { drawLiquidity } from '@/lib/draw/drawLiquidity';
 import { drawLiquidityHeatmap } from '@/lib/draw/drawLiquidityHeatmap';
-import { drawIceberg } from '@/lib/draw/drawIceberg';
 import { drawLiquidityVacuum } from '@/lib/draw/drawLiquidityVacuum';
+import { drawMeasurementRect } from '@/lib/draw/drawMeasurement';
+import { drawSessions } from '@/lib/draw/drawSessions';
 import { buildHeatmapRows } from '@/lib/liquidity/heatmap';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
-import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
-import { drawStatsGrid, STATS_GRID_ROW_HEIGHT } from './drawStatsGrid';
-import { recordAggregateBubbleDebug, recordVolumeBarsDebug } from '@/lib/debug/marketMetrics';
-import { MeasurementPanel } from './MeasurementPanel';
-import { HeatmapRow, LiquidityZone } from '@/types/liquidity';
-import { IcebergTooltip } from './IcebergTooltip';
-import { MIN_FINE_PROFILE_BASE_BUCKET_SIZE } from '@/lib/config/markets';
-import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
+import { initCanvas } from '@/lib/utils/canvas';
 import { formatPrice, formatVol } from '@/lib/utils/format';
 import { HistoricalSessionRange } from '@/lib/utils/historicalSessions';
+import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
+import type { AbsorptionResult } from '@/types/absorption';
+import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource, BubbleScaleMode } from '@/types/bubble';
+import type { Candle } from '@/types/candle';
+import type { DrawingHitZone } from '@/types/chart';
+import type { ExhaustionResult } from '@/types/exhaustion';
+import type { FootprintMode } from '@/types/footprint';
+import type { IcebergLevel } from '@/types/iceberg';
+import type { HeatmapRow, LiquidityZone } from '@/types/liquidity';
+import type { LiquidityVacuumZone } from '@/types/liquidityVacuum';
+import type { BracketDragState, BracketOrder, Order, Position, TradeFill, VirtualPosition, PendingModifyOrder } from '@/types/trading';
+import type { VolumeProfileSource } from '@/types/volumeProfile';
+
+// 3. Relative component & canvas imports
+import { AbsorptionTooltip } from './AbsorptionTooltip';
+import { CustomProfileToolbar, DrawingToolbar, ModifyConfirmRow } from './CanvasDrawingToolbar';
+import {
+  resolveProfileBucketSize,
+  resolveIndexFromTimeOrFallback,
+  candleTimeAt,
+  isPositionDrawing,
+  hasPositionGeometry,
+  resolveLineForRender,
+  resolveCustomProfileRange,
+  getCustomProfileTimeBounds,
+  isActiveLimitOrder,
+  getRemainingOrderQuantity,
+  getModifyBlockReason,
+} from './chartCanvasUtils';
+import {
+  getOrderHitZone,
+  buildPositionFromRiskDrag,
+  getDrawingHitZone,
+  getDrawingToolbarAnchor,
+  getCustomProfileHitZone,
+} from './chartCanvasHitTest';
+import { drawAbsorption } from './drawAbsorption';
+import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
+import { drawAggregateTradeBubbles, drawBubbles } from './drawBubbles';
+import { drawCandles } from './drawCandles';
+import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
+import { drawExhaustion } from './drawExhaustion';
+import { drawFootprint } from './drawFootprint';
+import { drawDrawingPriceLabels, drawLines } from './drawLines';
+import { drawPriceLine } from './drawPriceLine';
+import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
+import { drawStatsGrid, STATS_GRID_ROW_HEIGHT } from './drawStatsGrid';
+import { drawTradingOverlays, TradingOverlayHitZones } from './drawTradingOverlays';
+import { drawVolumeBars } from './drawVolumeBars';
+import { drawVolumeProfile } from './drawVolumeProfile';
+import { ExhaustionTooltip } from './ExhaustionTooltip';
+import { IcebergTooltip } from './IcebergTooltip';
+import { MeasurementPanel } from './MeasurementPanel';
+import { usePanZoom } from './usePanZoom';
+import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex, timeToIndex } from './useCoordinates';
 
-import { CustomProfileHitZone, DrawingHitZone, CustomProfileRange } from '@/types/chart';
-
-const DRAWING_COLORS = [
-  CHART_BEARISH_COLOR,
-  '#FF9801',
-  '#FFEB3B',
-  '#4CAF50',
-  CHART_BULLISH_COLOR,
-  '#00BCD4',
-  '#2962FF',
-  '#673AB7',
-  '#E91E63',
-] as const;
-const DEFAULT_DRAWING_STROKE_WIDTH: DrawingStrokeWidth = 2;
-const TARGET_PROFILE_ROW_PX = 3;
-
-function calcAutoBucketSize(
-  priceHigh: number,
-  priceLow: number,
-  canvasHeightPx: number,
-  tickSize: number
-): number {
-  if (!Number.isFinite(tickSize) || tickSize <= 0) return 1;
-
-  const normalizedHigh = Math.max(priceHigh, priceLow);
-  const normalizedLow = Math.min(priceHigh, priceLow);
-  const priceRangeTicks = Math.max(1, (normalizedHigh - normalizedLow) / tickSize);
-  const ticksPerPx = priceRangeTicks / Math.max(1, canvasHeightPx);
-  const rawBucket = ticksPerPx * TARGET_PROFILE_ROW_PX * tickSize;
-
-  return Math.max(tickSize, Math.ceil(rawBucket / tickSize) * tickSize);
-}
-
-function resolveProfileBucketSize(
-  priceHigh: number,
-  priceLow: number,
-  canvasHeightPx: number,
-  profileResolutionTicks: number,
-  tickSize: number,
-  fallbackBucketSize: number
-): number {
-  const requestedProfileBucketSize = tickSize > 0
-    ? profileResolutionTicks > 0
-      ? tickSize * profileResolutionTicks
-      : calcAutoBucketSize(priceHigh, priceLow, canvasHeightPx, tickSize)
-    : Math.max(1, fallbackBucketSize / 4);
-
-  const baseBucketSize = Math.max(MIN_FINE_PROFILE_BASE_BUCKET_SIZE, tickSize);
-  const multiple = Math.max(1, Math.round(requestedProfileBucketSize / baseBucketSize));
-  return multiple * baseBucketSize;
-}
-
-function findExactTimeIndex(time: number, candles: Candle[]) {
-  let left = 0;
-  let right = candles.length - 1;
-
-  while (left <= right) {
-    const mid = Math.floor((left + right) / 2);
-    const midTime = candles[mid].time;
-    if (midTime === time) return mid;
-    if (midTime < time) left = mid + 1;
-    else right = mid - 1;
-  }
-
-  return null;
-}
-
-function resolveIndexFromTimeOrFallback(time: number | undefined, fallbackIndex: number | undefined, candles: Candle[]) {
-  if (candles.length === 0) return null;
-
-  if (time !== undefined) {
-    const lastCandle = candles[candles.length - 1];
-    if (time > lastCandle.time) {
-      if (fallbackIndex !== undefined) return fallbackIndex;
-      const firstCandle = candles[0];
-      const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
-      const indexDiff = (time - lastCandle.time) / avgInterval;
-      return (candles.length - 1) + Math.round(indexDiff);
-    }
-
-    const exactIndex = findExactTimeIndex(time, candles);
-    if (exactIndex !== null) return exactIndex;
-  }
-  
-  if (fallbackIndex === undefined || fallbackIndex < 0) return null;
-  return fallbackIndex;
-}
-
-function candleTimeAt(index: number | null, candles: Candle[]) {
-  if (index === null || candles.length === 0) return undefined;
-  if (index >= 0 && index < candles.length) return candles[index].time;
-  
-  const lastCandle = candles[candles.length - 1];
-  const firstCandle = candles[0];
-  const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
-  return lastCandle.time + (index - (candles.length - 1)) * avgInterval;
-}
-
-function resolveLineForRender(line: DrawnLine, candles: Candle[]): DrawnLine | null {
-  if (line.type === 'horizontal') return line;
-
-  if (line.type === 'vertical') {
-    const index = resolveIndexFromTimeOrFallback(line.time, line.value, candles);
-    return index === null ? null : { ...line, value: index };
-  }
-
-  if (line.type === 'horizontal-ray') {
-    const startIndex = resolveIndexFromTimeOrFallback(line.startTime, line.startIndex, candles);
-    return startIndex === null ? null : { ...line, startIndex };
-  }
-
-  if (line.type === 'box') {
-    const firstIndex = resolveIndexFromTimeOrFallback(line.firstTime, line.firstIndex, candles);
-    const lastIndex = resolveIndexFromTimeOrFallback(line.lastTime, line.lastIndex, candles);
-    if (firstIndex === null || lastIndex === null) return null;
-    return { ...line, firstIndex, lastIndex };
-  }
-
-  if (isPositionDrawing(line)) {
-    const firstIndex = resolveIndexFromTimeOrFallback(line.firstTime, line.firstIndex, candles);
-    const lastIndex = resolveIndexFromTimeOrFallback(line.lastTime, line.lastIndex, candles);
-    if (firstIndex === null || lastIndex === null) return null;
-    return { ...line, firstIndex, lastIndex };
-  }
-
-  return line;
-}
-
-function resolveCustomProfileRange(range: PanelState['customProfileRange'], candles: Candle[]): CustomProfileRange | null {
-  if (!range) return null;
-  const firstIndex = resolveIndexFromTimeOrFallback(range.firstTime, range.firstIndex, candles);
-  const lastIndex = resolveIndexFromTimeOrFallback(range.lastTime, range.lastIndex, candles);
-  if (firstIndex === null || lastIndex === null) return null;
-  return { ...range, firstIndex, lastIndex };
-}
-
-function getCustomProfileTimeBounds(range: CustomProfileRange, candles: Candle[]) {
-  const firstTime = range.firstTime ?? candleTimeAt(range.firstIndex, candles);
-  const lastTime = range.lastTime ?? candleTimeAt(range.lastIndex, candles);
-  if (firstTime === undefined || lastTime === undefined) return null;
-  return {
-    startTime: Math.min(firstTime, lastTime),
-    endTime: Math.max(firstTime, lastTime),
-  };
-}
-
-function isPositionDrawing(line: DrawnLine) {
-  return line.type === 'long-position' || line.type === 'short-position';
-}
-
-function hasPositionGeometry(line: DrawnLine) {
-  return (
-    isPositionDrawing(line) &&
-    line.firstIndex !== undefined &&
-    line.lastIndex !== undefined &&
-    line.stopPrice !== undefined &&
-    line.targetPrice !== undefined
-  );
-}
-
-function ModifyConfirmRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
-  return (
-    <div className="flex items-center justify-between rounded border border-[#303030] bg-[#262626] px-3 py-2">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-[#787B86]">{label}</span>
-      <span className="text-right text-[11px] font-black uppercase text-[#E8E8E8]" style={valueColor ? { color: valueColor } : undefined}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function isActiveLimitOrder(order: Order) {
-  return (
-    order.type === 'limit' &&
-    (order.status === 'open' || order.status === 'partially_filled') &&
-    Number.isFinite(order.price) &&
-    !!order.price
-  );
-}
-
-function getRemainingOrderQuantity(order: Order) {
-  if (Number.isFinite(order.quantity) && Number.isFinite(order.filledQuantity)) {
-    const remaining = order.quantity - order.filledQuantity;
-    if (remaining > 0) return remaining;
-  }
-
-  return Number.isFinite(order.quantity) && order.quantity > 0 ? order.quantity : null;
-}
-
-function getModifyBlockReason(input: {
-  order: Order;
-  symbol: string;
-  contractType: ContractType;
-  mode: string;
-  modeBadge: string;
-  price?: number;
-  quantity?: number;
-  riskStatus?: TradingRiskStatusPayload | null;
-}) {
-  const { order, symbol, contractType, mode, modeBadge, price, quantity, riskStatus } = input;
-
-  if (mode === 'binance_live' || modeBadge === 'live') return 'Live trading is blocked for drag modify.';
-  if (mode !== 'binance_testnet' || modeBadge !== 'testnet') return 'Only Binance testnet spot order modification is supported.';
-  if (riskStatus?.killSwitchActive) return riskStatus.blockReasons[0] ?? 'Trading kill switch is active.';
-  if (riskStatus?.liveBlocked) return riskStatus.blockReasons[0] ?? 'Live trading is blocked.';
-  if (riskStatus && riskStatus.blockReasons.length > 0) return riskStatus.blockReasons[0];
-  if (contractType !== 'spot') return 'Only spot limit orders can be modified.';
-  if (order.symbol.toUpperCase() !== symbol.toUpperCase()) return 'Order symbol does not match this chart panel.';
-  if (!order.id || order.id.trim().length === 0) return 'Order id is required to modify an order.';
-  if (order.type !== 'limit') return 'Only open Limit orders can be modified.';
-  if (order.status !== 'open' && order.status !== 'partially_filled') return 'Only open orders can be modified.';
-  if (getRemainingOrderQuantity(order) === null) return 'Remaining quantity is required to modify an order.';
-  if (price !== undefined && (!Number.isFinite(price) || price <= 0)) return 'Replacement limit price must be greater than 0.';
-  if (riskStatus && quantity !== undefined && quantity > riskStatus.maxOrderQty) return `Order quantity exceeds max quantity ${riskStatus.maxOrderQty}.`;
-  if (riskStatus && price !== undefined && quantity !== undefined) {
-    const notional = quantity * price;
-    if (Number.isFinite(notional) && notional > riskStatus.maxOrderNotional) return `Order notional exceeds max notional ${riskStatus.maxOrderNotional}.`;
-  }
-  if (riskStatus && riskStatus.dailyOrderCountUsed >= riskStatus.dailyOrderCountLimit) {
-    return `Daily order count limit ${riskStatus.dailyOrderCountLimit} has been reached.`;
-  }
-  return null;
-}
-
-function getOrderHitZone(
-  order: Order,
-  x: number,
-  y: number,
-  chartWidth: number,
-  chartHeight: number,
-  priceToY: (price: number) => number,
-): boolean {
-  if (x < 0 || x > chartWidth || y < 0 || y > chartHeight) return false;
-  if (order.type !== 'limit' || !Number.isFinite(order.price) || !order.price) return false;
-  
-  const oy = priceToY(order.price);
-  if (Math.abs(y - oy) > 7) return false;
-
-  // Exact geometry hit: The line visually spans the chart, and unified top-down 
-  // hit testing ensures it doesn't steal Custom Profile clicks accidentally.
-  return true;
-}
-
-function distanceToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number) {
-  const l2 = (x2 - x1)**2 + (y2 - y1)**2;
-  if (l2 === 0) return Math.hypot(px - x1, py - y1);
-  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
-}
-
-function buildPositionFromRiskDrag(
-  mode: 'long-position' | 'short-position',
-  dragStart: { x: number; y: number },
-  dragEnd: { x: number; y: number },
-  candles: Candle[],
-  currentScrollOffset: number,
-  currentBarWidth: number,
-  chartWidth: number,
-  profileWidth: number,
-  priceMin: number,
-  priceMax: number,
-  chartHeight: number,
-  minRisk: number,
-  rewardRatio: number | null
-): DrawnLine | null {
-  if (candles.length === 0) return null;
-
-  const idx1 = xToIndex(dragStart.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
-  const idx2 = xToIndex(dragEnd.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
-  const firstIndex = Math.min(idx1, idx2);
-  const lastIndex = Math.max(idx1, idx2);
-  const startPrice = yToPrice(dragStart.y, priceMin, priceMax, chartHeight);
-  const endPrice = yToPrice(dragEnd.y, priceMin, priceMax, chartHeight);
-  const isLong = mode === 'long-position';
-  const entryPrice = isLong ? Math.max(startPrice, endPrice) : Math.min(startPrice, endPrice);
-  const rawStopPrice = isLong ? Math.min(startPrice, endPrice) : Math.max(startPrice, endPrice);
-  const riskDistance = Math.max(minRisk, Math.abs(rawStopPrice - entryPrice));
-  const stopPrice = isLong ? entryPrice - riskDistance : entryPrice + riskDistance;
-  const rewardDistance = riskDistance * Math.max(0, rewardRatio ?? 0);
-  const targetPrice = rewardRatio === null
-    ? undefined
-    : isLong
-      ? entryPrice + rewardDistance
-      : entryPrice - rewardDistance;
-
-  return {
-    id: crypto.randomUUID(),
-    type: mode,
-    value: entryPrice,
-    firstIndex,
-    lastIndex,
-    firstTime: candleTimeAt(firstIndex, candles),
-    lastTime: candleTimeAt(lastIndex, candles),
-    stopPrice,
-    ...(targetPrice === undefined ? {} : { targetPrice }),
-  };
-}
-
-function getDrawingHitZone(
-  line: DrawnLine,
-  x: number,
-  y: number,
-  indexToX: (index: number) => number | null,
-  priceToY: (price: number) => number,
-  chartWidth: number,
-  chartHeight: number,
-  barWidth: number,
-  isSelected: boolean
-): DrawingHitZone | null {
-  const pad = 7;
-
-  if (line.type === 'horizontal') {
-    const ly = priceToY(line.value);
-    if (Math.abs(y - ly) <= pad && x <= chartWidth) {
-      return Math.abs(x - (chartWidth - 6)) <= pad ? 'delete' : 'move';
-    }
-    return null;
-  }
-
-  if (line.type === 'vertical') {
-    const lx = indexToX(line.value);
-    if (lx !== null && Math.abs(x - lx) <= pad && y <= chartHeight) {
-      return Math.abs(y - 10) <= pad ? 'delete' : 'move';
-    }
-    return null;
-  }
-
-  if (line.type === 'horizontal-ray') {
-    const startIndex = line.startIndex ?? 0;
-    const lx = indexToX(startIndex);
-    const ly = priceToY(line.value);
-    if (lx === null || ly < 0 || ly > chartHeight) return null;
-
-    if (Math.abs(x - (chartWidth - 6)) <= pad && Math.abs(y - ly) <= pad) return 'delete';
-    
-    // Use geometric distance for the ray segment
-    const startX = Math.max(0, lx);
-    const dist = distanceToSegment(x, y, startX, ly, chartWidth, ly);
-    if (dist <= pad) {
-      if (Math.abs(x - lx) <= pad) return 'resize-left';
-      return 'move';
-    }
-    return null;
-  }
-
-  if (
-    line.type === 'box' &&
-    line.firstIndex !== undefined &&
-    line.lastIndex !== undefined &&
-    line.priceHigh !== undefined &&
-    line.priceLow !== undefined
-  ) {
-    const x1 = indexToX(line.firstIndex);
-    const x2 = indexToX(line.lastIndex);
-    if (x1 === null || x2 === null) return null;
-
-    const left = Math.min(x1, x2) - barWidth / 2;
-    const right = Math.max(x1, x2) + barWidth / 2;
-    const top = priceToY(line.priceHigh);
-    const bottom = priceToY(line.priceLow);
-    const minY = Math.min(top, bottom);
-    const maxY = Math.max(top, bottom);
-
-    if (isSelected && Math.abs(x - right) <= pad && Math.abs(y - minY) <= pad) return 'delete';
-
-    const onLeftEdge = Math.abs(x - left) <= pad && y >= minY - pad && y <= maxY + pad;
-    const onRightEdge = Math.abs(x - right) <= pad && y >= minY - pad && y <= maxY + pad;
-    const onTopEdge = Math.abs(y - minY) <= pad && x >= left - pad && x <= right + pad;
-    const onBottomEdge = Math.abs(y - maxY) <= pad && x >= left - pad && x <= right + pad;
-
-    if (!onLeftEdge && !onRightEdge && !onTopEdge && !onBottomEdge) {
-      return null;
-    }
-
-    if (isSelected) {
-      const cornerPad = 12;
-      const nearLeft = Math.abs(x - left) <= cornerPad;
-      const nearRight = Math.abs(x - right) <= cornerPad;
-      const nearTop = Math.abs(y - minY) <= cornerPad;
-      const nearBottom = Math.abs(y - maxY) <= cornerPad;
-
-      if (nearLeft || nearRight || nearTop || nearBottom) {
-        if (onLeftEdge && nearLeft) return 'resize-left';
-        if (onRightEdge && nearRight) return 'resize-right';
-        if (onTopEdge && nearTop) return 'resize-top';
-        if (onBottomEdge && nearBottom) return 'resize-bottom';
-      }
-    }
-
-    return 'move';
-  }
-
-  if (hasPositionGeometry(line)) {
-    const x1 = indexToX(line.firstIndex!);
-    const x2 = indexToX(line.lastIndex!);
-    if (x1 === null || x2 === null) return null;
-
-    const left = Math.min(x1, x2) - barWidth / 2;
-    const right = Math.max(x1, x2) + barWidth / 2;
-    const entryY = priceToY(line.value);
-    const stopY = priceToY(line.stopPrice!);
-    const targetY = line.targetPrice !== undefined ? priceToY(line.targetPrice) : undefined;
-    const minY = targetY !== undefined ? Math.min(entryY, stopY, targetY) : Math.min(entryY, stopY);
-    const maxY = targetY !== undefined ? Math.max(entryY, stopY, targetY) : Math.max(entryY, stopY);
-
-    if (isSelected && Math.abs(x - right) <= pad && Math.abs(y - minY) <= pad) return 'delete';
-
-    const onEntry = Math.abs(y - entryY) <= pad && x >= left - pad && x <= right + pad;
-    const onStop = Math.abs(y - stopY) <= pad && x >= left - pad && x <= right + pad;
-    const onTarget = targetY !== undefined && Math.abs(y - targetY) <= pad && x >= left - pad && x <= right + pad;
-    const onLeft = Math.abs(x - left) <= pad && y >= minY - pad && y <= maxY + pad;
-    const onRight = Math.abs(x - right) <= pad && y >= minY - pad && y <= maxY + pad;
-
-    if (!onEntry && !onStop && !onTarget && !onLeft && !onRight) {
-      return null;
-    }
-
-    if (onStop) return 'resize-stop';
-    if (onTarget) return 'resize-target';
-    if (onLeft) return 'resize-left';
-    if (onRight) return 'resize-right';
-    if (onEntry) return 'move'; // Dragging entry moves the position
-    
-    return 'move';
-  }
-
-  return null;
-}
-
-function getDrawingToolbarAnchor(
-  line: DrawnLine,
-  indexToX: (index: number) => number | null,
-  priceToY: (price: number) => number,
-  chartWidth: number,
-  chartHeight: number,
-  barWidth: number
-) {
-  if (line.type === 'horizontal') {
-    const y = priceToY(line.value);
-    if (y < 0 || y > chartHeight) return null;
-    return { x: chartWidth - 120, y };
-  }
-
-  if (line.type === 'vertical') {
-    const x = indexToX(line.value);
-    if (x === null || x < 0 || x > chartWidth) return null;
-    return { x, y: 28 };
-  }
-
-  if (line.type === 'horizontal-ray') {
-    const x = indexToX(line.startIndex ?? 0);
-    const y = priceToY(line.value);
-    if (x === null || x > chartWidth || y < 0 || y > chartHeight) return null;
-    return { x: Math.max(0, x), y };
-  }
-
-  if (
-    line.type === 'box' &&
-    line.firstIndex !== undefined &&
-    line.lastIndex !== undefined &&
-    line.priceHigh !== undefined &&
-    line.priceLow !== undefined
-  ) {
-    const x1 = indexToX(line.firstIndex);
-    const x2 = indexToX(line.lastIndex);
-    if (x1 === null || x2 === null) return null;
-    const right = Math.max(x1, x2) + barWidth / 2;
-    const top = priceToY(line.priceHigh);
-    const bottom = priceToY(line.priceLow);
-    const y = Math.min(top, bottom);
-    if (right < 0 || y > chartHeight || Math.max(top, bottom) < 0) return null;
-    return { x: right, y };
-  }
-
-  if (hasPositionGeometry(line)) {
-    const x1 = indexToX(line.firstIndex!);
-    const x2 = indexToX(line.lastIndex!);
-    if (x1 === null || x2 === null) return null;
-    const right = Math.max(x1, x2) + barWidth / 2;
-    const entryY = priceToY(line.value);
-    const stopY = priceToY(line.stopPrice!);
-    const targetY = priceToY(line.targetPrice!);
-    const y = Math.min(entryY, stopY, targetY);
-    if (right < 0 || y > chartHeight || Math.max(entryY, stopY, targetY) < 0) return null;
-    return { x: right, y };
-  }
-
-  return null;
-}
-
-function getCustomProfileHitZone(
-  customProfileRange: PanelState['customProfileRange'],
-  x: number,
-  y: number,
-  candlesLength: number,
-  scrollOffset: number,
-  barWidth: number,
-  chartWidth: number,
-  chartHeight: number,
-  profileWidth: number,
-  priceMin: number,
-  priceMax: number,
-  isLocked: boolean,
-  isSelected: boolean
-): CustomProfileHitZone | null {
-  if (!customProfileRange || candlesLength === 0 || x > chartWidth || y > chartHeight) return null;
-
-  const rx1 = calcIndexToX(customProfileRange.firstIndex, candlesLength, scrollOffset, barWidth, chartWidth, profileWidth) - barWidth / 2;
-  const rx2 = calcIndexToX(customProfileRange.lastIndex, candlesLength, scrollOffset, barWidth, chartWidth, profileWidth) + barWidth / 2;
-  const ry1 = calcPriceToY(customProfileRange.priceHigh, priceMin, priceMax, chartHeight);
-  const ry2 = calcPriceToY(customProfileRange.priceLow, priceMin, priceMax, chartHeight);
-
-  const minX = Math.min(rx1, rx2);
-  const maxX = Math.max(rx1, rx2);
-  const minY = Math.min(ry1, ry2);
-  const maxY = Math.max(ry1, ry2);
-  const handlePad = 6;
-
-  const onLeft = Math.abs(x - minX) <= handlePad && y >= minY - handlePad && y <= maxY + handlePad;
-  const onRight = Math.abs(x - maxX) <= handlePad && y >= minY - handlePad && y <= maxY + handlePad;
-  const onTop = Math.abs(y - minY) <= handlePad && x >= minX - handlePad && x <= maxX + handlePad;
-  const onBottom = Math.abs(y - maxY) <= handlePad && x >= minX - handlePad && x <= maxX + handlePad;
-
-  if (!onLeft && !onRight && !onTop && !onBottom) {
-    return null; // Click-through interior
-  }
-
-  if (isLocked) return 'move';
-
-  if (isSelected) {
-    const cornerPad = 12;
-    const nearLeft = Math.abs(x - minX) <= cornerPad;
-    const nearRight = Math.abs(x - maxX) <= cornerPad;
-    const nearTop = Math.abs(y - minY) <= cornerPad;
-    const nearBottom = Math.abs(y - maxY) <= cornerPad;
-
-    if (nearLeft || nearRight || nearTop || nearBottom) {
-      if (onLeft && nearLeft) return 'resize-left';
-      if (onRight && nearRight) return 'resize-right';
-      if (onTop && nearTop) return 'resize-top';
-      if (onBottom && nearBottom) return 'resize-bottom';
-    }
-  }
-
-  return 'move'; // Dragging border away from corners moves it
-}
 
 interface ChartCanvasProps {
   panelId: PanelId;
@@ -3361,126 +2853,86 @@ const onMouseUp = () => {
         </div>
       )}
 
-      {selectedDrawing && selectedDrawingControls && (
-        <div
-          className="popup-contrast absolute flex items-center gap-1 rounded border border-[#333] bg-[#1F1F1F]/95 p-1 shadow-xl backdrop-blur-sm z-30"
-          style={{
-            top: `${selectedDrawingControls.top}px`,
-            left: `${selectedDrawingControls.left}px`,
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              useChartStore.getState().updateLine(panelId, selectedDrawing.id, { locked: !selectedDrawing.locked });
-              redraw();
-            }}
-            className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${selectedDrawing.locked ? 'text-[#3D7EFF] hover:bg-[#1F1F1F]' : 'text-gray-400 hover:bg-[#1F1F1F] hover:text-[#E8E8E8]'}`}
-            title={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
-            aria-label={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
-          >
-            {selectedDrawing.locked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
-          </button>
-          <select
-            value={selectedDrawing.strokeWidth ?? DEFAULT_DRAWING_STROKE_WIDTH}
-            onChange={(event) => {
-              useChartStore.getState().updateLine(panelId, selectedDrawing.id, {
-                strokeWidth: Number(event.target.value) as DrawingStrokeWidth,
-              });
-              redraw();
-            }}
-            disabled={selectedDrawing.locked}
-            className="h-7 rounded border border-[#333] bg-[#1F1F1F] px-1 text-[11px] font-bold text-[#E8E8E8] outline-none transition-colors hover:border-[#555] disabled:cursor-not-allowed disabled:opacity-45"
-            title="Stroke width"
-            aria-label="Stroke width"
-          >
-            {[1, 2, 3, 4].map((width) => (
-              <option key={width} value={width}>{width}px</option>
-            ))}
-          </select>
-          <div className="mx-0.5 h-5 w-px bg-[#333]" />
-          <div className="flex items-center gap-0.5" title="Drawing color">
-            {DRAWING_COLORS.map((color) => (
+      {showModifyConfirm && pendingModifyOrder && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-[380px] rounded-md border border-[#303030] bg-[#1F1F1F] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#303030] px-4 py-3">
+              <div>
+                <div className="text-[12px] font-black uppercase tracking-wider text-[#E8E8E8]">Confirm modify</div>
+                <div className="mt-0.5 text-[10px] font-semibold uppercase text-[#787B86]">
+                  {pendingModifyOrder.order.symbol} / {pendingModifyBlockReason ? 'BLOCKED' : modeBadge.toUpperCase()}
+                </div>
+              </div>
               <button
-                key={color}
                 type="button"
-                onClick={() => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { color });
-                  redraw();
-                }}
-                disabled={selectedDrawing.locked}
-                className="flex h-7 w-5 items-center justify-center rounded hover:bg-[#1F1F1F] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
-                title={color}
-                aria-label={`Set drawing color ${color}`}
+                onClick={closeModifyConfirm}
+                disabled={modifyLoading}
+                className="flex h-7 w-7 items-center justify-center rounded border border-[#303030] text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8] disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Close modify confirmation"
+                title="Close"
               >
-                <span
-                  className={`block h-3.5 w-3.5 rounded-full border ${selectedDrawing.color === color ? 'border-white' : 'border-black/40'}`}
-                  style={{ backgroundColor: color }}
-                />
+                <X size={14} strokeWidth={2.4} />
               </button>
-            ))}
+            </div>
+
+            <div className="space-y-2 px-4 py-4">
+              <ModifyConfirmRow label="Side" value={pendingModifyOrder.order.side.toUpperCase()} valueColor={pendingModifyOrder.order.side === 'buy' ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR} />
+              <ModifyConfirmRow label="Symbol" value={pendingModifyOrder.order.symbol} />
+              <ModifyConfirmRow label="Order id" value={pendingModifyOrder.order.id} />
+              <ModifyConfirmRow label="Quantity" value={formatVol(pendingModifyOrder.quantity)} />
+              <ModifyConfirmRow label="Original price" value={formatPrice(pendingModifyOrder.originalPrice)} />
+              <ModifyConfirmRow label="New price" value={formatPrice(pendingModifyOrder.newPrice)} />
+              <ModifyConfirmRow label="Badge" value={pendingModifyBlockReason ? 'BLOCKED' : modeBadge.toUpperCase()} />
+              {pendingModifyBlockReason && <ModifyConfirmRow label="Risk" value={pendingModifyBlockReason} />}
+
+              {(modifyError || pendingModifyBlockReason) && (
+                <div className="rounded border border-[#F23645]/30 bg-[#F23645]/10 px-3 py-2 text-[11px] font-semibold text-[#FF9BA4]">
+                  {modifyError ?? pendingModifyBlockReason}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 border-t border-[#303030] px-4 py-3">
+              <button
+                type="button"
+                onClick={closeModifyConfirm}
+                disabled={modifyLoading}
+                className="h-8 flex-1 rounded border border-[#333333] bg-[#262626] text-[11px] font-bold uppercase text-[#B8B8B8] hover:text-[#E8E8E8] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmModifyOrder}
+                disabled={modifyLoading || !!pendingModifyBlockReason}
+                className="h-8 flex-1 rounded bg-accent text-[11px] font-black uppercase tracking-wider text-white hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                {modifyLoading ? 'Modifying' : 'Confirm'}
+              </button>
+            </div>
           </div>
-          <div className="mx-0.5 h-5 w-px bg-[#333]" />
-          <button
-            type="button"
-            onClick={() => {
-              useChartStore.getState().removeLine(panelId, selectedDrawing.id);
-              setSelectedDrawingId(null);
-              redraw();
-            }}
-            className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-red-500/10 hover:text-red-500"
-            title="Delete drawing"
-            aria-label="Delete drawing"
-          >
-            <X size={15} strokeWidth={2.5} />
-          </button>
         </div>
       )}
 
-      {/* Custom Profile Controls Overlay */}
+      {selectedDrawing && selectedDrawingControls && (
+        <DrawingToolbar
+          panelId={panelId}
+          selectedDrawing={selectedDrawing}
+          selectedDrawingControls={selectedDrawingControls}
+          onDelete={() => setSelectedDrawingId(null)}
+          onRedraw={redraw}
+        />
+      )}
+
       {customProfileRange && customProfileControls && (
-        <div 
-          className="popup-contrast absolute flex items-center gap-1 p-1 bg-[#1F1F1F]/90 backdrop-blur-sm border border-[#333] rounded shadow-xl z-20"
-          style={{
-            top: `${customProfileControls.top}px`,
-            left: `${customProfileControls.left}px`,
-            transform: 'translateY(-4px)',
-          }}
-        >
-          <button
-            onClick={() => {
-              useChartStore.getState().setCustomProfileLocked(panelId, !customProfileLocked);
-              redraw();
-            }}
-            className={`p-1.5 hover:bg-[#1F1F1F] rounded-md transition-all ${customProfileLocked ? 'text-[#3D7EFF]' : 'text-gray-400'}`}
-            title={customProfileLocked ? "Unlock Profile" : "Lock Profile"}
-          >
-            {customProfileLocked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
-          </button>
-          <button
-            onClick={() => {
-              useChartStore.getState().openIndicatorSettings(panelId, 'profiles');
-            }}
-            className="p-1.5 text-gray-400 hover:bg-[#1F1F1F] hover:text-accent rounded-md transition-all"
-            title="Profile Settings"
-            aria-label="Profile Settings"
-          >
-            <Settings size={15} strokeWidth={2.5} />
-          </button>
-          <div className="w-[1px] h-4 bg-[#333] mx-0.5" />
-          <button
-            onClick={() => {
-              useChartStore.getState().setCustomProfileRange(panelId, null);
-              redraw();
-            }}
-            className="p-1.5 hover:bg-red-500/10 text-gray-400 hover:text-red-500 rounded-md transition-all"
-            title="Remove Profile"
-          >
-            <X size={15} strokeWidth={2.5} />
-          </button>
-        </div>
+        <CustomProfileToolbar
+          panelId={panelId}
+          customProfileLocked={customProfileLocked}
+          customProfileControls={customProfileControls}
+          onRedraw={redraw}
+        />
       )}
     </div>
   );
 }
+

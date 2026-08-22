@@ -1,8 +1,11 @@
 'use client';
 
+// 1. External packages
 import React from 'react';
-import { ExhaustionResult } from '@/types/exhaustion';
+
+// 2. Internal packages & stores
 import { useChartStore } from '@/lib/store/chart';
+import type { ExhaustionResult } from '@/types/exhaustion';
 
 interface ExhaustionTooltipProps {
   result: ExhaustionResult;
