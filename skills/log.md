@@ -1,5 +1,22 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-22] - Refactor: Extract FeedProvider Utilities & Organize Imports
+- **What changed**:
+  - Extracted ~400 lines of pure utility functions and module-level bounded caches (`queuedRawTradeStorageKeys`, etc.) from `components/FeedProvider.tsx` into a new `lib/utils/feedUtils.ts` file.
+  - Reordered and organized imports in `FeedProvider.tsx` into categorized groups (Types, Config, Stores, Engines, Utilities, Feeds).
+- **Why it changed**:
+  - To reduce the file length of `FeedProvider.tsx` and strictly adhere to `client_code_refector.md` Rules 7 (Imports) and 10 (Extract Pure Utilities).
+- **Impact summary**:
+  - `FeedProvider.tsx` is significantly shorter and its dependencies are clearly legible. `tsc --noEmit` validates the extraction is completely type-safe and didn't break runtime logic.
+
+## [2026-08-22] - Refactor: Extract Magic Constants
+- **What changed**:
+  - Extracted 22 magic configuration constants (e.g. `RAW_TRADE_FLUSH_MS`, `PROFILE_REDRAW_MS`) from `components/FeedProvider.tsx` into a dedicated `lib/config/constants.ts` file.
+- **Why it changed**:
+  - To reduce file length and bloat in the main `FeedProvider.tsx` component, strictly adhering to the `client_code_refector.md` rule that magic values should live in a config file.
+- **Impact summary**:
+  - `FeedProvider.tsx` is cleaner. Safe logic extraction that cannot break runtime functionality. `map.md` and `refactoring_state.md` updated to reflect the new file location.
+
 ## [2026-08-22] - Refactor: Extract Inline Client Types
 - **What changed**:
   - Extracted inline client types from `components/` and `lib/` to standalone files in `types/`.

@@ -11,14 +11,11 @@
 - [x] chart/chartRuntime -> types/chart (ChartMode, PanelId, LayoutMode, AbsorptionSide, ExhaustionSide, LineDrawMode, DrawingStrokeWidth, SessionId, CvdMode, CvdResetMode, PanelRuntimeState, TradingRuntimeStatus, ChartRuntimeState, ChartEngineContextValue)
 - [x] drawCvd/CvdPanel/delta -> types/cvd (CvdScale, CvdDragMode, CvdPoint, CvdDivergenceDirection, CvdDivergenceMarker)
 - [ ] debugPanel/drawVolumeBars -> types/debug (DebugPanelSnapshot, DebugTab, VolumeBarsDebugSnapshot)
-
+- [x] FeedProvider -> lib/config/constants (magic constants extraction)
 ## PENDING FIXUPS (FIX_REQ)
 - import paths inside components/lib after type extraction
 
 ## LOGS (EVT)
-- [001] INIT - mapped initial extractions
-- [002] EXT - StorageManager -> types/storage
-- [003] EXT - FeedProvider -> types/feed
-- [004] EXT - profileEngine/Cache -> types/volumeProfile
-- [005] EXT - chart/chartRuntime/ChartEngineContext -> types/chart
-- [006] EXT - drawCvd/CvdPanel/delta -> types/cvd
+- [x] [2026-08-22] Extracted type definitions to `types/`
+- [x] [2026-08-22] Extracted constants to `lib/config/constants.ts`
+- [x] [2026-08-22] Extracted FeedProvider utilities to `lib/utils/feedUtils.ts` and ordered imports

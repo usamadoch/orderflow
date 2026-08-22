@@ -237,6 +237,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/debug/debugPanelAdapter.ts` → Internal debug panel snapshot adapter summarizing `window.__MARKET_DEBUG__`, persisted chart settings including Volume status, runtime store state, safe trading account snapshot counts/errors, order action and risk status state, and Binance user-stream connection/reconnect/reconciliation fields without copying raw market arrays.
 - `lib/config/markets.ts` → Supported Binance USDT symbols/timeframes, validation helpers, source-scoped storage key constants, and canonical fine profile base-bucket sizing.
 - `lib/config/chartColors.ts` → Shared TradingView-style bullish/bearish chart colors, RGB values, rgba conversion helper, and legacy semantic color normalization.
+- `lib/config/constants.ts` → Extracted system configuration constants.
 - `types/debug.ts` → Types for performance/metric snapshots and debugging panels.
 
 ### Utilities / Types
