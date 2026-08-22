@@ -8,8 +8,8 @@ import type { ExhaustionResult } from '../../../types/exhaustion';
 import type { IcebergLevel } from '../../../types/iceberg';
 import type { LiquidityVacuumZone } from '../../../types/liquidityVacuum';
 import { IcebergEngine } from '../../../lib/iceberg/engine';
-import { buildLiquidityVacuumZones } from '../../../lib/liquidityVacuum/engine';
 import { useChartRuntimeStore } from '../../../lib/store/chartRuntime';
+import { signalWorkerClient } from '../../../lib/worker/signalWorkerClient';
 import {
   getFootprintWorkNeed,
   getTradeDedupeKey,
@@ -102,25 +102,131 @@ export function useSignalEngine(
     });
   }, [panelId, setIcebergLevels, icebergDisabledNoopSkippedRef]);
 
-  const rebuildLiquidityVacuumZones = useCallback((candles = useChartRuntimeStore.getState().panels[panelId].candles || []) => {
-    if (!liquidityVacuumEnabled) {
-      if (liquidityVacuumZonesRef.current.length > 0) {
-        liquidityVacuumZonesRef.current = [];
-        setLiquidityVacuumZones(panelId, []);
-      }
-      return [];
-    }
+  const triggerWorkerComputeSignals = useCallback(async (candles = useChartRuntimeStore.getState().panels[panelId].candles || []) => {
+    if (candles.length === 0) return;
 
-    const displayBucketSize = Math.max(BASE_FOOTPRINT_BUCKET_SIZE, bucketSizeRef.current);
-    const zones = buildLiquidityVacuumZones(candles, engineRef.current, displayBucketSize, {
-      minScore: liquidityVacuumMinScore,
-      maxZones: liquidityVacuumMaxZones,
+    // We only need the footprint candles for the visible/analyzed range.
+    // To be safe and keep it simple for now, we'll map all candles to footprints.
+    // (This map operation is fast, the actual computation in the worker is what takes time)
+    const footprints = candles.map(c => engineRef.current.getFootprintCandle(c.time)).filter(Boolean) as import('../../../types/footprint').FootprintCandle[];
+
+    const result = await signalWorkerClient.computeSignals({
+      panelId,
+      candles,
+      footprints,
+      bucketSize: Math.max(BASE_FOOTPRINT_BUCKET_SIZE, bucketSizeRef.current),
+      
+      absorptionEnabled,
+      
+      exhaustionEnabled,
+      exhaustionLookback,
+      
+      icebergEnabled,
+      icebergMinScore,
+      icebergLookback,
+      
+      liquidityVacuumEnabled,
+      liquidityVacuumMinScore,
+      liquidityVacuumMaxZones,
     });
 
-    liquidityVacuumZonesRef.current = zones;
-    setLiquidityVacuumZones(panelId, zones);
-    return zones;
-  }, [liquidityVacuumEnabled, liquidityVacuumMaxZones, liquidityVacuumMinScore, panelId, setLiquidityVacuumZones, bucketSizeRef, engineRef]);
+    if (absorptionEnabled) {
+      absorptionMapRef.current = result.absorptionMap;
+      setAbsorptionMap(panelId, result.absorptionMap);
+    }
+    
+    if (exhaustionEnabled) {
+      exhaustionMapRef.current = result.exhaustionMap;
+      setExhaustionMap(panelId, result.exhaustionMap);
+    }
+    
+    if (icebergEnabled) {
+      icebergLevelsRef.current = result.icebergLevels;
+      setIcebergLevels(panelId, result.icebergLevels);
+    } else {
+      clearIcebergLevelsIfNeeded('worker-recompute-disabled');
+    }
+    
+    if (liquidityVacuumEnabled) {
+      liquidityVacuumZonesRef.current = result.liquidityVacuumZones;
+      setLiquidityVacuumZones(panelId, result.liquidityVacuumZones);
+    } else if (liquidityVacuumZonesRef.current.length > 0) {
+      liquidityVacuumZonesRef.current = [];
+      setLiquidityVacuumZones(panelId, []);
+    }
+  }, [
+    panelId, engineRef, bucketSizeRef, absorptionEnabled, setAbsorptionMap, 
+    exhaustionEnabled, exhaustionLookback, setExhaustionMap, 
+    icebergEnabled, icebergMinScore, icebergLookback, setIcebergLevels, clearIcebergLevelsIfNeeded,
+    liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumMaxZones, setLiquidityVacuumZones
+  ]);
+
+  const triggerWorkerScoreLive = useCallback(async (candles = useChartRuntimeStore.getState().panels[panelId].candles || []) => {
+    if (candles.length === 0) return;
+    
+    const lastCandle = candles[candles.length - 1];
+    if (lastCandle.isClosed) return;
+
+    // Only need footprints for the lookback window of the live candle
+    const maxLookback = Math.max(20, exhaustionLookback);
+    const windowStart = Math.max(0, candles.length - 1 - maxLookback);
+    const windowCandles = candles.slice(windowStart);
+    const footprints = windowCandles.map(c => engineRef.current.getFootprintCandle(c.time)).filter(Boolean) as import('../../../types/footprint').FootprintCandle[];
+
+    const result = await signalWorkerClient.scoreLive({
+      panelId,
+      candles,
+      footprints,
+      bucketSize: Math.max(BASE_FOOTPRINT_BUCKET_SIZE, bucketSizeRef.current),
+      
+      absorptionEnabled,
+      absorptionMap: absorptionMapRef.current,
+      
+      exhaustionEnabled,
+      exhaustionLookback,
+      exhaustionMap: exhaustionMapRef.current,
+      
+      liquidityVacuumEnabled,
+      liquidityVacuumMinScore,
+      liquidityVacuumMaxZones,
+    });
+
+    if (absorptionEnabled) {
+      absorptionMapRef.current = result.absorptionMap;
+      setAbsorptionMap(panelId, result.absorptionMap);
+    } else if (absorptionMapRef.current.size > 0) {
+      const emptyMap = new Map();
+      absorptionMapRef.current = emptyMap;
+      setAbsorptionMap(panelId, emptyMap);
+    }
+    
+    if (exhaustionEnabled) {
+      exhaustionMapRef.current = result.exhaustionMap;
+      setExhaustionMap(panelId, result.exhaustionMap);
+    } else if (exhaustionMapRef.current.size > 0) {
+      const emptyMap = new Map();
+      exhaustionMapRef.current = emptyMap;
+      setExhaustionMap(panelId, emptyMap);
+    }
+    
+    if (liquidityVacuumEnabled) {
+      liquidityVacuumZonesRef.current = result.liquidityVacuumZones;
+      setLiquidityVacuumZones(panelId, result.liquidityVacuumZones);
+    } else if (liquidityVacuumZonesRef.current.length > 0) {
+      liquidityVacuumZonesRef.current = [];
+      setLiquidityVacuumZones(panelId, []);
+    }
+  }, [
+    panelId, engineRef, bucketSizeRef, absorptionEnabled, setAbsorptionMap, 
+    exhaustionEnabled, exhaustionLookback, setExhaustionMap, 
+    liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumMaxZones, setLiquidityVacuumZones
+  ]);
+
+  // Keep rebuildLiquidityVacuumZones as a pass-through to triggerWorkerComputeSignals to prevent breaking FeedProvider's current API before we refactor it
+  const rebuildLiquidityVacuumZones = useCallback((candles = useChartRuntimeStore.getState().panels[panelId].candles || []) => {
+    triggerWorkerComputeSignals(candles);
+    return [];
+  }, [triggerWorkerComputeSignals, panelId]);
 
   return {
     absorptionMapRef,
@@ -137,5 +243,7 @@ export function useSignalEngine(
     getCurrentFootprintWorkNeed,
     clearIcebergLevelsIfNeeded,
     rebuildLiquidityVacuumZones,
+    triggerWorkerComputeSignals,
+    triggerWorkerScoreLive,
   };
 }

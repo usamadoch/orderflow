@@ -193,6 +193,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     getCurrentFootprintWorkNeed,
     clearIcebergLevelsIfNeeded,
     rebuildLiquidityVacuumZones,
+    triggerWorkerComputeSignals,
+    triggerWorkerScoreLive,
   } = useSignalEngine(
     panelId, bucketSize, engineRef, bucketSizeRef,
     exhaustionLookback, icebergLookback, icebergEnabled, icebergMinScore,
@@ -299,31 +301,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         if (candles.length > 0) {
           const last = candles[candles.length - 1];
           if (!last.isClosed) {
-            if (absorptionEnabled) {
-              const newMap = scoreLatestCandle(candles, engineRef.current, absorptionMapRef.current);
-              if (newMap !== absorptionMapRef.current) {
-                absorptionMapRef.current = newMap;
-                setAbsorptionMap(panelId, newMap);
-              }
-            } else if (absorptionMapRef.current.size > 0) {
-              const emptyMap = new Map<number, AbsorptionResult>();
-              absorptionMapRef.current = emptyMap;
-              setAbsorptionMap(panelId, emptyMap);
-            }
-
-            if (exhaustionEnabled) {
-              const newExhMap = scoreLatestExhaustion(candles, engineRef.current, absorptionMapRef.current, exhaustionMapRef.current, exhaustionLookback);
-              if (newExhMap !== exhaustionMapRef.current) {
-                exhaustionMapRef.current = newExhMap;
-                setExhaustionMap(panelId, newExhMap);
-              }
-            } else if (exhaustionMapRef.current.size > 0) {
-              const emptyMap = new Map<number, ExhaustionResult>();
-              exhaustionMapRef.current = emptyMap;
-              setExhaustionMap(panelId, emptyMap);
-            }
-
-            rebuildLiquidityVacuumZones(candles);
+            triggerWorkerScoreLive(candles);
           }
         }
       }
@@ -334,7 +312,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     }, 100);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [triggerFootprintRedraw, appendAggregateBubbleEvents, chartMode, panelId, setAbsorptionMap, setExhaustionMap, rebuildLiquidityVacuumZones, absorptionEnabled, exhaustionEnabled, exhaustionLookback]);
+  }, [triggerFootprintRedraw, appendAggregateBubbleEvents, chartMode, panelId, setAbsorptionMap, setExhaustionMap, triggerWorkerScoreLive, absorptionEnabled, exhaustionEnabled, exhaustionLookback]);
 
   // Handle display bucket size updates without reconnecting socket or clearing base cells.
   useEffect(() => {
@@ -561,30 +539,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     const recomputeSignalState = () => {
       const currentCandles = useChartRuntimeStore.getState().panels[panelId].candles || [];
-      const absMap = absorptionEnabled
-        ? buildAbsorptionMap(currentCandles, engineRef.current)
-        : new Map<number, AbsorptionResult>();
-      if (absorptionEnabled || absorptionMapRef.current.size > 0) {
-        absorptionMapRef.current = absMap;
-        setAbsorptionMap(panelId, absMap);
-      }
-
-      const exhMap = exhaustionEnabled
-        ? buildExhaustionMap(currentCandles, engineRef.current, absMap, exhaustionLookback)
-        : new Map<number, ExhaustionResult>();
-      if (exhaustionEnabled || exhaustionMapRef.current.size > 0) {
-        exhaustionMapRef.current = exhMap;
-        setExhaustionMap(panelId, exhMap);
-      }
-
-      if (icebergEnabled) {
-        const icebergLevels = icebergEngineRef.current.update(currentCandles, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20);
-        icebergLevelsRef.current = icebergLevels;
-        setIcebergLevels(panelId, icebergLevels);
-      } else {
-        clearIcebergLevelsIfNeeded('recompute-disabled');
-      }
-      rebuildLiquidityVacuumZones(currentCandles);
+      triggerWorkerComputeSignals(currentCandles);
     };
 
     const flushRawTrades = () => {
@@ -2747,7 +2702,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       footprintEngine.releaseSharedBaseCache();
       volumeProfileEngine.releaseSharedBaseCache();
     };
-  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, rebuildLiquidityVacuumZones, absorptionEnabled, exhaustionEnabled, bubblesEnabled, bubbleSource, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
+  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, triggerWorkerComputeSignals, absorptionEnabled, exhaustionEnabled, bubblesEnabled, bubbleSource, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
   // Register protected ranges for Volume Profile cache to prevent eviction
   useEffect(() => {
     return useChartStore.subscribe((state) => {
