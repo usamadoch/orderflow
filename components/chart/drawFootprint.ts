@@ -140,6 +140,7 @@ export function drawFootprint(
       const rowHeight = Math.max(0, bottomY - topY);
 
       if (rowHeight < 0.5) return;
+      if (bottomY < 0 || topY > canvasHeight) return;
 
       const candleWidth = 4;
       const candleGap = 4;
