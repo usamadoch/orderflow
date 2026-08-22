@@ -6,19 +6,11 @@ import { useChartStore, type PanelId } from '../../lib/store/chart';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '../../lib/config/chartColors';
 import { formatPrice } from '../../lib/utils/format';
-import type { OrderSide, OrderType, TradingHealthStatus } from '../../types/trading';
-
-type TicketOrderType = Extract<OrderType, 'market' | 'limit'>;
+import type { OrderSide, TradingHealthStatus, TicketOrderType, ValidationResult } from '../../types/trading';
 
 interface OrderTicketProps {
   panelId: PanelId;
 }
-
-interface ValidationResult {
-  messages: string[];
-  liveBlocked: boolean;
-}
-
 export function OrderTicket({ panelId }: OrderTicketProps) {
   const panel = useChartStore(s => s.panels[panelId]);
   const candles = useChartRuntimeStore(s => s.panels[panelId].candles);

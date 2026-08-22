@@ -1,19 +1,11 @@
 import { Candle } from '@/types/candle';
-import { AbsorptionResult, AbsorptionRank } from '@/types/absorption';
+import { AbsorptionResult, AbsorptionRank, RankConfig } from '@/types/absorption';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, chartColorToRgba } from '@/lib/config/chartColors';
 
 const COLOR_SELLER_ABS = CHART_BULLISH_COLOR;
 const COLOR_BUYER_ABS = CHART_BEARISH_COLOR;
 
 // ── Rank → visual config ─────────────────────────────────
-interface RankConfig {
-  radius: number;
-  alpha: number;
-  showLabel: boolean;
-  showScore: boolean;
-  stroke: boolean;
-  glow: boolean;
-}
 
 function getRankConfig(rank: AbsorptionRank): RankConfig {
   switch (rank) {

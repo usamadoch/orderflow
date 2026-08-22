@@ -1,5 +1,6 @@
 import type { CvdMode, CvdScaleMode } from '@/lib/store/chart';
 import type { CvdDivergenceMarker, CvdPoint } from '@/lib/utils/delta';
+import type { CvdScale, DrawCvdOptions } from '../../types/cvd';
 
 const AXIS_FONT = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
 const MONO_FONT = '11px "JetBrains Mono", monospace';
@@ -9,29 +10,7 @@ const GRID = '#1F1F1F';
 const TEXT = '#909090';
 const MUTED_TEXT = '#5F6368';
 
-export interface CvdScale {
-  min: number;
-  max: number;
-  valueToY: (value: number) => number;
-  yToValue: (y: number) => number;
-}
 
-interface DrawCvdOptions {
-  mode: CvdMode;
-  scaleMode: CvdScaleMode;
-  fixedRange: number;
-  positiveColor: string;
-  negativeColor: string;
-  showDivergenceMarkers: boolean;
-  divergenceMarkers?: CvdDivergenceMarker[];
-  chartWidth: number;
-  chartHeight: number;
-  canvasWidth: number;
-  canvasHeight: number;
-  priceAxisWidth: number;
-  timeAxisHeight: number;
-  barWidth: number;
-}
 
 export function getCvdScale(
   points: CvdPoint[],

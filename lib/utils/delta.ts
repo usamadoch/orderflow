@@ -1,32 +1,9 @@
 import type { AggregationEngine } from '@/lib/aggregation/engine';
 import type { Candle } from '@/types/candle';
 import type { CvdResetMode, SessionConfig } from '@/lib/store/chart';
+import type { CvdPoint, CvdDivergenceMarker } from '../../types/cvd';
 
-export interface CvdPoint {
-  index: number;
-  time: number;
-  rawDelta: number;
-  delta: number;
-  rawOpen: number;
-  rawHigh: number;
-  rawLow: number;
-  rawClose: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  reset: boolean;
-}
-
-export type CvdDivergenceDirection = 'bullish' | 'bearish';
-
-export interface CvdDivergenceMarker {
-  index: number;
-  time: number;
-  direction: CvdDivergenceDirection;
-  priceValue: number;
-  cvdValue: number;
-}
+export type { CvdPoint, CvdDivergenceMarker };
 
 interface BuildCvdSeriesOptions {
   resetMode: CvdResetMode;

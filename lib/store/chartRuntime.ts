@@ -10,88 +10,23 @@ import { LiquidityZone } from '../../types/liquidity';
 import type { BubbleEvent } from '../../types/bubble';
 import type {
   AccountSnapshot,
-  Balance,
   BracketDragState,
   BracketOrder,
-  Order,
   OrderCancelRequest,
   OrderModifyRequest,
   OrderRequest,
   OrderResult,
-  Position,
-  TradeFill,
   TradingConnectionStatus,
   TradingMode,
   TradingModeBadge,
   TradingRiskStatusPayload,
-  TradingUserStreamStatus,
   TradingUserStreamStatusPayload,
   VirtualPosition,
 } from '../../types/trading';
 import { MAX_AGGREGATE_BUBBLE_EVENTS } from './chart';
-import type { GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId } from './chart';
+import type { PanelRuntimeState, TradingRuntimeStatus, GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId } from '../../types/chart';
 
-export interface PanelRuntimeState {
-  candles: Candle[];
-  trades: Trade[];
-  connected: boolean;
-  isLoadingHistory: boolean;
-  historyRestoreStatus: HistoryRestoreStatus | null;
-  footprintTrigger: number;
-  absorptionMap: Map<number, AbsorptionResult>;
-  exhaustionMap: Map<number, ExhaustionResult>;
-  aggregateBubbleEvents: BubbleEvent[];
-  isProfileSelected: boolean;
-  icebergLevels: IcebergLevel[];
-  liquidityVacuumZones: LiquidityVacuumZone[];
-  liquidityZones: LiquidityZone[];
-  measureToolActive: boolean;
-  activeMeasurement: Measurement | null;
-  refreshKey: number;
-}
-
-export interface TradingRuntimeStatus {
-  currentMode: TradingMode;
-  connectionStatus: TradingConnectionStatus;
-  modeBadge: TradingModeBadge;
-  lastHealthCheckAt: string | null;
-  lastErrorMessage: string | null;
-  balances: Balance[];
-  openOrders: Order[];
-  positions: Position[];
-  recentTrades: TradeFill[];
-  lastSnapshotAt: string | null;
-  snapshotLoading: boolean;
-  snapshotError: string | null;
-  userStreamStatus: TradingUserStreamStatus;
-  userStreamConnected: boolean;
-  userStreamLastEventAt: string | null;
-  userStreamReconnectCount: number;
-  userStreamLastError: string | null;
-  reconciliationLoading: boolean;
-  lastReconciledAt: string | null;
-  orderActionLoading: boolean;
-  orderActionError: string | null;
-  orderActionSuccess: string | null;
-  modifyingOrderId: string | null;
-  dragPreviewPrice: number | null;
-  modifyLoading: boolean;
-  modifyError: string | null;
-  modifySuccess: string | null;
-  riskStatus: TradingRiskStatusPayload | null;
-  riskLoading: boolean;
-  riskError: string | null;
-  liveBlocked: boolean;
-  killSwitchActive: boolean;
-  riskBlockReasons: string[];
-  // ── Virtual Position Layer ────────────────────────────────────────────────
-  /** Derived from filled spot trades; not provided by Binance directly. */
-  virtualPositions: VirtualPosition[];
-  /** Bracket orders (SL/TP) keyed by VirtualPosition id. */
-  bracketOrders: BracketOrder[];
-  /** Live drag preview for the SL or TP handle on the chart canvas. */
-  bracketDrag: BracketDragState | null;
-}
+export type { PanelRuntimeState, TradingRuntimeStatus };
 
 interface ChartRuntimeState {
   panels: Record<PanelId, PanelRuntimeState>;

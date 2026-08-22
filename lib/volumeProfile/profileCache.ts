@@ -17,23 +17,11 @@ import {
   getRetentionCutoffSeconds,
 } from '@/lib/cache/marketCachePolicy';
 import { normalizePriceToBucket } from '@/lib/utils/aggregation';
-import type { FineProfileRow } from './profileEngine';
+import type { FineProfileRow, VolumeProfileCacheKeyParts, FineProfileRowSnapshot, FineRowInsertResult } from '@/types/volumeProfile';
 
 export const BASE_PROFILE_TIMEFRAME_SECONDS = 60;
 
-export interface VolumeProfileCacheKeyParts {
-  symbol: string;
-  contractType: string;
-  dataSourceMode: string;
-  baseBucketSize: number;
-}
 
-export interface FineProfileRowSnapshot {
-  row: FineProfileRow;
-  origin: string;
-}
-
-type FineRowInsertResult = 'inserted' | 'invalid-base-bucket' | 'invalid-price' | 'non-positive-volume';
 
 export function getVolumeProfileCacheKey({
   symbol,

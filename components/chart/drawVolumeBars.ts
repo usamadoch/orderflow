@@ -1,56 +1,10 @@
 import type { AggregationEngine } from '@/lib/aggregation/engine';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
-import type { VolumeBarsColorMode, VolumeBarsInputData, VolumeBarsMarketSource, VolumeBarsFilterMode } from '@/lib/store/chart';
+import type { VolumeBarsColorMode, VolumeBarsInputData } from '@/lib/store/chart';
 import type { BubbleEvent } from '@/types/bubble';
 import type { Candle } from '@/types/candle';
 
-export interface VolumeBarsDebugSnapshot {
-  panelId: string;
-  volumeBarsEnabled: boolean;
-  inputData: VolumeBarsInputData;
-  volumeInputData: VolumeBarsInputData;
-  marketSource: VolumeBarsMarketSource;
-  flowSourceUsed: 'spot' | 'futures' | 'both';
-  visibleBarsCount: number;
-  volumeBarsVisibleCount: number;
-  volumeBarsHistoricalCount: number;
-  volumeBarsLiveCount: number;
-  maxVisibleValue: number;
-  averageValue: number | null;
-  unavailableReason: string | null;
-  liveOnlyReason: string | null;
-}
-
-interface DrawVolumeBarsOptions {
-  panelId: string;
-  enabled: boolean;
-  inputData: VolumeBarsInputData;
-  marketSource: VolumeBarsMarketSource;
-  filterMode: VolumeBarsFilterMode;
-  movingAverageLength: number;
-  filterMin: number;
-  filterMax: number;
-  colorMode: VolumeBarsColorMode;
-  opacity: number;
-  heightPct: number;
-  showValueText: boolean;
-  textSize: number;
-  averageLineEnabled: boolean;
-  averageLength: number;
-  activeChartContractType: 'spot' | 'futures';
-  activeDataSourceMode: 'spot' | 'futures' | 'both';
-  onDebug?: (snapshot: VolumeBarsDebugSnapshot) => void;
-}
-
-interface VolumeBarPoint {
-  index: number;
-  value: number;
-  delta: number | null;
-  unavailable: boolean;
-  source: 'historical' | 'live';
-}
-
-
+import type { DrawVolumeBarsOptions, VolumeBarPoint } from '@/types/chart';
 
 function getFootprintValue(candle: Candle, engine: AggregationEngine, inputData: VolumeBarsInputData) {
   if (inputData !== 'volume') return null;

@@ -17,3 +17,12 @@ export interface FootprintCandle {
   cells:      Map<number, FootprintCell>;     // key = bucket price (normalized)
   isClosed:   boolean;
 }
+
+export interface CandleVisualStats {
+  maxVol: number;
+  maxDelta: number;
+  avgVol: number;
+  avgDelta: number;
+  volumeScale: number;
+  deltaScale: number;
+}

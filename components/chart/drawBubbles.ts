@@ -1,41 +1,13 @@
 import { Candle } from '@/types/candle';
 import { AggregationEngine } from '@/lib/aggregation/engine';
-import { CHART_BEARISH_RGB, CHART_BULLISH_RGB, chartColorToRgba } from '@/lib/config/chartColors';
+import { chartColorToRgba } from '@/lib/config/chartColors';
 import { recordAggregateBubbleDebug } from '@/lib/debug/marketMetrics';
-import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleSource } from '@/types/bubble';
+import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleScaleMode, BubbleSettings, AggregateBubbleDebugContext, SourceCountMap } from '@/types/bubble';
 
 const BUBBLE_BULLISH_RGB: { r: number; g: number; b: number } = { r: 13, g: 91, b: 11 }; // #0D5B0B
 const BUBBLE_BEARISH_RGB: { r: number; g: number; b: number } = { r: 74, g: 30, b: 111 }; // #4A1E6F
 
-export type BubbleSide = 'both' | 'buy' | 'sell';
-export type BubbleScaleMode = 'linear' | 'sqrt' | 'log';
 
-interface BubbleSettings {
-  bubbleSizeBy?: BubbleSizeBy;
-  aggregateBubbleMarketSource?: AggregateBubbleMarketSource;
-  activeChartContractType?: BubbleEventContractType;
-  activeDataSourceMode?: BubbleEventContractType | 'both';
-  bubbleThreshold: number;
-  bubbleThresholdMode?: 'absolute' | 'relative';
-  bubbleMinOrders?: number;
-  bubbleMinRadius: number;
-  bubbleMaxRadius: number;
-  bubbleSide: BubbleSide;
-  bubbleScaleMode?: BubbleScaleMode;
-}
-
-interface AggregateBubbleDebugContext {
-  panelId: string;
-  bubbleSource: BubbleSource;
-  bufferSize: number;
-  maxBufferSize: number;
-  activeChartContractType: BubbleEventContractType;
-  activeDataSourceMode: BubbleEventContractType | 'both';
-  engine: AggregationEngine;
-  bucketSize: number;
-}
-
-type SourceCountMap = Record<BubbleEventContractType, number>;
 
 function scaleBubbleValue(value: number, minValue: number, maxValue: number, scaleMode: BubbleScaleMode) {
   if (!Number.isFinite(value) || !Number.isFinite(maxValue) || !Number.isFinite(minValue) || value <= minValue || maxValue <= minValue) {

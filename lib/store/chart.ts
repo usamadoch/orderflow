@@ -1,329 +1,83 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { FootprintMode } from '../../types/footprint';
-import { BubbleScaleMode, BubbleSide } from '../../components/chart/drawBubbles';
-import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource } from '../../types/bubble';
-import { MeasurementMetrics, FootprintMeasurementMetrics } from '../../types/measurement';
-import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, normalizeChartSemanticColor } from '../config/chartColors';
-import { getMinimumFineProfileResolutionTicks } from '../config/markets';
+import { FootprintMode } from '@/types/footprint';
+import { getMinimumFineProfileResolutionTicks } from '@/lib/config/markets';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, normalizeChartSemanticColor } from '@/lib/config/chartColors';
+import type {
+  ChartMode,
+  PanelId,
+  LayoutMode,
+  AbsorptionSide,
+  ExhaustionSide,
+  LineDrawMode,
+  DrawingStrokeWidth,
+  SessionId,
+  CvdMode,
+  CvdResetMode,
+  CvdScaleMode,
+  ContractType,
+  DataSourceMode,
+  VolumeBarsInputData,
+  VolumeBarsMarketSource,
+  VolumeBarsColorMode,
+  VolumeBarsFilterMode,
+  IndicatorSettingsSection,
+  SettingsFocusSection,
+  StatsIndicatorItem,
+  HistoryRestoreStage,
+  HistoryRestoreStatus,
+  SettingsOpenRequest,
+  DrawingToolbarPosition,
+  SessionConfig,
+  GlobalCrosshair,
+  BubbleThresholdMode,
+  TimeframeSettings,
+  Measurement,
+  DrawnLine,
+  PanelState,
+} from '../../types/chart';
 
-export type ChartMode = 'candle' | 'footprint';
-export type PanelId = 'left' | 'right';
-export type LayoutMode = 'single' | 'dual';
-export type AbsorptionSide = 'both' | 'buyer' | 'seller';
+export type {
+  ChartMode,
+  PanelId,
+  LayoutMode,
+  AbsorptionSide,
+  ExhaustionSide,
+  LineDrawMode,
+  DrawingStrokeWidth,
+  SessionId,
+  CvdMode,
+  CvdResetMode,
+  CvdScaleMode,
+  ContractType,
+  DataSourceMode,
+  VolumeBarsInputData,
+  VolumeBarsMarketSource,
+  VolumeBarsColorMode,
+  VolumeBarsFilterMode,
+  IndicatorSettingsSection,
+  SettingsFocusSection,
+  StatsIndicatorItem,
+  HistoryRestoreStage,
+  HistoryRestoreStatus,
+  SettingsOpenRequest,
+  DrawingToolbarPosition,
+  SessionConfig,
+  GlobalCrosshair,
+  BubbleThresholdMode,
+  TimeframeSettings,
+  Measurement,
+  DrawnLine,
+  PanelState,
+};
+
+import { AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource, BubbleScaleMode, BubbleSide } from '../../types/bubble';
+
 export type { AggregateBubbleMarketSource, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource };
-export type ExhaustionSide = 'both' | 'buyer' | 'seller';
-export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box' | 'long-position' | 'short-position';
-export type DrawingStrokeWidth = 1 | 2 | 3 | 4;
-export type SessionId = 'tokyo' | 'london' | 'newYork';
-export type CvdMode = 'candles' | 'bars' | 'line' | 'histogram';
-export type CvdResetMode = 'none' | 'daily' | 'session';
-export type CvdScaleMode = 'auto' | 'fixed';
-export type ContractType = 'spot' | 'futures';
-export type DataSourceMode = 'spot' | 'futures' | 'both';
-export type VolumeBarsInputData = 'volume' | 'orders' | 'aggregateTrades';
-export type VolumeBarsMarketSource = 'active' | 'spot' | 'futures' | 'both';
-export type VolumeBarsColorMode = 'fixed' | 'priceDirection' | 'delta' | 'volumeSlope';
-export type VolumeBarsFilterMode = 'absolute' | 'relative';
-export type IndicatorSettingsSection = 'sessions' | 'historicalSessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap' | 'stats';
-export type SettingsFocusSection = IndicatorSettingsSection | 'profiles';
-export type StatsIndicatorItem = 'volume' | 'delta' | 'cvd';
-export type HistoryRestoreStage = 'idle' | 'connecting' | 'candles' | 'volumeProfile' | 'rawTrades' | 'footprint' | 'complete' | 'error';
 
-export interface HistoryRestoreStatus {
-  stage: HistoryRestoreStage;
-  message: string;
-  startedAt: number;
-  updatedAt: number;
-  source?: 'Binance' | 'stored' | 'stored+Binance' | 'cache' | 'none';
-  liveConnected: boolean;
-  candleCount: number;
-  storedCandleCount: number;
-  binanceCandleCount: number;
-  profileRowCount: number;
-  profileCandleCount: number;
-  footprintRowCount: number;
-  footprintCellCount: number;
-  footprintCandleCount: number;
-  rawTradeCount: number;
-  rawTradeRestoreSkipped?: boolean;
-  profileRestoreSkipped?: boolean;
-  footprintRestoreSkipped?: boolean;
-  needsFootprintWork?: boolean;
-  footprintWorkReasons?: string[];
-  footprintIngestionSkipped?: number;
-  icebergDisabledNoopSkipped?: number;
-  footprintRequestedRange?: { startSeconds: number; endSeconds: number } | null;
-  footprintClampedRange?: { startSeconds: number; endSeconds: number } | null;
-  footprintChunkCount?: number;
-  footprintRowsPerChunk?: number[];
-  footprintRangeTooLargeSkipped?: boolean;
-  footprintRestoreFailureReason?: string | null;
-}
-
-export interface SettingsOpenRequest {
-  panelId: PanelId;
-  section: SettingsFocusSection;
-  requestId: number;
-}
-
-export interface DrawingToolbarPosition {
-  x: number;
-  y: number;
-}
-
-export interface SessionConfig {
-  enabled: boolean;
-  startHour: number; // 0–23, UTC
-  startMin: number; // 0 or 30 only
-  endHour: number;
-  endMin: number;
-  color: string; // hex color
-}
-
-export interface GlobalCrosshair {
-  activePanel: PanelId | null;
-  time: number | null;
-  price: number | null;
-}
-
-export type BubbleThresholdMode = 'absolute' | 'relative';
 export const MAX_AGGREGATE_BUBBLE_EVENTS = 20000;
 
-export interface TimeframeSettings {
-  bucketSize: number;
-  autoBucketSize: boolean;
-  bubbleSource: BubbleSource;
-  bubbleSizeBy: BubbleSizeBy;
-  aggregateBubbleMarketSource: AggregateBubbleMarketSource;
-  bubbleThreshold: number;
-  bubbleThresholdMode: BubbleThresholdMode;
-  bubbleMinOrders: number;
-  bubbleScaleMode: BubbleScaleMode;
-  absorptionMinScore: number;
-  exhaustionMinScore: number;
-  exhaustionLookback: number;
-  icebergMinScore: number;
-  icebergLookback: number;
-  icebergShowSuspected: boolean;
-  icebergShowLabels: boolean;
-  icebergShowTint: boolean;
-  liquidityVacuumMinScore: number;
-  liquidityVacuumShowLabels: boolean;
-  liquidityVacuumOpacity: number;
-  liquidityVacuumMaxZones: number;
-  profileWidthPct: number;
-  defaultProfileEnabled: boolean;
-  profileResolutionTicks: number;
-  profileMinRowHeight: number;
-  profileOpacity: number;
-  profileMinRowWidth: number;
-  profileScaleMode: 'linear' | 'sqrt';
-  profileShowPocHighlight: boolean;
-  profileShowVaFill: boolean;
-  profileShowPocLine: boolean;
-  profileShowVaLines: boolean;
-  profileShowDelta: boolean;
-  deltaProfileWidth: number;
-  cvdEnabled: boolean;
-  cvdPanelHeightPct: number;
-  cvdMode: CvdMode;
-  cvdSmoothing: number;
-  cvdResetMode: CvdResetMode;
-  cvdPositiveColor: string;
-  cvdNegativeColor: string;
-  cvdScaleMode: CvdScaleMode;
-  cvdFixedRange: number;
-  cvdShowDivergence: boolean;
-  cvdDivergenceLookback: number;
-  cvdMinimized: boolean;
-  volumeBarsEnabled: boolean;
-  volumeBarsInputData: VolumeBarsInputData;
-  volumeBarsMarketSource: VolumeBarsMarketSource;
-  volumeBarsFilterMode: VolumeBarsFilterMode;
-  volumeBarsMovingAverageLength: number;
-  volumeBarsFilterMin: number;
-  volumeBarsFilterMax: number;
-  volumeBarsColorMode: VolumeBarsColorMode;
-  volumeBarsOpacity: number;
-  volumeBarsHeightPct: number;
-  volumeBarsShowValueText: boolean;
-  volumeBarsTextSize: number;
-  volumeBarsAverageLineEnabled: boolean;
-  volumeBarsAverageLength: number;
-}
-
-export interface Measurement {
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-  live: boolean;
-  metrics: MeasurementMetrics | null;
-  footprintMetrics: FootprintMeasurementMetrics | null;
-}
-
-export interface DrawnLine {
-  id: string;
-  type: 'horizontal' | 'vertical' | 'horizontal-ray' | 'box' | 'long-position' | 'short-position';
-  value: number; // price for horizontal/ray, legacy candle index for vertical, top price fallback for box
-  color?: string;
-  strokeWidth?: DrawingStrokeWidth;
-  locked?: boolean;
-  time?: number;
-  startTime?: number;
-  startIndex?: number;
-  firstTime?: number;
-  lastTime?: number;
-  firstIndex?: number;
-  lastIndex?: number;
-  priceHigh?: number;
-  priceLow?: number;
-  stopPrice?: number;
-  targetPrice?: number;
-}
-
-export interface PanelState {
-  id: PanelId;
-  pair: string;
-  timeframe: string;
-  chartMode: ChartMode;
-  footprintMode: FootprintMode;
-  bucketSize: number;
-  autoBucketSize: boolean;
-  barWidth: number;
-  scrollOffset: number;
-  contractType: ContractType;
-  dataSourceMode: DataSourceMode;
-  absorptionEnabled: boolean;
-  absorptionMinScore: number;
-  absorptionSide: AbsorptionSide;
-  absorptionShowLabels: boolean;
-  bubblesEnabled: boolean;
-  bubbleSource: BubbleSource;
-  bubbleSizeBy: BubbleSizeBy;
-  aggregateBubbleMarketSource: AggregateBubbleMarketSource;
-  bubbleThreshold: number;
-  bubbleThresholdMode: BubbleThresholdMode;
-  bubbleMinOrders: number;
-  bubbleMinRadius: number;
-  bubbleMaxRadius: number;
-  bubbleSide: BubbleSide;
-  bubbleScaleMode: BubbleScaleMode;
-  isDrawMode: boolean;
-  customProfileRange: {
-    firstTime?: number;
-    lastTime?: number;
-    firstIndex: number;
-    lastIndex: number;
-    priceHigh: number;
-    priceLow: number;
-  } | null;
-  customProfileLocked: boolean;
-  drawnLines: DrawnLine[];
-  lineDrawMode: LineDrawMode;
-  drawingToolbarPosition: DrawingToolbarPosition;
-  exhaustionEnabled: boolean;
-  exhaustionMinScore: number;
-  exhaustionSide: ExhaustionSide;
-  exhaustionLookback: number;
-  exhaustionShowProvisional: boolean;
-  icebergEnabled: boolean;
-  icebergMinScore: number;
-  icebergLookback: number;
-  icebergShowSuspected: boolean;
-  icebergShowLabels: boolean;
-  icebergShowTint: boolean;
-  liquidityVacuumEnabled: boolean;
-  liquidityVacuumMinScore: number;
-  liquidityVacuumShowLabels: boolean;
-  liquidityVacuumOpacity: number;
-  liquidityVacuumMaxZones: number;
-  indicatorLabelsCollapsed: boolean;
-  // Volume Profile Visuals
-  profileWidthPct: number;
-  defaultProfileEnabled: boolean;
-  profileResolutionTicks: number;
-  profileMinRowHeight: number;
-  profileOpacity: number;
-  profileMinRowWidth: number;
-  profileScaleMode: 'linear' | 'sqrt';
-  profileShowPocHighlight: boolean;
-  profileShowVaFill: boolean;
-  profileShowPocLine: boolean;
-  profileShowVaLines: boolean;
-  profileShowDelta: boolean;
-  deltaProfileWidth: number;
-  // CVD Panel
-  cvdEnabled: boolean;
-  cvdPanelHeightPct: number;
-  cvdMode: CvdMode;
-  cvdSmoothing: number;
-  cvdResetMode: CvdResetMode;
-  cvdPositiveColor: string;
-  cvdNegativeColor: string;
-  cvdScaleMode: CvdScaleMode;
-  cvdFixedRange: number;
-  cvdShowDivergence: boolean;
-  cvdDivergenceLookback: number;
-  cvdMinimized: boolean;
-  // Volume Bars
-  volumeBarsEnabled: boolean;
-  volumeBarsInputData: VolumeBarsInputData;
-  volumeBarsMarketSource: VolumeBarsMarketSource;
-  volumeBarsFilterMode: VolumeBarsFilterMode;
-  volumeBarsMovingAverageLength: number;
-  volumeBarsFilterMin: number;
-  volumeBarsFilterMax: number;
-  volumeBarsColorMode: VolumeBarsColorMode;
-  volumeBarsOpacity: number;
-  volumeBarsHeightPct: number;
-  volumeBarsShowValueText: boolean;
-  volumeBarsTextSize: number;
-  volumeBarsAverageLineEnabled: boolean;
-  volumeBarsAverageLength: number;
-  // Session Visualization
-  sessionsEnabled: boolean;
-  sessions: {
-    tokyo: SessionConfig;
-    london: SessionConfig;
-    newYork: SessionConfig;
-  };
-  // Historical Session Volume Profile
-  historicalSessionProfileEnabled: boolean;
-  historicalSessionProfileStartHour: number;
-  historicalSessionProfileStartMin: number;
-  historicalSessionProfileEndHour: number;
-  historicalSessionProfileEndMin: number;
-  historicalSessionProfileCount: number;
-  historicalSessionProfileMinTimeframe: string;
-
-  settingsByTimeframe: Record<string, Partial<TimeframeSettings>>;
-  // Liquidity Map
-  liquidityEnabled: boolean;              // default true, persisted
-  liquidityBucketSize: number;            // default 50, persisted
-  minimumLiquidityThreshold: number;      // default 5, persisted
-  liquidityOpacity: number;               // default 0.6, persisted
-  liquidityRange: number;                 // default 10 (percent), persisted
-  liquidityHistoryEnabled: boolean;       // default true, persisted
-  liquidityHistoryDepth: number;          // max snapshots, default 200, persisted
-  liquidityHeatmapEnabled: boolean;
-  liquidityHeatmapOpacity: number;
-
-  liquidityHeatmapAgeFade: number;
-  liquidityHeatmapWidth: number;
-  liquidityHeatmapShowPulled: boolean;
-  liquidityHeatmapShowConsumed: boolean;
-  liquidityHeatmapShowPersistence: boolean;
-  liquidityHeatmapShowCurrentLabel: boolean;
-  liquidityHeatmapProfileSync: boolean;
-  // Stats Indicator
-  statsIndicatorEnabled: boolean;
-  statsIndicatorCount: number;
-  statsIndicatorItems: StatsIndicatorItem[];
-}
-
-interface ChartState {
+export interface ChartState {
   panels: {
     left: PanelState;
     right: PanelState;

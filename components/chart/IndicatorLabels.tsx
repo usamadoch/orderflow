@@ -11,13 +11,7 @@ interface IndicatorLabelsProps {
   isLoading?: boolean;
 }
 
-interface IndicatorLabelConfig {
-  id: IndicatorSettingsSection | 'profile';
-  label: string;
-  enabled: boolean;
-  onToggle: () => void;
-}
-
+import type { IndicatorLabelConfig } from '@/types/chart';
 const SOURCE_OPTIONS: { label: string; value: DataSourceMode }[] = [
   { label: 'Spot', value: 'spot' },
   { label: 'Futures', value: 'futures' },

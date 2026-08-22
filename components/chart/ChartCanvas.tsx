@@ -6,7 +6,7 @@ import { PanelId, ChartMode, AbsorptionSide, BubbleSide, useChartStore, PanelSta
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { FootprintMode } from '@/types/footprint';
 import { AggregationEngine } from '@/lib/aggregation/engine';
-import type { VolumeProfileSource } from '@/lib/volumeProfile/profileEngine';
+import type { VolumeProfileSource } from '@/types/volumeProfile';
 import { usePanZoom } from './usePanZoom';
 import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexToX as calcIndexToX, yToPrice, xToIndex, timeToIndex } from './useCoordinates';
 import { drawCandles } from './drawCandles';
@@ -18,13 +18,13 @@ import { drawPriceLine } from './drawPriceLine';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
 import { drawVolumeProfile } from './drawVolumeProfile';
 import { drawAbsorption } from './drawAbsorption';
-import { BubbleScaleMode, drawAggregateTradeBubbles, drawBubbles } from './drawBubbles';
+import { drawAggregateTradeBubbles, drawBubbles } from './drawBubbles';
 import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
 import { drawDrawingPriceLabels, drawLines } from './drawLines';
 import { initCanvas } from '@/lib/utils/canvas';
 import { Candle } from '@/types/candle';
-import type { BracketDragState, BracketOrder, Order, Position, TradeFill, TradingRiskStatusPayload, VirtualPosition } from '@/types/trading';
-import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource } from '@/types/bubble';
+import type { BracketDragState, BracketOrder, Order, Position, TradeFill, TradingRiskStatusPayload, VirtualPosition, PendingModifyOrder } from '@/types/trading';
+import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource, BubbleScaleMode } from '@/types/bubble';
 import { AbsorptionResult } from '@/types/absorption';
 import { ExhaustionResult } from '@/types/exhaustion';
 import { IcebergLevel } from '@/types/iceberg';
@@ -52,15 +52,7 @@ import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColo
 import { formatPrice, formatVol } from '@/lib/utils/format';
 import { HistoricalSessionRange } from '@/lib/utils/historicalSessions';
 
-type CustomProfileHitZone = 'move' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom';
-type DrawingHitZone = 'hover' | 'move' | 'delete' | 'resize-left' | 'resize-right' | 'resize-top' | 'resize-bottom' | 'resize-entry' | 'resize-stop' | 'resize-target';
-type CustomProfileRange = NonNullable<PanelState['customProfileRange']>;
-type PendingModifyOrder = {
-  order: Order;
-  originalPrice: number;
-  newPrice: number;
-  quantity: number;
-};
+import { CustomProfileHitZone, DrawingHitZone, CustomProfileRange } from '@/types/chart';
 
 const DRAWING_COLORS = [
   CHART_BEARISH_COLOR,

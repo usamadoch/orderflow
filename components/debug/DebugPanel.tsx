@@ -10,8 +10,7 @@ import {
   type DebugPanelSnapshot,
 } from '@/lib/debug/debugPanelAdapter';
 
-type DebugTab = 'performance' | 'restore' | 'runtime' | 'bubbles' | 'signals' | 'store';
-
+import type { DebugTab } from '@/types/debug';
 const TABS: Array<{ id: DebugTab; label: string }> = [
   { id: 'performance', label: 'Performance' },
   { id: 'restore', label: 'Restore' },

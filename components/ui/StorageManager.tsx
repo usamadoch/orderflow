@@ -3,22 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Database, Trash2, X, AlertCircle } from 'lucide-react';
 
-interface StorageDay {
-  date: string;
-  mainMb: number;
-  bubbleMb: number;
-  sizeMb: number;
-}
-
-interface DatabaseInfo {
-  usedMb: number;
-  totalMb: number;
-}
-
-interface DatabasesInfo {
-  main: DatabaseInfo;
-  bubbles: DatabaseInfo;
-}
+import type { StorageDay, DatabasesInfo } from '../../types/storage';
 
 interface StorageManagerProps {
   isOpen: boolean;

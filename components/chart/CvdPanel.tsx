@@ -10,7 +10,8 @@ import { Candle } from '@/types/candle';
 import { getVisibleRange, indexToX as calcIndexToX, xToIndex, timeToIndex } from './useCoordinates';
 import { drawTimeAxis } from './drawAxes';
 import { drawCrosshair, drawCrosshairTimeLabel } from './drawCrosshair';
-import { CvdScale, drawCvd, drawCvdCrosshairValueLabel, getCvdScale } from './drawCvd';
+import { drawCvd, drawCvdCrosshairValueLabel, getCvdScale } from './drawCvd';
+import type { CvdScale, CvdDragMode } from '../../types/cvd';
 
 interface CvdPanelProps {
   panelId: PanelId;
@@ -33,7 +34,6 @@ interface CvdPanelProps {
   cvdDivergenceLookback: number;
 }
 
-type CvdDragMode = 'pan' | 'scale';
 
 export function CvdPanel({
   panelId,

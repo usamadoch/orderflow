@@ -1,18 +1,9 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import { AggregationEngine } from '../lib/aggregation/engine';
-import { LiquidityHistoryManager } from '../lib/liquidity/history';
-import { IcebergEngine } from '../lib/iceberg/engine';
-import type { VolumeProfileSource } from '../lib/volumeProfile/profileEngine';
 
-export interface ChartEngineContextValue {
-  engine: AggregationEngine | null;
-  liquidityHistory: LiquidityHistoryManager | null;
-  icebergEngine: IcebergEngine | null;
-  volumeProfileEngine: VolumeProfileSource | null;
-  volumeProfileRevision: number;
-}
+
+import type { ChartEngineContextValue } from '../types/chart';
 
 export const ChartEngineContext = createContext<ChartEngineContextValue>({
   engine: null,

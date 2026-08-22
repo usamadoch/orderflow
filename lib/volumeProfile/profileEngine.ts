@@ -1,46 +1,22 @@
 import { Trade } from '@/types/trade';
-import { VolumeProfile, ProfileRow, findPOC, findValueArea, findLowVolumeNodes } from '@/lib/utils/volumeProfile';
+import { findPOC, findValueArea, findLowVolumeNodes } from '@/lib/utils/volumeProfile';
 import { normalizePriceToBucket } from '@/lib/utils/aggregation';
 import { Candle } from '@/types/candle';
 import {
   BASE_PROFILE_TIMEFRAME_SECONDS,
   VolumeProfileBaseCache,
   getSharedVolumeProfileCache,
-  type VolumeProfileCacheKeyParts,
 } from './profileCache';
+import type {
+  VolumeProfileCacheKeyParts,
+  VolumeProfileBuildRequest,
+  FineProfileRow,
+  VolumeProfileSource,
+  VolumeProfile,
+  ProfileRow
+} from '@/types/volumeProfile';
 
-export interface VolumeProfileBuildRequest {
-  candles: Candle[];
-  profileBucketSize: number;
-  priceHigh?: number;
-  priceLow?: number;
-  debugContext?: {
-    label: string;
-    panelId?: string;
-    selectedStartTime?: number;
-    selectedEndTime?: number;
-  };
-}
 
-export interface FineProfileRow {
-  candleTime: number;
-  baseBucketSize: number;
-  bucketPrice: number;
-  bidVol: number;
-  askVol: number;
-  totalVol: number;
-  tradeCount: number;
-}
-
-export interface VolumeProfileSource {
-  ingestTrade(trade: Trade): void;
-  hydrateTrades(trades: Trade[]): void;
-  hydrateProfileRows(rows: FineProfileRow[], origin?: string): void;
-  removeTradesInTimeRange(startMs: number, endMs: number): void;
-  reset(): void;
-  pruneBefore(timeMs: number): void;
-  buildProfile(request: VolumeProfileBuildRequest): VolumeProfile | null;
-}
 
 const DEFAULT_MAX_TRADES = 50000;
 

@@ -1,25 +1,9 @@
 import { Candle } from '@/types/candle';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { normalizePriceToBucket } from './aggregation';
+import type { ProfileRow, VolumeProfile } from '@/types/volumeProfile';
 
-export interface ProfileRow {
-  price:    number;   // normalized bucket price (same bucketing as footprint)
-  totalVol: number;   // bid + ask volume combined
-  bidVol:   number;   // sell aggression volume
-  askVol:   number;   // buy aggression volume
-  hasFP:    boolean;  // true if at least one source candle had footprint data
-}
-
-export interface VolumeProfile {
-  rows:     ProfileRow[];   // sorted low → high by price
-  poc:      number;         // price of highest volume bucket
-  vaHigh:   number;         // top of 70% value area
-  vaLow:    number;         // bottom of 70% value area
-  lvns:     number[];       // local low-volume node bucket prices
-  maxVol:   number;         // highest single row volume (for bar width scaling)
-  maxAbsDelta: number;      // highest absolute delta (for delta bar scaling)
-  totalVol: number;         // sum of all row volumes
-}
+export { VolumeProfile };
 
 /**
  * Build a volume profile from visible candles + aggregation engine data.

@@ -1,17 +1,8 @@
 import { Candle } from "@/types/candle";
 import { AggregationEngine } from "@/lib/aggregation/engine";
 import { drawFootprintCell, drawDeltaCell } from "@/lib/utils/canvas";
-import { FootprintMode } from "@/types/footprint";
+import { FootprintMode, CandleVisualStats } from "@/types/footprint";
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
-
-interface CandleVisualStats {
-  maxVol: number;
-  maxDelta: number;
-  avgVol: number;
-  avgDelta: number;
-  volumeScale: number;
-  deltaScale: number;
-}
 
 function percentile(values: number[], p: number) {
   if (values.length === 0) return 0;

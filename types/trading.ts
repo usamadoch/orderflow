@@ -256,3 +256,17 @@ export interface TradingRiskStatusPayload {
   counterStorage: 'memory';
   checkedAt: string;
 }
+
+export type PendingModifyOrder = {
+  order: Order;
+  originalPrice: number;
+  newPrice: number;
+  quantity: number;
+};
+
+export type TicketOrderType = Extract<OrderType, 'market' | 'limit'>;
+
+export interface ValidationResult {
+  messages: string[];
+  liveBlocked: boolean;
+}

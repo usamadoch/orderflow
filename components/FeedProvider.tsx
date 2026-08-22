@@ -23,7 +23,8 @@ import { buildLiquidityVacuumZones } from '../lib/liquidityVacuum/engine';
 import { getCandleTimeForTrade, normalizePriceToBucket } from '../lib/utils/aggregation';
 import { getHistoricalSessionRanges } from '../lib/utils/historicalSessions';
 import { ChartEngineContext } from './ChartEngineContext';
-import { FineProfileRow, RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
+import { RawTradeVolumeProfileEngine } from '../lib/volumeProfile/profileEngine';
+import type { FineProfileRow } from '../types/volumeProfile';
 import { Candle } from '../types/candle';
 import { Trade } from '../types/trade';
 import type { AggregateBubbleMarketSource, BubbleEvent } from '../types/bubble';
@@ -71,21 +72,18 @@ const queuedRawTradeStorageKeys = new Set<string>();
 const closedCandleStorageKeys = new Set<string>();
 const queuedFineProfileCandleKeys = new Set<string>();
 
-type TradeSource = 'spot' | 'futures';
-type FootprintWorkReason =
-  | 'chart-mode-footprint'
-  | 'footprint-cell-bubbles'
-  | 'cvd'
-  | 'absorption'
-  | 'exhaustion'
-  | 'iceberg'
-  | 'liquidity-vacuum'
-  | 'browser-market-writes';
-
-interface FootprintWorkNeed {
-  needed: boolean;
-  reasons: FootprintWorkReason[];
-}
+import type {
+  TradeSource,
+  FootprintWorkReason,
+  FootprintWorkNeed,
+  RawTradeHydrationStats,
+  FootprintHistoryRow,
+  FootprintRestoreRange,
+  FootprintHydrationStats,
+  FineProfileHydrationStats,
+  AggregateBubbleStorageThresholds,
+  AggregateBubbleHydrationStats
+} from '../types/feed';
 
 function getFootprintWorkNeed(panel: PanelState): FootprintWorkNeed {
   const reasons: FootprintWorkReason[] = [];
@@ -236,72 +234,7 @@ function claimFineProfileStorage(
   return true;
 }
 
-interface RawTradeHydrationStats {
-  pages: number;
-  fetched: number;
-  hydrated: number;
-  oldestTime: number | null;
-  newestTime: number | null;
-  reachedStart: boolean;
-  hydratedCandleTimes: Set<number>;
-}
 
-interface FootprintHistoryRow {
-  candleTime: number;
-  bucketPrice: number;
-  bidVol: number;
-  askVol: number;
-  delta?: number;
-}
-
-interface FootprintRestoreRange {
-  startSeconds: number;
-  endSeconds: number;
-}
-
-interface FootprintHydrationStats {
-  rowsFetched: number;
-  candlesHydrated: number;
-  cellsHydrated: number;
-  bucketMatches: number;
-  bucketMisses: number;
-  requestedRange: FootprintRestoreRange | null;
-  clampedRange: FootprintRestoreRange | null;
-  chunkCount: number;
-  chunksFetched: number;
-  chunksSkipped: number;
-  rowsPerChunk: number[];
-  skippedBecauseRangeTooLarge: boolean;
-  restoreFailureReason: string | null;
-}
-
-interface FineProfileHydrationStats {
-  rowsFetched: number;
-  candlesHydrated: number;
-  chunksFetched?: number;
-  chunksSkipped?: number;
-}
-
-interface AggregateBubbleStorageThresholds {
-  minVolume: number;
-  minTradeCount: number;
-  minTradeCountVolume: number;
-}
-
-interface AggregateBubbleHydrationStats {
-  rowsFetched: number;
-  rowsHydrated: number;
-  duplicateSkipped: number;
-  spotCount: number;
-  futuresCount: number;
-  oldestTime: number | null;
-  newestTime: number | null;
-  range: {
-    startTime: number;
-    endTime: number;
-  } | null;
-  thresholds: AggregateBubbleStorageThresholds | null;
-}
 
 function cloneFineProfileRows(rows: Iterable<FineProfileRow>) {
   return Array.from(rows, (row) => ({ ...row }));

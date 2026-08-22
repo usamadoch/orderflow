@@ -16,3 +16,12 @@ export interface AbsorptionResult {
     repeatedDefense:      number;     // pts contributed (max 10) — future
   };
 }
+
+export interface RankConfig {
+  radius: number;
+  alpha: number;
+  showLabel: boolean;
+  showScore: boolean;
+  stroke: boolean;
+  glow: boolean;
+}
