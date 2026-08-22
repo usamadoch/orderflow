@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
 import {
   FINE_PROFILE_STORAGE_TIMEFRAME,
   isAllowedContractType,
@@ -7,6 +6,7 @@ import {
   isAllowedSymbol,
   isAllowedTimeframe,
 } from '../../../../lib/config/markets'
+import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,40 +22,20 @@ export async function GET(request: NextRequest) {
   const contractType = searchParams.get('contractType')
   const dataSourceMode = searchParams.get('dataSourceMode')
 
-  if (
-    !isAllowedSymbol(symbol)
-    || !isAllowedTimeframe(timeframe)
-    || !isAllowedContractType(contractType)
-    || !isAllowedDataSourceMode(dataSourceMode)
-  ) {
+  if (!isAllowedSymbol(symbol) || !isAllowedTimeframe(timeframe) || !isAllowedContractType(contractType) || !isAllowedDataSourceMode(dataSourceMode)) {
     return NextResponse.json({ error: 'Invalid symbol, timeframe, or source selection' }, { status: 400 })
   }
 
-  if (
-    !Number.isFinite(start)
-    || !Number.isFinite(end)
-    || !Number.isFinite(baseBucketSize)
-    || end <= start
-    || baseBucketSize <= 0
-  ) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(baseBucketSize) || end <= start || baseBucketSize <= 0) {
     return NextResponse.json({ error: 'Invalid start, end, or baseBucketSize' }, { status: 400 })
   }
 
   if (end - start > MAX_PROFILE_RESTORE_RANGE_SECONDS) {
-    return NextResponse.json(
-      { error: 'Profile history range is too large; request it in smaller chunks' },
-      { status: 413 },
-    )
+    return NextResponse.json({ error: 'Profile history range is too large; request it in smaller chunks' }, { status: 413 })
   }
 
   const rows = await getMarketStorageAdapter().getFineProfileRows(
-    symbol,
-    contractType,
-    dataSourceMode,
-    FINE_PROFILE_STORAGE_TIMEFRAME,
-    start,
-    end,
-    baseBucketSize,
+    symbol, contractType, dataSourceMode, FINE_PROFILE_STORAGE_TIMEFRAME, start, end, baseBucketSize,
   )
   const candleTimes = rows.map((row) => row.candle_time)
 

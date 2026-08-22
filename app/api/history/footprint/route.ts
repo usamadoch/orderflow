@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
+import {
+  BASE_FOOTPRINT_BUCKET_SIZE,
+  BASE_FOOTPRINT_TIMEFRAME,
+  BASE_FOOTPRINT_TIMEFRAME_SECONDS,
+} from '../../../../lib/aggregation/engine'
 import {
   isAllowedContractType,
   isAllowedDataSourceMode,
   isAllowedSymbol,
   isAllowedTimeframe,
 } from '../../../../lib/config/markets'
-import {
-  BASE_FOOTPRINT_BUCKET_SIZE,
-  BASE_FOOTPRINT_TIMEFRAME,
-  BASE_FOOTPRINT_TIMEFRAME_SECONDS,
-} from '../../../../lib/aggregation/engine'
+import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,12 +31,7 @@ export async function GET(request: NextRequest) {
   const start = Number(searchParams.get('start'))
   const end = Number(searchParams.get('end'))
 
-  if (
-    !isAllowedSymbol(symbol)
-    || !isAllowedTimeframe(timeframe)
-    || !isAllowedContractType(contractType)
-    || !isAllowedDataSourceMode(dataSourceMode)
-  ) {
+  if (!isAllowedSymbol(symbol) || !isAllowedTimeframe(timeframe) || !isAllowedContractType(contractType) || !isAllowedDataSourceMode(dataSourceMode)) {
     return NextResponse.json({ error: 'Invalid symbol, source, or timeframe' }, { status: 400 })
   }
 
@@ -45,30 +40,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid start, end, or bucketSize' }, { status: 400 })
     }
 
-    const requestedRangeSeconds = end - start
-    if (requestedRangeSeconds > FOOTPRINT_RANGE_MAX_SECONDS) {
-      return NextResponse.json(
-        {
-          error: `Footprint range is too large. Maximum range is ${FOOTPRINT_RANGE_MAX_SECONDS} seconds for ${BASE_FOOTPRINT_TIMEFRAME} footprint data.`,
-          requestedRangeSeconds,
-          maxRangeSeconds: FOOTPRINT_RANGE_MAX_SECONDS,
-          maxBaseCandles: FOOTPRINT_RANGE_BASE_CANDLE_LIMIT,
-          baseTimeframe: BASE_FOOTPRINT_TIMEFRAME,
-        },
-        { status: 400 },
-      )
+    if (end - start > FOOTPRINT_RANGE_MAX_SECONDS) {
+      return NextResponse.json({
+        error: `Footprint range is too large. Maximum range is ${FOOTPRINT_RANGE_MAX_SECONDS} seconds for ${BASE_FOOTPRINT_TIMEFRAME} footprint data.`,
+        requestedRangeSeconds: end - start,
+        maxRangeSeconds: FOOTPRINT_RANGE_MAX_SECONDS,
+        maxBaseCandles: FOOTPRINT_RANGE_BASE_CANDLE_LIMIT,
+        baseTimeframe: BASE_FOOTPRINT_TIMEFRAME,
+      }, { status: 400 })
     }
 
     const rows = await getMarketStorageAdapter().getFootprintCellsForRange(
-      symbol,
-      contractType,
-      dataSourceMode,
-      BASE_FOOTPRINT_TIMEFRAME,
-      start,
-      end,
-      BASE_FOOTPRINT_BUCKET_SIZE,
+      symbol, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, start, end, BASE_FOOTPRINT_BUCKET_SIZE,
     )
-
     return NextResponse.json(rows.map((row) => ({
       candleTime: row.candle_time,
       bucketPrice: row.bucket_price,
@@ -83,14 +67,8 @@ export async function GET(request: NextRequest) {
   }
 
   const rows = await getMarketStorageAdapter().getFootprintCells(
-    symbol,
-    contractType,
-    dataSourceMode,
-    BASE_FOOTPRINT_TIMEFRAME,
-    candleTime,
-    BASE_FOOTPRINT_BUCKET_SIZE,
+    symbol, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, candleTime, BASE_FOOTPRINT_BUCKET_SIZE,
   )
-
   return NextResponse.json(rows.map((row) => ({
     candleTime: row.candle_time,
     bucketPrice: row.bucket_price,

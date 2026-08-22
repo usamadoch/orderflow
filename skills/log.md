@@ -1,5 +1,42 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-22] - Refactor: Server-Side Database Repositories, Signal Engines, and Trading Services
+- **What changed**:
+  - **Phase 1 (Database & Repositories)**: Modularized large monolithic DB files into single-responsibility domain repositories strictly below 200 lines:
+    - `lib/db/database.ts` (1,154 lines → 52 lines facade) split into `lib/db/repositories/`: `dbSetup.ts`, `candleRepository.ts`, `tradeRepository.ts`, `footprintRepository.ts`, `profileRepository.ts`, `libsqlStorageAdapter.ts`.
+    - `lib/db/mongo/marketStorageMongo.ts` (957 lines → 95 lines facade) split into `lib/db/mongo/repositories/`: `mongoCandleRepository.ts`, `mongoFootprintRepository.ts`, `mongoProfileRepository.ts`, `mongoBubbleRepository.ts`.
+    - `lib/db/aggregateBubbleStorage.ts` (369 lines → 48 lines facade) delegating to `mongoBubbleRepository.ts`.
+    - `lib/db/storageAdapter.ts` (248 lines → 113 lines facade) delegating to `libsqlStorageAdapter.ts`.
+  - **Phase 2 (Signal Engines)**: Extracted scoring, threshold evaluation, and pure math algorithms into dedicated scorer modules strictly below 200 lines:
+    - `lib/absorption/engine.ts` (389 lines → 46 lines orchestrator) delegating single-candle scoring to `lib/absorption/absorptionScorer.ts`.
+    - `lib/exhaustion/engine.ts` (347 lines → 54 lines orchestrator) delegating momentum decay and wick rejection to `lib/exhaustion/exhaustionScorer.ts`.
+    - `lib/liquidityVacuum/engine.ts` (441 lines → 225 lines) delegating segment stats and movement scoring to `lib/liquidityVacuum/vacuumDetector.ts`.
+    - `lib/iceberg/engine.ts` (241 lines → 87 lines) delegating level evaluation and threshold scoring to `lib/iceberg/icebergScorer.ts`.
+  - **Phase 3 (Trading Services)**: Modularized server trading adapters and state management:
+    - `lib/trading/userDataStreamManager.ts` (638 lines → 363 lines) delegating WS client requests, listenKey keepalive, and execution report event normalization to `lib/trading/userStreamClient.ts`.
+    - `lib/trading/binanceFuturesAdapter.ts` (408 lines → 146 lines) & `lib/trading/binanceAdapter.ts` (358 lines → 138 lines) delegating order, balance, and fill mappers to `lib/trading/tradingMappers.ts`.
+    - `lib/trading/risk.ts` (238 lines → 122 lines) delegating daily counter state tracking and config parsing to `lib/trading/riskState.ts`.
+    - `lib/trading/config.ts` (183 lines → 91 lines) delegating credential resolution and URL constants to `lib/trading/tradingConfigParser.ts`.
+- **Why it changed**:
+  - To strictly enforce `skills/server_code_refector.md` limits: Repositories/DB (200 lines max), Signal Engines (200 lines max), Services (200 lines max), and Config (100 lines max).
+- **Impact summary**:
+  - All server-side database repositories, signal engines, and trading services in `lib/` are fully modularized and maintain clear layer separation.
+  - Verification via `npx tsc --noEmit` passed with exit code 0 and zero compilation errors across the entire codebase.
+
+
+## [2026-08-22] - Refactor: Server-Side API Route Modularization & Layering
+- **What changed**:
+  - Refactored `app/api/trading/orders/route.ts` (307 lines → 102 lines) by extracting request reading, parameter normalization, validation, and error response builders into `lib/validators/orderValidation.ts`.
+  - Refactored `app/api/history/storage/route.ts` (182 lines → 31 lines) by extracting MongoDB aggregation summaries, scaling calculations, and date-range deletion logic into `lib/services/storageService.ts`.
+  - Refactored `app/api/trading/account-snapshot/route.ts` (87 lines → 53 lines) and `app/api/trading/stream-status/route.ts` (81 lines → 43 lines) by extracting query parameter normalizers and error snapshot/status object builders into `lib/utils/tradingApiUtils.ts`.
+  - Refactored `app/api/history/aggregate-bubbles/route.ts` (106 lines → 74 lines), `app/api/history/footprint/route.ts` (102 lines → 79 lines), and `app/api/history/profile/route.ts` (87 lines → 66 lines) by extracting time parameter normalization and contract type resolution into `lib/validators/historyValidation.ts`.
+- **Why it changed**:
+  - To strictly comply with `skills/server_code_refector.md` guidelines for server-side file length limits (hard limit: 150 lines), layer separation (Router/Controller vs Service/Validator), and validator logic extraction.
+- **Impact summary**:
+  - All 12 API route files under `app/api/` are now cleanly modularized and strictly under line limits.
+  - Zero changes to HTTP API payload contracts or status codes.
+  - Verification via `npx tsc --noEmit` passed with exit code 0 and zero compilation errors.
+
 ## [2026-08-22] - Refactor: Modularize Chart Components & Categorize Imports
 - **What changed**:
   - Refactored `components/chart/ChartCanvas.tsx` (~3.4k lines) by extracting pure math and index functions into `components/chart/chartCanvasUtils.ts`, hit testing calculations into `components/chart/chartCanvasHitTest.ts`, and floating toolbar UI components into `components/chart/CanvasDrawingToolbar.tsx`.

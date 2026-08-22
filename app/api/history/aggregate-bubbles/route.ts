@@ -6,41 +6,10 @@ import {
   getAggregateBubbleEvents,
   getAggregateBubbleThresholds,
 } from '../../../../lib/db/aggregateBubbleStorage'
-import {
-  isAllowedContractType,
-  isAllowedDataSourceMode,
-  isAllowedSymbol,
-  type MarketContractType,
-} from '../../../../lib/config/markets'
+import { isAllowedDataSourceMode, isAllowedSymbol } from '../../../../lib/config/markets'
+import { normalizeTimeParam, resolveContractTypes } from '../../../../lib/validators/historyValidation'
 
 export const dynamic = 'force-dynamic'
-
-function normalizeTimeParam(value: number) {
-  if (!Number.isFinite(value)) return NaN
-
-  // Existing history routes mostly use seconds, while BubbleEvent.time uses ms.
-  return value < 10_000_000_000 ? value * 1000 : value
-}
-
-function resolveContractTypes(
-  marketSource: string | null,
-  contractType: string | null,
-  activeContractType: string | null,
-): MarketContractType[] | null {
-  const requestedSource = marketSource ?? contractType
-
-  if (requestedSource === 'both') return ['spot', 'futures']
-
-  if (requestedSource === 'active') {
-    if (isAllowedContractType(activeContractType)) return [activeContractType]
-    if (isAllowedContractType(contractType)) return [contractType]
-    return null
-  }
-
-  if (isAllowedContractType(requestedSource)) return [requestedSource]
-
-  return null
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
