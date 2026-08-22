@@ -214,6 +214,7 @@ interface ChartCanvasProps {
   statsIndicatorEnabled: boolean;
   statsIndicatorItems: string[];
   showTimeAxis?: boolean;
+  dataVersion: number;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
@@ -333,6 +334,7 @@ export function ChartCanvas({
   statsIndicatorEnabled,
   statsIndicatorItems,
   showTimeAxis = true,
+  dataVersion,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -345,7 +347,9 @@ export function ChartCanvas({
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const scheduledLayers = useRef(new Set<string>());
   const isRedrawScheduled = useRef(false);
-  const prevCandlesRef = useRef<Candle[]>([]);
+  
+  const lastCandlesLengthRef = useRef(0);
+  const firstCandleTimeRef = useRef<number | null>(null);
 
   // Drawing refs
   const dragStart = useRef<{ x: number, y: number } | null>(null);
@@ -543,6 +547,7 @@ export function ChartCanvas({
 
       // Liquidity zones - drawn between grid and sessions/candles
       const isDirty = !drawAll && !layersToDraw.has('live') && layersToDraw.has('live-dirty');
+      let liveCtxClipped = false;
       if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
         if (isDirty && candles.length > 0) {
           const x = indexToX(candles.length - 1);
@@ -554,6 +559,7 @@ export function ChartCanvas({
             liveCtx.rect(colStartX, 0, colWidth, logicalHeight);
             liveCtx.clip();
             liveCtx.clearRect(colStartX, 0, colWidth, logicalHeight);
+            liveCtxClipped = true;
           } else {
             liveCtx.clearRect(0, 0, logicalWidth, logicalHeight);
           }
@@ -615,7 +621,7 @@ export function ChartCanvas({
         );
       }
 
-      if (drawAll || layersToDraw.has('live')) {
+      if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
         if (chartMode === 'candle') {
           drawCandles(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
         } else {
@@ -623,7 +629,7 @@ export function ChartCanvas({
         }
       }
 
-      if (drawAll || layersToDraw.has('live')) {
+      if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
         if (volumeBarsEnabled) {
           drawVolumeBars(
             liveCtx,
@@ -818,6 +824,10 @@ export function ChartCanvas({
             absorptionMap,
           });
         }
+
+        if (liveCtxClipped) {
+          liveCtx.restore();
+        }
       }
 
       if (drawAll || layersToDraw.has('overlay')) {
@@ -905,7 +915,7 @@ export function ChartCanvas({
       }
 
       // Volume Profile
-      if (drawAll || layersToDraw.has('live')) {
+      if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
         if (defaultProfileEnabled) {
           const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
           const profile = volumeProfileEngine.buildProfile({
@@ -1504,18 +1514,21 @@ export function ChartCanvas({
 
   // Redraw when candles change (optimized for live ticks)
   useEffect(() => {
-    const prev = prevCandlesRef.current;
-    prevCandlesRef.current = candles;
+    const prevLength = lastCandlesLengthRef.current;
+    const prevFirstTime = firstCandleTimeRef.current;
 
-    if (prev.length > 0 && candles.length > 0) {
+    lastCandlesLengthRef.current = candles.length;
+    firstCandleTimeRef.current = candles.length > 0 ? candles[0].time : null;
+
+    if (prevLength > 0 && candles.length > 0) {
       // If we just appended one candle or updated the last candle
-      if ((candles.length === prev.length || candles.length === prev.length + 1) && candles[0] === prev[0]) {
+      if ((candles.length === prevLength || candles.length === prevLength + 1) && candles[0].time === prevFirstTime) {
         redraw('live-dirty');
         return;
       }
     }
     redraw('all');
-  }, [candles, redraw]);
+  }, [candles, dataVersion, redraw]);
 
   // Redraw when configuration/state changes
   useEffect(() => {

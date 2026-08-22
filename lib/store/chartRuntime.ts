@@ -92,6 +92,7 @@ function createDefaultRuntimePanel(): PanelRuntimeState {
     measureToolActive: false,
     activeMeasurement: null,
     refreshKey: 0,
+    dataVersion: 0,
   };
 }
 
@@ -152,14 +153,37 @@ function updateRuntimePanel(
   };
 }
 
-function mergeCandles(existing: Candle[], incoming: Candle[]) {
+function mergeCandlesInPlace(existing: Candle[], incoming: Candle[]) {
+  if (incoming.length === 0) return;
+
+  // Fast path for live ticks
+  if (incoming.length === 1 && existing.length > 0) {
+    const newCandle = incoming[0];
+    const lastExisting = existing[existing.length - 1];
+    
+    if (newCandle.time === lastExisting.time) {
+      if (!(lastExisting.isClosed && !newCandle.isClosed)) {
+        existing[existing.length - 1] = newCandle;
+      }
+      return;
+    } else if (newCandle.time > lastExisting.time) {
+      existing.push(newCandle);
+      if (existing.length > 50000) {
+        existing.splice(0, existing.length - 50000);
+      }
+      return;
+    }
+  }
+
   const byTime = new Map<number, Candle>();
 
-  for (const candle of existing) {
+  for (let i = 0; i < existing.length; i++) {
+    const candle = existing[i];
     byTime.set(candle.time, candle);
   }
 
-  for (const candle of incoming) {
+  for (let i = 0; i < incoming.length; i++) {
+    const candle = incoming[i];
     const current = byTime.get(candle.time);
     if (!current) {
       byTime.set(candle.time, candle);
@@ -173,9 +197,14 @@ function mergeCandles(existing: Candle[], incoming: Candle[]) {
     byTime.set(candle.time, candle);
   }
 
-  return Array.from(byTime.values())
+  const merged = Array.from(byTime.values())
     .sort((a, b) => a.time - b.time)
     .slice(-50000);
+    
+  existing.length = 0;
+  for (let i = 0; i < merged.length; i++) {
+    existing.push(merged[i]);
+  }
 }
 
 function getAggregateBubbleEventKey(event: BubbleEvent) {
@@ -231,13 +260,15 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
   pushAllCandles: (panelId, candles) =>
     set((state) => {
       const panel = state.panels[panelId];
-      return updateRuntimePanel(state, panelId, { candles: mergeCandles(panel.candles, candles) });
+      mergeCandlesInPlace(panel.candles, candles);
+      return updateRuntimePanel(state, panelId, { dataVersion: (panel.dataVersion || 0) + 1 });
     }),
 
   pushCandle: (panelId, candle) =>
     set((state) => {
       const panel = state.panels[panelId];
-      return updateRuntimePanel(state, panelId, { candles: mergeCandles(panel.candles, [candle]) });
+      mergeCandlesInPlace(panel.candles, [candle]);
+      return updateRuntimePanel(state, panelId, { dataVersion: (panel.dataVersion || 0) + 1 });
     }),
 
   pushTrade: (panelId, trade) =>

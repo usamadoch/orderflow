@@ -391,6 +391,7 @@ export interface PanelRuntimeState {
   measureToolActive: boolean;
   activeMeasurement: Measurement | null;
   refreshKey: number;
+  dataVersion: number;
 }
 
 export interface TradingRuntimeStatus {

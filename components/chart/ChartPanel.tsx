@@ -266,6 +266,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             statsIndicatorEnabled={panel.statsIndicatorEnabled}
             statsIndicatorItems={panel.statsIndicatorItems}
             showTimeAxis={!panel.cvdEnabled || panel.cvdMinimized}
+            dataVersion={panel.dataVersion}
             onBarWidthChange={(v) => setBarWidth(panelId, v)}
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
           />
