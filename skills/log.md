@@ -1,5 +1,16 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-22] - Refactor: Extract Inline Client Types
+- **What changed**:
+  - Extracted inline client types from `components/` and `lib/` to standalone files in `types/`.
+  - Created new centralized type files: `types/chart.ts`, `types/cvd.ts`, `types/debug.ts`, `types/feed.ts`, `types/storage.ts`, and `types/volumeProfile.ts`.
+  - Moved specific types (e.g., `DrawCvdOptions`, `IndicatorLabelConfig`, `BubbleSettings`) into their respective domain-specific type files.
+  - Updated existing type files (`types/bubble.ts`, `types/trading.ts`, `types/footprint.ts`, `types/absorption.ts`) with previously inline types.
+- **Why it changed**:
+  - To clean up the client codebase, decouple type definitions from runtime implementations, reduce circular dependencies, and establish a single source of truth for types.
+- **Impact summary**:
+  - The client-side now compiles cleanly with `tsc --noEmit`. The `types/` directory structure strictly mirrors the domain boundaries, improving code organization and maintainability.
+
 ## [2026-08-16] - Feature/UI: Bubble Customization and Docs
 - **What changed**:
   - Replaced semantic bubble colors with custom hex values `#0D5B0B` (Buy) and `#4A1E6F` (Sell) in `drawBubbles.ts`.

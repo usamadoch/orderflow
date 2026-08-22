@@ -151,6 +151,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/store/chart.ts` → Persisted Zustand chart settings, selected market/timeframe/mode, drawing/profile/session/CVD/bubble/Volume/signal/liquidity/heatmap preferences, layout/auth/settings-window state, restore status shape including footprint range/chunk/failure fields, shared CVD default colors, crosshair sync setting, and migration normalization that strips legacy runtime fields and maps legacy semantic colors.
 - `lib/store/chartRuntime.ts` → Non-persisted Zustand runtime panel state for candles, trades, connection/loading/restore status, signal result maps, aggregate bubble buffers, profile/measurement selection, liquidity zones, footprint redraw triggers, panel refresh keys, shared trading health/account snapshot/user-stream/order action/risk status state, drag-modify preview/modify action state and risk preflight actions, reconciliation fields, virtual positions, bracket orders, bracket drag state (with upsert/remove/setBracketDrag/updateVirtualPnl actions), and shared crosshair sync payload with selector subscriptions.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcuts for chart modes, tools, sessions, liquidity, signal toggles, focus mode, and active panel targeting.
+- `types/chart.ts` → Centralized types for chart panels, contexts, zones, indicators, and rendering options.
 
 ### Feeds / Shared Live Data
 
@@ -161,6 +162,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/feeds/feedRegistry.ts` → Shared ref-counted feed registry for kline, aggTrade, concrete exchange/contract-routed depth streams, in-flight history/snapshot dedupe, and stream metrics.
 - `lib/feeds/candleCache.ts` → Shared contract/symbol/timeframe candle cache with capped candles, normalized loaded ranges, subscriber fanout, restore dedupe, cleanup, and metrics.
 - `lib/feeds/index.ts` → Feed and Binance/Bybit depth adapter exports.
+- `types/feed.ts` → Types defining the generic market feed interface and event payloads.
 
 ### Trading Foundation
 
@@ -183,6 +185,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/volumeProfile/profileCache.ts` → Shared source/base-bucket Volume Profile cache for canonical `1m` fine rows, live updates, merged loaded-range coverage including empty restores, restore dedupe, trade/key pruning, and cleanup metrics.
 - `lib/volumeProfile/profileEngine.ts` → Panel-local Volume Profile source/view over shared fine-row cache, non-finer stored-row aggregation into visual profile buckets, bounded keyed profile build cache, raw-trade fallback, and render/cache stats.
 - `lib/utils/volumeProfile.ts` → Volume Profile aggregation, POC/VA math, LVN detection, and profile utility helpers.
+- `types/volumeProfile.ts` → Types for volumetric profiles, nodes, and profile engines.
 
 ### Signals / Analysis
 
@@ -220,6 +223,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `data/market.db` → Generated local libSQL database file for file-mode development.
 - `scripts/testDb.ts` → Local database verification script.
 - `scripts/ensureIndexes.ts` -> MongoDB index maintenance script for market time-series collections and aggregate bubble restore/TTL indexes.
+- `types/storage.ts` → Types for unified storage driver configuration and schema mappings.
 
 ### Scripts
 
@@ -233,6 +237,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/debug/debugPanelAdapter.ts` → Internal debug panel snapshot adapter summarizing `window.__MARKET_DEBUG__`, persisted chart settings including Volume status, runtime store state, safe trading account snapshot counts/errors, order action and risk status state, and Binance user-stream connection/reconnect/reconciliation fields without copying raw market arrays.
 - `lib/config/markets.ts` → Supported Binance USDT symbols/timeframes, validation helpers, source-scoped storage key constants, and canonical fine profile base-bucket sizing.
 - `lib/config/chartColors.ts` → Shared TradingView-style bullish/bearish chart colors, RGB values, rgba conversion helper, and legacy semantic color normalization.
+- `types/debug.ts` → Types for performance/metric snapshots and debugging panels.
 
 ### Utilities / Types
 
@@ -248,7 +253,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `types/trade.ts` → Trade tick shape, including optional aggregate trade id and first/last raw trade ids.
 - `types/measurement.ts` → Measurement tool data types.
 - `types/trading.ts` → Shared generic trading types for modes, broker adapters, order/cancel/modify requests and results, orders, positions, balances, fills, optional-symbol account snapshots, safe health/risk payloads, safe Binance user-stream status payloads, `VirtualPosition` (client-side spot position abstraction derived from fills), `BracketOrder` (separate SL/TP model supporting future multi-TP and trailing stops), and `BracketDragState` (chart canvas drag context for SL/TP handles).
-
+- `types/cvd.ts` → Types for CVD points, divergence markers, and rendering configuration.
 ### Artifacts / Skills
 
 - `artifacts/timeframe_behavior_report.md` → Report on settings behavior across timeframes.
