@@ -35,6 +35,27 @@ export function usePanZoom(
   const priceCenter = externalRefs?.priceCenter || localPriceCenter;
   const priceRange = externalRefs?.priceRange || localPriceRange;
 
+  // Store callbacks in refs to avoid re-binding event listeners on every render
+  const callbacksRef = useRef({
+    onRedraw,
+    getCandlesLength,
+    onBarWidthChange,
+    onScrollOffsetChange,
+    canStartDrag,
+    onCrosshairChange
+  });
+  
+  useEffect(() => {
+    callbacksRef.current = {
+      onRedraw,
+      getCandlesLength,
+      onBarWidthChange,
+      onScrollOffsetChange,
+      canStartDrag,
+      onCrosshairChange
+    };
+  });
+
   const isDragging = useRef(false);
   const dragMode = useRef<'chart' | 'price' | 'time'>('chart');
   const lastX = useRef(0);
@@ -71,7 +92,7 @@ export function usePanZoom(
       const y = e.clientY - rect.top;
 
       if (isDrawMode || measureToolActive) return;
-      if (canStartDrag && !canStartDrag(x, y)) return;
+      if (callbacksRef.current.canStartDrag && !callbacksRef.current.canStartDrag(x, y)) return;
 
       if (x > rect.width - priceAxisWidth) {
         dragMode.current = 'price';
@@ -101,15 +122,15 @@ export function usePanZoom(
 
       // Only report crosshair changes if the mouse is actually over THIS chart area
       if (isOver && !isDragging.current) {
-        onCrosshairChange?.(x, y);
+        callbacksRef.current.onCrosshairChange?.(x, y);
       }
 
       // Always redraw on move if we are the active panel or dragging
       if (isOver || isDragging.current) {
         if (!isDragging.current) {
-          onRedraw('overlay');
+          callbacksRef.current.onRedraw('overlay');
         } else {
-          onRedraw();
+          callbacksRef.current.onRedraw();
         }
       }
 
@@ -124,7 +145,7 @@ export function usePanZoom(
       if (dragMode.current === 'chart') {
         // Free panning in time
         scrollOffset.current += deltaX;
-        onScrollOffsetChange?.(scrollOffset.current);
+        callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
         
         // Panning in price
         if (priceCenter.current !== null && priceRange.current !== null) {
@@ -148,12 +169,12 @@ export function usePanZoom(
           const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
           scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
           barWidth.current = newBarWidth;
-          onBarWidthChange?.(newBarWidth);
-          onScrollOffsetChange?.(scrollOffset.current);
+          callbacksRef.current.onBarWidthChange?.(newBarWidth);
+          callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
         }
       }
       
-      onRedraw();
+      callbacksRef.current.onRedraw();
     };
 
     const onMouseUp = () => {
@@ -167,8 +188,8 @@ export function usePanZoom(
     const onMouseLeave = () => {
       isMouseOver.current = false;
       // Don't clear mouseX/Y immediately, as they are needed for the final frame of redraw
-      onCrosshairChange?.(null, null);
-      onRedraw('overlay');
+      callbacksRef.current.onCrosshairChange?.(null, null);
+      callbacksRef.current.onRedraw('overlay');
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -193,9 +214,9 @@ export function usePanZoom(
         // scrollOffset' = scrollOffset + (scrollOffset + drawableWidth - x) * (newBarWidth / oldBarWidth - 1)
         scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
         barWidth.current = newBarWidth;
-        onBarWidthChange?.(newBarWidth);
-        onScrollOffsetChange?.(scrollOffset.current);
-        onRedraw();
+        callbacksRef.current.onBarWidthChange?.(newBarWidth);
+        callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
+        callbacksRef.current.onRedraw();
       }
     };
 
@@ -216,7 +237,7 @@ export function usePanZoom(
       canvas.removeEventListener('wheel', onWheel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvasRef, onRedraw, getCandlesLength, priceAxisWidth, timeAxisHeight, profileWidth, onBarWidthChange, onScrollOffsetChange, isDrawMode, measureToolActive, canStartDrag, onCrosshairChange]);
+  }, [canvasRef, priceAxisWidth, timeAxisHeight, profileWidth, isDrawMode, measureToolActive]);
 
   return { 
     scrollOffset, 
