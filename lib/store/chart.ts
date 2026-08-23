@@ -93,6 +93,7 @@ export interface ChartState {
   settingsDropdownHeight: number;
   settingsOpenRequest: SettingsOpenRequest | null;
   crosshairSyncEnabled: boolean;
+  drawingsSyncEnabled: boolean;
   globalTimezone: string;
   globalTimeFormat: '12h' | '24h';
 
@@ -232,6 +233,7 @@ export interface ChartState {
   setIndicatorLabelsCollapsed: (panelId: PanelId, collapsed: boolean) => void;
   openIndicatorSettings: (panelId: PanelId, section: SettingsFocusSection) => void;
   setCrosshairSyncEnabled: (enabled: boolean) => void;
+  setDrawingsSyncEnabled: (enabled: boolean) => void;
 
   // Auth
   isAuthenticated: boolean;
@@ -602,6 +604,7 @@ export const useChartStore = create<ChartState>()(
       settingsDropdownHeight: 500,
       settingsOpenRequest: null,
       crosshairSyncEnabled: true,
+      drawingsSyncEnabled: true,
       globalTimezone: 'local',
       globalTimeFormat: '24h',
       isAuthenticated: false,
@@ -710,29 +713,63 @@ export const useChartStore = create<ChartState>()(
         }),
 
       setCustomProfileRange: (panelId, customProfileRange) =>
-        set((state) => updatePanel(state, panelId, { customProfileRange })),
+        set((state) => {
+          let updatedState = updatePanel(state, panelId, { customProfileRange });
+          if (state.drawingsSyncEnabled) {
+            const otherPanelId = panelId === 'left' ? 'right' : 'left';
+            updatedState = updatePanel(updatedState, otherPanelId, { customProfileRange });
+          }
+          return updatedState as ChartState;
+        }),
 
       setCustomProfileLocked: (panelId, customProfileLocked) =>
-        set((state) => updatePanel(state, panelId, { customProfileLocked })),
+        set((state) => {
+          let updatedState = updatePanel(state, panelId, { customProfileLocked });
+          if (state.drawingsSyncEnabled) {
+            const otherPanelId = panelId === 'left' ? 'right' : 'left';
+            updatedState = updatePanel(updatedState, otherPanelId, { customProfileLocked });
+          }
+          return updatedState as ChartState;
+        }),
 
       addLine: (panelId, line) =>
         set((state) => {
           const panel = state.panels[panelId];
-          return updatePanel(state, panelId, { drawnLines: [...panel.drawnLines, line] });
+          let updatedState = updatePanel(state, panelId, { drawnLines: [...panel.drawnLines, line] });
+          if (state.drawingsSyncEnabled) {
+            const otherPanelId = panelId === 'left' ? 'right' : 'left';
+            const otherPanel = state.panels[otherPanelId];
+            updatedState = updatePanel(updatedState as ChartState, otherPanelId, { drawnLines: [...otherPanel.drawnLines, line] });
+          }
+          return updatedState as ChartState;
         }),
 
       updateLine: (panelId, id, updates) =>
         set((state) => {
           const panel = state.panels[panelId];
-          return updatePanel(state, panelId, {
+          let updatedState = updatePanel(state, panelId, {
             drawnLines: panel.drawnLines.map((line) => line.id === id ? { ...line, ...updates } : line),
           });
+          if (state.drawingsSyncEnabled) {
+            const otherPanelId = panelId === 'left' ? 'right' : 'left';
+            const otherPanel = state.panels[otherPanelId];
+            updatedState = updatePanel(updatedState as ChartState, otherPanelId, {
+              drawnLines: otherPanel.drawnLines.map((line) => line.id === id ? { ...line, ...updates } : line),
+            });
+          }
+          return updatedState as ChartState;
         }),
 
       removeLine: (panelId, id) =>
         set((state) => {
           const panel = state.panels[panelId];
-          return updatePanel(state, panelId, { drawnLines: panel.drawnLines.filter((l) => l.id !== id) });
+          let updatedState = updatePanel(state, panelId, { drawnLines: panel.drawnLines.filter((l) => l.id !== id) });
+          if (state.drawingsSyncEnabled) {
+            const otherPanelId = panelId === 'left' ? 'right' : 'left';
+            const otherPanel = state.panels[otherPanelId];
+            updatedState = updatePanel(updatedState as ChartState, otherPanelId, { drawnLines: otherPanel.drawnLines.filter((l) => l.id !== id) });
+          }
+          return updatedState as ChartState;
         }),
 
       setLineDrawMode: (panelId, lineDrawMode) =>
@@ -1091,6 +1128,7 @@ export const useChartStore = create<ChartState>()(
           },
         })),
       setCrosshairSyncEnabled: (crosshairSyncEnabled) => set({ crosshairSyncEnabled }),
+      setDrawingsSyncEnabled: (drawingsSyncEnabled) => set({ drawingsSyncEnabled }),
 
       // Auth actions
       authenticate: (password) => {
@@ -1619,6 +1657,7 @@ export const useChartStore = create<ChartState>()(
         sidebarCollapsed: state.sidebarCollapsed,
         settingsDropdownHeight: state.settingsDropdownHeight,
         crosshairSyncEnabled: state.crosshairSyncEnabled,
+        drawingsSyncEnabled: state.drawingsSyncEnabled,
         globalTimezone: state.globalTimezone,
         globalTimeFormat: state.globalTimeFormat,
         isAuthenticated: state.isAuthenticated,

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ChevronLeft, ChevronRight, GripVertical, Minus, MoveRight, Ruler, Square } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, Minus, MoveRight, Ruler, Square, AlignLeft } from 'lucide-react';
 import { LineDrawMode, PanelId, useChartStore } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 
@@ -176,7 +176,7 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
             aria-pressed={panel.isDrawMode}
             aria-label="Profile"
           >
-            <Square size={14} strokeWidth={2.3} />
+            <AlignLeft size={14} strokeWidth={2.3} />
           </button>
 
           <button

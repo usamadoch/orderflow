@@ -1,4 +1,4 @@
-import { SessionConfig, useChartStore } from '../store/chart';
+import { SessionConfig } from '../store/chart';
 import { Candle } from '../../types/candle';
 import { getZonedTimeParts } from './format';
 
@@ -23,11 +23,10 @@ export function getSessionOccurrences(
   const startIdx = Math.max(0, Math.floor(visibleRange.firstIndex));
   const endIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.lastIndex));
 
-  const timezone = useChartStore.getState().globalTimezone;
-
   for (let i = startIdx; i <= endIdx; i++) {
     const candle = candles[i];
-    const { hour, minute } = getZonedTimeParts(candle.time * 1000, timezone);
+    // Sessions are configured in UTC. Their schedule should not shift when the display timezone changes.
+    const { hour, minute } = getZonedTimeParts(candle.time * 1000, 'UTC');
 
     const candleTimeInMins = hour * 60 + minute;
     const sessionStartTimeInMins = session.startHour * 60 + session.startMin;

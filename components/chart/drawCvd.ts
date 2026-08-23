@@ -39,8 +39,8 @@ export function getCvdScale(
     min = -maxAbs;
     max = maxAbs;
   } else {
-    min = 0;
-    max = 0;
+    min = Infinity;
+    max = -Infinity;
     for (let i = firstIndex; i <= lastIndex; i += 1) {
       const point = points[i];
       if (!point) continue;

@@ -119,8 +119,23 @@
 - **Impact summary**:
   - The client-side now compiles cleanly with `tsc --noEmit`. The `types/` directory structure strictly mirrors the domain boundaries, improving code organization and maintainability.
 
-## [2026-08-16] - Feature/UI: Bubble Customization and Docs
+## [2026-08-23] - Feature/Fixes: Multi-Panel Sync, Timezone, CVD Scaling
 
+- **What changed**:
+  - Implemented cross-panel synchronization for drawing tools (lines, custom profile) toggled via `drawingsSyncEnabled`.
+  - Replaced the Custom Volume Profile tool icon in `DrawingFavoritesToolbar.tsx` with an `AlignLeft` icon to differentiate it from the Box tool.
+  - Relocated the Timezone and Time Format settings from the Session settings block to a new "Global Time" section in the Chart settings tab.
+  - Modified `lib/utils/sessions.ts` to evaluate session configurations in UTC exclusively, ensuring session highlighting on the chart remains visually locked to the configured UTC trading hours regardless of the user's chosen display timezone.
+  - Fixed a scaling bug in `drawCvd.ts` (`getCvdScale`) that anchored the scale boundaries to 0, which previously caused continuously compounding CVD indicators to appear completely flat/broken when their values drifted far from zero.
+- **Why it changed**:
+  - Addressed multi-panel workflow gaps (drawings not syncing).
+  - Clarified confusing iconography.
+  - Ensured display timezone preference didn't inadvertently alter the actual trading schedule highlighting.
+  - Resolved the "broken" appearance of the CVD indicator without destroying its mathematically correct continuous nature.
+- **Impact summary**:
+  - Improved multi-panel usability, accurate session highlighting, and functional CVD auto-scaling.
+
+## [2026-08-16] - Feature/UI: Bubble Customization and Docs
 - **What changed**:
   - Replaced semantic bubble colors with custom hex values `#0D5B0B` (Buy) and `#4A1E6F` (Sell) in `drawBubbles.ts`.
   - Updated default bubble radius limits in `lib/store/chart.ts` to `bubbleMinRadius: 2` and `bubbleMaxRadius: 8`.

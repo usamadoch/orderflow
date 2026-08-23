@@ -157,6 +157,8 @@ export function ChartSettingsDropdown({
   const setSessionColor = useChartStore(s => s.setSessionColor);
   const crosshairSyncEnabled = useChartStore(s => s.crosshairSyncEnabled);
   const setCrosshairSyncEnabled = useChartStore(s => s.setCrosshairSyncEnabled);
+  const drawingsSyncEnabled = useChartStore(s => s.drawingsSyncEnabled);
+  const setDrawingsSyncEnabled = useChartStore(s => s.setDrawingsSyncEnabled);
   const setLiquidityEnabled = useChartStore(s => s.setLiquidityEnabled);
   const setLiquidityBucketSize = useChartStore(s => s.setLiquidityBucketSize);
   const setMinimumLiquidityThreshold = useChartStore(s => s.setMinimumLiquidityThreshold);
@@ -448,36 +450,6 @@ export function ChartSettingsDropdown({
           <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.sessionsEnabled ? 'left-5' : 'left-1'
             }`} />
         </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 pb-2">
-        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
-          <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Timezone</label>
-          <select
-            value={globalTimezone}
-            onChange={(e) => setGlobalTimezone(e.target.value)}
-            className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
-          >
-            <option value="local">Local (PC)</option>
-            <option value="UTC">UTC</option>
-            <option value="America/New_York">New York</option>
-            <option value="Europe/London">London</option>
-            <option value="America/Chicago">Chicago</option>
-            <option value="America/Los_Angeles">Los Angeles</option>
-            <option value="Asia/Karachi">Pakistan</option>
-          </select>
-        </div>
-        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
-          <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Time Format</label>
-          <select
-            value={globalTimeFormat}
-            onChange={(e) => setGlobalTimeFormat(e.target.value as '12h' | '24h')}
-            className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
-          >
-            <option value="24h">24-hour</option>
-            <option value="12h">12-hour (AM/PM)</option>
-          </select>
-        </div>
       </div>
 
       <div className="space-y-6 pt-2">
@@ -1862,24 +1834,81 @@ export function ChartSettingsDropdown({
                   </div>
                 </div>
 
-                {/* Synchronized Crosshair */}
+                {/* Global Time */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Global Time</div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
+                      <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Timezone</label>
+                      <select
+                        value={globalTimezone}
+                        onChange={(e) => setGlobalTimezone(e.target.value)}
+                        className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
+                      >
+                        <option value="local">Local (PC)</option>
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">New York</option>
+                        <option value="Europe/London">London</option>
+                        <option value="America/Chicago">Chicago</option>
+                        <option value="America/Los_Angeles">Los Angeles</option>
+                        <option value="Asia/Karachi">Pakistan</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
+                      <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Time Format</label>
+                      <select
+                        value={globalTimeFormat}
+                        onChange={(e) => setGlobalTimeFormat(e.target.value as '12h' | '24h')}
+                        className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
+                      >
+                        <option value="24h">24-hour</option>
+                        <option value="12h">12-hour (AM/PM)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Synchronized Crosshair & Drawings */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Interaction</div>
-                    <button
-                      onClick={() => setCrosshairSyncEnabled(!crosshairSyncEnabled)}
-                      className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${crosshairSyncEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-                        }`}
-                    >
-                      <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${crosshairSyncEnabled ? 'left-5' : 'left-1'
-                        }`} />
-                    </button>
                   </div>
+                  
                   <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                     <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sync Crosshairs</label>
-                    <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
-                      {crosshairSyncEnabled ? 'Enabled' : 'Disabled'}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
+                        {crosshairSyncEnabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                      <button
+                        onClick={() => setCrosshairSyncEnabled(!crosshairSyncEnabled)}
+                        className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${crosshairSyncEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+                          }`}
+                      >
+                        <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${crosshairSyncEnabled ? 'left-5' : 'left-1'
+                          }`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+                    <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sync Drawings</label>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
+                        {drawingsSyncEnabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                      <button
+                        onClick={() => setDrawingsSyncEnabled(!drawingsSyncEnabled)}
+                        className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${drawingsSyncEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+                          }`}
+                      >
+                        <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${drawingsSyncEnabled ? 'left-5' : 'left-1'
+                          }`} />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
