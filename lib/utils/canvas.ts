@@ -1,8 +1,6 @@
 import { FootprintCell } from '../../types/footprint';
 import {
-  CHART_BEARISH_COLOR,
   CHART_BEARISH_RGB,
-  CHART_BULLISH_COLOR,
   CHART_BULLISH_RGB,
   chartColorToRgba,
 } from '../config/chartColors';

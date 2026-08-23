@@ -173,6 +173,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     aggregateEventsNeededRef,
     footprintIngestionSkippedRef,
     icebergDisabledNoopSkippedRef,
+    workerTradeQueueRef,
+    aggregationWorkerClient,
   } = useFeedAggregation(bucketSize, liquidityBucketSize, liquidityHistoryDepth);
   const aggregateBubbleMarketSource = dataSourceMode;
   const volumeBarsMarketSource = dataSourceMode;
@@ -248,6 +250,22 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     rebuildLiquidityVacuumZones();
   }, [rebuildLiquidityVacuumZones]);
 
+  useEffect(() => {
+    aggregationWorkerClient.init(bucketSize);
+    
+    aggregationWorkerClient.onFootprintUpdate = (footprints) => {
+      for (const fp of footprints) {
+        engineRef.current.hydrateBaseFootprintCandle(fp.time, fp.cells, fp, fp.delta);
+      }
+      pendingFootprintRedrawRef.current = true;
+    };
+    
+    aggregationWorkerClient.onProfileUpdate = (rows) => {
+      volumeProfileEngineRef.current.hydrateProfileRows(rows, 'live');
+      pendingProfileRedrawRef.current = true;
+    };
+  }, [aggregationWorkerClient, bucketSize, engineRef, pendingFootprintRedrawRef, pendingProfileRedrawRef, volumeProfileEngineRef]);
+
   // Update history bucket size
   useEffect(() => {
     icebergEngineRef.current.setLookbackWindow(icebergLookback);
@@ -306,6 +324,26 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
       }
 
+      if (workerTradeQueueRef.current.length > 0) {
+        const batch = workerTradeQueueRef.current;
+        workerTradeQueueRef.current = [];
+        
+        // Group by currentCandleTime (usually just 1)
+        const grouped = new Map<number, Trade[]>();
+        for (const item of batch) {
+          let trades = grouped.get(item.currentCandleTime);
+          if (!trades) {
+            trades = [];
+            grouped.set(item.currentCandleTime, trades);
+          }
+          trades.push(item.trade);
+        }
+        
+        for (const [currentCandleTime, trades] of grouped.entries()) {
+          aggregationWorkerClient.ingestTradeBatch(trades, currentCandleTime);
+        }
+      }
+
       if (hadFootprintUpdate) {
         pendingFootprintRedrawRef.current = false;
       }
@@ -349,6 +387,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     if (getCurrentFootprintWorkNeed().needed) {
       triggerFootprintRedraw(panelId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bucketSize, exhaustionLookback, icebergEnabled, icebergMinScore, triggerFootprintRedraw, panelId, setAbsorptionMap, setExhaustionMap, setIcebergLevels, rebuildLiquidityVacuumZones, absorptionEnabled, exhaustionEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed]);
 
   // Handle autoBucketSize toggle
@@ -1086,13 +1125,13 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
 
       if (footprintWorkEnabled) {
-        engineRef.current.ingestTrade(alignedTrade, baseCandleTime);
+        workerTradeQueueRef.current.push({ trade: alignedTrade, currentCandleTime: baseCandleTime });
       } else {
         footprintIngestionSkippedRef.current += 1;
       }
 
       if (profileWorkEnabled) {
-        volumeProfileEngineRef.current.ingestTrade(alignedTrade);
+        // Only doing local fine profile row accumulation for storage, worker handles full VolumeProfile cache
         aggregateFineProfileTrade(alignedTrade, baseCandleTime);
       }
 
@@ -1536,17 +1575,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               if (!candidateTimeSet.has(candleTime)) continue;
 
               const cells = new Map<number, FootprintCell>();
-              let delta = 0;
 
               for (const row of candleRows) {
                 cells.set(row.bucketPrice, {
                   bidVol: row.bidVol,
                   askVol: row.askVol,
                 });
-                delta += row.delta ?? row.askVol - row.bidVol;
               }
 
-              engineRef.current.hydrateBaseFootprintCandle(candleTime, cells, undefined, delta);
+              aggregationWorkerClient.hydrateFootprints(candleTime, cells);
               restoredChunkStats.candlesHydrated += 1;
               restoredChunkStats.cellsHydrated += cells.size;
 
@@ -1775,6 +1812,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
             if (rows.length > 0) {
               volumeProfileEngineRef.current.hydrateProfileRows(rows, 'restore');
+              aggregationWorkerClient.hydrateProfileRows(rows);
               pendingProfileRedrawRef.current = true;
             }
 
@@ -1810,6 +1848,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         
         for (const result of batchResults) {
           if (result.status === 'fulfilled') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const res = result.value as any;
             if (res.skipped) {
               stats.chunksSkipped = (stats.chunksSkipped ?? 0) + 1;
@@ -2702,6 +2741,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       footprintEngine.releaseSharedBaseCache();
       volumeProfileEngine.releaseSharedBaseCache();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, triggerWorkerComputeSignals, absorptionEnabled, exhaustionEnabled, bubblesEnabled, bubbleSource, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
   // Register protected ranges for Volume Profile cache to prevent eviction
   useEffect(() => {
@@ -2760,14 +2800,17 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
       
       volumeProfileEngineRef.current.setProtectedRanges(panelId, ranges);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     });
   }, [panelId]);
 
   // Clear protected ranges on unmount
   useEffect(() => {
+    const vEngine = volumeProfileEngineRef.current;
     return () => {
-      volumeProfileEngineRef.current.setProtectedRanges(panelId, []);
+      vEngine.setProtectedRanges(panelId, []);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelId]);
 
   // Temporary Verification Hotkey
@@ -2799,12 +2842,13 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelId]);
 
   return (
     <ChartEngineContext.Provider
       value={{
-        engine: engineRef.current,
+        engine: engineRef.current as unknown as AggregationEngine,
         liquidityHistory: liquidityHistoryRef.current,
         icebergEngine: icebergEngineRef.current,
         volumeProfileEngine: volumeProfileEngineRef.current,

@@ -174,7 +174,6 @@ export function ChartSettingsDropdown({
   const setLiquidityHeatmapShowCurrentLabel = useChartStore(s => s.setLiquidityHeatmapShowCurrentLabel);
   const setLiquidityHeatmapProfileSync = useChartStore(s => s.setLiquidityHeatmapProfileSync);
   const setStatsIndicatorEnabled = useChartStore(s => s.setStatsIndicatorEnabled);
-  const setStatsIndicatorCount = useChartStore(s => s.setStatsIndicatorCount);
   const setStatsIndicatorItems = useChartStore(s => s.setStatsIndicatorItems);
   const setGlobalTimezone = useChartStore(s => s.setGlobalTimezone);
   const setGlobalTimeFormat = useChartStore(s => s.setGlobalTimeFormat);
@@ -184,7 +183,6 @@ export function ChartSettingsDropdown({
   const setHistoricalSessionProfileEnabled = useChartStore(s => s.setHistoricalSessionProfileEnabled);
   const setHistoricalSessionProfileTime = useChartStore(s => s.setHistoricalSessionProfileTime);
   const setHistoricalSessionProfileCount = useChartStore(s => s.setHistoricalSessionProfileCount);
-  const setHistoricalSessionProfileMinTimeframe = useChartStore(s => s.setHistoricalSessionProfileMinTimeframe);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
   const [showBubblesDocs, setShowBubblesDocs] = useState(false);

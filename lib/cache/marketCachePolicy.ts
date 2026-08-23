@@ -43,7 +43,7 @@ export function getCleanupTimestamp() {
 
 function getNumberEnv(names: string[], fallback: number) {
   for (const name of names) {
-    const value = process.env[name];
+    const value = typeof process !== 'undefined' ? process.env[name] : undefined;
     if (value === undefined) continue;
 
     const parsed = Number(value);

@@ -66,7 +66,7 @@ export function BubblesDocsModal({ onClose }: BubblesDocsModalProps) {
               </div>
             </div>
             <p className="mt-2">
-              <strong>Tip:</strong> The bubbles also change how "see-through" (opaque) they are. A very light, see-through bubble means low volume. A solid, dark bubble means huge volume!
+              <strong>Tip:</strong> The bubbles also change how &quot;see-through&quot; (opaque) they are. A very light, see-through bubble means low volume. A solid, dark bubble means huge volume!
             </p>
           </section>
 
@@ -120,7 +120,7 @@ export function BubblesDocsModal({ onClose }: BubblesDocsModalProps) {
             <h4 className="text-[12px] font-bold text-main uppercase tracking-wider">Useful Settings</h4>
             <ul className="list-disc pl-4 space-y-1">
               <li><strong>Min Volume:</strong> The minimum amount of volume required to even draw a bubble. Anything less is ignored.</li>
-              <li><strong>Scale Mode:</strong> How we calculate the size. "SQRT" (Square Root) is best because it makes huge outliers stand out without making normal trades completely invisible.</li>
+              <li><strong>Scale Mode:</strong> How we calculate the size. &quot;SQRT&quot; (Square Root) is best because it makes huge outliers stand out without making normal trades completely invisible.</li>
             </ul>
           </section>
         </div>

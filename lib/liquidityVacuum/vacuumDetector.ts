@@ -4,9 +4,7 @@ import type { Candle } from '../../types/candle'
 import type { FootprintCandle } from '../../types/footprint'
 import type {
   LiquidityVacuumAnchor,
-  LiquidityVacuumDirection,
   LiquidityVacuumRank,
-  LiquidityVacuumZone,
 } from '../../types/liquidityVacuum'
 
 export interface SegmentStats {

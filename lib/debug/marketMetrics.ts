@@ -228,11 +228,13 @@ const aggregateBubbleRestoreDebug = new Map<string, AggregateBubbleRestoreDebugS
 const volumeBarsDebug = new Map<string, VolumeBarsDebugSnapshot>();
 
 function isExplicitlyEnabled() {
-  return process.env.NEXT_PUBLIC_MARKET_DEBUG === 'true' || process.env.MARKET_DEBUG === 'true';
+  const env = typeof process !== 'undefined' ? process.env : ({} as Record<string, string | undefined>);
+  return env.NEXT_PUBLIC_MARKET_DEBUG === 'true' || env.MARKET_DEBUG === 'true';
 }
 
 export function isMarketMetricsEnabled() {
-  return process.env.NODE_ENV === 'development' || isExplicitlyEnabled();
+  const env = typeof process !== 'undefined' ? process.env : ({} as Record<string, string | undefined>);
+  return env.NODE_ENV === 'development' || isExplicitlyEnabled();
 }
 
 function now() {

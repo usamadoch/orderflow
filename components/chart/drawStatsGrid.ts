@@ -184,7 +184,7 @@ export function drawStatsGrid(
       if (cellLeft > chartWidth || cellLeft + cellWidth < 0) continue;
 
       let bgColor = '#1A1A1A';
-      let textColor = '#E8E8E8';
+      const textColor = '#E8E8E8';
       let text = '';
 
       if (itemId === 'volume') {

@@ -82,7 +82,7 @@ export function createMongoMarketStorageAdapter(): MarketStorageAdapter {
       return +(stats.dataSize / (1024 * 1024)).toFixed(2)
     },
     async getStatus() {
-      const ok = await verifyMongoConnection()
+      await verifyMongoConnection()
       const db = await getMongoDb()
       const stats = await db.command({ dbStats: 1 })
       const dbSizeMb = +(stats.dataSize / (1024 * 1024)).toFixed(2)

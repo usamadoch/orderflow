@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { AggregationEngine } from '../../../lib/aggregation/engine';
 import { RawTradeVolumeProfileEngine } from '../../../lib/volumeProfile/profileEngine';
 import { OrderbookManager } from '../../../lib/liquidity/orderbook';
 import { LiquidityHistoryManager } from '../../../lib/liquidity/history';
+import { AggregationWorkerClient } from '../../../lib/worker/aggregationWorkerClient';
 import type { Trade } from '../../../types/trade';
 import type { TradeSource } from '../../../types/feed';
 import type { FineProfileRow } from '../../../types/volumeProfile';
@@ -23,11 +24,13 @@ export function useFeedAggregation(
   const connectedRef = useRef(false);
   const bucketSizeRef = useRef(bucketSize);
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
+  const aggregationWorkerClient = useMemo(() => new AggregationWorkerClient(), []);
   const volumeProfileEngineRef = useRef(new RawTradeVolumeProfileEngine());
   const pendingFootprintRedrawRef = useRef(false);
   const pendingProfileRedrawRef = useRef(false);
   const pendingAggregateBubbleEventsRef = useRef<BubbleEvent[]>([]);
   const rawTradeQueueRef = useRef<Trade[]>([]);
+  const workerTradeQueueRef = useRef<{ trade: Trade, currentCandleTime: number }[]>([]);
   const fineProfileQueueRef = useRef<FineProfileRow[]>([]);
   const liveFineProfileRowsRef = useRef<Map<number, Map<number, FineProfileRow>>>(new Map());
   const contractPriceRef = useRef<number | null>(null);
@@ -60,6 +63,13 @@ export function useFeedAggregation(
     liquidityHistoryRef.current.setMaxSnapshots(liquidityHistoryDepth);
   }, [liquidityHistoryDepth]);
 
+  // Clean up worker on unmount
+  useEffect(() => {
+    return () => {
+      aggregationWorkerClient.terminate();
+    };
+  }, [aggregationWorkerClient]);
+
   return {
     connectedRef,
     bucketSizeRef,
@@ -69,6 +79,7 @@ export function useFeedAggregation(
     pendingProfileRedrawRef,
     pendingAggregateBubbleEventsRef,
     rawTradeQueueRef,
+    workerTradeQueueRef,
     fineProfileQueueRef,
     liveFineProfileRowsRef,
     contractPriceRef,
@@ -86,5 +97,6 @@ export function useFeedAggregation(
     aggregateEventsNeededRef,
     footprintIngestionSkippedRef,
     icebergDisabledNoopSkippedRef,
+    aggregationWorkerClient,
   };
 }

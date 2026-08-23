@@ -49,7 +49,6 @@ import type { BracketDragState, BracketOrder, Order, Position, TradeFill, Virtua
 import type { VolumeProfileSource } from '@/types/volumeProfile';
 
 // 3. Relative component & canvas imports
-import { AbsorptionTooltip } from './AbsorptionTooltip';
 import { CustomProfileToolbar, DrawingToolbar, ModifyConfirmRow } from './CanvasDrawingToolbar';
 import {
   resolveProfileBucketSize,
@@ -391,7 +390,7 @@ export function ChartCanvas({
 
   const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 });
 
-  const [hoveredAbs, setHoveredAbs] = React.useState<{ result: AbsorptionResult, x: number, y: number } | null>(null);
+
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
   const [hoveredIceberg, setHoveredIceberg] = React.useState<{ level: IcebergLevel, x: number, y: number } | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = React.useState<string | null>(null);
@@ -2830,13 +2829,6 @@ const onMouseUp = () => {
         className="absolute top-0 left-0 outline-none z-20"
         tabIndex={0}
       />
-      {hoveredAbs && (
-        <AbsorptionTooltip 
-          result={hoveredAbs.result} 
-          x={hoveredAbs.x} 
-          y={hoveredAbs.y} 
-        />
-      )}
       {hoveredExhaustion && (
         <ExhaustionTooltip 
           result={hoveredExhaustion.result} 
