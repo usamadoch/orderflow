@@ -513,19 +513,55 @@ export function drawAggregateTradeBubbles(
     return;
   }
 
+  const groupedEvents: BubbleEvent[] = [];
+  let currentGroup: BubbleEvent | null = null;
+  
+  for (const event of visibleEvents) {
+    if (!currentGroup) {
+      currentGroup = { ...event };
+      continue;
+    }
+    
+    const timeDiffSec = normalizeEventSeconds(event.time) - normalizeEventSeconds(currentGroup.time);
+    
+    if (
+      event.side === currentGroup.side &&
+      event.contractType === currentGroup.contractType &&
+      timeDiffSec >= 0 && timeDiffSec <= 0.05
+    ) {
+      const combinedVolume = currentGroup.volume + event.volume;
+      if (combinedVolume > 0) {
+        currentGroup.price = (currentGroup.price * currentGroup.volume + event.price * event.volume) / combinedVolume;
+      }
+      currentGroup.volume = combinedVolume;
+      
+      if (typeof event.tradeCount === 'number' && typeof currentGroup.tradeCount === 'number') {
+        currentGroup.tradeCount += event.tradeCount;
+      } else {
+        currentGroup.tradeCount = undefined;
+      }
+    } else {
+      groupedEvents.push(currentGroup);
+      currentGroup = { ...event };
+    }
+  }
+  if (currentGroup) {
+    groupedEvents.push(currentGroup);
+  }
+
   if (bubbleSizeBy === 'orders') {
-    tradeCountFallbackCount = visibleEvents.reduce((count, event) => (
+    tradeCountFallbackCount = groupedEvents.reduce((count, event) => (
       count + (getAggregateBubbleSizingValue(event, bubbleSizeBy).tradeCountFallback ? 1 : 0)
     ), 0);
   }
 
   let actualThreshold = bubbleSizeBy === 'orders' ? actualMinOrders : bubbleThreshold;
   if (bubbleSizeBy === 'volume' && bubbleThresholdMode === 'relative') {
-    const avgEventVol = visibleEvents.reduce((sum, event) => sum + event.volume, 0) / visibleEvents.length;
+    const avgEventVol = groupedEvents.reduce((sum, event) => sum + event.volume, 0) / groupedEvents.length;
     actualThreshold = bubbleThreshold * avgEventVol;
   }
 
-  const qualifiedEvents = visibleEvents.filter((event) => {
+  const qualifiedEvents = groupedEvents.filter((event) => {
     const sizing = getAggregateBubbleSizingValue(event, bubbleSizeBy);
     if (sizing.value >= actualThreshold) return true;
 

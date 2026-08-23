@@ -51,7 +51,7 @@ export function initCanvas(canvas: HTMLCanvasElement, width: number, height: num
   return ctx;
 }
 
-export function drawFootprintCell(
+export function drawFootprintCellBackground(
   ctx: CanvasRenderingContext2D,
   centerX: number,
   y: number,
@@ -79,6 +79,25 @@ export function drawFootprintCell(
   // Draw ask (right)
   ctx.fillStyle = chartColorToRgba(CHART_BULLISH_RGB, askOpacity);
   ctx.fillRect(askX, y, halfWidth, safeHeight);
+}
+
+export function drawFootprintCellText(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  y: number,
+  width: number,
+  height: number,
+  cell: FootprintCell
+) {
+  const safeWidth = Math.max(0, Number.isFinite(width) ? width : 0);
+  const safeHeight = Math.max(0, Number.isFinite(height) ? height : 0);
+  const gap = safeWidth >= 12 ? 1 : 0.5;
+  const halfWidth = (safeWidth - gap) / 2;
+  
+  if (halfWidth <= 0 || safeHeight <= 0) return;
+
+  const leftX = centerX - safeWidth / 2;
+  const askX = leftX + halfWidth + gap;
 
   // Draw text
   if (safeHeight >= 8 && halfWidth >= 8) {
@@ -108,7 +127,7 @@ export function drawFootprintCell(
   }
 }
 
-export function drawDeltaCell(
+export function drawDeltaCellBackground(
   ctx: CanvasRenderingContext2D,
   centerX: number,
   y: number,
@@ -132,6 +151,19 @@ export function drawDeltaCell(
     ? chartColorToRgba(CHART_BULLISH_RGB, opacity)
     : chartColorToRgba(CHART_BEARISH_RGB, opacity);
   ctx.fillRect(centerX - safeWidth / 2, y, barWidth, safeHeight);
+}
+
+export function drawDeltaCellText(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  y: number,
+  width: number,
+  height: number,
+  delta: number
+) {
+  const safeWidth = Math.max(0, Number.isFinite(width) ? width : 0);
+  const safeHeight = Math.max(0, Number.isFinite(height) ? height : 0);
+  if (safeWidth <= 0 || safeHeight <= 0) return;
 
   // Delta text
   if (safeHeight >= 8 && safeWidth >= 10) {
@@ -155,7 +187,7 @@ export function drawDeltaCell(
   }
 }
 
-export function drawDeltaVolumeCell(
+export function drawDeltaVolumeCellBackground(
   ctx: CanvasRenderingContext2D,
   centerX: number,
   y: number,
@@ -212,6 +244,23 @@ export function drawDeltaVolumeCell(
       ctx.strokeRect(volX, y, volBarWidth, safeHeight);
     }
   }
+}
+
+export function drawDeltaVolumeCellText(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  y: number,
+  width: number,
+  height: number,
+  delta: number,
+  volume: number
+) {
+  const safeWidth = Math.max(0, Number.isFinite(width) ? width : 0);
+  const safeHeight = Math.max(0, Number.isFinite(height) ? height : 0);
+  const gap = safeWidth >= 12 ? 1 : 0.5;
+  const halfWidth = (safeWidth - gap) / 2;
+  
+  if (halfWidth <= 0 || safeHeight <= 0) return;
 
   // Draw text
   if (safeHeight >= 8 && halfWidth >= 10) {
@@ -247,3 +296,4 @@ export function drawDeltaVolumeCell(
     }
   }
 }
+

@@ -1,6 +1,13 @@
 import { Candle } from "@/types/candle";
 import { AggregationEngine } from "@/lib/aggregation/engine";
-import { drawFootprintCell, drawDeltaCell, drawDeltaVolumeCell } from "@/lib/utils/canvas";
+import { 
+  drawFootprintCellBackground,
+  drawFootprintCellText,
+  drawDeltaCellBackground,
+  drawDeltaCellText,
+  drawDeltaVolumeCellBackground,
+  drawDeltaVolumeCellText 
+} from "@/lib/utils/canvas";
 import { FootprintMode, CandleVisualStats } from "@/types/footprint";
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
 
@@ -131,7 +138,7 @@ export function drawFootprint(
     ctx.fillRect(candleX - candleWidth / 2, Math.round(bodyTop), candleWidth, Math.round(bodyHeight));
   }
 
-  // Step 3 - Draw footprint cells
+  // Step 3a - Draw footprint cell backgrounds
   for (let i = firstIndex; i <= lastIndex; i++) {
     const c = candles[i];
     if (!c) continue;
@@ -156,7 +163,7 @@ export function drawFootprint(
       if (!stats) return;
 
       if (mode === "bid-ask") {
-        drawFootprintCell(
+        drawFootprintCellBackground(
           ctx,
           boxesCenterX,
           topY,
@@ -168,7 +175,7 @@ export function drawFootprint(
       } else if (mode === "delta-volume") {
         const cellTotalVol = cell.bidVol + cell.askVol;
         const isPoc = cellTotalVol > 0 && cellTotalVol === stats.maxTotalVol;
-        drawDeltaVolumeCell(
+        drawDeltaVolumeCellBackground(
           ctx,
           boxesCenterX,
           topY,
@@ -181,7 +188,7 @@ export function drawFootprint(
           isPoc
         );
       } else {
-        drawDeltaCell(
+        drawDeltaCellBackground(
           ctx,
           boxesCenterX,
           topY,
@@ -189,6 +196,61 @@ export function drawFootprint(
           rowHeight,
           cell.askVol - cell.bidVol,
           stats.deltaScale
+        );
+      }
+    });
+  }
+
+  // Step 3b - Draw footprint cell text
+  for (let i = firstIndex; i <= lastIndex; i++) {
+    const c = candles[i];
+    if (!c) continue;
+    const x = indexToX(i);
+    const fpCandle = engine.getFootprintCandle(c.time);
+    if (!fpCandle) continue;
+
+    fpCandle.cells.forEach((cell, priceBucket) => {
+      const topY = priceToY(priceBucket + bucketSize);
+      const bottomY = priceToY(priceBucket);
+      const rowHeight = Math.max(0, bottomY - topY);
+
+      if (rowHeight < 0.5) return;
+      if (bottomY < 0 || topY > canvasHeight) return;
+
+      const candleWidth = 4;
+      const candleGap = 4;
+      const candleArea = candleWidth + candleGap;
+      const boxesCenterX = x + candleArea / 2;
+      const boxesWidth = Math.max(0, barWidth - candleArea);
+
+      if (mode === "bid-ask") {
+        drawFootprintCellText(
+          ctx,
+          boxesCenterX,
+          topY,
+          boxesWidth,
+          rowHeight,
+          cell
+        );
+      } else if (mode === "delta-volume") {
+        const cellTotalVol = cell.bidVol + cell.askVol;
+        drawDeltaVolumeCellText(
+          ctx,
+          boxesCenterX,
+          topY,
+          boxesWidth,
+          rowHeight,
+          cell.askVol - cell.bidVol,
+          cellTotalVol
+        );
+      } else {
+        drawDeltaCellText(
+          ctx,
+          boxesCenterX,
+          topY,
+          boxesWidth,
+          rowHeight,
+          cell.askVol - cell.bidVol
         );
       }
     });

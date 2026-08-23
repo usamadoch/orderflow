@@ -181,7 +181,7 @@ export function drawStatsGrid(
       const x = indexToX(i);
       const cellLeft = x - barWidth / 2 + gap / 2;
       
-      if (cellLeft > chartWidth || cellLeft + cellWidth < 0) continue;
+      if (cellLeft + cellWidth < 0) continue;
 
       let bgColor = '#1A1A1A';
       const textColor = '#E8E8E8';

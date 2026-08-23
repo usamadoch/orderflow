@@ -143,13 +143,20 @@ export class FootprintBaseCache {
 
   hydrateBaseFootprintCandle(time: number, cells: Map<number, FootprintCell>, candle?: Partial<Candle>, delta?: number) {
     const baseTime = normalizeBaseCandleTime(time);
+    const existing = this.baseFootprintMap.get(baseTime);
+    const incomingVolume = candle?.volume ?? Array.from(cells.values()).reduce((total, cell) => total + cell.askVol + cell.bidVol, 0);
+
+    if (existing && existing.volume > incomingVolume) {
+      return; // Do not overwrite live data with delayed history
+    }
+
     this.baseFootprintMap.set(baseTime, {
       time: baseTime,
       open: candle?.open ?? 0,
       high: candle?.high ?? 0,
       low: candle?.low ?? 0,
       close: candle?.close ?? 0,
-      volume: candle?.volume ?? Array.from(cells.values()).reduce((total, cell) => total + cell.askVol + cell.bidVol, 0),
+      volume: incomingVolume,
       delta: delta ?? Array.from(cells.values()).reduce((total, cell) => total + cell.askVol - cell.bidVol, 0),
       cells: cloneCells(cells),
       isClosed: candle?.isClosed ?? true
