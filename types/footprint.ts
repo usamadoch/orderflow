@@ -1,4 +1,4 @@
-export type FootprintMode = 'bid-ask' | 'delta';
+export type FootprintMode = 'bid-ask' | 'delta' | 'delta-volume';
 
 export interface FootprintCell {
   askVol: number;    // volume hitting the ask (buyers aggressive)
@@ -20,6 +20,7 @@ export interface FootprintCandle {
 
 export interface CandleVisualStats {
   maxVol: number;
+  maxTotalVol: number;
   maxDelta: number;
   avgVol: number;
   avgDelta: number;

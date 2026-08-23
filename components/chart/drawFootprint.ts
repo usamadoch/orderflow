@@ -1,6 +1,6 @@
 import { Candle } from "@/types/candle";
 import { AggregationEngine } from "@/lib/aggregation/engine";
-import { drawFootprintCell, drawDeltaCell } from "@/lib/utils/canvas";
+import { drawFootprintCell, drawDeltaCell, drawDeltaVolumeCell } from "@/lib/utils/canvas";
 import { FootprintMode, CandleVisualStats } from "@/types/footprint";
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
 
@@ -50,6 +50,7 @@ export function drawFootprint(
     if (!fpCandle) continue;
 
     let maxVol = 0;
+    let maxTotalVol = 0;
     let maxDelta = 0;
     let totalVol = 0;
     let volCount = 0;
@@ -57,6 +58,9 @@ export function drawFootprint(
     let deltaCount = 0;
 
     fpCandle.cells.forEach((cell) => {
+      const cellTotalVol = cell.bidVol + cell.askVol;
+      if (cellTotalVol > maxTotalVol) maxTotalVol = cellTotalVol;
+
       if (cell.bidVol > maxVol) maxVol = cell.bidVol;
       if (cell.askVol > maxVol) maxVol = cell.askVol;
 
@@ -82,6 +86,7 @@ export function drawFootprint(
 
     candleStats.set(i, {
       maxVol,
+      maxTotalVol,
       maxDelta,
       avgVol: volCount > 0 ? totalVol / volCount : 0,
       avgDelta: deltaCount > 0 ? totalDelta / deltaCount : 0,
@@ -159,6 +164,21 @@ export function drawFootprint(
           rowHeight,
           cell,
           stats.volumeScale
+        );
+      } else if (mode === "delta-volume") {
+        const cellTotalVol = cell.bidVol + cell.askVol;
+        const isPoc = cellTotalVol > 0 && cellTotalVol === stats.maxTotalVol;
+        drawDeltaVolumeCell(
+          ctx,
+          boxesCenterX,
+          topY,
+          boxesWidth,
+          rowHeight,
+          cell.askVol - cell.bidVol,
+          stats.deltaScale,
+          cellTotalVol,
+          stats.volumeScale * 2,
+          isPoc
         );
       } else {
         drawDeltaCell(

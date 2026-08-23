@@ -47,6 +47,7 @@ import { useChartRuntimeStore } from '../lib/store/chartRuntime';
 
 // Engines & Cache
 import {
+  AggregationEngine,
   BASE_FOOTPRINT_BUCKET_SIZE,
   BASE_FOOTPRINT_TIMEFRAME,
   BASE_FOOTPRINT_TIMEFRAME_SECONDS,

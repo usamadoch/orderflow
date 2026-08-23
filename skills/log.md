@@ -1,5 +1,17 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-23] - Feature: Delta + Vol Footprint Mode
+
+- **What changed**:
+  - Added `'delta-volume'` to `FootprintMode` in `types/footprint.ts` and tracked `maxTotalVol` (POC).
+  - Created `drawDeltaVolumeCell` in `lib/utils/canvas.ts` to render delta bars on the left and volume profile bars on the right of the center candlestick.
+  - Modified `drawFootprint.ts` to call `drawDeltaVolumeCell` when the new mode is active, highlighting the POC using `maxTotalVol`.
+  - Added a "DELTA + VOL" button to the Footprint Mode selector in `components/ui/ChartSettingsDropdown.tsx`.
+- **Why it changed**:
+  - To fulfill user request for a third footprint chart mode combining a central candlestick with delta bars on the left and a volume profile (with POC) on the right.
+- **Impact summary**:
+  - Users can now select the "Delta + Vol" mode from the chart settings, which displays comprehensive structural footprint data intuitively without redundant numeric text.
+
 ## [2026-08-23] - Fix/Refactor: Web Worker Offloading and Chart Interaction Bugs
 
 - **What changed**:

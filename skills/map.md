@@ -120,7 +120,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, crosshair interaction, and multi-canvas synchronization.
 - `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry using shared chart colors.
 - `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with divergence markers.
-- `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters per price level.
+- `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters, delta, or delta-volume profiles per price level.
 - `components/chart/drawBubbles.ts` → Volume bubble renderer visualizing trade volume and order clusters with percentile scaling.
 - `components/chart/drawVolumeBars.ts` → Bottom histogram renderer for volume and trade counts with moving average overlay.
 - `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC, Value Area, and HVN/LVN levels.

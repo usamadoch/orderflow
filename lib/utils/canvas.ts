@@ -154,3 +154,96 @@ export function drawDeltaCell(
     }
   }
 }
+
+export function drawDeltaVolumeCell(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  y: number,
+  width: number,
+  height: number,
+  delta: number,
+  deltaScale: number,
+  volume: number,
+  volumeScale: number,
+  isPoc: boolean
+) {
+  const safeWidth = Math.max(0, Number.isFinite(width) ? width : 0);
+  const safeHeight = Math.max(0, Number.isFinite(height) ? height : 0);
+  const gap = safeWidth >= 12 ? 1 : 0.5;
+  const halfWidth = (safeWidth - gap) / 2;
+  
+  if (halfWidth <= 0 || safeHeight <= 0) return;
+
+  // Left side: Delta Bar
+  const absDelta = Math.abs(delta);
+  const deltaRatio = getDeltaWidthRatio(absDelta, deltaScale);
+  const minVisibleDeltaWidth = absDelta > 0 ? Math.min(halfWidth, Math.max(1, halfWidth * 0.05)) : 0;
+  const deltaBarWidth = absDelta > 0 ? Math.max(minVisibleDeltaWidth, halfWidth * deltaRatio) : 0;
+  const deltaOpacity = getDeltaOpacity(absDelta, deltaScale);
+  
+  if (deltaBarWidth > 0) {
+    ctx.fillStyle = delta >= 0
+      ? chartColorToRgba(CHART_BULLISH_RGB, deltaOpacity)
+      : chartColorToRgba(CHART_BEARISH_RGB, deltaOpacity);
+    // Draw from right to left on the left side
+    ctx.fillRect(centerX - gap / 2 - deltaBarWidth, y, deltaBarWidth, safeHeight);
+  }
+
+  // Right side: Volume Profile Bar
+  const volRatio = getDeltaWidthRatio(volume, volumeScale);
+  const minVisibleVolWidth = volume > 0 ? Math.min(halfWidth, Math.max(1, halfWidth * 0.05)) : 0;
+  const volBarWidth = volume > 0 ? Math.max(minVisibleVolWidth, halfWidth * volRatio) : 0;
+  
+  // POC gets a distinct color/opacity, others get a neutral color
+  if (volBarWidth > 0) {
+    if (isPoc) {
+      ctx.fillStyle = 'rgba(232, 232, 232, 0.4)'; // bright neutral for POC
+    } else {
+      const volOpacity = getDeltaOpacity(volume, volumeScale);
+      // Neutral color for profile bars
+      ctx.fillStyle = `rgba(160, 160, 160, ${volOpacity})`;
+    }
+    // Draw from left to right on the right side
+    const volX = centerX + gap / 2;
+    ctx.fillRect(volX, y, volBarWidth, safeHeight);
+    if (isPoc) {
+      ctx.strokeStyle = '#F0B90B'; // Yellow border
+      ctx.lineWidth = 1;
+      ctx.strokeRect(volX, y, volBarWidth, safeHeight);
+    }
+  }
+
+  // Draw text
+  if (safeHeight >= 8 && halfWidth >= 10) {
+    ctx.fillStyle = '#E8E8E8';
+    const fontSize = Math.max(8, Math.min(11, Math.floor(safeHeight - 2)));
+    ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    const formatVol = (v: number) => {
+      if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+      return v.toFixed(1);
+    };
+
+    const formatDelta = (d: number) => {
+      const sign = d > 0 ? '+' : d < 0 ? '-' : '';
+      const abs = Math.abs(d);
+      if (abs >= 1000) return sign + (abs / 1000).toFixed(1) + 'k';
+      return sign + abs.toFixed(1);
+    };
+
+    const deltaLabel = formatDelta(delta);
+    const volLabel = formatVol(volume);
+    
+    const labelMaxWidth = Math.max(0, halfWidth - 2);
+
+    if (ctx.measureText(deltaLabel).width <= labelMaxWidth) {
+      ctx.fillText(deltaLabel, centerX - gap / 2 - halfWidth / 2, y + safeHeight / 2);
+    }
+
+    if (ctx.measureText(volLabel).width <= labelMaxWidth) {
+      ctx.fillText(volLabel, centerX + gap / 2 + halfWidth / 2, y + safeHeight / 2);
+    }
+  }
+}
