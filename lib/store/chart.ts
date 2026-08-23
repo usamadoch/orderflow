@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { FootprintMode } from '@/types/footprint';
 import { getMinimumFineProfileResolutionTicks } from '@/lib/config/markets';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, normalizeChartSemanticColor } from '@/lib/config/chartColors';
@@ -588,6 +588,59 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
   };
 }
 
+const tabAwareStorage: StateStorage = {
+  getItem: (name) => {
+    // Attempt to load from both storages
+    const localStr = typeof window !== 'undefined' ? localStorage.getItem(name) : null;
+    const sessionStr = typeof window !== 'undefined' ? sessionStorage.getItem(name) : null;
+
+    if (!localStr && !sessionStr) return null;
+
+    const localData = localStr ? JSON.parse(localStr) : {};
+    const sessionData = sessionStr ? JSON.parse(sessionStr) : {};
+
+    const mergedState = {
+      ...(localData.state || {}),
+      ...(sessionData.state || {})
+    };
+
+    return JSON.stringify({
+      version: localData.version ?? sessionData.version,
+      state: mergedState
+    });
+  },
+  setItem: (name, value) => {
+    if (typeof window === 'undefined') return;
+
+    const data = JSON.parse(value);
+    const state = data.state || {};
+
+    const tabKeys = ['panels', 'layoutMode', 'activePanel', 'splitRatio'];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sessionState: any = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const localState: any = {};
+
+    for (const key in state) {
+      if (tabKeys.includes(key)) {
+        sessionState[key] = state[key];
+      } else {
+        localState[key] = state[key];
+      }
+    }
+
+    localStorage.setItem(name, JSON.stringify({ ...data, state: localState }));
+    sessionStorage.setItem(name, JSON.stringify({ ...data, state: sessionState }));
+  },
+  removeItem: (name) => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(name);
+      sessionStorage.removeItem(name);
+    }
+  }
+};
+
 export const useChartStore = create<ChartState>()(
   persist(
     (set) => ({
@@ -1143,6 +1196,7 @@ export const useChartStore = create<ChartState>()(
     {
       name: 'orderflow-settings',
       version: 36,
+      storage: createJSONStorage(() => tabAwareStorage),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
         if (version < 3) {

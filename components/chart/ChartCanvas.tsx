@@ -1129,13 +1129,15 @@ export function ChartCanvas({
       if (drawAll || layersToDraw.has('overlay')) {
         let activePosition: DrawnLine | null = null;
         if (
-          (lineDrawMode === 'long-position' || lineDrawMode === 'short-position') &&
+          (lineDrawMode === 'long-position' || lineDrawMode === 'short-position' || lineDrawMode === 'position') &&
           isDragging.current &&
           dragStart.current &&
           dragEnd.current
         ) {
+          const dy = dragEnd.current.y - dragStart.current.y;
+          const resolvedMode = lineDrawMode === 'position' ? (dy > 0 ? 'long-position' : 'short-position') : lineDrawMode;
           activePosition = buildPositionFromRiskDrag(
-            lineDrawMode,
+            resolvedMode,
             dragStart.current,
             dragEnd.current,
             candles,
@@ -1781,7 +1783,7 @@ export function ChartCanvas({
           dragEnd.current = { x, y };
           isDragging.current = true;
           return;
-        } else if (lineDrawMode === 'long-position' || lineDrawMode === 'short-position') {
+        } else if (lineDrawMode === 'long-position' || lineDrawMode === 'short-position' || lineDrawMode === 'position') {
           dragStart.current = { x, y };
           dragEnd.current = { x, y };
           isDragging.current = true;
@@ -2228,7 +2230,7 @@ export function ChartCanvas({
         redraw();
       } else if (
         isDragging.current &&
-        (isDrawMode || measureToolActive || lineDrawMode === 'box' || lineDrawMode === 'long-position' || lineDrawMode === 'short-position')
+        (isDrawMode || measureToolActive || lineDrawMode === 'box' || lineDrawMode === 'long-position' || lineDrawMode === 'short-position' || lineDrawMode === 'position')
       ) {
         dragEnd.current = { x, y };
         redraw();
@@ -2622,7 +2624,7 @@ export function ChartCanvas({
 
       if (
         isDragging.current &&
-        (lineDrawMode === 'long-position' || lineDrawMode === 'short-position') &&
+        (lineDrawMode === 'long-position' || lineDrawMode === 'short-position' || lineDrawMode === 'position') &&
         dragStart.current &&
         dragEnd.current
       ) {
@@ -2642,8 +2644,10 @@ export function ChartCanvas({
         const heightPx = Math.abs(dragEnd.current.y - dragStart.current.y);
 
         if (widthPx >= 5 && heightPx >= 5) {
+          const dy = dragEnd.current.y - dragStart.current.y;
+          const resolvedMode = lineDrawMode === 'position' ? (dy > 0 ? 'long-position' : 'short-position') : lineDrawMode;
           const position = buildPositionFromRiskDrag(
-            lineDrawMode,
+            resolvedMode,
             dragStart.current,
             dragEnd.current,
             candles,

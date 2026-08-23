@@ -1,5 +1,18 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-23] - Feature: Chart Tab Isolation and Position Tool Simplification
+
+- **What changed**:
+  - Implemented `tabAwareStorage` in `lib/store/chart.ts` to split persist keys: global settings are saved to `localStorage` while tab-specific settings (like `panels` and `layoutMode`) are saved to `sessionStorage`.
+  - Added `'position'` to `LineDrawMode` in `types/chart.ts`.
+  - Replaced separate Long/Short position buttons in `PanelToolbar.tsx` with a single unified Position tool.
+  - Updated `ChartCanvas.tsx` to handle the new `'position'` drawing mode, dynamically resolving it to `long-position` (drag down) or `short-position` (drag up) based on the vertical drag delta upon mouse release.
+- **Why it changed**:
+  - To prevent duplicated browser tabs from fighting over the same `localStorage` space, ensuring each tab maintains an independent workspace state.
+  - To improve the user experience for the Position drawing tool by reducing click interactions and inferring intent naturally through drag direction.
+- **Impact summary**:
+  - Users can now safely operate multiple chart tabs/windows simultaneously without unexpected state bleeding. The Position tool is much faster for practice and mock trading.
+
 ## [2026-08-23] - Refactor: Complete Imperative Canvas Rendering Migration
 
 - **What changed**:

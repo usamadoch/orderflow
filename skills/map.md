@@ -150,7 +150,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Persisted Zustand store for chart preferences, indicator settings, drawings, and UI state.
+- `lib/store/chart.ts` → Persisted Zustand store for chart preferences, indicator settings, drawings, UI state, and tab-aware storage isolation.
 - `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, trades, signals, trading account data, and active drag state.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcut handler for chart tools, modes, and navigation.
 - `types/chart.ts` → TypeScript definitions for chart configurations, panels, and indicator options.

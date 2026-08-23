@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Maximize2, Minimize2, Settings, TrendingDown, TrendingUp, RefreshCw } from 'lucide-react';
+import { Maximize2, Minimize2, Settings, TrendingUp, RefreshCw } from 'lucide-react';
 import { useChartStore, PanelId, type SettingsOpenRequest } from '../../lib/store/chart';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 import { ChartSettingsDropdown } from './ChartSettingsDropdown';
@@ -35,10 +35,10 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const settingsContainerRef = React.useRef<HTMLDivElement | null>(null);
   const settingsButtonRef = React.useRef<HTMLButtonElement | null>(null);
 
-  const selectPositionTool = React.useCallback((mode: 'long-position' | 'short-position') => {
+  const selectPositionTool = React.useCallback(() => {
     setActivePanel(panelId);
     setMeasureToolActive(panelId, false);
-    setLineDrawMode(panelId, panel.lineDrawMode === mode ? 'none' : mode);
+    setLineDrawMode(panelId, panel.lineDrawMode === 'position' ? 'none' : 'position');
   }, [panel.lineDrawMode, panelId, setActivePanel, setLineDrawMode, setMeasureToolActive]);
 
   const getSettingsAnchor = React.useCallback(() => {
@@ -121,33 +121,18 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
       <div className="flex gap-0.5 bg-[#0F0F0F] p-0.5 rounded-md border border-[#1F1F1F]">
         <button
           type="button"
-          onClick={() => selectPositionTool('long-position')}
+          onClick={() => selectPositionTool()}
           className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
-            panel.lineDrawMode === 'long-position'
+            panel.lineDrawMode === 'position'
               ? 'bg-[#089981] text-white shadow-sm shadow-[#089981]/20'
               : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
           }`}
-          title="Long Position"
-          aria-pressed={panel.lineDrawMode === 'long-position'}
-          aria-label="Long Position"
+          title="Position Tool (Drag Up for Short, Down for Long)"
+          aria-pressed={panel.lineDrawMode === 'position'}
+          aria-label="Position Tool"
         >
           <TrendingUp size={11} strokeWidth={2.5} />
-          Long
-        </button>
-        <button
-          type="button"
-          onClick={() => selectPositionTool('short-position')}
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
-            panel.lineDrawMode === 'short-position'
-              ? 'bg-[#F23645] text-white shadow-sm shadow-[#F23645]/20'
-              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
-          }`}
-          title="Short Position"
-          aria-pressed={panel.lineDrawMode === 'short-position'}
-          aria-label="Short Position"
-        >
-          <TrendingDown size={11} strokeWidth={2.5} />
-          Short
+          Position
         </button>
       </div>
 
