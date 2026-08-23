@@ -13,7 +13,6 @@ import {
   useChartStore,
   PanelState,
   ExhaustionSide,
-  Measurement,
   DrawnLine,
   ContractType,
   DataSourceMode,
@@ -34,18 +33,14 @@ import { buildHeatmapRows } from '@/lib/liquidity/heatmap';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { initCanvas } from '@/lib/utils/canvas';
 import { formatPrice, formatVol } from '@/lib/utils/format';
-import { HistoricalSessionRange } from '@/lib/utils/historicalSessions';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
-import type { AbsorptionResult } from '@/types/absorption';
 import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource, BubbleScaleMode } from '@/types/bubble';
-import type { Candle } from '@/types/candle';
 import type { DrawingHitZone } from '@/types/chart';
 import type { ExhaustionResult } from '@/types/exhaustion';
 import type { FootprintMode } from '@/types/footprint';
 import type { IcebergLevel } from '@/types/iceberg';
-import type { HeatmapRow, LiquidityZone } from '@/types/liquidity';
-import type { LiquidityVacuumZone } from '@/types/liquidityVacuum';
-import type { BracketDragState, BracketOrder, Order, Position, TradeFill, VirtualPosition, PendingModifyOrder } from '@/types/trading';
+import type { HeatmapRow } from '@/types/liquidity';
+import type { Order, BracketOrder, BracketDragState, PendingModifyOrder, Position } from '@/types/trading';
 import type { VolumeProfileSource } from '@/types/volumeProfile';
 
 // 3. Relative component & canvas imports
@@ -85,6 +80,7 @@ import { drawTradingOverlays, TradingOverlayHitZones } from './drawTradingOverla
 import { drawVolumeBars } from './drawVolumeBars';
 import { drawVolumeProfile } from './drawVolumeProfile';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
+import { computeHistoricalSessionRanges } from './chartPanelUtils';
 import { IcebergTooltip } from './IcebergTooltip';
 import { MeasurementPanel } from './MeasurementPanel';
 import { usePanZoom } from './usePanZoom';
@@ -93,14 +89,12 @@ import { getVisibleRange, getVisiblePriceRange, priceToY as calcPriceToY, indexT
 
 interface ChartCanvasProps {
   panelId: PanelId;
-  candles: Candle[];
   chartMode: ChartMode;
   footprintMode: FootprintMode;
   bucketSize: number;
   barWidth: number;
   scrollOffset: number;
   timeframe: string;
-  footprintTrigger: number;
   isLoadingHistory: boolean;
   engine: AggregationEngine;
   volumeProfileEngine: VolumeProfileSource;
@@ -110,7 +104,6 @@ interface ChartCanvasProps {
   absorptionMinScore: number;
   absorptionSide: AbsorptionSide;
   absorptionShowLabels: boolean;
-  absorptionMap: Map<number, AbsorptionResult>;
   bubblesEnabled: boolean;
   bubbleSource: BubbleSource;
   bubbleSizeBy: BubbleSizeBy;
@@ -122,17 +115,10 @@ interface ChartCanvasProps {
   bubbleMaxRadius: number;
   bubbleSide: BubbleSide;
   bubbleScaleMode: BubbleScaleMode;
-  aggregateBubbleEvents: BubbleEvent[];
   activeChartContractType: ContractType;
   activeDataSourceMode: DataSourceMode;
   tradingSymbol: string;
   tradingContractType: ContractType;
-  openOrders: Order[];
-  positions: Position[];
-  virtualPositions: VirtualPosition[];
-  bracketOrders: BracketOrder[];
-  bracketDrag: BracketDragState | null;
-  recentFills: TradeFill[];
   volumeBarsEnabled: boolean;
   volumeBarsInputData: PanelState['volumeBarsInputData'];
   volumeBarsMarketSource: PanelState['volumeBarsMarketSource'];
@@ -157,26 +143,22 @@ interface ChartCanvasProps {
     priceLow: number;
   } | null;
   customProfileLocked: boolean;
-  isProfileSelected: boolean;
   drawnLines: PanelState['drawnLines'];
   lineDrawMode: PanelState['lineDrawMode'];
   exhaustionEnabled: boolean;
   exhaustionMinScore: number;
   exhaustionSide: ExhaustionSide;
   exhaustionShowProvisional: boolean;
-  exhaustionMap: Map<number, ExhaustionResult>;
   icebergEnabled: boolean;
   icebergMinScore: number;
   icebergLookback: number;
   icebergShowSuspected: boolean;
   icebergShowLabels: boolean;
   icebergShowTint: boolean;
-  icebergLevels: IcebergLevel[];
   liquidityVacuumEnabled: boolean;
   liquidityVacuumMinScore: number;
   liquidityVacuumShowLabels: boolean;
   liquidityVacuumOpacity: number;
-  liquidityVacuumZones: LiquidityVacuumZone[];
   profileWidthPct: number;
   defaultProfileEnabled: boolean;
   profileResolutionTicks: number;
@@ -190,13 +172,9 @@ interface ChartCanvasProps {
   profileShowVaLines: boolean;
   profileShowDelta: boolean;
   historicalSessionProfileEnabled: boolean;
-  historicalSessionRanges: HistoricalSessionRange[];
   deltaProfileWidth: number;
-  measureToolActive: boolean;
-  activeMeasurement: Measurement | null;
   sessionsEnabled: boolean;
   sessions: PanelState['sessions'];
-  liquidityZones: LiquidityZone[];
   liquidityEnabled: boolean;
   liquidityOpacity: number;
   liquidityBucketSize: number;
@@ -213,21 +191,18 @@ interface ChartCanvasProps {
   statsIndicatorEnabled: boolean;
   statsIndicatorItems: string[];
   showTimeAxis?: boolean;
-  dataVersion: number;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
 }
 
 export function ChartCanvas({
   panelId,
-  candles,
   chartMode,
   footprintMode,
   bucketSize,
   barWidth: barWidthProp,
   scrollOffset: scrollOffsetProp,
   timeframe,
-  footprintTrigger,
   isLoadingHistory,
   engine,
   volumeProfileEngine,
@@ -237,7 +212,6 @@ export function ChartCanvas({
   absorptionMinScore,
   absorptionSide,
   absorptionShowLabels,
-  absorptionMap,
   bubblesEnabled,
   bubbleSource,
   bubbleSizeBy,
@@ -249,17 +223,10 @@ export function ChartCanvas({
   bubbleMaxRadius,
   bubbleSide,
   bubbleScaleMode,
-  aggregateBubbleEvents,
   activeChartContractType,
   activeDataSourceMode,
   tradingSymbol,
   tradingContractType,
-  openOrders,
-  positions,
-  virtualPositions,
-  bracketOrders,
-  bracketDrag,
-  recentFills,
   volumeBarsEnabled,
   volumeBarsInputData,
   volumeBarsMarketSource,
@@ -277,26 +244,22 @@ export function ChartCanvas({
   isDrawMode,
   customProfileRange,
   customProfileLocked,
-  isProfileSelected,
   drawnLines,
   lineDrawMode,
   exhaustionEnabled,
   exhaustionMinScore,
   exhaustionSide,
   exhaustionShowProvisional,
-  exhaustionMap,
   icebergEnabled,
   icebergMinScore,
   icebergLookback,
   icebergShowSuspected,
   icebergShowLabels,
   icebergShowTint,
-  icebergLevels,
   liquidityVacuumEnabled,
   liquidityVacuumMinScore,
   liquidityVacuumShowLabels,
   liquidityVacuumOpacity,
-  liquidityVacuumZones,
   profileWidthPct,
   defaultProfileEnabled,
   profileResolutionTicks,
@@ -310,13 +273,9 @@ export function ChartCanvas({
   profileShowVaLines,
   profileShowDelta,
   historicalSessionProfileEnabled,
-  historicalSessionRanges,
   deltaProfileWidth,
-  measureToolActive,
-  activeMeasurement,
   sessionsEnabled,
   sessions,
-  liquidityZones,
   liquidityEnabled,
   liquidityOpacity,
   liquidityBucketSize,
@@ -333,7 +292,6 @@ export function ChartCanvas({
   statsIndicatorEnabled,
   statsIndicatorItems,
   showTimeAxis = true,
-  dataVersion,
   onBarWidthChange,
   onScrollOffsetChange,
 }: ChartCanvasProps) {
@@ -413,8 +371,10 @@ export function ChartCanvas({
   const refreshRiskStatus = useChartRuntimeStore(s => s.refreshRiskStatus);
   const cancelOrder = useChartRuntimeStore(s => s.cancelOrder);
   const modifyOrder = useChartRuntimeStore(s => s.modifyOrder);
+  const measureToolActive = useChartRuntimeStore(s => s.panels[panelId]?.measureToolActive ?? false);
+  const activeMeasurement = useChartRuntimeStore(s => s.panels[panelId]?.activeMeasurement ?? null);
 
-  const getCandlesLength = useCallback(() => candles.length, [candles]);
+  const getCandlesLength = useCallback(() => useChartRuntimeStore.getState().panels[panelId]?.candles?.length ?? 0, [panelId]);
 
   const priceAxisWidth = 85;
   const timeAxisHeight = showTimeAxis ? 24 : 0;
@@ -462,6 +422,31 @@ export function ChartCanvas({
       if (drawAll || layersToDraw.has('overlay')) {
         ctx.clearRect(0, 0, logicalWidth, logicalHeight);
       }
+
+      const runtimeState = useChartRuntimeStore.getState();
+      const currentPanelRuntime = runtimeState.panels[panelId] || {};
+      const storeState = useChartStore.getState();
+      const panelState = storeState.panels[panelId];
+
+      const candles = currentPanelRuntime.candles ?? [];
+      const openOrders = runtimeState.tradingStatus.openOrders ?? [];
+      const bracketOrders = runtimeState.tradingStatus.bracketOrders ?? [];
+      const positions = runtimeState.tradingStatus.positions ?? [];
+      const virtualPositions = runtimeState.tradingStatus.virtualPositions ?? [];
+      const recentFills = runtimeState.tradingStatus.recentTrades ?? [];
+      const bracketDrag = runtimeState.tradingStatus.bracketDrag ?? null;
+      
+      const activeMeasurement = currentPanelRuntime.activeMeasurement ?? null;
+      const measureToolActive = currentPanelRuntime.measureToolActive ?? false;
+      const isProfileSelected = currentPanelRuntime.isProfileSelected ?? false;
+      const liquidityZones = currentPanelRuntime.liquidityZones ?? [];
+      const liquidityVacuumZones = currentPanelRuntime.liquidityVacuumZones ?? [];
+      const icebergLevels = currentPanelRuntime.icebergLevels ?? [];
+      const aggregateBubbleEvents = currentPanelRuntime.aggregateBubbleEvents ?? [];
+      const historicalSessionRanges = panelState ? computeHistoricalSessionRanges(panelState, candles) : [];
+
+      const absorptionMap = currentPanelRuntime.absorptionMap ?? new Map();
+      const exhaustionMap = currentPanelRuntime.exhaustionMap ?? new Map();
 
       if (candles.length === 0) return;
 
@@ -1190,7 +1175,7 @@ export function ChartCanvas({
         }
 
         const activePositions = tradingContractType === 'futures'
-          ? positions.filter(p => p.side !== 'flat').map(p => ({
+          ? positions.filter((p: Position) => p.side !== 'flat').map((p: Position) => ({
               id: p.symbol,
               status: 'open' as const,
               symbol: p.symbol,
@@ -1298,7 +1283,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, chartMode, footprintMode, bucketSize, footprintTrigger, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, absorptionMap, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, exhaustionMap, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, icebergLevels, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, liquidityVacuumZones, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, aggregateBubbleEvents, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, isProfileSelected, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, measureToolActive, activeMeasurement, sessionsEnabled, sessions, liquidityZones, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, statsIndicatorEnabled, statsIndicatorItems, showTimeAxis, openOrders, positions, recentFills, modifyingOrderId, dragPreviewPrice]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, statsIndicatorEnabled, statsIndicatorItems, showTimeAxis, modifyingOrderId, dragPreviewPrice]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1337,6 +1322,7 @@ export function ChartCanvas({
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
+        const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
         const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
         const profileHitZone = getCustomProfileHitZone(
           resolvedCustomProfileRange,
@@ -1357,7 +1343,6 @@ export function ChartCanvas({
       }
       return true;
     },
-    // Crosshair Sync Handler
     useCallback((x: number | null, y: number | null) => {
       if (x === null || y === null) {
         useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
@@ -1378,6 +1363,7 @@ export function ChartCanvas({
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
+      const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
       const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
       const profileHitZone = getCustomProfileHitZone(
         resolvedCustomProfileRange,
@@ -1417,7 +1403,7 @@ export function ChartCanvas({
       if (syncEnabled) {
         useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price });
       }
-    }, [panelId, candles, priceAxisWidth, timeAxisHeight, profileWidth, customProfileRange, customProfileLocked]),
+    }, [panelId, priceAxisWidth, timeAxisHeight, profileWidth, customProfileRange, customProfileLocked]),
     { scrollOffset, barWidth, priceCenter, priceRange }
   );
 
@@ -1510,60 +1496,55 @@ export function ChartCanvas({
       if (dprMedia) dprMedia.removeEventListener('change', onDprChange);
     };
   }, []);
-
   // Redraw when candles change (optimized for live ticks)
   useEffect(() => {
-    const prevLength = lastCandlesLengthRef.current;
-    const prevFirstTime = firstCandleTimeRef.current;
+    const unsubscribe = useChartRuntimeStore.subscribe(
+      (state) => state.panels[panelId]?.dataVersion,
+      (version, prevVersion) => {
+        if (version === prevVersion) return;
+        
+        const prevLength = lastCandlesLengthRef.current;
+        const prevFirstTime = firstCandleTimeRef.current;
+        const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
+        
+        lastCandlesLengthRef.current = candles.length;
+        firstCandleTimeRef.current = candles.length > 0 ? candles[0].time : null;
 
-    lastCandlesLengthRef.current = candles.length;
-    firstCandleTimeRef.current = candles.length > 0 ? candles[0].time : null;
-
-    if (prevLength > 0 && candles.length > 0) {
-      // If we just appended one candle or updated the last candle
-      if ((candles.length === prevLength || candles.length === prevLength + 1) && candles[0].time === prevFirstTime) {
-        redraw('live-dirty');
-        return;
+        if (prevLength > 0 && candles.length > 0) {
+          // If we just appended one candle or updated the last candle
+          if ((candles.length === prevLength || candles.length === prevLength + 1) && candles[0].time === prevFirstTime) {
+            redraw('live-dirty');
+            return;
+          }
+        }
+        redraw('all');
       }
-    }
-    redraw('all');
-  }, [candles, dataVersion, redraw]);
+    );
+    return () => unsubscribe();
+  }, [panelId, redraw]);
 
-  // Redraw when configuration/state changes
   useEffect(() => {
     redraw('all');
   }, [
     chartMode,
     footprintMode,
     bucketSize,
-    footprintTrigger,
     volumeProfileRevision,
     redraw,
     isLoadingHistory,
     drawnLines,
     lineDrawMode,
     showTimeAxis,
-    aggregateBubbleEvents,
     volumeBarsEnabled,
-    volumeBarsInputData,
-    volumeBarsMarketSource,
-    volumeBarsFilterMode,
     volumeBarsMovingAverageLength,
     volumeBarsFilterMin,
     volumeBarsFilterMax,
-    volumeBarsColorMode,
     volumeBarsOpacity,
     volumeBarsHeightPct,
     volumeBarsShowValueText,
     volumeBarsTextSize,
     volumeBarsAverageLineEnabled,
     volumeBarsAverageLength,
-    openOrders,
-    positions,
-    virtualPositions,
-    bracketOrders,
-    bracketDrag,
-    recentFills,
   ]);
 
   useEffect(() => {
@@ -1584,8 +1565,8 @@ export function ChartCanvas({
     return () => clearInterval(timer);
   }, [redraw]);
 
-  // Controls overlay positioning
   const customProfileControls = useMemo(() => {
+    const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
     if (!customProfileRange || containerSize.width === 0) return null;
     const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
     if (!resolvedCustomProfileRange) return null;
@@ -1607,7 +1588,7 @@ export function ChartCanvas({
       top: Math.max(4, Math.min(chartHeight - 34, y1 - 32)),
       left: Math.max(4, Math.min(chartWidth - overlayWidth - 4, x2 + barWidth.current / 2 - overlayWidth / 2)),
     };
-  }, [customProfileRange, containerSize, candles, priceAxisWidth, timeAxisHeight, profileWidth, scrollOffset, barWidth, priceCenter, priceRange]);
+  }, [customProfileRange, containerSize, priceAxisWidth, timeAxisHeight, profileWidth, scrollOffset, barWidth, priceCenter, priceRange, panelId]);
 
   const selectedDrawing = useMemo(() => {
     if (!selectedDrawingId) return null;
@@ -1615,6 +1596,7 @@ export function ChartCanvas({
   }, [drawnLines, selectedDrawingId]);
 
   const selectedDrawingControls = (() => {
+    const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
     if (!selectedDrawing || containerSize.width === 0) return null;
     const resolvedDrawing = resolveLineForRender(selectedDrawing, candles);
     if (!resolvedDrawing) return null;
@@ -1641,7 +1623,8 @@ export function ChartCanvas({
   })();
 
   const chartOrderControls = useMemo(() => {
-    if (containerSize.width === 0 || containerSize.height === 0 || candles.length === 0) return [];
+    const openOrders = useChartRuntimeStore.getState().tradingStatus.openOrders;
+    if (containerSize.width === 0 || containerSize.height === 0) return [];
 
     const chartWidth = containerSize.width - priceAxisWidth;
     const chartHeight = containerSize.height - timeAxisHeight;
@@ -1664,7 +1647,7 @@ export function ChartCanvas({
         };
       })
       .filter((item): item is { order: Order; top: number; left: number } => item !== null);
-  }, [openOrders, containerSize, candles.length, priceAxisWidth, timeAxisHeight, priceCenter, priceRange]);
+  }, [containerSize, priceAxisWidth, timeAxisHeight, priceCenter, priceRange]);
 
   const handleCancelOrder = useCallback(async (order: Order) => {
     if (confirmingCancelOrderId !== order.id) {
@@ -1689,9 +1672,10 @@ export function ChartCanvas({
 
   useEffect(() => {
     if (!confirmingCancelOrderId) return;
-    if (openOrders.some((order) => order.id === confirmingCancelOrderId)) return;
+    const openOrders = useChartRuntimeStore.getState().tradingStatus.openOrders ?? [];
+    if (openOrders.some((order: Order) => order.id === confirmingCancelOrderId)) return;
     setConfirmingCancelOrderId(null);
-  }, [confirmingCancelOrderId, openOrders]);
+  }, [confirmingCancelOrderId]);
 
   const closeModifyConfirm = useCallback(() => {
     if (modifyLoading) return;
@@ -1780,6 +1764,7 @@ export function ChartCanvas({
           const price = yToPrice(y, priceMin, priceMax, chartHeight);
           useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal', value: price });
         } else if (lineDrawMode === 'horizontal-ray') {
+          const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
           const pCenter = priceCenter.current ?? 0;
           const pRange = priceRange.current ?? 100;
           const priceMin = pCenter - pRange / 2;
@@ -1788,6 +1773,7 @@ export function ChartCanvas({
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
           useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal-ray', value: price, startIndex: index, startTime: candleTimeAt(index, candles) });
         } else if (lineDrawMode === 'vertical') {
+          const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
           useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'vertical', value: index, time: candleTimeAt(index, candles) });
         } else if (lineDrawMode === 'box') {
@@ -1806,6 +1792,7 @@ export function ChartCanvas({
         return;
       }
 
+      const measureToolActive = useChartRuntimeStore.getState().panels[panelId]?.measureToolActive ?? false;
       if (isDrawMode || measureToolActive) {
         const chartWidth = rect.width - priceAxisWidth;
         const chartHeight = rect.height - timeAxisHeight;
@@ -1824,6 +1811,12 @@ export function ChartCanvas({
 
 
     const getUnifiedHitTarget = (x: number, y: number) => {
+      const runtimeState = useChartRuntimeStore.getState();
+      const candles = runtimeState.panels[panelId]?.candles ?? [];
+      const virtualPositions = runtimeState.tradingStatus.virtualPositions;
+      const bracketOrders = runtimeState.tradingStatus.bracketOrders;
+      const openOrders = runtimeState.tradingStatus.openOrders;
+
       const chartWidth = rect.width - priceAxisWidth;
       const chartHeight = rect.height - timeAxisHeight;
       const pCenter = priceCenter.current ?? 0;
@@ -1856,7 +1849,6 @@ export function ChartCanvas({
       }
 
       const storeState = useChartStore.getState();
-      const runtimeState = useChartRuntimeStore.getState();
       const currentPanel = storeState.panels[panelId];
 
       // 3. Custom Profile
@@ -1980,11 +1972,21 @@ export function ChartCanvas({
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      const runtimeState = useChartRuntimeStore.getState();
+      const candles = runtimeState.panels[panelId]?.candles ?? [];
+      const exhaustionMap = runtimeState.panels[panelId]?.exhaustionMap ?? new Map();
+      const icebergLevels = runtimeState.panels[panelId]?.icebergLevels ?? [];
+      const virtualPositions = runtimeState.tradingStatus.virtualPositions ?? [];
+      const bracketOrders = runtimeState.tradingStatus.bracketOrders ?? [];
+      const openOrders = runtimeState.tradingStatus.openOrders ?? [];
+      
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
       let cursor = 'crosshair';
+
+      const measureToolActive = useChartRuntimeStore.getState().panels[panelId]?.measureToolActive ?? false;
 
       if (lineDrawMode !== 'none') {
         cursor = 'crosshair';
@@ -2457,7 +2459,11 @@ export function ChartCanvas({
       }
     };
 
-const onMouseUp = () => {
+    const onMouseUp = () => {
+      const runtimeState = useChartRuntimeStore.getState();
+      const candles = runtimeState.panels[panelId]?.candles ?? [];
+      const measureToolActive = runtimeState.panels[panelId]?.measureToolActive ?? false;
+
       if (
         !isDragging.current &&
         !isDraggingProfile.current &&
@@ -2799,7 +2805,7 @@ const onMouseUp = () => {
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, measureToolActive, activeMeasurement, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, candles, absorptionEnabled, absorptionMap, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMap, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergLevels, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, openOrders, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, bracketOrders, virtualPositions]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({

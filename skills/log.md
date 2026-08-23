@@ -1,5 +1,16 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-23] - Refactor: Complete Imperative Canvas Rendering Migration
+
+- **What changed**:
+  - Removed `candles` and `footprintTrigger` from `CvdPanelProps` and fetched them directly from `useChartRuntimeStore` inside the component.
+  - Removed `dataVersion` prop from `ChartCanvasProps` and `ChartPanel.tsx`.
+  - Replaced React dependencies on `candles` inside `ChartCanvas.tsx` and `CvdPanel.tsx` with a `useChartRuntimeStore.subscribe` hook that listens directly to `dataVersion` changes and triggers the imperative `redraw` method.
+- **Why it changed**:
+  - To prevent React re-renders on every high-frequency market data tick. The UI thread is now completely free of React reconciliations for tick-rate state updates, relying solely on imperative canvas drawing via store subscriptions.
+- **Impact summary**:
+  - Major performance improvement during high-volatility events. UI interactions remain buttery smooth since chart panels no longer re-render on ticks.
+
 ## [2026-08-23] - Feature: Delta + Vol Footprint Mode
 
 - **What changed**:

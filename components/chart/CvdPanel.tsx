@@ -21,11 +21,9 @@ import { getVisibleRange, indexToX as calcIndexToX, xToIndex, timeToIndex } from
 
 interface CvdPanelProps {
   panelId: PanelId;
-  candles: Candle[];
   engine: AggregationEngine;
   barWidth: number;
   scrollOffset: number;
-  footprintTrigger: number;
   volumeProfileRevision: number;
   profileWidth: number;
   sessions: PanelState['sessions'];
@@ -43,11 +41,9 @@ interface CvdPanelProps {
 
 export function CvdPanel({
   panelId,
-  candles,
   engine,
   barWidth: barWidthProp,
   scrollOffset: scrollOffsetProp,
-  footprintTrigger,
   volumeProfileRevision,
   profileWidth,
   sessions,
@@ -86,6 +82,7 @@ export function CvdPanel({
   const timeAxisHeight = 24;
 
   const getAutoScale = useCallback((chartHeight: number) => {
+    const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
     const chartWidth = Math.max(1, widthRef.current - priceAxisWidth);
     const { firstIndex, lastIndex } = getVisibleRange(
       candles,
@@ -102,7 +99,6 @@ export function CvdPanel({
 
     return getCvdScale(points, firstIndex, lastIndex, cvdMode, cvdScaleMode, cvdFixedRange, chartHeight);
   }, [
-    candles,
     engine,
     scrollOffsetProp,
     barWidthProp,
@@ -166,6 +162,7 @@ export function CvdPanel({
 
       const chartWidth = logicalWidth - priceAxisWidth;
       const chartHeight = logicalHeight - timeAxisHeight;
+      const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
       const { firstIndex, lastIndex, rawFirstIndex, rawLastIndex } = getVisibleRange(
         candles,
         scrollOffsetProp,
@@ -268,7 +265,6 @@ export function CvdPanel({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    candles,
     engine,
     scrollOffsetProp,
     barWidthProp,
@@ -304,13 +300,14 @@ export function CvdPanel({
     const chartHeight = canvas.clientHeight - timeAxisHeight;
     if (x < 0 || x > chartWidth || y < 0 || y > chartHeight) return;
 
+    const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
     const index = xToIndex(x, candles, scrollOffsetProp, barWidthProp, chartWidth, profileWidth);
     const time = candles[index]?.time ?? null;
 
     if (useChartStore.getState().crosshairSyncEnabled) {
       useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price: null });
     }
-  }, [panelId, candles, scrollOffsetProp, barWidthProp, profileWidth]);
+  }, [panelId, scrollOffsetProp, barWidthProp, profileWidth]);
 
   useEffect(() => {
     scaleCenter.current = null;
@@ -514,24 +511,31 @@ export function CvdPanel({
 
   // Redraw when candles change (optimized for live ticks)
   useEffect(() => {
-    const prev = prevCandlesRef.current;
-    prevCandlesRef.current = candles;
+    const unsubscribe = useChartRuntimeStore.subscribe(
+      (state) => state.panels[panelId]?.dataVersion,
+      (version, prevVersion) => {
+        if (version === prevVersion) return;
+        
+        const prev = prevCandlesRef.current;
+        const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
+        prevCandlesRef.current = candles;
 
-    if (prev.length > 0 && candles.length > 0) {
-      // If we just appended one candle or updated the last candle
-      if ((candles.length === prev.length || candles.length === prev.length + 1) && candles[0] === prev[0]) {
-        redraw('live-dirty');
-        return;
+        if (prev.length > 0 && candles.length > 0) {
+          // If we just appended one candle or updated the last candle
+          if ((candles.length === prev.length || candles.length === prev.length + 1) && candles[0] === prev[0]) {
+            redraw('live-dirty');
+            return;
+          }
+        }
+        redraw('all');
       }
-    }
-    redraw('all');
-  }, [candles, redraw]);
+    );
+    return () => unsubscribe();
+  }, [panelId, redraw]);
 
-  // Redraw when configuration/state changes
   useEffect(() => {
     redraw('all');
   }, [
-    footprintTrigger,
     volumeProfileRevision,
     barWidthProp,
     scrollOffsetProp,

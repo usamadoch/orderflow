@@ -109,11 +109,11 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/ChartPanel.tsx` → Panel container bridging chart settings, runtime state, symbol filtering, and historical session ranges.
 - `components/chart/chartPanelUtils.ts` → Utilities for symbol filtering (orders, positions, fills) and historical session ranges.
 - `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values and quick toggles.
-- `components/chart/ChartCanvas.tsx` → Main canvas rendering coordinator, event handler, and drawing dispatcher.
+- `components/chart/ChartCanvas.tsx` → Main canvas rendering coordinator, imperatively updated via Zustand subscription to avoid React re-renders.
 - `components/chart/chartCanvasUtils.ts` → Coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
 - `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings, custom profile controls, and order modification dialogs.
-- `components/chart/CvdPanel.tsx` → Canvas panel rendering Cumulative Volume Delta synced with main chart viewport.
+- `components/chart/CvdPanel.tsx` → Canvas panel rendering Cumulative Volume Delta imperatively synced with main chart viewport via Zustand.
 - `components/chart/cvdPanelUtils.ts` → CVD panel scale calculations and viewport mapping.
 - `components/chart/drawStatsGrid.ts` → Canvas overlay rendering volume, delta, and CVD summary statistics grid.
 - `components/chart/useCoordinates.ts` → Hook calculating price/time coordinate bounds and visible range mappings.

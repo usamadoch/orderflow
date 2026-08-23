@@ -15,14 +15,6 @@ import { OrderTicket } from '../ui/OrderTicket';
 import { PanelToolbar } from '../ui/PanelToolbar';
 import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine } from '../ChartEngineContext';
 import { ChartCanvas } from './ChartCanvas';
-import {
-  filterOrdersBySymbol,
-  filterPositionsBySymbol,
-  filterRecentTradesBySymbol,
-  filterVirtualPositionsBySymbol,
-  filterBracketOrdersForVirtualPositions,
-  computeHistoricalSessionRanges,
-} from './chartPanelUtils';
 import { CvdPanel } from './CvdPanel';
 import { formatCvdValue } from './drawCvd';
 import { IndicatorLabels } from './IndicatorLabels';
@@ -33,36 +25,88 @@ interface ChartPanelProps {
 
 export function ChartPanel({ panelId }: ChartPanelProps) {
   const panelSettings = useChartStore(s => s.panels[panelId]);
-  const panelRuntime = useChartRuntimeStore(s => s.panels[panelId]);
-  const panel = React.useMemo(() => ({ ...panelSettings, ...panelRuntime }), [panelSettings, panelRuntime]);
+  const historyRestoreStatus = useChartRuntimeStore(s => s.panels[panelId].historyRestoreStatus);
+  const isLoadingHistory = useChartRuntimeStore(s => s.panels[panelId].isLoadingHistory);
+  const connected = useChartRuntimeStore(s => s.panels[panelId].connected);
+  const dataVersion = useChartRuntimeStore(s => s.panels[panelId].dataVersion);
+  
+  const panel = React.useMemo(() => ({
+    ...panelSettings,
+    historyRestoreStatus,
+    isLoadingHistory,
+    connected,
+    dataVersion,
+  }), [panelSettings, historyRestoreStatus, isLoadingHistory, connected, dataVersion]);
+
   const setActivePanel = useChartStore(s => s.setActivePanel);
   const setBarWidth = useChartStore(s => s.setBarWidth);
   const setScrollOffset = useChartStore(s => s.setScrollOffset);
   const setCvdPanelHeightPct = useChartStore(s => s.setCvdPanelHeightPct);
   const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
   const setHistoryRestoreStatus = useChartRuntimeStore(s => s.setHistoryRestoreStatus);
-  const tradingOpenOrders = useChartRuntimeStore(s => s.tradingStatus.openOrders);
-  const tradingPositions = useChartRuntimeStore(s => s.tradingStatus.positions);
-  const tradingRecentTrades = useChartRuntimeStore(s => s.tradingStatus.recentTrades);
-  const tradingVirtualPositions = useChartRuntimeStore(s => s.tradingStatus.virtualPositions);
-  const tradingBracketOrders = useChartRuntimeStore(s => s.tradingStatus.bracketOrders);
-  const tradingBracketDrag = useChartRuntimeStore(s => s.tradingStatus.bracketDrag);
   const tickSize = useChartStore(s => s.tickSize);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
   const { volumeProfileEngine, volumeProfileRevision } = useVolumeProfileEngine();
+  
   const chartProfileWidth = (panel.defaultProfileEnabled ? 120 : 0) + (panel.liquidityHeatmapEnabled ? panel.liquidityHeatmapWidth : 0);
   const chartAreaRef = React.useRef<HTMLDivElement>(null);
+  
   const isCvdExpanded = panel.cvdEnabled && !panel.cvdMinimized;
   const isCvdCompact = panel.cvdEnabled && panel.cvdMinimized;
-  const compactCvdPoints = isCvdCompact
-    ? buildCvdSeries(panel.candles, engine, {
-      resetMode: panel.cvdResetMode,
-      smoothing: panel.cvdSmoothing,
-      sessions: panel.sessions,
-    })
-    : [];
-  const latestCvdValue = compactCvdPoints[compactCvdPoints.length - 1]?.close ?? 0;
+  
+  // Create a minimal wrapper component to calculate and render the compact CVD point
+  const CompactCvdPoint = React.useMemo(() => {
+    return function CompactCvdDisplay() {
+      const [latestValue, setLatestValue] = React.useState(0);
+      
+      React.useEffect(() => {
+        if (!isCvdCompact) return;
+        
+        let mounted = true;
+        
+        const update = () => {
+          if (!mounted) return;
+          const storeState = useChartRuntimeStore.getState();
+          const candles = storeState.panels[panelId].candles;
+          
+          if (candles && candles.length > 0) {
+            const points = buildCvdSeries(candles, engine, {
+              resetMode: panel.cvdResetMode,
+              smoothing: panel.cvdSmoothing,
+              sessions: panel.sessions,
+            });
+            setLatestValue(points[points.length - 1]?.close ?? 0);
+          }
+        };
+        
+        // Initial update
+        update();
+        
+        // Subscribe to changes
+        const unsub = useChartRuntimeStore.subscribe(
+          state => state.panels[panelId].dataVersion,
+          update
+        );
+        
+        return () => {
+          mounted = false;
+          unsub();
+        };
+      }, [panel.cvdResetMode, panel.cvdSmoothing, panel.sessions, panel.cvdPositiveColor, panel.cvdNegativeColor]);
+
+      return (
+        <span
+          className="text-[11px] font-mono font-bold"
+          style={{ color: latestValue >= 0 ? panel.cvdPositiveColor : panel.cvdNegativeColor }}
+        >
+          {formatCvdValue(latestValue)}
+        </span>
+      );
+    };
+  }, [panelId, engine, isCvdCompact, panel.cvdResetMode, panel.cvdSmoothing, panel.sessions, panel.cvdPositiveColor, panel.cvdNegativeColor]);
+
+
   const restoreStatus = panel.historyRestoreStatus;
   const isPanelLoading = panel.isLoadingHistory || (
     restoreStatus !== null
@@ -70,34 +114,10 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
     && restoreStatus.stage !== 'complete'
     && restoreStatus.stage !== 'error'
   );
+  
   const flowSource = panel.dataSourceMode;
   const volumeFlowSource = flowSource === panel.contractType ? 'active' : flowSource;
   const panelSymbol = panel.pair.toUpperCase();
-  const chartOpenOrders = React.useMemo(
-    () => filterOrdersBySymbol(tradingOpenOrders, panelSymbol),
-    [panelSymbol, tradingOpenOrders],
-  );
-  const chartPositions = React.useMemo(
-    () => filterPositionsBySymbol(tradingPositions, panelSymbol),
-    [panelSymbol, tradingPositions],
-  );
-  const chartRecentTrades = React.useMemo(
-    () => filterRecentTradesBySymbol(tradingRecentTrades, panelSymbol),
-    [panelSymbol, tradingRecentTrades],
-  );
-  const chartVirtualPositions = React.useMemo(
-    () => filterVirtualPositionsBySymbol(tradingVirtualPositions, panelSymbol),
-    [panelSymbol, tradingVirtualPositions],
-  );
-  const chartBracketOrders = React.useMemo(
-    () => filterBracketOrdersForVirtualPositions(tradingBracketOrders, chartVirtualPositions),
-    [chartVirtualPositions, tradingBracketOrders],
-  );
-
-  const historicalSessionRanges = React.useMemo(
-    () => computeHistoricalSessionRanges(panel, panel.candles),
-    [panel]
-  );
 
   React.useEffect(() => {
     if (restoreStatus?.stage !== 'complete') return;
@@ -153,14 +173,12 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
         >
           <ChartCanvas
             panelId={panelId}
-            candles={panel.candles}
             chartMode={panel.chartMode}
             footprintMode={panel.footprintMode}
             bucketSize={panel.bucketSize}
             barWidth={panel.barWidth}
             scrollOffset={panel.scrollOffset}
             timeframe={panel.timeframe}
-            footprintTrigger={panel.footprintTrigger}
             isLoadingHistory={panel.isLoadingHistory}
             engine={engine}
             volumeProfileEngine={volumeProfileEngine}
@@ -170,7 +188,6 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             absorptionMinScore={panel.absorptionMinScore}
             absorptionSide={panel.absorptionSide}
             absorptionShowLabels={panel.absorptionShowLabels}
-            absorptionMap={panel.absorptionMap}
             bubblesEnabled={panel.bubblesEnabled}
             bubbleSource={panel.bubbleSource}
             bubbleSizeBy={panel.bubbleSizeBy}
@@ -182,17 +199,10 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             bubbleMaxRadius={panel.bubbleMaxRadius}
             bubbleSide={panel.bubbleSide}
             bubbleScaleMode={panel.bubbleScaleMode}
-            aggregateBubbleEvents={panel.aggregateBubbleEvents}
             activeChartContractType={panel.contractType}
             activeDataSourceMode={panel.dataSourceMode}
             tradingSymbol={panelSymbol}
             tradingContractType={panel.contractType}
-            openOrders={chartOpenOrders}
-            positions={chartPositions}
-            virtualPositions={chartVirtualPositions}
-            bracketOrders={chartBracketOrders}
-            bracketDrag={tradingBracketDrag}
-            recentFills={chartRecentTrades}
             volumeBarsEnabled={panel.statsIndicatorEnabled ? false : panel.volumeBarsEnabled}
             volumeBarsInputData={panel.volumeBarsInputData}
             volumeBarsMarketSource={volumeFlowSource}
@@ -210,26 +220,22 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             isDrawMode={panel.isDrawMode}
             customProfileRange={panel.customProfileRange}
             customProfileLocked={panel.customProfileLocked}
-            isProfileSelected={panel.isProfileSelected}
             drawnLines={panel.drawnLines}
             lineDrawMode={panel.lineDrawMode}
             exhaustionEnabled={panel.exhaustionEnabled}
             exhaustionMinScore={panel.exhaustionMinScore}
             exhaustionSide={panel.exhaustionSide}
             exhaustionShowProvisional={panel.exhaustionShowProvisional}
-            exhaustionMap={panel.exhaustionMap}
             icebergEnabled={panel.icebergEnabled}
             icebergMinScore={panel.icebergMinScore}
             icebergLookback={panel.icebergLookback}
             icebergShowSuspected={panel.icebergShowSuspected}
             icebergShowLabels={panel.icebergShowLabels}
             icebergShowTint={panel.icebergShowTint}
-            icebergLevels={panel.icebergLevels}
             liquidityVacuumEnabled={panel.liquidityVacuumEnabled}
             liquidityVacuumMinScore={panel.liquidityVacuumMinScore}
             liquidityVacuumShowLabels={panel.liquidityVacuumShowLabels}
             liquidityVacuumOpacity={panel.liquidityVacuumOpacity}
-            liquidityVacuumZones={panel.liquidityVacuumZones}
             profileWidthPct={panel.profileWidthPct}
             defaultProfileEnabled={panel.defaultProfileEnabled}
             profileResolutionTicks={panel.profileResolutionTicks}
@@ -243,13 +249,9 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             profileShowVaLines={panel.profileShowVaLines}
             profileShowDelta={panel.profileShowDelta}
             historicalSessionProfileEnabled={panel.historicalSessionProfileEnabled}
-            historicalSessionRanges={historicalSessionRanges}
             deltaProfileWidth={panel.deltaProfileWidth}
-            measureToolActive={panel.measureToolActive}
-            activeMeasurement={panel.activeMeasurement}
             sessionsEnabled={panel.sessionsEnabled}
             sessions={panel.sessions}
-            liquidityZones={panel.liquidityZones}
             liquidityEnabled={panel.liquidityEnabled}
             liquidityOpacity={panel.liquidityOpacity}
             liquidityBucketSize={panel.liquidityBucketSize}
@@ -266,7 +268,6 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             statsIndicatorEnabled={panel.statsIndicatorEnabled}
             statsIndicatorItems={panel.statsIndicatorItems}
             showTimeAxis={!panel.cvdEnabled || panel.cvdMinimized}
-            dataVersion={panel.dataVersion}
             onBarWidthChange={(v) => setBarWidth(panelId, v)}
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
           />
@@ -280,12 +281,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             >
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black tracking-[0.18em] text-text-dim">CVD</span>
-                <span
-                  className="text-[11px] font-mono font-bold"
-                  style={{ color: latestCvdValue >= 0 ? panel.cvdPositiveColor : panel.cvdNegativeColor }}
-                >
-                  {formatCvdValue(latestCvdValue)}
-                </span>
+                <CompactCvdPoint />
               </div>
               <div className="h-5 w-5 rounded border border-[#262626] text-[#787B86] group-hover:border-accent/60 group-hover:text-[#E8E8E8] transition-colors flex items-center justify-center">
                 <Maximize2 size={11} strokeWidth={2.5} />
@@ -314,11 +310,9 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             </div>
             <CvdPanel
               panelId={panelId}
-              candles={panel.candles}
               engine={engine}
               barWidth={panel.barWidth}
               scrollOffset={panel.scrollOffset}
-              footprintTrigger={panel.footprintTrigger}
               volumeProfileRevision={volumeProfileRevision}
               profileWidth={chartProfileWidth}
               sessions={panel.sessions}
