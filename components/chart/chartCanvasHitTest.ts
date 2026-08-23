@@ -22,6 +22,16 @@ export function getOrderHitZone(
   return true;
 }
 
+export function getPriceLineHitZone(
+  priceY: number,
+  mouseX: number,
+  mouseY: number,
+  chartWidth: number
+): boolean {
+  if (mouseX < 0 || mouseX > chartWidth) return false;
+  return Math.abs(mouseY - priceY) <= 8;
+}
+
 export function buildPositionFromRiskDrag(
   mode: 'long-position' | 'short-position',
   dragStart: { x: number; y: number },

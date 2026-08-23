@@ -251,6 +251,11 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `scripts/collector/btcusdtCollector.mjs` → Standalone Node.js collector fetching and storing BTCUSDT market data to MongoDB.
 - `scripts/collector/runBackfill.mjs` → Data backfill script fetching historical market feeds to populate storage.
 
+### Local Market Order Bridge
+
+- `market_order_bridge/server.mjs` → Local Express/HTTP bridge script handling POST requests from Next.js, MT5 account/position snapshot updates, and EA polling.
+- `market_order_bridge/MarketOrderEA.mq5` & `skills/new/trade_placing/MarketOrderBridgeEA.mq5` → MT5 Expert Advisors polling the bridge for market orders, calculating lot size by risk %, executing trades with relative SL/TP distance, and reporting periodic account & position snapshots back.
+
 ### Cache / Metrics / Config
 
 - `lib/cache/marketCachePolicy.ts` → Retention and cleanup policies for in-memory market caches.

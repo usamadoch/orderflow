@@ -1,5 +1,48 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-24] - Fix: MT5 Order Canvas Persistence, Live PnL Tracking, & Bridge Position Synchronization
+
+- **What changed**:
+  - **Fixed Canvas Order Disappearance**: Corrected `handleConfirmMarketOrder` in `ChartCanvas.tsx` to construct valid `VirtualPosition` (`quantity`, `openedAt`, `fillIds`) and `BracketOrder` (`stopLossPrice`, `takeProfitPrice`, `stopLossStatus: 'active'`, `takeProfitStatus: 'active'`) payloads, allowing `drawTradingOverlays` to validate and render entry, SL, and TP lines on the canvas after confirmation.
+  - **Live Floating PnL**: Updated `ChartCanvas.tsx` to invoke `updateVirtualPnl` on canvas redraws / candle ticks, dynamically updating floating unrealized PnL on chart position labels.
+  - **Full MT5 Position Synchronization**:
+    - Added `syncMT5Positions` store action to `lib/store/chartRuntime.ts`.
+    - Updated `hooks/useTradingSync.ts` to sync open MT5 positions from `http://localhost:3001/status` every 2 seconds.
+    - Updated `market_order_bridge/server.mjs` `/account-update` and `/status` handlers to support open position arrays, set strict `/pending` polling endpoint, and bound server listener to `0.0.0.0` for IPv4/localhost compatibility.
+    - Extended `MarketOrderEA.mq5` and `MarketOrderBridgeEA.mq5` `SendAccountUpdate()` methods to serialize active open positions (ticket, symbol, type, openPrice, sl, tp, profit, volume), resolved MQL5 const input variable modification errors via `g_bridgeUrl`, and aligned polling endpoints strictly to `/pending`.
+  - **Header PnL Display**: Ensured live MT5 account name & floating PnL are rendered cleanly in `Header.tsx` whenever MT5 is connected via the local bridge.
+  - **Type Safety**: Resolved `lib/store/chart.ts` `updatePanel` type merging warnings.
+- **Why it changed**:
+  - Placed MT5 market orders disappeared after confirmation due to mismatched property keys in `VirtualPosition` (`amount` vs `quantity`) and `BracketOrder` (`slPrice` vs `stopLossPrice`), causing canvas overlay drawing filters to exclude them.
+  - Users had no persistent record or live PnL display of active MT5 trades on the web application across reloads.
+- **Impact summary**:
+  - Placed market orders stay permanently visible on the chart with active SL and TP lines, live floating unrealized PnL, risk/profit shaded zones, and interactive drag handles.
+  - Reloading the page or opening trades directly in MT5 automatically syncs and displays active trades on the web chart, and closing a trade in MT5 removes it from the chart canvas.
+  - `npx tsc --noEmit` checks pass cleanly with 0 compilation errors.
+
+## [2026-08-24] - Fix: MT5 Bridge Order Overlay Rendering & Dynamic Relative Stops
+
+- **What changed**:
+  - Updated `ChartCanvas.tsx` to unconditionally include `virtualPositions` (used by MT5 bridge) in the `activePositions` list rendered on the chart overlay, regardless of contract type (`futures`/`spot`).
+  - Updated `MarketOrderBridgeEA.mq5` and `MarketOrderEA.mq5` to compute SL/TP levels dynamically relative to the broker's live market execution price using risk distance (`MathAbs(entryPrice - slPrice)`).
+  - Fixed `useTradingSync.ts` to isolate MT5 bridge status polling from Binance trading disable environment flag without sending custom CORS headers.
+- **Why it changed**:
+  - `virtualPositions` was being omitted from canvas drawing when viewing USDT pairs, causing placed bridge orders to disappear immediately after confirmation.
+  - Absolute SL price transmission caused `10016 invalid stops` errors in MT5 due to small price feed offsets between Binance and MT5 brokers.
+- **Impact summary**:
+  - Placed MT5 bridge orders stay visible on the chart as active positions with SL/TP overlays, and market order execution against MT5 brokers reliably succeeds without invalid stop rejections.
+
+## [2026-08-23] - Feature: Client-Side Market Order & Local Bridge
+
+- **What changed**:
+  - Implemented client-side chart interaction for dragging a market order stop-loss (SL) line, calculating buy/sell direction based on drag vector, and displaying a confirmation UI (`ChartCanvas.tsx`, `CanvasDrawingToolbar.tsx`).
+  - Added `marketOrderDrag` state to `types/trading.ts` and `lib/store/chartRuntime.ts`.
+  - Added new local Node.js bridge server (`market_order_bridge/server.mjs`) to handle POST requests from the client and serve them via polling to an EA.
+  - Implemented the MetaTrader 5 Expert Advisor (`market_order_bridge/MarketOrderEA.mq5`) to poll the bridge, dynamically calculate lot sizes based on 1% risk and the provided SL distance, and execute the market order.
+- **Why it changed**:
+  - To enable fast, chart-based execution of market orders where the client only specifies the Stop Loss price, and the MT5 EA automatically calculates the correct position sizing and places the trade with a default 1R Take Profit.
+- **Impact summary**:
+  - Users can click and drag from the current price line on the chart to define an SL, hit Confirm, and have a trade automatically executed in MetaTrader 5 with exact risk management applied.
 ## [2026-08-23] - Feature: Chart Tab Isolation and Position Tool Simplification
 
 - **What changed**:

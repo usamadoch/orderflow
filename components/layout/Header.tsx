@@ -6,6 +6,7 @@ import { ConnectionStatus } from '../ui/ConnectionStatus';
 import { AccountBalanceWidget } from '../ui/AccountBalanceWidget';
 import { StorageManager } from '../ui/StorageManager';
 import { Database } from 'lucide-react';
+import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 
 export function Header() {
   const layoutMode = useChartStore(s => s.layoutMode);
@@ -134,11 +135,39 @@ export function Header() {
           )}
         </div>
 
-        {process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && <AccountBalanceWidget />}
-        <ConnectionStatus />
+        <div className="flex items-center gap-4">
+          {process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && <AccountBalanceWidget />}
+          {process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && (
+            <div className="flex items-center gap-3">
+              <MT5AccountWidget />
+            </div>
+          )}
+          <ConnectionStatus />
+        </div>
       </div>
       
       <StorageManager isOpen={showStorage} onClose={() => setShowStorage(false)} />
     </header>
+  );
+}
+
+function MT5AccountWidget() {
+  const accountName = useChartRuntimeStore(s => s.tradingStatus.mt5AccountName);
+  const pnl = useChartRuntimeStore(s => s.tradingStatus.mt5Pnl);
+  const mt5Connected = useChartRuntimeStore(s => s.tradingStatus.mt5Connected);
+
+  if (!mt5Connected || !accountName) return null;
+
+  const isProfitable = pnl > 0;
+  const isLoss = pnl < 0;
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1 bg-background/50 border border-border rounded-md text-xs font-mono">
+      <span className="text-text-muted">{accountName}</span>
+      <div className="w-[1px] h-3 bg-border" />
+      <span className={isProfitable ? 'text-chart-bullish' : isLoss ? 'text-chart-bearish' : 'text-text-muted'}>
+        {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
+      </span>
+    </div>
   );
 }

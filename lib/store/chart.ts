@@ -767,22 +767,22 @@ export const useChartStore = create<ChartState>()(
 
       setCustomProfileRange: (panelId, customProfileRange) =>
         set((state) => {
-          let updatedState = updatePanel(state, panelId, { customProfileRange });
+          let updatedState: ChartState = { ...state, ...updatePanel(state, panelId, { customProfileRange }) };
           if (state.drawingsSyncEnabled) {
             const otherPanelId = panelId === 'left' ? 'right' : 'left';
-            updatedState = updatePanel(updatedState, otherPanelId, { customProfileRange });
+            updatedState = { ...updatedState, ...updatePanel(updatedState, otherPanelId, { customProfileRange }) };
           }
-          return updatedState as ChartState;
+          return updatedState;
         }),
 
       setCustomProfileLocked: (panelId, customProfileLocked) =>
         set((state) => {
-          let updatedState = updatePanel(state, panelId, { customProfileLocked });
+          let updatedState: ChartState = { ...state, ...updatePanel(state, panelId, { customProfileLocked }) };
           if (state.drawingsSyncEnabled) {
             const otherPanelId = panelId === 'left' ? 'right' : 'left';
-            updatedState = updatePanel(updatedState, otherPanelId, { customProfileLocked });
+            updatedState = { ...updatedState, ...updatePanel(updatedState, otherPanelId, { customProfileLocked }) };
           }
-          return updatedState as ChartState;
+          return updatedState;
         }),
 
       addLine: (panelId, line) =>

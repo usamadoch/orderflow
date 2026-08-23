@@ -44,7 +44,7 @@ import type { Order, BracketOrder, BracketDragState, PendingModifyOrder, Positio
 import type { VolumeProfileSource } from '@/types/volumeProfile';
 
 // 3. Relative component & canvas imports
-import { CustomProfileToolbar, DrawingToolbar, ModifyConfirmRow } from './CanvasDrawingToolbar';
+import { CustomProfileToolbar, DrawingToolbar, ModifyConfirmRow, MarketOrderConfirmRow } from './CanvasDrawingToolbar';
 import {
   resolveProfileBucketSize,
   resolveIndexFromTimeOrFallback,
@@ -64,6 +64,7 @@ import {
   getDrawingHitZone,
   getDrawingToolbarAnchor,
   getCustomProfileHitZone,
+  getPriceLineHitZone,
 } from './chartCanvasHitTest';
 import { drawAbsorption } from './drawAbsorption';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
@@ -332,6 +333,8 @@ export function ChartCanvas({
   const orderDragSnapshot = useRef<Order | null>(null);
   const orderDragOriginalPrice = useRef<number | null>(null);
 
+  const isDraggingMarketOrder = useRef(false);
+
   // Bracket SL/TP drag refs
   const isDraggingBracket = useRef(false);
   const bracketDragRef = useRef<BracketDragState | null>(null);
@@ -353,8 +356,14 @@ export function ChartCanvas({
   const [hoveredIceberg, setHoveredIceberg] = React.useState<{ level: IcebergLevel, x: number, y: number } | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = React.useState<string | null>(null);
   const [confirmingCancelOrderId, setConfirmingCancelOrderId] = React.useState<string | null>(null);
-  const [showModifyConfirm, setShowModifyConfirm] = React.useState(false);
+  const [pendingModifyBracket, setPendingModifyBracket] = React.useState<{
+    positionId: string;
+    sl: number;
+    tp: number;
+  } | null>(null);
+  const [showModifyBracketConfirm, setShowModifyBracketConfirm] = React.useState(false);
   const [pendingModifyOrder, setPendingModifyOrder] = React.useState<PendingModifyOrder | null>(null);
+  const [showModifyConfirm, setShowModifyConfirm] = React.useState(false);
   const [chartOrderMessage, setChartOrderMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const currentTradingMode = useChartRuntimeStore(s => s.tradingStatus.currentMode);
   const modeBadge = useChartRuntimeStore(s => s.tradingStatus.modeBadge);
@@ -367,6 +376,9 @@ export function ChartCanvas({
   const modifyError = useChartRuntimeStore(s => s.tradingStatus.modifyError);
   const modifySuccess = useChartRuntimeStore(s => s.tradingStatus.modifySuccess);
   const riskStatus = useChartRuntimeStore(s => s.tradingStatus.riskStatus);
+  const marketOrderDrag = useChartRuntimeStore(s => s.tradingStatus.marketOrderDrag);
+  const pendingMarketOrderId = useChartRuntimeStore(s => s.tradingStatus.pendingMarketOrderId);
+  const setMarketOrderDrag = useChartRuntimeStore(s => s.setMarketOrderDrag);
   const setTradingStatus = useChartRuntimeStore(s => s.setTradingStatus);
   const refreshRiskStatus = useChartRuntimeStore(s => s.refreshRiskStatus);
   const cancelOrder = useChartRuntimeStore(s => s.cancelOrder);
@@ -435,6 +447,7 @@ export function ChartCanvas({
       const virtualPositions = runtimeState.tradingStatus.virtualPositions ?? [];
       const recentFills = runtimeState.tradingStatus.recentTrades ?? [];
       const bracketDrag = runtimeState.tradingStatus.bracketDrag ?? null;
+      const marketOrderDrag = runtimeState.tradingStatus.marketOrderDrag ?? null;
       
       const activeMeasurement = currentPanelRuntime.activeMeasurement ?? null;
       const measureToolActive = currentPanelRuntime.measureToolActive ?? false;
@@ -1176,7 +1189,7 @@ export function ChartCanvas({
           );
         }
 
-        const activePositions = tradingContractType === 'futures'
+        const binancePositions = tradingContractType === 'futures'
           ? positions.filter((p: Position) => p.side !== 'flat').map((p: Position) => ({
               id: p.symbol,
               status: 'open' as const,
@@ -1189,9 +1202,11 @@ export function ChartCanvas({
               openedAt: p.updatedAt ?? Date.now(),
               fillIds: [],
             }))
-          : virtualPositions;
+          : [];
+          
+        const activePositions = [...binancePositions, ...virtualPositions];
 
-        if (openOrders.length > 0 || activePositions.length > 0 || recentFills.length > 0) {
+        if (openOrders.length > 0 || activePositions.length > 0 || recentFills.length > 0 || marketOrderDrag) {
           bracketHitZones.current = drawTradingOverlays(
             ctx,
             candles,
@@ -1209,10 +1224,12 @@ export function ChartCanvas({
               ? { orderId: modifyingOrderId, price: dragPreviewPrice }
               : null,
             bracketDrag,
+            marketOrderDrag
           );
         }
 
         if (lastCandle) {
+          useChartRuntimeStore.getState().updateVirtualPnl(tradingSymbol, lastCandle.close);
           drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
         }
 
@@ -1342,6 +1359,32 @@ export function ChartCanvas({
           useChartRuntimeStore.getState().panels[panelId]?.isProfileSelected ?? false
         );
         if (profileHitZone) return false;
+
+        const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
+
+        if (!useChartRuntimeStore.getState().tradingStatus.pendingMarketOrderId && candles.length > 0) {
+          const lastCandle = candles[candles.length - 1];
+          if (getPriceLineHitZone(priceToY(lastCandle.close), x, y, chartWidth)) {
+            return false;
+          }
+        }
+
+        const openOrders = useChartRuntimeStore.getState().tradingStatus.openOrders ?? [];
+        for (const order of openOrders) {
+          if (getOrderHitZone(order, x, y, chartWidth, chartHeight, priceToY)) {
+            return false;
+          }
+        }
+        
+        const virtualPositions = useChartRuntimeStore.getState().tradingStatus.virtualPositions ?? [];
+        for (const vp of virtualPositions) {
+          if (vp.status !== 'open') continue;
+          const slBox = bracketHitZones.current.slHandles.get(vp.id);
+          const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
+          const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
+          const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
+          if (hitSL || hitTP) return false;
+        }
       }
       return true;
     },
@@ -1743,6 +1786,146 @@ export function ChartCanvas({
     tradingSymbol,
   ]);
 
+  const handleConfirmMarketOrder = useCallback(async () => {
+    const drag = useChartRuntimeStore.getState().tradingStatus.marketOrderDrag;
+    if (!drag) return;
+
+    const requestId = crypto.randomUUID();
+    setTradingStatus({ pendingMarketOrderId: requestId });
+
+    try {
+      const res = await fetch('http://localhost:3001/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          symbol: tradingSymbol,
+          direction: drag.direction,
+          slPrice: drag.slPrice,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to send order to bridge');
+
+      const maxRetries = 50; // 10 seconds total (50 * 200ms)
+      for (let i = 0; i < maxRetries; i++) {
+        const pollRes = await fetch(`http://localhost:3001/result/${requestId}`);
+        if (pollRes.ok) {
+          const data = await pollRes.json();
+          if (data.status) {
+            if (data.status.toLowerCase() === 'filled') {
+              setChartOrderMessage({ type: 'success', text: `Market Order filled at ${data.fillPrice}` });
+              const vpId = data.ticket.toString();
+              const side = drag.direction === 'buy' ? 'long' : 'short';
+              const slVal = data.sl || drag.slPrice;
+              const tpVal = data.tp || null;
+
+              useChartRuntimeStore.getState().upsertVirtualPosition({
+                id: vpId,
+                symbol: tradingSymbol,
+                side,
+                quantity: data.volume || 1,
+                entryPrice: data.fillPrice,
+                status: 'open',
+                unrealizedPnl: 0,
+                openedAt: Date.now(),
+                fillIds: [],
+              });
+              useChartRuntimeStore.getState().upsertBracketOrder({
+                id: `bracket-${vpId}`,
+                positionId: vpId,
+                symbol: tradingSymbol,
+                stopLossPrice: slVal,
+                takeProfitPrice: tpVal,
+                stopLossStatus: slVal ? 'active' : 'none',
+                takeProfitStatus: tpVal ? 'active' : 'none',
+                updatedAt: Date.now(),
+              });
+            } else {
+              setChartOrderMessage({ type: 'error', text: data.error || 'Market Order rejected by EA' });
+            }
+            setTradingStatus({ pendingMarketOrderId: null, marketOrderDrag: null });
+            return;
+          }
+        }
+        await new Promise(r => setTimeout(r, 200));
+      }
+      
+      setChartOrderMessage({ type: 'error', text: 'No response from EA' });
+      setTradingStatus({ pendingMarketOrderId: null, marketOrderDrag: null });
+    } catch (err: unknown) {
+      setChartOrderMessage({ type: 'error', text: (err as Error).message || 'Bridge connection error' });
+      setTradingStatus({ pendingMarketOrderId: null });
+    }
+  }, [tradingSymbol, setTradingStatus]);
+
+  const handleConfirmBracketModify = useCallback(async () => {
+    if (!pendingModifyBracket) return;
+    
+    const requestId = crypto.randomUUID();
+    const { positionId, sl, tp } = pendingModifyBracket;
+    
+    // Set some loading state if needed, here we can use the same pattern
+    // but there's no global modify loading for brackets yet, so we just await inline
+    // In a full implementation we'd set a flag.
+    
+    try {
+      const res = await fetch('http://localhost:3001/modify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          ticket: parseInt(positionId, 10),
+          sl: sl,
+          tp: tp,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to send modify to bridge');
+
+      const maxRetries = 50; // 10 seconds
+      for (let i = 0; i < maxRetries; i++) {
+        const pollRes = await fetch(`http://localhost:3001/modify-result/${requestId}`);
+        if (pollRes.ok) {
+          const data = await pollRes.json();
+          if (data.success !== undefined) {
+            if (data.success) {
+              setChartOrderMessage({ type: 'success', text: `Bracket for #${positionId} modified successfully` });
+              // Update local state
+              const store = useChartRuntimeStore.getState();
+              const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+              if (existing) {
+                store.upsertBracketOrder({
+                  ...existing,
+                  stopLossPrice: sl,
+                  takeProfitPrice: tp,
+                  updatedAt: Date.now(),
+                });
+              }
+              setShowModifyBracketConfirm(false);
+              setPendingModifyBracket(null);
+            } else {
+              setChartOrderMessage({ type: 'error', text: data.error || 'Modification rejected by EA' });
+              // Close modal on error, line snaps back automatically
+              setShowModifyBracketConfirm(false);
+              setPendingModifyBracket(null);
+            }
+            return;
+          }
+        }
+        await new Promise(r => setTimeout(r, 200));
+      }
+      
+      setChartOrderMessage({ type: 'error', text: 'No response from EA' });
+      setShowModifyBracketConfirm(false);
+      setPendingModifyBracket(null);
+    } catch (err: unknown) {
+      setChartOrderMessage({ type: 'error', text: (err as Error).message || 'Bridge connection error' });
+      setShowModifyBracketConfirm(false);
+      setPendingModifyBracket(null);
+    }
+  }, [pendingModifyBracket]);
+
   // Drawing Interaction Logic
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1850,6 +2033,14 @@ export function ChartCanvas({
         }
       }
 
+      // 2b. Price Line
+      if (!runtimeState.tradingStatus.pendingMarketOrderId && candles.length > 0) {
+        const lastCandle = candles[candles.length - 1];
+        if (getPriceLineHitZone(priceToY(lastCandle.close), x, y, chartWidth)) {
+          return { type: 'price-line' as const, price: lastCandle.close };
+        }
+      }
+
       const storeState = useChartStore.getState();
       const currentPanel = storeState.panels[panelId];
 
@@ -1921,6 +2112,20 @@ export function ChartCanvas({
             modifyError: null,
             modifySuccess: null,
           });
+          redraw();
+          return;
+        }
+
+        if (hitTarget.type === 'price-line') {
+          const mt5Connected = useChartRuntimeStore.getState().tradingStatus.mt5Connected;
+          if (!mt5Connected) {
+            setChartOrderMessage({ type: 'error', text: 'Cannot place order: MT5 is disconnected' });
+            return;
+          }
+          setSelectedDrawingId(null);
+          useChartRuntimeStore.getState().setProfileSelected(panelId, false);
+          isDraggingMarketOrder.current = true;
+          setMarketOrderDrag({ symbol: tradingSymbol, startPrice: hitTarget.price, slPrice: hitTarget.price, direction: 'buy' });
           redraw();
           return;
         }
@@ -2003,7 +2208,7 @@ export function ChartCanvas({
         cursor = 'grabbing';
       } else if (isDraggingResize.current) {
         cursor = (resizeEdge.current === 'left' || resizeEdge.current === 'right') ? 'ew-resize' : 'ns-resize';
-      } else if (isDraggingOrderLine.current || isDraggingBracket.current) {
+      } else if (isDraggingOrderLine.current || isDraggingBracket.current || isDraggingMarketOrder.current) {
         cursor = 'ns-resize';
       } else if (isPanZoomDragging.current) {
         if (panZoomDragMode.current === 'price') cursor = 'ns-resize';
@@ -2048,8 +2253,15 @@ export function ChartCanvas({
         }
       }
 
+      // 2b. Price Line
+      if (!runtimeState.tradingStatus.pendingMarketOrderId && candles.length > 0) {
+        const lastCandle = candles[candles.length - 1];
+        if (getPriceLineHitZone(priceToY(lastCandle.close), x, y, chartWidth)) {
+          return { type: 'price-line' as const, price: lastCandle.close };
+        }
+      }
+
       const storeState = useChartStore.getState();
-      const runtimeState = useChartRuntimeStore.getState();
       const currentPanel = storeState.panels[panelId];
 
       // 3. Custom Profile
@@ -2082,6 +2294,8 @@ export function ChartCanvas({
         if (hitTarget) {
           if (hitTarget.type === 'bracket' || hitTarget.type === 'order') {
             cursor = 'ns-resize';
+          } else if (hitTarget.type === 'price-line') {
+            cursor = 'row-resize';
           } else if (hitTarget.type === 'custom-profile') {
             hoverZone.current = hitTarget.hitZone;
             if (hitTarget.hitZone.startsWith('resize-')) {
@@ -2227,6 +2441,25 @@ export function ChartCanvas({
           dragPreviewPrice: Number.isFinite(nextPrice) ? nextPrice : null,
           modifyError: null,
         });
+        redraw();
+      } else if (isDraggingMarketOrder.current) {
+        const chartHeight = rect.height - timeAxisHeight;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+        const nextPrice = yToPrice(Math.max(0, Math.min(chartHeight, y)), priceMin, priceMax, chartHeight);
+        
+        const dragState = useChartRuntimeStore.getState().tradingStatus.marketOrderDrag;
+        if (dragState && Number.isFinite(nextPrice)) {
+          const dy = nextPrice - dragState.startPrice;
+          // the threshold check handles accidental drags, here we update real-time
+          setMarketOrderDrag({
+            ...dragState,
+            slPrice: nextPrice,
+            direction: dy > 0 ? 'sell' : 'buy',
+          });
+        }
         redraw();
       } else if (
         isDragging.current &&
@@ -2472,8 +2705,31 @@ export function ChartCanvas({
         !isDraggingResize.current &&
         !isDraggingDrawing.current &&
         !isDraggingOrderLine.current &&
-        !isDraggingBracket.current
+        !isDraggingBracket.current &&
+        !isDraggingMarketOrder.current
       ) return;
+
+      if (isDraggingMarketOrder.current) {
+        isDraggingMarketOrder.current = false;
+        
+        const dragState = useChartRuntimeStore.getState().tradingStatus.marketOrderDrag;
+        if (dragState) {
+          const chartHeight = canvas.getBoundingClientRect().height - timeAxisHeight;
+          const pCenter = priceCenter.current ?? 0;
+          const pRange = priceRange.current ?? 100;
+          const priceMin = pCenter - pRange / 2;
+          const priceMax = pCenter + pRange / 2;
+          
+          const y1 = calcPriceToY(dragState.startPrice, priceMin, priceMax, chartHeight);
+          const y2 = calcPriceToY(dragState.slPrice, priceMin, priceMax, chartHeight);
+          
+          if (Math.abs(y2 - y1) < 10) {
+            setMarketOrderDrag(null);
+          }
+        }
+        redraw();
+        return;
+      }
 
       // ── Commit bracket SL/TP drag ──────────────────────────────────────────
       if (isDraggingBracket.current && bracketDragRef.current) {
@@ -2482,14 +2738,15 @@ export function ChartCanvas({
         const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
 
         if (existing && Number.isFinite(previewPrice) && previewPrice > 0) {
-          const updated: BracketOrder = {
-            ...existing,
-            ...(handle === 'sl'
-              ? { stopLossPrice: previewPrice }
-              : { takeProfitPrice: previewPrice }),
-            updatedAt: Date.now(),
-          };
-          store.upsertBracketOrder(updated);
+          // Revert the temporary drag visualization
+          store.setBracketDrag(null);
+          
+          setPendingModifyBracket({
+            positionId,
+            sl: handle === 'sl' ? previewPrice : (existing.stopLossPrice || 0),
+            tp: handle === 'tp' ? previewPrice : (existing.takeProfitPrice || 0)
+          });
+          setShowModifyBracketConfirm(true);
         }
 
         // Reset bracket drag state
@@ -2497,7 +2754,6 @@ export function ChartCanvas({
         bracketDragRef.current        = null;
         bracketDragEntryPrice.current = null;
         bracketDragSide.current       = null;
-        store.setBracketDrag(null);
         redraw();
         return;
       }
@@ -2787,6 +3043,7 @@ export function ChartCanvas({
         isDraggingOrderLine.current = false;
         orderDragSnapshot.current = null;
         orderDragOriginalPrice.current = null;
+        setMarketOrderDrag(null);
         setShowModifyConfirm(false);
         setPendingModifyOrder(null);
         setTradingStatus({ modifyingOrderId: null, dragPreviewPrice: null, modifyError: null });
@@ -2809,7 +3066,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, setMarketOrderDrag]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({
@@ -2959,41 +3216,36 @@ export function ChartCanvas({
         </div>
       )}
 
-      {showModifyConfirm && pendingModifyOrder && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-[380px] rounded-md border border-[#303030] bg-[#1F1F1F] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#303030] px-4 py-3">
-              <div>
-                <div className="text-[12px] font-black uppercase tracking-wider text-[#E8E8E8]">Confirm modify</div>
-                <div className="mt-0.5 text-[10px] font-semibold uppercase text-[#787B86]">
-                  {pendingModifyOrder.order.symbol} / {pendingModifyBlockReason ? 'BLOCKED' : modeBadge.toUpperCase()}
-                </div>
+
+
+      {showModifyBracketConfirm && pendingModifyBracket && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+          <div className="flex w-[320px] flex-col overflow-hidden rounded-md border border-[#3A3A3A] bg-[#1E1E1E] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#303030] bg-[#242424] px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#D1D4DC]">Modify Bracket</span>
               </div>
               <button
                 type="button"
-                onClick={closeModifyConfirm}
+                onClick={() => {
+                  setShowModifyBracketConfirm(false);
+                  setPendingModifyBracket(null);
+                }}
                 disabled={modifyLoading}
                 className="flex h-7 w-7 items-center justify-center rounded border border-[#303030] text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8] disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Close modify confirmation"
-                title="Close"
               >
                 <X size={14} strokeWidth={2.4} />
               </button>
             </div>
 
             <div className="space-y-2 px-4 py-4">
-              <ModifyConfirmRow label="Side" value={pendingModifyOrder.order.side.toUpperCase()} valueColor={pendingModifyOrder.order.side === 'buy' ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR} />
-              <ModifyConfirmRow label="Symbol" value={pendingModifyOrder.order.symbol} />
-              <ModifyConfirmRow label="Order id" value={pendingModifyOrder.order.id} />
-              <ModifyConfirmRow label="Quantity" value={formatVol(pendingModifyOrder.quantity)} />
-              <ModifyConfirmRow label="Original price" value={formatPrice(pendingModifyOrder.originalPrice)} />
-              <ModifyConfirmRow label="New price" value={formatPrice(pendingModifyOrder.newPrice)} />
-              <ModifyConfirmRow label="Badge" value={pendingModifyBlockReason ? 'BLOCKED' : modeBadge.toUpperCase()} />
-              {pendingModifyBlockReason && <ModifyConfirmRow label="Risk" value={pendingModifyBlockReason} />}
+              <ModifyConfirmRow label="Ticket" value={pendingModifyBracket.positionId} />
+              <ModifyConfirmRow label="New SL" value={pendingModifyBracket.sl > 0 ? formatPrice(pendingModifyBracket.sl) : 'None'} />
+              <ModifyConfirmRow label="New TP" value={pendingModifyBracket.tp > 0 ? formatPrice(pendingModifyBracket.tp) : 'None'} />
 
-              {(modifyError || pendingModifyBlockReason) && (
+              {modifyError && (
                 <div className="rounded border border-[#F23645]/30 bg-[#F23645]/10 px-3 py-2 text-[11px] font-semibold text-[#FF9BA4]">
-                  {modifyError ?? pendingModifyBlockReason}
+                  {modifyError}
                 </div>
               )}
             </div>
@@ -3001,7 +3253,10 @@ export function ChartCanvas({
             <div className="flex gap-2 border-t border-[#303030] px-4 py-3">
               <button
                 type="button"
-                onClick={closeModifyConfirm}
+                onClick={() => {
+                  setShowModifyBracketConfirm(false);
+                  setPendingModifyBracket(null);
+                }}
                 disabled={modifyLoading}
                 className="h-8 flex-1 rounded border border-[#333333] bg-[#262626] text-[11px] font-bold uppercase text-[#B8B8B8] hover:text-[#E8E8E8] disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -3009,8 +3264,8 @@ export function ChartCanvas({
               </button>
               <button
                 type="button"
-                onClick={confirmModifyOrder}
-                disabled={modifyLoading || !!pendingModifyBlockReason}
+                onClick={handleConfirmBracketModify}
+                disabled={modifyLoading}
                 className="h-8 flex-1 rounded bg-accent text-[11px] font-black uppercase tracking-wider text-white hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-55"
               >
                 {modifyLoading ? 'Modifying' : 'Confirm'}
@@ -3036,6 +3291,22 @@ export function ChartCanvas({
           customProfileLocked={customProfileLocked}
           customProfileControls={customProfileControls}
           onRedraw={redraw}
+        />
+      )}
+
+      {marketOrderDrag && !isDraggingMarketOrder.current && (
+        <MarketOrderConfirmRow
+          controls={{
+            top: Math.max(4, Math.min(containerSize.height - timeAxisHeight - 44, calcPriceToY(marketOrderDrag.slPrice, priceCenter.current! - priceRange.current! / 2, priceCenter.current! + priceRange.current! / 2, containerSize.height - timeAxisHeight))),
+            left: Math.max(8, containerSize.width - priceAxisWidth - 70),
+          }}
+          direction={marketOrderDrag.direction}
+          slPrice={marketOrderDrag.slPrice}
+          loading={!!pendingMarketOrderId}
+          onConfirm={handleConfirmMarketOrder}
+          onCancel={() => {
+            setMarketOrderDrag(null);
+          }}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, chartColorToRgba } from '@/lib/config/chartColors';
 import { formatPrice, formatVol } from '@/lib/utils/format';
 import type { Candle } from '@/types/candle';
-import type { BracketDragState, BracketOrder, Order, TradeFill, VirtualPosition } from '@/types/trading';
+import type { BracketDragState, BracketOrder, Order, TradeFill, VirtualPosition, MarketOrderDragState } from '@/types/trading';
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 const LABEL_FONT  = '600 11px "Inter", -apple-system, system-ui, sans-serif';
@@ -213,6 +213,7 @@ export function drawTradingOverlays(
   recentFills: TradeFill[],
   dragPreview?: { orderId: string; price: number } | null,
   bracketDrag?: BracketDragState | null,
+  marketOrderDrag?: MarketOrderDragState | null,
 ): TradingOverlayHitZones {
   ctx.save();
 
@@ -451,6 +452,30 @@ export function drawTradingOverlays(
         ctx.fillText(label, chartWidth - 3, y);
         ctx.restore();
       }
+    }
+  }
+
+  // ── 6. Market Order SL Drag ───────────────────────────────────────────────
+  if (marketOrderDrag) {
+    const slY = Math.round(priceToY(marketOrderDrag.slPrice));
+    const startY = Math.round(priceToY(marketOrderDrag.startPrice));
+
+    if (slY >= -8 && slY <= chartHeight + 8) {
+      // Risk zone fill between SL and start price
+      const zoneTop = Math.min(slY, startY);
+      const zoneBottom = Math.max(slY, startY);
+      ctx.save();
+      ctx.globalAlpha = 0.05;
+      ctx.fillStyle = SL_COLOR;
+      ctx.fillRect(0, zoneTop, chartWidth, zoneBottom - zoneTop);
+      ctx.restore();
+
+      drawTradingLine(ctx, slY, chartWidth, SL_COLOR, 0.95, 1.5, [4, 3]);
+      
+      const sideText = marketOrderDrag.direction === 'buy' ? 'LONG' : 'SHORT';
+      drawOrderLabel(ctx, `SL ${sideText} MARKET`, 10, slY, SL_COLOR, chartWidth - 90);
+      drawPriceBadge(ctx, marketOrderDrag.slPrice, slY, SL_COLOR, chartWidth);
+      drawBracketHandle(ctx, 'SL', slY, SL_COLOR, chartWidth, true);
     }
   }
 

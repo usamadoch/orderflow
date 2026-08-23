@@ -21,6 +21,7 @@ import type {
   TradingRiskStatusPayload,
   TradingUserStreamStatus,
   VirtualPosition,
+  MarketOrderDragState,
 } from './trading';
 import { AggregationEngine } from '../lib/aggregation/engine';
 import { LiquidityHistoryManager } from '../lib/liquidity/history';
@@ -431,6 +432,11 @@ export interface TradingRuntimeStatus {
   virtualPositions: VirtualPosition[];
   bracketOrders: BracketOrder[];
   bracketDrag: BracketDragState | null;
+  marketOrderDrag: MarketOrderDragState | null;
+  pendingMarketOrderId: string | null;
+  mt5Connected: boolean;
+  mt5AccountName: string;
+  mt5Pnl: number;
 }
 
 export interface ChartEngineContextValue {

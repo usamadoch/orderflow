@@ -12,6 +12,7 @@ import type {
   AccountSnapshot,
   BracketDragState,
   BracketOrder,
+  MarketOrderDragState,
   OrderCancelRequest,
   OrderModifyRequest,
   OrderRequest,
@@ -27,6 +28,17 @@ import { MAX_AGGREGATE_BUBBLE_EVENTS } from './chart';
 import type { PanelRuntimeState, TradingRuntimeStatus, GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId } from '../../types/chart';
 
 export type { PanelRuntimeState, TradingRuntimeStatus };
+
+export interface MT5PositionPayload {
+  ticket: number;
+  symbol: string;
+  type: 'BUY' | 'SELL';
+  openPrice: number;
+  sl: number;
+  tp: number;
+  profit: number;
+  volume: number;
+}
 
 interface ChartRuntimeState {
   panels: Record<PanelId, PanelRuntimeState>;
@@ -53,6 +65,8 @@ interface ChartRuntimeState {
   setActiveMeasurement: (panelId: PanelId, measurement: Measurement | null) => void;
   setCrosshair: (crosshair: GlobalCrosshair) => void;
   setTradingStatus: (status: Partial<TradingRuntimeStatus>) => void;
+  setMT5Status: (connected: boolean, accountName: string, pnl: number) => void;
+  syncMT5Positions: (positions: MT5PositionPayload[]) => void;
   // ── Virtual Position actions ──────────────────────────────────────────────
   /** Upsert a virtual position derived from fills; updates unrealized PnL if markPrice is supplied. */
   upsertVirtualPosition: (position: VirtualPosition) => void;
@@ -64,6 +78,10 @@ interface ChartRuntimeState {
   removeBracketOrder: (bracketId: string) => void;
   /** Set or clear the bracket drag state (used while the user drags SL/TP handles). */
   setBracketDrag: (drag: BracketDragState | null) => void;
+  /** Set or clear the market order drag state (used while dragging the price line). */
+  setMarketOrderDrag: (drag: MarketOrderDragState | null) => void;
+  /** Set or clear the pending market order ID during an in-flight order. */
+  setPendingMarketOrderId: (id: string | null) => void;
   /** Recalculate unrealized PnL for all open virtual positions against a new mark price. */
   updateVirtualPnl: (symbol: string, markPrice: number) => void;
   refreshRiskStatus: () => Promise<TradingRiskStatusPayload | null>;
@@ -134,6 +152,11 @@ function createDefaultTradingStatus(): TradingRuntimeStatus {
     virtualPositions: [],
     bracketOrders: [],
     bracketDrag: null,
+    marketOrderDrag: null,
+    pendingMarketOrderId: null,
+    mt5Connected: false,
+    mt5AccountName: '',
+    mt5Pnl: 0,
   };
 }
 
@@ -335,6 +358,86 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
       },
     })),
 
+  setMT5Status: (connected, accountName, pnl) =>
+    set((state) => ({
+      tradingStatus: {
+        ...state.tradingStatus,
+        mt5Connected: connected,
+        mt5AccountName: accountName,
+        mt5Pnl: pnl,
+      },
+    })),
+
+  syncMT5Positions: (positions) =>
+    set((state) => {
+      const activeTickets = new Set(positions.map((p) => p.ticket.toString()));
+      const currentVps = state.tradingStatus.virtualPositions;
+      const currentBrackets = state.tradingStatus.bracketOrders;
+
+      const nextVps = currentVps.filter((p) => {
+        const isMt5Ticket = /^\d+$/.test(p.id);
+        if (!isMt5Ticket) return true;
+        return activeTickets.has(p.id);
+      });
+
+      const nextBrackets = currentBrackets.filter((b) => {
+        const isMt5Ticket = /^\d+$/.test(b.positionId);
+        if (!isMt5Ticket) return true;
+        return activeTickets.has(b.positionId);
+      });
+
+      for (const pos of positions) {
+        const vpId = pos.ticket.toString();
+        const symbol = pos.symbol.endsWith('USD') ? pos.symbol.replace('USD', 'USDT') : pos.symbol;
+        const side = (pos.type === 'BUY' || (pos.type as string) === 'buy') ? 'long' : 'short';
+
+        const existingVpIdx = nextVps.findIndex((p) => p.id === vpId);
+        const vp: VirtualPosition = {
+          id: vpId,
+          symbol,
+          side,
+          quantity: pos.volume || 1,
+          entryPrice: pos.openPrice,
+          unrealizedPnl: pos.profit,
+          status: 'open',
+          openedAt: existingVpIdx !== -1 ? nextVps[existingVpIdx].openedAt : Date.now(),
+          fillIds: [],
+        };
+
+        if (existingVpIdx === -1) {
+          nextVps.push(vp);
+        } else {
+          nextVps[existingVpIdx] = { ...nextVps[existingVpIdx], ...vp };
+        }
+
+        const existingBracketIdx = nextBrackets.findIndex((b) => b.positionId === vpId);
+        const bracket: BracketOrder = {
+          id: `bracket-${vpId}`,
+          positionId: vpId,
+          symbol,
+          stopLossPrice: pos.sl > 0 ? pos.sl : undefined,
+          takeProfitPrice: pos.tp > 0 ? pos.tp : undefined,
+          stopLossStatus: pos.sl > 0 ? 'active' : 'none',
+          takeProfitStatus: pos.tp > 0 ? 'active' : 'none',
+          updatedAt: Date.now(),
+        };
+
+        if (existingBracketIdx === -1) {
+          nextBrackets.push(bracket);
+        } else {
+          nextBrackets[existingBracketIdx] = { ...nextBrackets[existingBracketIdx], ...bracket };
+        }
+      }
+
+      return {
+        tradingStatus: {
+          ...state.tradingStatus,
+          virtualPositions: nextVps,
+          bracketOrders: nextBrackets,
+        },
+      };
+    }),
+
   upsertVirtualPosition: (position) =>
     set((state) => {
       const existing = state.tradingStatus.virtualPositions;
@@ -374,6 +477,12 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
 
   setBracketDrag: (drag) =>
     set((state) => ({ tradingStatus: { ...state.tradingStatus, bracketDrag: drag } })),
+
+  setMarketOrderDrag: (drag) =>
+    set((state) => ({ tradingStatus: { ...state.tradingStatus, marketOrderDrag: drag } })),
+
+  setPendingMarketOrderId: (id) =>
+    set((state) => ({ tradingStatus: { ...state.tradingStatus, pendingMarketOrderId: id } })),
 
   updateVirtualPnl: (symbol, markPrice) =>
     set((state) => {

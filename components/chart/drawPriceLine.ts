@@ -12,7 +12,8 @@ export function drawPriceLine(
   chartWidth: number,
   priceAxisWidth: number,
   canvasWidth: number,
-  timeframe: string
+  timeframe: string,
+  isHovered: boolean = false
 ) {
   const y = Math.round(priceToY(lastCandle.close));
   const price = lastCandle.close;
@@ -22,10 +23,10 @@ export function drawPriceLine(
 
   // 1. Draw Horizontal Line across the chart area
   ctx.save();
-  ctx.setLineDash([4, 4]);
+  ctx.setLineDash(isHovered ? [] : [4, 4]);
   ctx.strokeStyle = color;
-  ctx.globalAlpha = 0.6;
-  ctx.lineWidth = 1;
+  ctx.globalAlpha = isHovered ? 0.9 : 0.6;
+  ctx.lineWidth = isHovered ? 1.5 : 1;
   ctx.beginPath();
   ctx.moveTo(0, y);
   ctx.lineTo(chartWidth, y);

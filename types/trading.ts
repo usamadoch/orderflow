@@ -171,6 +171,16 @@ export interface BracketDragState {
   previewPrice: number;
 }
 
+/**
+ * State for dragging the current price line to define a Stop Loss for a new Market Order.
+ */
+export interface MarketOrderDragState {
+  symbol: string;
+  startPrice: number;
+  slPrice: number;
+  direction: 'buy' | 'sell';
+}
+
 export interface Balance {
   asset: string;
   free: number;
