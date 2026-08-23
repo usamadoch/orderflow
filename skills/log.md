@@ -1,5 +1,17 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-23] - Fix/Refactor: Web Worker Offloading and Chart Interaction Bugs
+
+- **What changed**:
+  - **Panning Bug Fix**: Refactored `ChartCanvas.tsx` to handle `onPointerDown`, `onPointerMove`, and `onPointerUp` natively on the canvas instead of via React state, resolving severe panning stickiness and stuttering.
+  - **Footprint Worker Offloading**: Created `lib/worker/aggregationWorker.ts` and `lib/worker/aggregationWorkerClient.ts` to offload intensive 1-minute base footprint aggregation away from the main UI thread.
+  - **Worker Initialization Crash**: Fixed a fatal `ReferenceError: process is not defined` crash in Next.js Web Workers by adding `typeof process !== 'undefined'` safety checks to `lib/cache/marketCachePolicy.ts` and `lib/debug/marketMetrics.ts`.
+  - **Footprint Rendering Fix**: Corrected an exclusive time-range bug (`time < endTime`) in `AggregationEngine` when hydrating footprint cells from history or the worker, ensuring the footprint bodies render correctly instead of being empty.
+- **Why it changed**:
+  - To eliminate UI thread blocking when ingesting thousands of fast trades per second and to ensure the interactive chart remained responsive to panning and zooming at all times.
+- **Impact summary**:
+  - Footprint generation is now fully offloaded to a Web Worker, decoupling data crunching from canvas rendering. The chart is now highly responsive and fluid, and footprints display precisely.
+
 ## [2026-08-22] - Refactor: Server-Side Database Repositories, Signal Engines, and Trading Services
 
 - **What changed**:

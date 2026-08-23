@@ -185,6 +185,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/aggregation/engine.ts` → Engine deriving footprint buckets and custom timeframes from base trade data.
 - `lib/aggregation/footprintCache.ts` → Shared in-memory cache for canonical 1m footprint base slices.
 - `lib/utils/aggregation.ts` → Math utilities aggregating trade ticks into footprint price levels.
+- `lib/worker/aggregationWorker.ts` → Web Worker script for processing high-frequency trades into base footprints off the main thread.
+- `lib/worker/aggregationWorkerClient.ts` → Client singleton coordinating communication with the aggregation worker.
 - `types/footprint.ts` → Footprint cluster and aggregation types.
 
 ### Volume Profile
