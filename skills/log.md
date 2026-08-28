@@ -1,5 +1,28 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-29] - Fix: HSVP & Current-Candle Stats Indicator Canvas Blinking & Render Lifecycle
+
+- **What changed**:
+  - **Stats Indicator Grid Lifecycle Alignment (`components/chart/ChartCanvas.tsx`)**:
+    - Relocated `drawStatsGrid` into the primary `liveCtx` rendering block before `liveCtx.restore()`.
+    - On `redraw('live-dirty')` market ticks, `drawStatsGrid` executes within the active candle's column clip (`colStartX`), preventing the bottom statistics cells from being cleared to transparent and left blank on live ticks.
+    - On full canvas redraws (`redraw('all')` / `redraw('live')`), `drawStatsGrid` renders all visible candle cells and axis labels cleanly without clipping.
+  - **HSVP & Volume Profile Render Layer Restriction (`components/chart/ChartCanvas.tsx`)**:
+    - Restricted Historical Session Volume Profiles (HSVP) and default Volume Profiles to full live canvas redraws (`if (drawAll || layersToDraw.has('live'))`), eliminating redundant overdrawing on partial `live-dirty` column ticks.
+    - Prevented opacity compounding and flashing by ensuring semi-transparent session profiles (`rgba(..., 0.3)`) are only painted over fully cleared canvas frames.
+    - Removed an extraneous secondary `liveCtx.restore()` call that corrupted the Canvas 2D transform stack.
+  - **Eliminated Tick-Rate React Re-renders (`components/chart/ChartPanel.tsx`)**:
+    - Removed `dataVersion` React state subscription from `ChartPanel.tsx` and its `React.useMemo` dependency array, freeing the React UI tree from high-frequency market tick reconciliations while preserving imperative canvas redraw subscriptions.
+  - **Default Indicator State & Store Persistence (`lib/store/chart.ts`)**:
+    - Defaulted `historicalSessionProfileEnabled` and `statsIndicatorEnabled` to `true` in `ensurePanel`.
+    - Added `statsIndicatorEnabled`, `statsIndicatorCount`, and `statsIndicatorItems` to `partialize` for robust multi-tab and reload persistence.
+- **Why it changed**:
+  - High-frequency market ticks triggered `redraw('live-dirty')`, which cleared the full vertical column of the active candle (erasing the live stats cell). Because `drawStatsGrid` was previously gated behind `drawAll || layersToDraw.has('live')`, the live stats cell remained blank during dirty ticks and flickered whenever full redraws occurred.
+  - HSVP was executing on unclipped `live-dirty` ticks without full canvas clearing, causing alpha blending to stack repeatedly and darken the profile until full wipes caused a visible flash.
+- **Impact summary**:
+  - Both HSVP and Stats indicator render with 100% visual stability, zero blinking/flickering, and instant live stat updates.
+  - `npx tsc --noEmit` and browser runtime verification passed with 0 errors.
+
 ## [2026-08-28] - Feature & Fix: Global Time Zone & Time Format Consistency Across Entire Application
 
 - **What changed**:

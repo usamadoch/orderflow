@@ -28,15 +28,12 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const historyRestoreStatus = useChartRuntimeStore(s => s.panels[panelId].historyRestoreStatus);
   const isLoadingHistory = useChartRuntimeStore(s => s.panels[panelId].isLoadingHistory);
   const connected = useChartRuntimeStore(s => s.panels[panelId].connected);
-  const dataVersion = useChartRuntimeStore(s => s.panels[panelId].dataVersion);
-  
   const panel = React.useMemo(() => ({
     ...panelSettings,
     historyRestoreStatus,
     isLoadingHistory,
     connected,
-    dataVersion,
-  }), [panelSettings, historyRestoreStatus, isLoadingHistory, connected, dataVersion]);
+  }), [panelSettings, historyRestoreStatus, isLoadingHistory, connected]);
 
   const setActivePanel = useChartStore(s => s.setActivePanel);
   const setBarWidth = useChartStore(s => s.setBarWidth);

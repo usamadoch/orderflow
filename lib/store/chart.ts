@@ -352,7 +352,7 @@ function createDefaultPanel(id: PanelId): PanelState {
         color: '#81C784',
       },
     },
-    historicalSessionProfileEnabled: false,
+    historicalSessionProfileEnabled: true,
     historicalSessionProfileStartHour: 13,
     historicalSessionProfileStartMin: 0,
     historicalSessionProfileEndHour: 22,
@@ -378,7 +378,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     liquidityHeatmapShowCurrentLabel: true,
     liquidityHeatmapProfileSync: false,
     // Stats Indicator
-    statsIndicatorEnabled: false,
+    statsIndicatorEnabled: true,
     statsIndicatorCount: 3,
     statsIndicatorItems: ['volume', 'delta', 'cvd'],
   };
@@ -1319,7 +1319,7 @@ export const useChartStore = create<ChartState>()(
               london: { enabled: true, startHour: 7, startMin: 0, endHour: 16, endMin: 0, color: '#4FC3F7' },
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
-            historicalSessionProfileEnabled: p.historicalSessionProfileEnabled ?? false,
+            historicalSessionProfileEnabled: p.historicalSessionProfileEnabled ?? true,
             historicalSessionProfileStartHour: p.historicalSessionProfileStartHour ?? 13,
             historicalSessionProfileStartMin: p.historicalSessionProfileStartMin ?? 0,
             historicalSessionProfileEndHour: p.historicalSessionProfileEndHour ?? 22,
@@ -1357,9 +1357,9 @@ export const useChartStore = create<ChartState>()(
             liquidityHeatmapShowCurrentLabel: p.liquidityHeatmapShowCurrentLabel ?? true,
             liquidityHeatmapProfileSync: p.liquidityHeatmapProfileSync ?? false,
             // Stats Indicator (v36)
-            statsIndicatorEnabled: p.statsIndicatorEnabled ?? false,
+            statsIndicatorEnabled: p.statsIndicatorEnabled ?? true,
             statsIndicatorCount: Math.max(1, Math.min(4, p.statsIndicatorCount ?? 4)),
-            statsIndicatorItems: p.statsIndicatorItems ?? ['volume', 'delta', 'cvd', 'liquidity'],
+            statsIndicatorItems: p.statsIndicatorItems ?? ['volume', 'delta', 'cvd'],
           };
         };
         if (persisted.panels) {
@@ -1580,6 +1580,9 @@ export const useChartStore = create<ChartState>()(
             historicalSessionProfileEndMin: state.panels.left.historicalSessionProfileEndMin,
             historicalSessionProfileCount: state.panels.left.historicalSessionProfileCount,
             historicalSessionProfileMinTimeframe: state.panels.left.historicalSessionProfileMinTimeframe,
+            statsIndicatorEnabled: state.panels.left.statsIndicatorEnabled,
+            statsIndicatorCount: state.panels.left.statsIndicatorCount,
+            statsIndicatorItems: state.panels.left.statsIndicatorItems,
             settingsByTimeframe: state.panels.left.settingsByTimeframe,
           },
           right: {
@@ -1694,6 +1697,9 @@ export const useChartStore = create<ChartState>()(
             historicalSessionProfileEndMin: state.panels.right.historicalSessionProfileEndMin,
             historicalSessionProfileCount: state.panels.right.historicalSessionProfileCount,
             historicalSessionProfileMinTimeframe: state.panels.right.historicalSessionProfileMinTimeframe,
+            statsIndicatorEnabled: state.panels.right.statsIndicatorEnabled,
+            statsIndicatorCount: state.panels.right.statsIndicatorCount,
+            statsIndicatorItems: state.panels.right.statsIndicatorItems,
             settingsByTimeframe: state.panels.right.settingsByTimeframe,
           },
         },

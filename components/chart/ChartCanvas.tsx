@@ -822,6 +822,24 @@ export function ChartCanvas({
           });
         }
 
+        // 5d. Stats Indicator Grid (drawn inside clip for live-dirty ticks, or across all candles for full live redraws)
+        if (statsIndicatorEnabled && statsIndicatorItems.length > 0) {
+          drawStatsGrid(
+            liveCtx,
+            candles,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            chartHeight,
+            statsIndicatorItems,
+            engine,
+            liquidityHistory,
+            logicalWidth,
+            priceAxisWidth,
+            currentBarWidth
+          );
+        }
+
         if (liveCtxClipped) {
           liveCtx.restore();
         }
@@ -911,8 +929,8 @@ export function ChartCanvas({
         heatmapRows = buildHeatmapRows(liquidityHistory, priceMin, priceMax, liquidityBucketSize, lastCandle?.close || 0);
       }
 
-      // Volume Profile
-      if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
+      // Volume Profile & Historical Session Volume Profiles (Full live canvas only, not live-dirty)
+      if (drawAll || layersToDraw.has('live')) {
         if (defaultProfileEnabled) {
           const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
           const profile = volumeProfileEngine.buildProfile({
@@ -1051,9 +1069,6 @@ export function ChartCanvas({
               );
             }
           }
-        }
-        if (isDirty && candles.length > 0) {
-          liveCtx.restore();
         }
       }
       
@@ -1279,25 +1294,6 @@ export function ChartCanvas({
               drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
             }
           }
-        }
-      }
-
-      if (drawAll || layersToDraw.has('live')) {
-        if (statsIndicatorEnabled && statsIndicatorItems.length > 0) {
-          drawStatsGrid(
-            liveCtx,
-            candles,
-            firstIndex,
-            lastIndex,
-            indexToX,
-            chartHeight,
-            statsIndicatorItems,
-            engine,
-            liquidityHistory,
-            logicalWidth,
-            priceAxisWidth,
-            currentBarWidth
-          );
         }
       }
     });
