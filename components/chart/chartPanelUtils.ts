@@ -32,7 +32,7 @@ export function filterBracketOrdersForVirtualPositions(bracketOrders: BracketOrd
   return bracketOrders.filter(b => virtualPositions.some(vp => vp.id === b.positionId));
 }
 
-export function computeHistoricalSessionRanges(panel: PanelState, candles: Candle[]): HistoricalSessionRange[] {
+export function computeHistoricalSessionRanges(panel: PanelState, candles: Candle[], timezone?: string): HistoricalSessionRange[] {
   if (!panel.historicalSessionProfileEnabled) return [];
   const latestTimeMs = candles.length > 0 ? candles[candles.length - 1].time * 1000 : Date.now();
   return getHistoricalSessionRanges(
@@ -41,6 +41,7 @@ export function computeHistoricalSessionRanges(panel: PanelState, candles: Candl
     panel.historicalSessionProfileStartHour,
     panel.historicalSessionProfileStartMin,
     panel.historicalSessionProfileEndHour,
-    panel.historicalSessionProfileEndMin
+    panel.historicalSessionProfileEndMin,
+    timezone
   );
 }

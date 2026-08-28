@@ -85,12 +85,13 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/layout/Header.tsx` → Top toolbar with layout controls, connection status indicator, and symbol/settings access.
 - `components/layout/Sidebar.tsx` → Thin icon-rail sidebar for active chart tools and status tooltips.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection status indicator.
-- `components/ui/PanelToolbar.tsx` → Per-panel controls for symbol, timeframe, chart mode, drawing tools, refresh, and settings.
+- `components/ui/PanelToolbar.tsx` → Per-panel controls for symbol, timeframe, chart mode, position & BUY/SELL trade tools, refresh, and settings.
 - `components/ui/OrderTicket.tsx` → Draggable floating order ticket modal with quantity presets, risk checks, and validation.
 - `components/ui/AccountBalanceWidget.tsx` → Header widget displaying available asset balances from live account snapshots.
 - `components/ui/OrdersPanel.tsx` → Bottom pane table displaying open limit orders with real-time status and cancellation controls.
 - `components/ui/DrawingFavoritesToolbar.tsx` → Floating toolbar for quick selection of favorite drawing tools (Profile, Measure, Lines, Boxes).
 - `components/ui/ChartSettingsDropdown.tsx` → Panel settings modal providing controls for aggregation, indicators, Volume Profiles, CVD, signals, aggregate bubbles, and orderbook heatmap.
+- `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with AM/PM toggle) and 24-hour modes matching global settings.
 - `components/ui/BubblesDocsModal.tsx` → Reference modal explaining Volume Bubbles visualization, sizing, and color indicators.
 - `components/ui/PairSelector.tsx` → Symbol selection modal supporting Spot and Perpetual Futures contracts.
 - `components/ui/TimeframeSelector.tsx` → Panel timeframe switcher control.

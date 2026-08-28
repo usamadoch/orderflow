@@ -41,18 +41,20 @@ function drawRoundedRect(
   }
 }
 
-// ─── Limit-order label ───────────────────────────────────────────────────────
+// ─── Order / Position label (right-aligned) ──────────────────────────────────
 
-function drawOrderLabel(
+function drawOrderLabelRight(
   ctx: CanvasRenderingContext2D,
   text: string,
-  x: number, y: number,
+  rightX: number,
+  y: number,
   color: string,
-  maxRight: number,
+  minLeft = 10,
 ) {
   ctx.font = LABEL_FONT;
-  const measured   = Math.ceil(ctx.measureText(text).width) + 18;
-  const width      = Math.min(maxRight - x, measured);
+  const measured = Math.ceil(ctx.measureText(text).width) + 18;
+  const x = Math.max(minLeft, rightX - measured);
+  const width = rightX - x;
   if (width < 28) return;
 
   const height = 20;
@@ -291,7 +293,7 @@ export function drawTradingOverlays(
     const qty       = remaining > 0 ? remaining : order.quantity;
     const statusStr = order.status === 'partially_filled' ? 'Partial' : toTitleCase(order.status);
     const labelText = `${isBuy ? 'BUY' : 'SELL'}  ${formatVol(qty)}  ${statusStr}`;
-    drawOrderLabel(ctx, labelText, 10, y, color, chartWidth - 90);
+    drawOrderLabelRight(ctx, labelText, chartWidth - 8, y, color);
 
     // Price badge on the price axis
     drawPriceBadge(ctx, order.price, y, color, chartWidth);
@@ -308,7 +310,7 @@ export function drawTradingOverlays(
         drawTradingLine(ctx, y, chartWidth, color, 0.96, 1.75, [2, 2]);
 
         const labelText = `New Price  ${formatPrice(dragPreview.price)}`;
-        drawOrderLabel(ctx, labelText, 10, y, color, chartWidth - 90);
+        drawOrderLabelRight(ctx, labelText, chartWidth - 8, y, color);
         drawPriceBadge(ctx, dragPreview.price, y, color, chartWidth);
       }
     }
@@ -333,19 +335,8 @@ export function drawTradingOverlays(
       : '';
     const sideStr  = isLong ? 'LONG' : 'SHORT';
     const entryStr = `${sideStr}  ${formatVol(vp.quantity)} @ ${formatPrice(vp.entryPrice)}${pnlStr}`;
-    drawOrderLabel(ctx, entryStr, 10, y, color, chartWidth - 90);
+    drawOrderLabelRight(ctx, entryStr, chartWidth - 8, y, color);
     drawPriceBadge(ctx, vp.entryPrice, y, color, chartWidth);
-
-    // Small fixed-entry indicator triangle on the left
-    ctx.fillStyle = chartColorToRgba(color, 0.85);
-    const triDir  = isLong ? -1 : 1; // pointing up for long, down for short
-    const tx      = 6, ty2 = y;
-    ctx.beginPath();
-    ctx.moveTo(tx, ty2 + triDir * 6);
-    ctx.lineTo(tx - 5, ty2 - triDir * 4);
-    ctx.lineTo(tx + 5, ty2 - triDir * 4);
-    ctx.closePath();
-    ctx.fill();
 
     // Liquidation line (Futures only)
     if (Number.isFinite(vp.liquidationPrice)) {
@@ -353,7 +344,7 @@ export function drawTradingOverlays(
       if (liqY >= -8 && liqY <= chartHeight + 8) {
         const liqColor = '#E4A336'; // Warning orange/gold
         drawTradingLine(ctx, liqY, chartWidth, liqColor, 0.8, 1, [4, 4]);
-        drawOrderLabel(ctx, `LIQ  ${formatPrice(vp.liquidationPrice!)}`, 10, liqY, liqColor, chartWidth - 90);
+        drawOrderLabelRight(ctx, `LIQ  ${formatPrice(vp.liquidationPrice!)}`, chartWidth - 8, liqY, liqColor);
         drawPriceBadge(ctx, vp.liquidationPrice!, liqY, liqColor, chartWidth);
       }
     }
@@ -373,20 +364,8 @@ export function drawTradingOverlays(
       const y            = Math.round(priceToY(slPrice));
 
       if (y >= -8 && y <= chartHeight + 8) {
-        // Danger zone fill between SL and entry
-        if (Number.isFinite(vp.entryPrice)) {
-          const entryY = Math.round(priceToY(vp.entryPrice));
-          const zoneTop    = Math.min(y, entryY);
-          const zoneBottom = Math.max(y, entryY);
-          ctx.save();
-          ctx.globalAlpha  = 0.05;
-          ctx.fillStyle    = SL_COLOR;
-          ctx.fillRect(0, zoneTop, chartWidth, zoneBottom - zoneTop);
-          ctx.restore();
-        }
-
         drawTradingLine(ctx, y, chartWidth, SL_COLOR, isDraggingSL ? 0.95 : 0.75, isDraggingSL ? 1.5 : 1.2, [4, 3]);
-        drawOrderLabel(ctx, `SL  ${formatPrice(slPrice)}`, 10, y, SL_COLOR, chartWidth - 90);
+        drawOrderLabelRight(ctx, `SL  ${formatPrice(slPrice)}`, chartWidth - 46 - 6, y, SL_COLOR);
         drawPriceBadge(ctx, slPrice, y, SL_COLOR, chartWidth);
 
         const box = drawBracketHandle(ctx, 'SL', y, SL_COLOR, chartWidth, isDraggingSL);
@@ -401,20 +380,8 @@ export function drawTradingOverlays(
       const y            = Math.round(priceToY(tpPrice));
 
       if (y >= -8 && y <= chartHeight + 8) {
-        // Profit zone fill between TP and entry
-        if (Number.isFinite(vp.entryPrice)) {
-          const entryY = Math.round(priceToY(vp.entryPrice));
-          const zoneTop    = Math.min(y, entryY);
-          const zoneBottom = Math.max(y, entryY);
-          ctx.save();
-          ctx.globalAlpha  = 0.05;
-          ctx.fillStyle    = TP_COLOR;
-          ctx.fillRect(0, zoneTop, chartWidth, zoneBottom - zoneTop);
-          ctx.restore();
-        }
-
         drawTradingLine(ctx, y, chartWidth, TP_COLOR, isDraggingTP ? 0.95 : 0.75, isDraggingTP ? 1.5 : 1.2, [4, 3]);
-        drawOrderLabel(ctx, `TP  ${formatPrice(tpPrice)}`, 10, y, TP_COLOR, chartWidth - 90);
+        drawOrderLabelRight(ctx, `TP  ${formatPrice(tpPrice)}`, chartWidth - 46 - 6, y, TP_COLOR);
         drawPriceBadge(ctx, tpPrice, y, TP_COLOR, chartWidth);
 
         const box = drawBracketHandle(ctx, 'TP', y, TP_COLOR, chartWidth, isDraggingTP);
@@ -458,22 +425,12 @@ export function drawTradingOverlays(
   // ── 6. Market Order SL Drag ───────────────────────────────────────────────
   if (marketOrderDrag) {
     const slY = Math.round(priceToY(marketOrderDrag.slPrice));
-    const startY = Math.round(priceToY(marketOrderDrag.startPrice));
 
     if (slY >= -8 && slY <= chartHeight + 8) {
-      // Risk zone fill between SL and start price
-      const zoneTop = Math.min(slY, startY);
-      const zoneBottom = Math.max(slY, startY);
-      ctx.save();
-      ctx.globalAlpha = 0.05;
-      ctx.fillStyle = SL_COLOR;
-      ctx.fillRect(0, zoneTop, chartWidth, zoneBottom - zoneTop);
-      ctx.restore();
-
       drawTradingLine(ctx, slY, chartWidth, SL_COLOR, 0.95, 1.5, [4, 3]);
       
       const sideText = marketOrderDrag.direction === 'buy' ? 'LONG' : 'SHORT';
-      drawOrderLabel(ctx, `SL ${sideText} MARKET`, 10, slY, SL_COLOR, chartWidth - 90);
+      drawOrderLabelRight(ctx, `SL ${sideText} MARKET`, chartWidth - 46 - 6, slY, SL_COLOR);
       drawPriceBadge(ctx, marketOrderDrag.slPrice, slY, SL_COLOR, chartWidth);
       drawBracketHandle(ctx, 'SL', slY, SL_COLOR, chartWidth, true);
     }

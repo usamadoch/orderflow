@@ -3,20 +3,13 @@
 import React, { useState, useCallback } from 'react';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 import { useChartStore } from '../../lib/store/chart';
-import { formatPrice, formatVol } from '../../lib/utils/format';
+import { formatPrice, formatVol, formatDateTime } from '../../lib/utils/format';
 import { CHART_BULLISH_COLOR, CHART_BEARISH_COLOR } from '../../lib/config/chartColors';
-
-function formatDate(timestamp: number) {
-  const d = new Date(timestamp);
-  return (
-    d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
-    ' ' +
-    d.toLocaleDateString()
-  );
-}
 
 export function OrdersPanel() {
   const symbol         = useChartStore(s => s.panels.left.pair);
+  const globalTimezone = useChartStore(s => s.globalTimezone);
+  const globalTimeFormat = useChartStore(s => s.globalTimeFormat);
   const openOrders     = useChartRuntimeStore(s => s.tradingStatus.openOrders);
   const recentTrades   = useChartRuntimeStore(s => s.tradingStatus.recentTrades);
   const positions      = useChartRuntimeStore(s => s.tradingStatus.positions);
@@ -266,7 +259,7 @@ export function OrdersPanel() {
                     key={order.id}
                     className="border-b border-[#161616] hover:bg-[#171717] transition-colors"
                   >
-                    <td className="px-3 py-2 text-[10px] text-[#555] whitespace-nowrap">{formatDate(order.createdAt)}</td>
+                    <td className="px-3 py-2 text-[10px] text-[#555] whitespace-nowrap">{formatDateTime(order.createdAt, globalTimezone, globalTimeFormat)}</td>
                     <td className="px-3 py-2 text-[11px] font-bold text-[#C8C8C8]">{order.symbol}</td>
                     <td className="px-3 py-2">
                       <span
@@ -330,7 +323,7 @@ export function OrdersPanel() {
                       key={trade.id}
                       className="border-b border-[#161616] hover:bg-[#171717] transition-colors"
                     >
-                      <td className="px-3 py-2 text-[10px] text-[#555] whitespace-nowrap">{formatDate(trade.time)}</td>
+                      <td className="px-3 py-2 text-[10px] text-[#555] whitespace-nowrap">{formatDateTime(trade.time, globalTimezone, globalTimeFormat)}</td>
                       <td className="px-3 py-2 text-[11px] font-bold text-[#C8C8C8]">{trade.symbol}</td>
                       <td className="px-3 py-2">
                         <span

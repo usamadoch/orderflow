@@ -34,17 +34,17 @@ import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { initCanvas } from '@/lib/utils/canvas';
 import { formatPrice, formatVol } from '@/lib/utils/format';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
-import type { AggregateBubbleMarketSource, BubbleEvent, BubbleSizeBy, BubbleSource, BubbleScaleMode } from '@/types/bubble';
+import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource, BubbleScaleMode } from '@/types/bubble';
 import type { DrawingHitZone } from '@/types/chart';
 import type { ExhaustionResult } from '@/types/exhaustion';
 import type { FootprintMode } from '@/types/footprint';
 import type { IcebergLevel } from '@/types/iceberg';
 import type { HeatmapRow } from '@/types/liquidity';
-import type { Order, BracketOrder, BracketDragState, PendingModifyOrder, Position } from '@/types/trading';
+import type { Order, BracketDragState, PendingModifyOrder, Position } from '@/types/trading';
 import type { VolumeProfileSource } from '@/types/volumeProfile';
 
 // 3. Relative component & canvas imports
-import { CustomProfileToolbar, DrawingToolbar, ModifyConfirmRow, MarketOrderConfirmRow } from './CanvasDrawingToolbar';
+import { CustomProfileToolbar, DrawingToolbar, ModifyConfirmRow } from './CanvasDrawingToolbar';
 import {
   resolveProfileBucketSize,
   resolveIndexFromTimeOrFallback,
@@ -191,6 +191,8 @@ interface ChartCanvasProps {
   liquidityHeatmapProfileSync: boolean;
   statsIndicatorEnabled: boolean;
   statsIndicatorItems: string[];
+  globalTimezone?: string;
+  globalTimeFormat?: '12h' | '24h';
   showTimeAxis?: boolean;
   onBarWidthChange: (v: number) => void;
   onScrollOffsetChange: (v: number) => void;
@@ -292,6 +294,8 @@ export function ChartCanvas({
   liquidityHeatmapProfileSync,
   statsIndicatorEnabled,
   statsIndicatorItems,
+  globalTimezone = 'local',
+  globalTimeFormat = '24h',
   showTimeAxis = true,
   onBarWidthChange,
   onScrollOffsetChange,
@@ -332,8 +336,6 @@ export function ChartCanvas({
   const isDraggingOrderLine = useRef(false);
   const orderDragSnapshot = useRef<Order | null>(null);
   const orderDragOriginalPrice = useRef<number | null>(null);
-
-  const isDraggingMarketOrder = useRef(false);
 
   // Bracket SL/TP drag refs
   const isDraggingBracket = useRef(false);
@@ -376,9 +378,6 @@ export function ChartCanvas({
   const modifyError = useChartRuntimeStore(s => s.tradingStatus.modifyError);
   const modifySuccess = useChartRuntimeStore(s => s.tradingStatus.modifySuccess);
   const riskStatus = useChartRuntimeStore(s => s.tradingStatus.riskStatus);
-  const marketOrderDrag = useChartRuntimeStore(s => s.tradingStatus.marketOrderDrag);
-  const pendingMarketOrderId = useChartRuntimeStore(s => s.tradingStatus.pendingMarketOrderId);
-  const setMarketOrderDrag = useChartRuntimeStore(s => s.setMarketOrderDrag);
   const setTradingStatus = useChartRuntimeStore(s => s.setTradingStatus);
   const refreshRiskStatus = useChartRuntimeStore(s => s.refreshRiskStatus);
   const cancelOrder = useChartRuntimeStore(s => s.cancelOrder);
@@ -456,7 +455,7 @@ export function ChartCanvas({
       const liquidityVacuumZones = currentPanelRuntime.liquidityVacuumZones ?? [];
       const icebergLevels = currentPanelRuntime.icebergLevels ?? [];
       const aggregateBubbleEvents = currentPanelRuntime.aggregateBubbleEvents ?? [];
-      const historicalSessionRanges = panelState ? computeHistoricalSessionRanges(panelState, candles) : [];
+      const historicalSessionRanges = panelState ? computeHistoricalSessionRanges(panelState, candles, globalTimezone) : [];
 
       const absorptionMap = currentPanelRuntime.absorptionMap ?? new Map();
       const exhaustionMap = currentPanelRuntime.exhaustionMap ?? new Map();
@@ -538,7 +537,8 @@ export function ChartCanvas({
           logicalHeight,
           timeAxisHeight,
           sessions,
-          sessionsEnabled
+          sessionsEnabled,
+          globalTimezone
         );
       }
 
@@ -1302,7 +1302,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, statsIndicatorEnabled, statsIndicatorItems, showTimeAxis, modifyingOrderId, dragPreviewPrice]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, statsIndicatorEnabled, statsIndicatorItems, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1456,6 +1456,10 @@ export function ChartCanvas({
   useEffect(() => {
     redrawRef.current = redraw;
   }, [redraw]);
+
+  useEffect(() => {
+    redrawRef.current('all');
+  }, [globalTimezone, globalTimeFormat]);
 
   // Subscribe to crosshair changes for sync rendering
   useEffect(() => {
@@ -1786,9 +1790,17 @@ export function ChartCanvas({
     tradingSymbol,
   ]);
 
-  const handleConfirmMarketOrder = useCallback(async () => {
-    const drag = useChartRuntimeStore.getState().tradingStatus.marketOrderDrag;
-    if (!drag) return;
+  const executeMarketOrder = useCallback(async (direction: 'buy' | 'sell', slPrice: number) => {
+    const mt5Connected = useChartRuntimeStore.getState().tradingStatus.mt5Connected;
+    if (!mt5Connected) {
+      setChartOrderMessage({ type: 'error', text: 'Cannot place order: MT5 is disconnected' });
+      return;
+    }
+
+    if (!Number.isFinite(slPrice) || slPrice <= 0) {
+      setChartOrderMessage({ type: 'error', text: 'Invalid Stop Loss price' });
+      return;
+    }
 
     const requestId = crypto.randomUUID();
     setTradingStatus({ pendingMarketOrderId: requestId });
@@ -1800,8 +1812,8 @@ export function ChartCanvas({
         body: JSON.stringify({
           requestId,
           symbol: tradingSymbol,
-          direction: drag.direction,
-          slPrice: drag.slPrice,
+          direction,
+          slPrice,
         }),
       });
 
@@ -1816,8 +1828,8 @@ export function ChartCanvas({
             if (data.status.toLowerCase() === 'filled') {
               setChartOrderMessage({ type: 'success', text: `Market Order filled at ${data.fillPrice}` });
               const vpId = data.ticket.toString();
-              const side = drag.direction === 'buy' ? 'long' : 'short';
-              const slVal = data.sl || drag.slPrice;
+              const side = direction === 'buy' ? 'long' : 'short';
+              const slVal = data.sl || slPrice;
               const tpVal = data.tp || null;
 
               useChartRuntimeStore.getState().upsertVirtualPosition({
@@ -1971,6 +1983,17 @@ export function ChartCanvas({
           dragEnd.current = { x, y };
           isDragging.current = true;
           return;
+        } else if (lineDrawMode === 'buy' || lineDrawMode === 'sell') {
+          const pCenter = priceCenter.current ?? 0;
+          const pRange = priceRange.current ?? 100;
+          const priceMin = pCenter - pRange / 2;
+          const priceMax = pCenter + pRange / 2;
+          const slPrice = yToPrice(y, priceMin, priceMax, chartHeight);
+          const direction = lineDrawMode;
+          useChartStore.getState().setLineDrawMode(panelId, 'none');
+          executeMarketOrder(direction, slPrice);
+          redraw();
+          return;
         }
         useChartStore.getState().setLineDrawMode(panelId, 'none');
         redraw();
@@ -2030,14 +2053,6 @@ export function ChartCanvas({
       for (const order of openOrders) {
         if (getOrderHitZone(order, x, y, chartWidth, chartHeight, priceToY)) {
           return { type: 'order' as const, order };
-        }
-      }
-
-      // 2b. Price Line
-      if (!runtimeState.tradingStatus.pendingMarketOrderId && candles.length > 0) {
-        const lastCandle = candles[candles.length - 1];
-        if (getPriceLineHitZone(priceToY(lastCandle.close), x, y, chartWidth)) {
-          return { type: 'price-line' as const, price: lastCandle.close };
         }
       }
 
@@ -2112,20 +2127,6 @@ export function ChartCanvas({
             modifyError: null,
             modifySuccess: null,
           });
-          redraw();
-          return;
-        }
-
-        if (hitTarget.type === 'price-line') {
-          const mt5Connected = useChartRuntimeStore.getState().tradingStatus.mt5Connected;
-          if (!mt5Connected) {
-            setChartOrderMessage({ type: 'error', text: 'Cannot place order: MT5 is disconnected' });
-            return;
-          }
-          setSelectedDrawingId(null);
-          useChartRuntimeStore.getState().setProfileSelected(panelId, false);
-          isDraggingMarketOrder.current = true;
-          setMarketOrderDrag({ symbol: tradingSymbol, startPrice: hitTarget.price, slPrice: hitTarget.price, direction: 'buy' });
           redraw();
           return;
         }
@@ -2208,7 +2209,7 @@ export function ChartCanvas({
         cursor = 'grabbing';
       } else if (isDraggingResize.current) {
         cursor = (resizeEdge.current === 'left' || resizeEdge.current === 'right') ? 'ew-resize' : 'ns-resize';
-      } else if (isDraggingOrderLine.current || isDraggingBracket.current || isDraggingMarketOrder.current) {
+      } else if (isDraggingOrderLine.current || isDraggingBracket.current) {
         cursor = 'ns-resize';
       } else if (isPanZoomDragging.current) {
         if (panZoomDragMode.current === 'price') cursor = 'ns-resize';
@@ -2253,14 +2254,6 @@ export function ChartCanvas({
         }
       }
 
-      // 2b. Price Line
-      if (!runtimeState.tradingStatus.pendingMarketOrderId && candles.length > 0) {
-        const lastCandle = candles[candles.length - 1];
-        if (getPriceLineHitZone(priceToY(lastCandle.close), x, y, chartWidth)) {
-          return { type: 'price-line' as const, price: lastCandle.close };
-        }
-      }
-
       const storeState = useChartStore.getState();
       const currentPanel = storeState.panels[panelId];
 
@@ -2294,8 +2287,6 @@ export function ChartCanvas({
         if (hitTarget) {
           if (hitTarget.type === 'bracket' || hitTarget.type === 'order') {
             cursor = 'ns-resize';
-          } else if (hitTarget.type === 'price-line') {
-            cursor = 'row-resize';
           } else if (hitTarget.type === 'custom-profile') {
             hoverZone.current = hitTarget.hitZone;
             if (hitTarget.hitZone.startsWith('resize-')) {
@@ -2441,25 +2432,6 @@ export function ChartCanvas({
           dragPreviewPrice: Number.isFinite(nextPrice) ? nextPrice : null,
           modifyError: null,
         });
-        redraw();
-      } else if (isDraggingMarketOrder.current) {
-        const chartHeight = rect.height - timeAxisHeight;
-        const pCenter = priceCenter.current ?? 0;
-        const pRange = priceRange.current ?? 100;
-        const priceMin = pCenter - pRange / 2;
-        const priceMax = pCenter + pRange / 2;
-        const nextPrice = yToPrice(Math.max(0, Math.min(chartHeight, y)), priceMin, priceMax, chartHeight);
-        
-        const dragState = useChartRuntimeStore.getState().tradingStatus.marketOrderDrag;
-        if (dragState && Number.isFinite(nextPrice)) {
-          const dy = nextPrice - dragState.startPrice;
-          // the threshold check handles accidental drags, here we update real-time
-          setMarketOrderDrag({
-            ...dragState,
-            slPrice: nextPrice,
-            direction: dy > 0 ? 'sell' : 'buy',
-          });
-        }
         redraw();
       } else if (
         isDragging.current &&
@@ -2705,31 +2677,8 @@ export function ChartCanvas({
         !isDraggingResize.current &&
         !isDraggingDrawing.current &&
         !isDraggingOrderLine.current &&
-        !isDraggingBracket.current &&
-        !isDraggingMarketOrder.current
+        !isDraggingBracket.current
       ) return;
-
-      if (isDraggingMarketOrder.current) {
-        isDraggingMarketOrder.current = false;
-        
-        const dragState = useChartRuntimeStore.getState().tradingStatus.marketOrderDrag;
-        if (dragState) {
-          const chartHeight = canvas.getBoundingClientRect().height - timeAxisHeight;
-          const pCenter = priceCenter.current ?? 0;
-          const pRange = priceRange.current ?? 100;
-          const priceMin = pCenter - pRange / 2;
-          const priceMax = pCenter + pRange / 2;
-          
-          const y1 = calcPriceToY(dragState.startPrice, priceMin, priceMax, chartHeight);
-          const y2 = calcPriceToY(dragState.slPrice, priceMin, priceMax, chartHeight);
-          
-          if (Math.abs(y2 - y1) < 10) {
-            setMarketOrderDrag(null);
-          }
-        }
-        redraw();
-        return;
-      }
 
       // ── Commit bracket SL/TP drag ──────────────────────────────────────────
       if (isDraggingBracket.current && bracketDragRef.current) {
@@ -3043,7 +2992,7 @@ export function ChartCanvas({
         isDraggingOrderLine.current = false;
         orderDragSnapshot.current = null;
         orderDragOriginalPrice.current = null;
-        setMarketOrderDrag(null);
+        useChartRuntimeStore.getState().setMarketOrderDrag(null);
         setShowModifyConfirm(false);
         setPendingModifyOrder(null);
         setTradingStatus({ modifyingOrderId: null, dragPreviewPrice: null, modifyError: null });
@@ -3066,7 +3015,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, setMarketOrderDrag]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({
@@ -3294,21 +3243,6 @@ export function ChartCanvas({
         />
       )}
 
-      {marketOrderDrag && !isDraggingMarketOrder.current && (
-        <MarketOrderConfirmRow
-          controls={{
-            top: Math.max(4, Math.min(containerSize.height - timeAxisHeight - 44, calcPriceToY(marketOrderDrag.slPrice, priceCenter.current! - priceRange.current! / 2, priceCenter.current! + priceRange.current! / 2, containerSize.height - timeAxisHeight))),
-            left: Math.max(8, containerSize.width - priceAxisWidth - 70),
-          }}
-          direction={marketOrderDrag.direction}
-          slPrice={marketOrderDrag.slPrice}
-          loading={!!pendingMarketOrderId}
-          onConfirm={handleConfirmMarketOrder}
-          onCancel={() => {
-            setMarketOrderDrag(null);
-          }}
-        />
-      )}
     </div>
   );
 }

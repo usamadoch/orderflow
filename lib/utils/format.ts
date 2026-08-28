@@ -53,28 +53,107 @@ export function formatPrice(price: number, precision?: number): string {
   return parts.join('.');
 }
 
+// Memoized cache for Intl.DateTimeFormat instances and hourly timezone offsets to eliminate render stutters
+const offsetCache = new Map<string, number>();
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+const dateTimeFormatCache = new Map<string, Intl.DateTimeFormat>();
+
+function getCachedFormatter(timezone: string): Intl.DateTimeFormat {
+  let fmt = formatterCache.get(timezone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    });
+    formatterCache.set(timezone, fmt);
+  }
+  return fmt;
+}
+
 /**
- * Gets date parts (year, month, day, hour, minute) in the specified timezone.
+ * Returns timezone offset in milliseconds for a timestamp.
+ * Caches by timezone and hour bucket to avoid repeated Intl allocations.
+ */
+export function getTimezoneOffsetMs(timestampMs: number, timezone: string): number {
+  if (!timezone || timezone === 'local') {
+    return -new Date(timestampMs).getTimezoneOffset() * 60000;
+  }
+  if (timezone === 'UTC') {
+    return 0;
+  }
+
+  // Bucket by hour: 3,600,000 ms
+  const hourBucket = Math.floor(timestampMs / 3600000);
+  const cacheKey = `${timezone}_${hourBucket}`;
+  const cached = offsetCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const d = new Date(timestampMs);
+  const formatter = getCachedFormatter(timezone);
+  const parts = formatter.formatToParts(d);
+  let year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+  for (const part of parts) {
+    if (part.type === 'year') year = parseInt(part.value, 10);
+    else if (part.type === 'month') month = parseInt(part.value, 10);
+    else if (part.type === 'day') day = parseInt(part.value, 10);
+    else if (part.type === 'hour') hour = parseInt(part.value, 10);
+    else if (part.type === 'minute') minute = parseInt(part.value, 10);
+    else if (part.type === 'second') second = parseInt(part.value, 10);
+  }
+  if (hour === 24) hour = 0;
+
+  const targetUtcMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  const offsetMs = targetUtcMs - (Math.floor(timestampMs / 1000) * 1000);
+
+  if (offsetCache.size > 2000) {
+    offsetCache.clear();
+  }
+  offsetCache.set(cacheKey, offsetMs);
+  return offsetMs;
+}
+
+/**
+ * Gets date parts (year, month, day, hour, minute) in the specified timezone with zero allocation overhead.
  */
 export function getZonedTimeParts(timestampMs: number, timezone: string) {
-  const dtFormat = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone === 'local' ? undefined : timezone,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-    hour12: false,
-  });
-  const parts = dtFormat.formatToParts(new Date(timestampMs));
-  const result: Record<string, number> = {};
-  for (const part of parts) {
-    if (part.type !== 'literal') {
-      result[part.type] = parseInt(part.value, 10);
-    }
+  if (timezone === 'UTC') {
+    const d = new Date(timestampMs);
+    return {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth() + 1,
+      day: d.getUTCDate(),
+      hour: d.getUTCHours(),
+      minute: d.getUTCMinutes(),
+    };
   }
-  if (result.hour === 24) result.hour = 0;
-  return result as { year: number; month: number; day: number; hour: number; minute: number };
+  if (!timezone || timezone === 'local') {
+    const d = new Date(timestampMs);
+    return {
+      year: d.getFullYear(),
+      month: d.getMonth() + 1,
+      day: d.getDate(),
+      hour: d.getHours(),
+      minute: d.getMinutes(),
+    };
+  }
+
+  const offsetMs = getTimezoneOffsetMs(timestampMs, timezone);
+  const d = new Date(timestampMs + offsetMs);
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+    hour: d.getUTCHours(),
+    minute: d.getUTCMinutes(),
+  };
 }
 
 /**
@@ -82,8 +161,11 @@ export function getZonedTimeParts(timestampMs: number, timezone: string) {
  * @param month 1-indexed (1 = January)
  */
 export function getTimestampForZonedDate(year: number, month: number, date: number, hour: number, minute: number, timezone: string): number {
-  if (timezone === 'local') {
+  if (!timezone || timezone === 'local') {
     return new Date(year, month - 1, date, hour, minute).getTime();
+  }
+  if (timezone === 'UTC') {
+    return Date.UTC(year, month - 1, date, hour, minute);
   }
   
   // Approximate with UTC first
@@ -104,16 +186,66 @@ export function getTimestampForZonedDate(year: number, month: number, date: numb
 }
 
 /**
- * Formats a timestamp (in seconds) into a localized time string.
+ * Formats a timestamp (in seconds or milliseconds) into a localized time string.
  */
 export function formatTime(timestamp: number, timezone: string = 'local', format: '12h' | '24h' = '24h'): string {
-  const dtFormat = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone === 'local' ? undefined : timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: format === '12h',
-  });
-  return dtFormat.format(new Date(timestamp * 1000));
+  const ms = timestamp > 100_000_000_000 ? timestamp : timestamp * 1000;
+  const key = `time_${timezone}_${format}`;
+  let dtFormat = dateTimeFormatCache.get(key);
+  if (!dtFormat) {
+    dtFormat = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone === 'local' ? undefined : timezone,
+      hour: format === '12h' ? 'numeric' : '2-digit',
+      minute: '2-digit',
+      hour12: format === '12h',
+    });
+    dateTimeFormatCache.set(key, dtFormat);
+  }
+  return dtFormat.format(new Date(ms));
+}
+
+/**
+ * Formats a timestamp (in seconds or milliseconds) into a localized date-and-time string.
+ */
+export function formatDateTime(timestamp: number, timezone: string = 'local', format: '12h' | '24h' = '24h'): string {
+  const ms = timestamp > 100_000_000_000 ? timestamp : timestamp * 1000;
+  const key = `datetime_${timezone}_${format}`;
+  let dtFormat = dateTimeFormatCache.get(key);
+  if (!dtFormat) {
+    dtFormat = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone === 'local' ? undefined : timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: format === '12h' ? 'numeric' : '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: format === '12h',
+    });
+    dateTimeFormatCache.set(key, dtFormat);
+  }
+  return dtFormat.format(new Date(ms));
+}
+
+/**
+ * Converts a 24-hour hour (0..23) into 12-hour components (1..12 and 'AM' | 'PM').
+ */
+export function to12Hour(hour24: number): { hour12: number; period: 'AM' | 'PM' } {
+  const clamped = Math.max(0, Math.min(23, Math.floor(hour24)));
+  const period: 'AM' | 'PM' = clamped >= 12 ? 'PM' : 'AM';
+  const hour12 = clamped % 12 === 0 ? 12 : clamped % 12;
+  return { hour12, period };
+}
+
+/**
+ * Converts a 12-hour hour (1..12) and period ('AM' | 'PM') into 24-hour hour (0..23).
+ */
+export function to24Hour(hour12: number, period: 'AM' | 'PM'): number {
+  const h = Math.max(1, Math.min(12, Math.floor(hour12)));
+  if (period === 'AM') {
+    return h === 12 ? 0 : h;
+  }
+  return h === 12 ? 12 : h + 12;
 }
 
 /**

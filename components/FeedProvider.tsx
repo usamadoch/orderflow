@@ -1952,13 +1952,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (candles.length === 0) return null;
 
       const latestTimeMs = candles[candles.length - 1].time * 1000;
+      const timezone = useChartStore.getState().globalTimezone;
       const ranges = getHistoricalSessionRanges(
         latestTimeMs,
         panel.historicalSessionProfileCount,
         panel.historicalSessionProfileStartHour,
         panel.historicalSessionProfileStartMin,
         panel.historicalSessionProfileEndHour,
-        panel.historicalSessionProfileEndMin
+        panel.historicalSessionProfileEndMin,
+        timezone
       );
 
       if (ranges.length === 0) return null;
@@ -2791,6 +2793,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           panel.historicalSessionProfileStartMin,
           panel.historicalSessionProfileEndHour,
           panel.historicalSessionProfileEndMin,
+          state.globalTimezone
         );
         for (const sr of sessionRanges) {
           ranges.push({

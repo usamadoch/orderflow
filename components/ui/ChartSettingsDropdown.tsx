@@ -4,7 +4,24 @@ import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Layers, Zap, X } from 'lucide-react';
 import { useChartStore, PanelId, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource, ExhaustionSide, AbsorptionSide, SessionId, CvdMode, CvdResetMode, CvdScaleMode, IndicatorSettingsSection, SettingsFocusSection, VolumeBarsColorMode, VolumeBarsInputData, VolumeBarsFilterMode, StatsIndicatorItem } from '../../lib/store/chart';
 import { getMinimumFineProfileResolutionTicks } from '../../lib/config/markets';
+import { formatDateTime } from '../../lib/utils/format';
 import { BubblesDocsModal } from './BubblesDocsModal';
+import { TimeInput } from './TimeInput';
+
+const TIMEZONE_OPTIONS = [
+  { value: 'local', label: 'Local (PC)' },
+  { value: 'UTC', label: 'UTC' },
+  { value: 'America/New_York', label: 'New York (EST/EDT)' },
+  { value: 'Europe/London', label: 'London (GMT/BST)' },
+  { value: 'America/Chicago', label: 'Chicago (CST/CDT)' },
+  { value: 'America/Los_Angeles', label: 'Los Angeles (PST/PDT)' },
+  { value: 'Asia/Tokyo', label: 'Tokyo (JST)' },
+  { value: 'Asia/Hong_Kong', label: 'Hong Kong (HKT)' },
+  { value: 'Asia/Dubai', label: 'Dubai (GST)' },
+  { value: 'Asia/Karachi', label: 'Pakistan (PKT)' },
+  { value: 'Europe/Berlin', label: 'Frankfurt / Berlin (CET/CEST)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEST/AEDT)' },
+];
 
 const SETTINGS_WIDTH = 544;
 const SETTINGS_MIN_HEIGHT = 350;
@@ -181,6 +198,7 @@ export function ChartSettingsDropdown({
   const setGlobalTimeFormat = useChartStore(s => s.setGlobalTimeFormat);
   const globalTimezone = useChartStore(s => s.globalTimezone);
   const globalTimeFormat = useChartStore(s => s.globalTimeFormat);
+  const timezoneLabel = TIMEZONE_OPTIONS.find(tz => tz.value === globalTimezone)?.label ?? (globalTimezone === 'local' ? 'Local (PC)' : globalTimezone);
 
   const setHistoricalSessionProfileEnabled = useChartStore(s => s.setHistoricalSessionProfileEnabled);
   const setHistoricalSessionProfileTime = useChartStore(s => s.setHistoricalSessionProfileTime);
@@ -453,6 +471,11 @@ export function ChartSettingsDropdown({
       </div>
 
       <div className="space-y-6 pt-2">
+        <div className="flex items-center justify-between text-[10px] font-mono bg-[#181818] px-3 py-1.5 rounded-md border border-[#262626]">
+          <span className="text-text-dim/80">Zone: <strong className="text-accent">{timezoneLabel}</strong></span>
+          <span className="text-text-dim/80">Format: <strong className="text-accent">{globalTimeFormat}</strong></span>
+        </div>
+
         {(['tokyo', 'london', 'newYork'] as SessionId[]).map((sid) => {
           const session = panel.sessions[sid];
           const label = sid.toUpperCase().replace('YORK', ' YORK');
@@ -490,53 +513,26 @@ export function ChartSettingsDropdown({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
-                  <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time</label>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      value={session.startHour}
-                      onChange={(e) => setSessionTime(panelId, sid, 'startHour', Number(e.target.value))}
-                      className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
-                      min="0" max="23" step="1"
-                    />
-                    <span className="text-text-dim/40">:</span>
-                    <select
-                      value={session.startMin}
-                      onChange={(e) => setSessionTime(panelId, sid, 'startMin', Number(e.target.value))}
-                      className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
-                    >
-                      <option value="0">00</option>
-                      <option value="15">15</option>
-                      <option value="30">30</option>
-                      <option value="45">45</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
-                  <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time</label>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      value={session.endHour}
-                      onChange={(e) => setSessionTime(panelId, sid, 'endHour', Number(e.target.value))}
-                      className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
-                      min="0" max="23" step="1"
-                    />
-                    <span className="text-text-dim/40">:</span>
-                    <select
-                      value={session.endMin}
-                      onChange={(e) => setSessionTime(panelId, sid, 'endMin', Number(e.target.value))}
-                      className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
-                    >
-                      <option value="0">00</option>
-                      <option value="15">15</option>
-                      <option value="30">30</option>
-                      <option value="45">45</option>
-                    </select>
-                  </div>
-                </div>
+                <TimeInput
+                  label="Start Time"
+                  hour={session.startHour}
+                  minute={session.startMin}
+                  timeFormat={globalTimeFormat}
+                  onChange={(h, m) => {
+                    setSessionTime(panelId, sid, 'startHour', h);
+                    setSessionTime(panelId, sid, 'startMin', m);
+                  }}
+                />
+                <TimeInput
+                  label="End Time"
+                  hour={session.endHour}
+                  minute={session.endMin}
+                  timeFormat={globalTimeFormat}
+                  onChange={(h, m) => {
+                    setSessionTime(panelId, sid, 'endHour', h);
+                    setSessionTime(panelId, sid, 'endMin', m);
+                  }}
+                />
               </div>
             </div>
           );
@@ -1330,64 +1326,32 @@ export function ChartSettingsDropdown({
 
       {panel.historicalSessionProfileEnabled && (
         <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">Start Time</label>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  value={panel.historicalSessionProfileStartHour}
-                  onChange={(e) => {
-                    let val = Number(e.target.value);
-                    if (val < 0) val = 23;
-                    if (val > 23) val = 0;
-                    setHistoricalSessionProfileTime(panelId, 'startHour', val);
-                  }}
-                  className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
-                  min="0" max="23" step="1"
-                />
-                <span className="text-text-dim/40">:</span>
-                <select
-                  value={panel.historicalSessionProfileStartMin}
-                  onChange={(e) => setHistoricalSessionProfileTime(panelId, 'startMin', Number(e.target.value))}
-                  className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
-                >
-                  <option value="0">00</option>
-                  <option value="15">15</option>
-                  <option value="30">30</option>
-                  <option value="45">45</option>
-                </select>
-              </div>
-            </div>
+          <div className="flex items-center justify-between text-[10px] font-mono bg-[#181818] px-3 py-1.5 rounded-md border border-[#262626]">
+            <span className="text-text-dim/80">Zone: <strong className="text-accent">{timezoneLabel}</strong></span>
+            <span className="text-text-dim/80">Format: <strong className="text-accent">{globalTimeFormat}</strong></span>
+          </div>
 
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[9px] font-bold text-text-dim/60 uppercase tracking-wide">End Time</label>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  value={panel.historicalSessionProfileEndHour}
-                  onChange={(e) => {
-                    let val = Number(e.target.value);
-                    if (val < 0) val = 23;
-                    if (val > 23) val = 0;
-                    setHistoricalSessionProfileTime(panelId, 'endHour', val);
-                  }}
-                  className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1.5 py-0.5 text-center text-[12px] font-bold text-main"
-                  min="0" max="23" step="1"
-                />
-                <span className="text-text-dim/40">:</span>
-                <select
-                  value={panel.historicalSessionProfileEndMin}
-                  onChange={(e) => setHistoricalSessionProfileTime(panelId, 'endMin', Number(e.target.value))}
-                  className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-1 py-0.5 text-center text-[12px] font-bold text-main appearance-none cursor-pointer"
-                >
-                  <option value="0">00</option>
-                  <option value="15">15</option>
-                  <option value="30">30</option>
-                  <option value="45">45</option>
-                </select>
-              </div>
-            </div>
+          <div className="grid grid-cols-2 gap-2">
+            <TimeInput
+              label="Start Time"
+              hour={panel.historicalSessionProfileStartHour}
+              minute={panel.historicalSessionProfileStartMin}
+              timeFormat={globalTimeFormat}
+              onChange={(h, m) => {
+                setHistoricalSessionProfileTime(panelId, 'startHour', h);
+                setHistoricalSessionProfileTime(panelId, 'startMin', m);
+              }}
+            />
+            <TimeInput
+              label="End Time"
+              hour={panel.historicalSessionProfileEndHour}
+              minute={panel.historicalSessionProfileEndMin}
+              timeFormat={globalTimeFormat}
+              onChange={(h, m) => {
+                setHistoricalSessionProfileTime(panelId, 'endHour', h);
+                setHistoricalSessionProfileTime(panelId, 'endMin', m);
+              }}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
@@ -1838,6 +1802,9 @@ export function ChartSettingsDropdown({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Global Time</div>
+                    <span className="text-[10px] font-mono font-bold text-accent">
+                      {formatDateTime(Date.now(), globalTimezone, globalTimeFormat)}
+                    </span>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-2">
@@ -1848,13 +1815,9 @@ export function ChartSettingsDropdown({
                         onChange={(e) => setGlobalTimezone(e.target.value)}
                         className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
                       >
-                        <option value="local">Local (PC)</option>
-                        <option value="UTC">UTC</option>
-                        <option value="America/New_York">New York</option>
-                        <option value="Europe/London">London</option>
-                        <option value="America/Chicago">Chicago</option>
-                        <option value="America/Los_Angeles">Los Angeles</option>
-                        <option value="Asia/Karachi">Pakistan</option>
+                        {TIMEZONE_OPTIONS.map((tz) => (
+                          <option key={tz.value} value={tz.value}>{tz.label}</option>
+                        ))}
                       </select>
                     </div>
                     <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">

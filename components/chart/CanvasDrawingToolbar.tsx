@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lock, Settings, Unlock, X, Check } from 'lucide-react';
+import { Lock, Settings, Unlock, X } from 'lucide-react';
 import type { DrawnLine, DrawingStrokeWidth, PanelId } from '@/lib/store/chart';
 import { useChartStore } from '@/lib/store/chart';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
@@ -177,70 +177,6 @@ export function CustomProfileToolbar({
       >
         <X size={15} strokeWidth={2.5} />
       </button>
-    </div>
-  );
-}
-
-interface MarketOrderConfirmRowProps {
-  controls: { top: number; left: number };
-  direction: 'buy' | 'sell';
-  slPrice: number;
-  onConfirm: () => void;
-  onCancel: () => void;
-  loading?: boolean;
-}
-
-export function MarketOrderConfirmRow({
-  controls,
-  direction,
-  slPrice,
-  onConfirm,
-  onCancel,
-  loading
-}: MarketOrderConfirmRowProps) {
-  const isBuy = direction === 'buy';
-  const color = isBuy ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
-
-  return (
-    <div
-      className="popup-contrast absolute flex flex-col gap-1 rounded border border-[#333] bg-[#1F1F1F]/95 p-2 shadow-xl backdrop-blur-sm z-30 min-w-[140px]"
-      style={{
-        top: `${controls.top}px`,
-        left: `${controls.left}px`,
-        transform: 'translateY(-50%) translateX(16px)',
-      }}
-      onMouseDown={(event) => event.stopPropagation()}
-    >
-      <div className="flex items-center justify-between gap-3 pb-1.5 mb-0.5 border-b border-[#333]">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[#787B86]">SL MARKET</span>
-        <span className="text-[11px] font-black uppercase text-right" style={{ color }}>
-          {isBuy ? 'LONG' : 'SHORT'}
-        </span>
-      </div>
-      <div className="flex items-center justify-between pb-2">
-        <span className="text-[10px] font-bold text-gray-400">Stop Price</span>
-        <span className="text-[11px] font-mono text-gray-200">{slPrice.toFixed(2)}</span>
-      </div>
-      <div className="flex items-center gap-1 pt-1 border-t border-[#333]">
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={loading}
-          className="flex-1 h-7 flex items-center justify-center gap-1 text-[11px] font-bold rounded bg-[#2962FF] text-white hover:bg-[#1E4BCC] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Check size={14} strokeWidth={2.5} />
-          {loading ? 'SENDING...' : 'CONFIRM'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={loading}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-gray-400 transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Cancel order"
-        >
-          <X size={15} strokeWidth={2.5} />
-        </button>
-      </div>
     </div>
   );
 }

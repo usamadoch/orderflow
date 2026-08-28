@@ -14,26 +14,37 @@ export interface SessionOccurrence {
 export function getSessionOccurrences(
   session: SessionConfig,
   candles: Candle[],
-  visibleRange: { firstIndex: number; lastIndex: number }
+  visibleRange: { firstIndex: number; lastIndex: number },
+  timezone: string = 'local'
 ): SessionOccurrence[] {
   const occurrences: SessionOccurrence[] = [];
-  let currentBlock: SessionOccurrence | null = null;
+  if (!session || !session.enabled || !candles || candles.length === 0) {
+    return occurrences;
+  }
 
   // We iterate the candles within the visible range (clamped to available data)
   const startIdx = Math.max(0, Math.floor(visibleRange.firstIndex));
   const endIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.lastIndex));
 
+  if (startIdx > endIdx) {
+    return occurrences;
+  }
+
+  let currentBlock: SessionOccurrence | null = null;
+  const sessionStartTimeInMins = session.startHour * 60 + session.startMin;
+  const sessionEndTimeInMins = session.endHour * 60 + session.endMin;
+  const crossesMidnight = sessionEndTimeInMins <= sessionStartTimeInMins;
+
   for (let i = startIdx; i <= endIdx; i++) {
     const candle = candles[i];
-    // Sessions are configured in UTC. Their schedule should not shift when the display timezone changes.
-    const { hour, minute } = getZonedTimeParts(candle.time * 1000, 'UTC');
+    const { hour, minute } = getZonedTimeParts(candle.time * 1000, timezone);
 
     const candleTimeInMins = hour * 60 + minute;
-    const sessionStartTimeInMins = session.startHour * 60 + session.startMin;
-    const sessionEndTimeInMins = session.endHour * 60 + session.endMin;
 
-    // Handle normal session (does not wrap midnight - as per spec Task 1)
-    const isInside = candleTimeInMins >= sessionStartTimeInMins && candleTimeInMins < sessionEndTimeInMins;
+    // Evaluate session membership in the target timezone
+    const isInside = !crossesMidnight
+      ? candleTimeInMins >= sessionStartTimeInMins && candleTimeInMins < sessionEndTimeInMins
+      : candleTimeInMins >= sessionStartTimeInMins || candleTimeInMins < sessionEndTimeInMins;
 
     if (isInside) {
       if (!currentBlock) {

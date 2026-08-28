@@ -15,7 +15,8 @@ export function drawSessions(
   canvasHeight: number,
   timeAxisHeight: number,
   sessions: { tokyo: SessionConfig; london: SessionConfig; newYork: SessionConfig },
-  sessionsEnabled: boolean
+  sessionsEnabled: boolean,
+  timezone: string = 'local'
 ) {
   if (!sessionsEnabled) return;
 
@@ -28,7 +29,7 @@ export function drawSessions(
   for (const { config, label } of sessionConfigs) {
     if (!config.enabled) continue;
 
-    const occurrences = getSessionOccurrences(config, candles, visibleRange);
+    const occurrences = getSessionOccurrences(config, candles, visibleRange, timezone);
 
     for (const block of occurrences) {
       const x1 = indexToX(block.firstIndex) - barWidth / 2;

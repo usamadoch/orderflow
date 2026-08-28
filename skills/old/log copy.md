@@ -1,11 +1,129 @@
 # OrderFlow Chart - Change Log
+
 # OrderFlow Chart - Change Log
 
+## [2026-08-22] - Refactor: Extract Inline Client Types
 
+- **What changed**:
+  - Extracted inline client types from `components/` and `lib/` to standalone files in `types/`.
+  - Created new centralized type files: `types/chart.ts`, `types/cvd.ts`, `types/debug.ts`, `types/feed.ts`, `types/storage.ts`, and `types/volumeProfile.ts`.
+  - Moved specific types (e.g., `DrawCvdOptions`, `IndicatorLabelConfig`, `BubbleSettings`) into their respective domain-specific type files.
+  - Updated existing type files (`types/bubble.ts`, `types/trading.ts`, `types/footprint.ts`, `types/absorption.ts`) with previously inline types.
+- **Why it changed**:
+  - To clean up the client codebase, decouple type definitions from runtime implementations, reduce circular dependencies, and establish a single source of truth for types.
+- **Impact summary**:
+  - The client-side now compiles cleanly with `tsc --noEmit`. The `types/` directory structure strictly mirrors the domain boundaries, improving code organization and maintainability.
 
+## [2026-08-23] - Feature/Fixes: Multi-Panel Sync, Timezone, CVD Scaling
 
+- **What changed**:
+  - Implemented cross-panel synchronization for drawing tools (lines, custom profile) toggled via `drawingsSyncEnabled`.
+  - Replaced the Custom Volume Profile tool icon in `DrawingFavoritesToolbar.tsx` with an `AlignLeft` icon to differentiate it from the Box tool.
+  - Relocated the Timezone and Time Format settings from the Session settings block to a new "Global Time" section in the Chart settings tab.
+  - Modified `lib/utils/sessions.ts` to evaluate session configurations in UTC exclusively, ensuring session highlighting on the chart remains visually locked to the configured UTC trading hours regardless of the user's chosen display timezone.
+  - Fixed a scaling bug in `drawCvd.ts` (`getCvdScale`) that anchored the scale boundaries to 0, which previously caused continuously compounding CVD indicators to appear completely flat/broken when their values drifted far from zero.
+- **Why it changed**:
+  - Addressed multi-panel workflow gaps (drawings not syncing).
+  - Clarified confusing iconography.
+  - Ensured display timezone preference didn't inadvertently alter the actual trading schedule highlighting.
+  - Resolved the "broken" appearance of the CVD indicator without destroying its mathematically correct continuous nature.
+- **Impact summary**:
+  - Improved multi-panel usability, accurate session highlighting, and functional CVD auto-scaling.
+
+## [2026-08-16] - Feature/UI: Bubble Customization and Docs
+
+- **What changed**:
+  - Replaced semantic bubble colors with custom hex values `#0D5B0B` (Buy) and `#4A1E6F` (Sell) in `drawBubbles.ts`.
+  - Updated default bubble radius limits in `lib/store/chart.ts` to `bubbleMinRadius: 2` and `bubbleMaxRadius: 8`.
+  - Created `BubblesDocsModal.tsx` containing a detailed tutorial/reference on bubble sizing and opacity.
+  - Added a "DOCS" link to the Bubbles section of `ChartSettingsDropdown.tsx` to toggle the new modal.
+- **Why it changed**:
+  - The user requested specific color replacements for bubbles and desired smaller default sizes (2px - 8px) with a dedicated pop-up modal to explain the relationship between volume, opacity, and bubble radius for future reference.
+- **Impact summary**:
+  - The bubbles feature is visually updated and easier to understand thanks to the integrated documentation modal accessible directly from the settings panel.
+
+## [2026-08-15] - Fix: Pagination Infinite Fetch Loop on Scroll
+
+- **What changed**:
+  - Updated `alignFootprintRange` and `alignFineProfileRange` in `FeedProvider.tsx` to align requested ranges to fixed 2-hour chunk boundaries (`FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS` / `FINE_PROFILE_RESTORE_CHUNK_SECONDS`) instead of 1-minute bounds.
+  - Updated `skills/map.md` to reflect the fixed chunk boundaries change.
+- **Why it changed**:
+  - The previous 1-minute snapping caused the `requestedRange` (and thus the `restoreKey`) to change on nearly every scroll frame. This repeatedly triggered chunked network requests for slightly-shifted 2-hour windows, bypassing the cache deduplication and spamming infinite overlapping GET requests.
+- **Impact summary**:
+  - The footprint and volume profile restores now correctly snap to absolute 2-hour time boundaries. Scrolling back smoothly fires one single GET request per 2-hour window and properly skips network fetching if the data is already cached.
+
+## [2026-08-15] - UI: Remove Floating Footprint Delta Numbers
+
+- **What changed**:
+  - Removed the `drawDelta` function from `lib/utils/canvas.ts`.
+  - Removed the call to `drawDelta` inside `drawFootprint.ts` that rendered floating green/red delta numbers at the bottom of the chart canvas.
+  - Updated `skills/map.md` to reflect these responsibility changes.
+- **Why it changed**:
+  - The floating delta numbers above the time axis were redundant and visually confusing now that the dedicated Stats Indicator Dashboard provides a clear, color-coded "Delta" row for every candle.
+- **Impact summary**:
+  - The chart canvas is cleaner at the bottom.
+  - Delta is now exclusively read from the Stats grid, improving visual consistency and reducing clutter above the time axis.
+
+## [2026-08-15] - Fix: Candlestick Body Width
+
+- **What changed**:
+  - Increased the body width multiplier in `drawCandles.ts` from 0.6 to 0.82 of the available bar width.
+- **Why it changed**:
+  - The Japanese candlesticks had too much empty gap between them, making them look thin and disconnected. The user wanted a tighter, more traditional TradingView-style spacing.
+- **Impact summary**:
+  - Candlesticks now render significantly wider, filling more of the available column width and making the chart visually cleaner and easier to read.
+
+## [2026-08-15] - Redesign: Stats Indicator Dashboard
+
+- **What changed**:
+  - Redesigned `drawStatsGrid.ts` to render the Stats indicator as a compact row of large, equal-sized colored cells instead of plain text.
+  - Implemented intensity-based background coloring for Delta, Volume, and CVD cells using the existing order-flow color palette.
+  - Reused the normalization logic from `drawFootprint.ts` (`percentile`, `getSoftScale`) to scale color intensity dynamically based on the current visible range rather than hardcoded thresholds.
+  - Passed `currentBarWidth` from `ChartCanvas.tsx` to `drawStatsGrid.ts` to ensure cells map exactly to the candlestick horizontal grid.
+  - Updated typography and spacing to improve glanceability.
+  - Updated `skills/map.md` to reflect that `drawStatsGrid.ts` acts as the stats canvas overlay.
+- **Why it changed**:
+  - The previous Stats indicator was plain text and visually weak. The user requested a professional, dashboard-like array of colored cells for faster visual scanning of market conditions (e.g., strong vs. weak Delta, positive vs. negative CVD).
+- **Impact summary**:
+  - Traders can now immediately assess volume magnitude and buying/selling dominance per candle through color intensity without needing to read individual numbers.
+
+## [2026-08-14] - Fix: Large Custom Volume Profile Cache Eviction (Revised)
+
+- **What changed**:
+  - Implemented a "protected ranges" mechanism in `lib/volumeProfile/profileCache.ts`. The `VolumeProfileBaseCache` now accepts registered time windows that are strictly immune to normal background size-based eviction sweeps (`cleanup` and `deleteRowsBefore`).
+  - Updated `lib/volumeProfile/profileEngine.ts` to own the protected ranges state. `RawTradeVolumeProfileEngine` now intercepts `setProtectedRanges`, stores them, and automatically re-applies them whenever its internal base cache instance is swapped (`setBaseCache`), fixing a critical synchronization bug.
+  - Added a reactive `useEffect` to `components/FeedProvider.tsx` that monitors Custom/Default Volume Profile bounds and calls `volumeProfileEngineRef.current.setProtectedRanges(...)`.
+- **Why it changed**:
+  - A bug caused large custom volume profiles to sporadically disappear. The custom profile relies on the global shared cache, which limits data to a rolling 12-hour window. The initial fix failed because the UI registered ranges on a temporary dummy cache just before the engine asynchronously swapped it out for the real shared cache.
+- **Impact summary**:
+  - Custom Volume Profiles can now span arbitrary lengths of time without being destroyed by the rolling cache limits.
+  - The engine robustly maintains UI data constraints regardless of background cache lifecycle events.
+
+## [2026-08-14] - Audit: Large Custom Volume Profile Bug
+
+- **What changed**:
+  - Created `artifacts/large_profile_bug_diagnosis.md` detailing the root cause of the disappearing volume profile bug.
+  - Updated `skills/map.md` to track the new artifact.
+- **Why it changed**:
+  - The user requested an investigation into why large custom volume profiles would initially render correctly, then disappear, and temporarily reappear upon dragging. The root cause was diagnosed as a conflict between the UI's static data requirements and the shared 12-hour rolling cache eviction policy.
+- **Impact summary**:
+  - A definitive root cause has been established and documented without making any premature code changes. Recommended architectural fixes (decoupling caches or pinning active ranges) are presented in the artifact.
+
+## [2026-08-13] - Feature: Stats Indicator
+
+- **What changed**:
+  - Added `statsIndicatorEnabled`, `statsIndicatorCount`, and `statsIndicatorItems` to `lib/store/chart.ts` with default state and persistence mapping.
+  - Added Stats toggle to `IndicatorLabels.tsx`.
+  - Added Stats settings tab to `ChartSettingsDropdown.tsx` allowing users to choose up to 4 compact stats (Volume, Delta, CVD, Liquidity) and their order.
+  - Created `StatsIndicator.tsx` to render a floating overlay of the selected stats using existing chart engine and liquidity history calculations.
+  - Integrated `StatsIndicator` into `ChartPanel.tsx`.
+- **Why it changed**:
+  - The user requested a compact, customizable stats box at the bottom of the chart to display real-time metrics without duplicating existing data calculations.
+- **Impact summary**:
+  - Users can now track key aggregate metrics (Volume, Delta, CVD, Liquidity) globally across the visible chart range in a customizable floating overlay.
 
 ## [2026-08-10] - Feature: Panel-Specific Refresh Buttons
+
 - **What changed**:
   - Added a `refreshKey` property to each panel's `PanelRuntimeState` in `lib/store/chartRuntime.ts`, initialized to `0`.
   - Added a new `triggerPanelRefresh` action in `useChartRuntimeStore` to increment a specific panel's `refreshKey`.
@@ -33,8 +151,8 @@
   - The collector is now purely a write-only daemon with no risk of deleting its own data.
   - The user has direct visibility into storage consumption and full control over retention through the UI.
 
-
 ## [2026-08-09] - Fix: Collector Reconnect Discard and Size-Based Retention
+
 - **What changed**:
   - Replaced the fixed oldest-hour prune with a size-based rolling retention in `btcusdtCollector.mjs` (defaulting to 500MB) that runs every 5 minutes. Kept `pruneOldestDataHour()` as a safety net on write quota errors.
   - Stopped discarding all unflushed pre-gap slices on WebSocket reconnect. The collector now accurately tracks the specific `taintedRangesBySource` and only discards slices that fall strictly inside the disconnected window, persisting everything else normally.
@@ -46,6 +164,7 @@
   - The database safely accumulates data until it hits the configured 500MB ceiling, after which it smoothly prunes 50MB chunks.
 
 ## [2026-08-09] - Hotfix: Collector Status Bug and Spot WebSocket AWS Block
+
 - **What changed**:
   - Fixed a `ReferenceError: status is not defined` crash in `btcusdtCollector.mjs` caused by the previous logging compression.
   - Swapped the Binance Spot WebSocket URL from `stream.binance.com:9443` to `data-stream.binance.vision`.
@@ -57,6 +176,7 @@
   - The status logging is now clean and crash-free.
 
 ## [2026-08-15] - Architecture: Unlimited Historical Retention & On-Demand Pagination
+
 - **What changed**:
   - Removed MongoDB TTL indexes (`expireAfterSeconds`) on all time-series collections (`marketStorageMongo.ts`) and disabled automatic libSQL background deletion (`cleanupJob.ts`).
   - Removed the artificial 4-hour scrolling limit clamp in `FeedProvider.tsx` (`getFootprintRestorePlan`) to allow continuous backward pagination.
@@ -69,17 +189,19 @@
   - `npx tsc --noEmit` passes cleanly.
 
 ## [2026-08-09] - Fix: Collector Erroneously Deleting Data on Transient Errors
+
 - **What changed**:
   - Updated the error handling in `writeClosedSlice` inside `btcusdtCollector.mjs` to check if a write error is actually a quota/size error (e.g., checking for keywords like "quota", "limit", "size") before invoking `pruneOldestDataHour()`.
   - Non-quota errors (such as transient network drops or duplicate key errors) now bypass pruning and are simply re-thrown, allowing the collector to safely retry the slice write on its next interval without losing any historical data.
 - **Why it changed**:
-  - The previous fix to prevent data loss (which removed the size manager) mistakenly assumed *any* write error was an Atlas quota error (512MB limit hit).
+  - The previous fix to prevent data loss (which removed the size manager) mistakenly assumed _any_ write error was an Atlas quota error (512MB limit hit).
   - When frequent transient network drops or duplicate key errors occurred on the AWS EC2 instance, the catch block blindly pruned 1 hour of data. Because the pruning cooldown is only 10 minutes, periodic transient errors caused the collector to constantly eat its own historical data, leaving the user with only ~1.5 hours of footprint data despite running for 24 hours.
 - **Impact summary**:
   - The collector will no longer silently delete hours of historical data during normal network hiccups.
   - Data accumulation will now properly continue up to the true Atlas limit without being derailed by transient connection errors.
-  
+
 ## [2026-08-08] - Fix: Collector Only Retaining 4 Hours of Data
+
 - **What changed**:
   - Removed the entire "Size Manager" pruning block from `logStatus()` in `btcusdtCollector.mjs`. This code ran every 30 seconds, checked `dbStats`, and deleted the oldest 1 hour of data if the metric exceeded 450MB.
   - Changed `DEFAULT_RETENTION_DAYS` from `7` to `90` so the MongoDB time-series TTL does not prematurely delete data â€” the 512MB Atlas limit is the real constraint, not a time window.
@@ -96,8 +218,8 @@
   - The collector will now accumulate data for days/weeks until the Atlas 512MB limit is actually reached. Only then will a write failure trigger a single oldest-hour prune with retry. The status log now reports actual database sizes for monitoring.
   - `.env.local` updated to `MARKET_DATA_RETENTION_DAYS=90` for the web app side.
 
-
 ## [2026-08-07] - Feature: Native Trade Count for Volume Bars
+
 - **What changed**:
   - Added `trade_count` integer column to the `candles` SQLite schema (and the underlying MongoDB schema/adapter).
   - Updated the Binance REST API history and WebSocket live streams (`@kline`) to parse and populate the native trade count field `candle.tradeCount`.
@@ -111,6 +233,7 @@
   - `npx tsc --noEmit` passes cleanly.
 
 ## [2026-08-06] - Artifact: Collector Backfill Analysis
+
 - **What changed**:
   - Created `artifacts/collector_backfill_analysis.md` detailing the current live-only collection state and proposing a REST API pagination approach to backfill 48 hours of historical trades.
 - **Why it changed**:
@@ -119,6 +242,7 @@
   - An implementation plan is now available for review before modifying the Node.js collector script.
 
 ## [2026-08-06] - Feature: Dynamic Size Capping & Smart Pagination
+
 - **What changed**:
   - Implemented dynamic database size capping (~450MB) in `btcusdtCollector.mjs` to automatically prune the oldest data, maximizing historical capacity regardless of a hard time limit.
   - Added an `until` parameter to `GetStoredCandlesInput` and `getCandles` in the `storageAdapter` and `marketStorageMongo` to support backward paginated fetching.
@@ -132,6 +256,7 @@
   - `npx tsc --noEmit` passes cleanly.
 
 ## [2026-08-17] - Fix: Historical Session Volume Profile (HSVP) Disappearing
+
 - **What changed**:
   - Identified that the HSVP fine rows were correctly fetching and hydrating but were immediately being evicted by the 45-second `cleanup()` interval in the `VolumeProfileBaseCache`.
   - Added the calculated `sessionRanges` from `getHistoricalSessionRanges` to the `protectedRanges` array in `FeedProvider.tsx` (`volumeProfileEngineRef.current.setProtectedRanges`).
@@ -142,8 +267,10 @@
   - Historical Session Volume Profiles now persist permanently on the canvas and survive background cache cleanup sweeps.
   - The chart gracefully skips fetching over the network if the data is already held in the protected memory range.
 
--   * * A u g u s t   2 0 2 6 * * :   A d d e d   H i s t o r i c a l   S e s s i o n   V o l u m e   P r o f i l e   ( H S V P ) .   U s e r s   c a n   d e f i n e   m a r k e t   s e s s i o n s   b y   l o c a l   t i m e z o n e ,   c o n f i g u r e   s t a r t / e n d   t i m e s ,   a n d   r e n d e r   h i s t o r i c a l   s e s s i o n   v o l u m e   p r o f i l e s   u s i n g   t h e   c a n o n i c a l   f o o t p r i n t   b a s e   s l i c e .
+- - - A u g u s t 2 0 2 6 \* \* : A d d e d H i s t o r i c a l S e s s i o n V o l u m e P r o f i l e ( H S V P ) . U s e r s c a n d e f i n e m a r k e t s e s s i o n s b y l o c a l t i m e z o n e , c o n f i g u r e s t a r t / e n d t i m e s , a n d r e n d e r h i s t o r i c a l s e s s i o n v o l u m e p r o f i l e s u s i n g t h e c a n o n i c a l f o o t p r i n t b a s e s l i c e .
+
 ## [2026-06-13] - Feature: Trading Risk Gates and Live Lock
+
 - **What changed**:
   - Added server-only trading risk config and safe `/api/trading/risk-status` reporting for live lock state, kill switch, max order quantity/notional, daily order count, and non-persistent in-memory counters.
   - Enforced backend risk checks before order placement, including kill switch, live-mode blocks, required confirmation, futures rejection, quantity/notional limits, and daily order count limits; successful placements update the server-side daily counter.
@@ -161,6 +288,7 @@
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-13] - Feature: Drag Modify Order Lines
+
 - **What changed**:
   - Added drag hit-testing for active open spot Limit order lines on the matching chart panel.
   - Added preview rendering for dragged order prices while keeping the original order line visible.
@@ -175,6 +303,7 @@
   - No new order types, futures modify behavior, drawing tools, indicators, feeds, settings, collectors, or user-stream logic were added.
 
 ## [2026-06-13] - Feature: Chart Order and Position Lines
+
 - **What changed**:
   - Added panel-scoped trading overlays to the main chart canvas for open limit order lines, real position entry lines, and lightweight recent fill markers.
   - Filtered chart trading overlays by the active panel symbol; open order and fill overlays are limited to spot panels because the current Binance order path is spot-only.
@@ -190,6 +319,7 @@
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-13] - Feature: Binance Testnet Place/Cancel Orders
+
 - **What changed**:
   - Added `/api/trading/orders` with POST placement and DELETE cancellation for validated Binance testnet spot orders, including symbol/side/type/quantity/limit-price/cancel-id checks, credential checks, non-testnet/live execution blocks, and safe normalized `OrderResult` responses.
   - Extended the server-only signed Binance REST client with signed POST/DELETE support and implemented spot Market/Limit placement plus cancel in the Binance adapter.
@@ -204,6 +334,7 @@
   - Chart rendering, indicators, market data feeds, footprint/profile logic, drawing tools, and settings remain unchanged.
 
 ## [2026-06-13] - UI: Basic Order Ticket
+
 - **What changed**:
   - Added a compact panel-scoped order ticket overlay with Buy/Sell side selection, Market/Limit type selection, quantity input, limit price input, market estimated price from the latest chart candle, selected symbol/mode/market display, reduce-only toggle when the active panel is futures, and testnet/live/paper badge display.
   - Added frontend-only validation for missing symbol/mode, non-positive quantity, non-positive limit price, and blocked live trading.
@@ -218,6 +349,7 @@
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-13] - Feature: Binance Testnet User Stream Sync
+
 - **What changed**:
   - Added a server-only Binance user data stream manager that creates listenKeys, connects to the configured testnet/live user-stream WebSocket endpoint, normalizes account balance and execution report events, keeps listenKeys alive, reconnects with backoff, prevents duplicate parallel sockets, and reconciles account state through the existing REST snapshot flow after start/reconnect.
   - Added `/api/trading/stream-status` for safe stream status reporting with mode, connected/reconnecting/error state, last event time, reconnect count, listenKey session metadata, reconciliation state, and non-secret error messages.
@@ -233,6 +365,7 @@
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-13] - Feature: Binance Testnet Account Snapshot Sync
+
 - **What changed**:
   - Added a server-only signed Binance REST client with API-key headers, HMAC SHA256 signatures, timestamp/recvWindow handling, server-time offset sync, and safe error wrapping.
   - Replaced the empty Binance adapter snapshot stubs with read-only testnet account sync for balances, open orders, and selected-symbol recent fills; positions remain empty until a futures trading mode is supported.
@@ -247,6 +380,7 @@
   - Chart rendering, indicators, market feeds, footprint/profile logic, drawing tools, and settings remain unchanged.
 
 ## [2026-06-13] - Feature: Binance Trading Foundation
+
 - **What changed**:
   - Added shared generic trading models for trading modes, broker adapters, orders, positions, balances, fills, account snapshots, and safe health status payloads.
   - Added server-only Binance trading config with `binance_testnet` as the default mode, testnet/live credential presence checks, and a live-trading safety gate requiring `BINANCE_ENABLE_LIVE_TRADING=true`.
@@ -261,6 +395,7 @@
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-09] - UI: Chart Info Row Polish
+
 - **What changed**:
   - Restyled the top-left chart info row to feel more like an independent TradingView legend line with larger text, clearer pair/market/source separation, and a small connection status dot.
   - Kept the Spot/Futures/Both source buttons in the info row but made them lighter inline text controls instead of boxed header-style controls.
@@ -272,6 +407,7 @@
 ## 2026-08-06
 
 ### What Changed
+
 - Added `<OrdersPanel />` bottom pane component with "Open Orders" and "Trade History" tabs.
 - Added `<AccountBalanceWidget />` in the top `Header`.
 - Integrated `OrdersPanel` into the `page.tsx` layout spanning the bottom of the main content area.
@@ -280,11 +416,13 @@
 - Created `useTradingSync` hook to automatically fetch `refreshAccountSnapshot` on mount and poll every 10s.
 
 ### Why It Changed
+
 - Implementation of Order Management Phase 1 & 2 to match TradingView's professional UI standards.
 - Replaces disconnected prototype behavior with actual open order tracking, trade history logging, and cancellation capability directly from the frontend UI.
 - Fixed a bug where orders and balances were completely empty on load because `refreshAccountSnapshot` was never automatically invoked.
 
 ### Impact Summary
+
 - New `OrdersPanel.tsx` reads live data from Zustand store to show testnet orders and recent fills.
 - New `useTradingSync.ts` hook guarantees the frontend stays in sync with the backend.
 - New `AccountBalanceWidget.tsx` calculates available/locked margin natively.
@@ -293,6 +431,7 @@
 ---
 
 ## [2026-08-05] - UI: Order Panel Drag and Default Quantity
+
 - **What changed**:
   - Transformed `OrderTicket.tsx` into a draggable floating modal that mimics the TradingView order dialog instead of remaining absolutely positioned.
   - Added smart default quantity calculation logic in `OrderTicket.tsx` so users no longer hit the "Quantity must be greater than 0" error by default.
@@ -307,6 +446,7 @@
 ## [2026-08-06] â€” Feature: Chart Order Visualization, Virtual Positions, and SL/TP Drag Handles (Phase 1)
 
 ### What changed
+
 - **`types/trading.ts`**: Added `VirtualPosition` (client-side spot position aggregated from fills), `BracketOrder` (decoupled SL/TP model with extensibility for multi-TP and trailing stops), and `BracketDragState` (canvas drag context).
 - **`components/chart/drawTradingOverlays.ts`**: Full rewrite into a professional overlay renderer:
   - Limit order lines with buy (bullish) / sell (bearish) colour separation, quantity/status labels, and price-axis badges.
@@ -326,12 +466,14 @@
 - **`components/chart/ChartPanel.tsx`**: Added selectors and memos for `chartVirtualPositions`, `chartBracketOrders`, and `tradingBracketDrag`. Passed new props to `ChartCanvas`.
 
 ### Why it changed
+
 - Open limit orders and positions existed only in the order list. They had no professional chart representation.
 - There was no Virtual Position abstraction to bridge spot fills â†’ tradeable positions.
 - SL/TP were requested as interactive draggable chart controls following the TradingView UX model.
 - The architecture needed the decoupled `BracketOrder` model upfront to support Phase 4 (backend execution) cleanly.
 
 ### Impact summary
+
 - `npx.cmd tsc --noEmit` passes with zero errors.
 - Existing Limit order drag-modify, cancel-on-chart, fill markers, indicator layers, drawing tools, feeds, and footprint/profile logic are unchanged.
 - Virtual positions and bracket orders are currently UI-only (local store); Phase 4 will connect them to the Binance backend execution engine.
@@ -341,12 +483,15 @@
 ## [2026-08-07] â€” Fix: Lowered Aggregate Bubble Storage Thresholds
 
 ### What changed
+
 - **`.env.local`**: Lowered `COLLECTOR_AGG_BUBBLE_MIN_VOLUME_BTC` to `1`, set `COLLECTOR_AGG_BUBBLE_MIN_TRADE_COUNT` to `25`, and lowered `COLLECTOR_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC` to `0.5`.
 
 ### Why it changed
+
 - The collector script was dropping all aggregate bubble candidates because the previous thresholds (e.g. 15 BTC) were far too high for normal market conditions, resulting in an empty `aggregate_bubble_events` collection.
 
 ### Impact summary
+
 - The collector will now properly store historical aggregate bubbles meeting these realistic thresholds into the `orderflow_bubbles` database.
 - The UI chart will now be able to fetch and hydrate these historical bubbles on refresh.
 
@@ -355,12 +500,15 @@
 ## [2026-08-07] â€” Fix: Collector Index Mismatch
 
 ### What changed
+
 - **`scripts/collector/btcusdtCollector.mjs`**: Updated the `idx_aggregate_bubbles_restore` index creation to include `aggregateTradeId: 1` and `background: true`, exactly matching `aggregateBubbleStorage.ts` and `ensureIndexes.ts`.
 
 ### Why it changed
+
 - The collector crashed on startup with an `IndexKeySpecsConflict` error because the existing index created by the web app/indexer script included `aggregateTradeId: 1` in the key, but the collector script was attempting to recreate it with just `eventTime: 1`.
 
 ### Impact summary
+
 - The collector script now starts up correctly and connects to the bubbles database without index conflict errors.
 
 ---
@@ -368,52 +516,62 @@
 ## [2026-08-13] — Fix: Unclamp Future Drawing Operations
 
 ### What changed
+
 - **components/chart/useCoordinates.ts**: Removed the upper bound clamp \Math.min(candles.length - 1, ...)\ in \xToIndex\.
 - **components/chart/ChartCanvas.tsx**: Removed the same index upper bound clamps inside drag interactions (horizontal-ray, box, long/short positions, custom profiles).
 
 ### Why it changed
+
 - Drawing objects (boxes, rays, positions, custom profiles) were restricted from extending or being dragged into the empty/future area to the right of the current candle. The \xToIndex\ coordinate mapping forced any right-side interactions to snap back to the index of the last available candle.
 
 ### Impact summary
+
 - Drawing tools can now be freely drawn, dragged, and extended into the future/empty space on the chart.
 - The UI properly handles the out-of-bounds indices by linearly extrapolating time for time-based properties (like crosshair labels or drawing anchor timestamps).
+
 ---
 
 ## [2026-08-14] - Fix: Future Drawing Performance and Stability
 
 ### What changed
-- **components/chart/ChartCanvas.tsx**: 
+
+- **components/chart/ChartCanvas.tsx**:
   - Updated candleTimeAt to mathematically extrapolate future timestamps based on average candle interval.
   - Replaced unsafe candles[index]?.time accesses with candleTimeAt(index, candles) to persist future timestamps properly.
-  - Removed aggressive < candles.length bounds checks in 
-esolveIndexFromTimeOrFallback.
+  - Removed aggressive < candles.length bounds checks in
+    esolveIndexFromTimeOrFallback.
 - **components/chart/drawLines.ts & lib/utils/measurement.ts**:
   - Clamped rendering or loops so they don't iterate across empty extrapolated indices when drawing lines and measurements into the future, resolving severe UI hangs.
 
 ### Why it changed
+
 - While the previous commit allowed out-of-bounds indices in the coordinate system, the drawing state and validation layers (like esolveIndexFromTimeOrFallback) still rejected these indices because they lacked explicit timestamps, causing the drawings to silently disappear.
 - Furthermore, rendering logic for position bounds and measurement tools used un-clamped loops, leading to millions of empty iterations and freezing the application when drawn into the future.
 
 ### Impact summary
+
 - Users can confidently extend Custom Profiles, Long/Short Positions, Measurement Tools, and Rays into the empty future chart space.
 - The UI maintains a smooth 60 FPS without hanging, accurately projecting timelines without breaking TypeScript invariants or crashing React.
 
 ## [2026-08-14] - Discard: Uncommitted Massive Refactoring (Phase 1-8)
 
 ### What changed
+
 - Safely discarded all local, uncommitted changes via `git reset --hard HEAD` and `git clean -fd`.
 - Reverted the monolithic extraction attempts (`ChartOverlays.tsx`, `chart.ts` slices, etc.).
 
 ### Why it changed
+
 - The local codebase had an incomplete and massive component decomposition in progress.
 - The user requested to safely discard this recent uncommitted implementation to return to a clean, stable state (`814b957 fix(chart): complete future drawing support and resolve infinite loop`).
 
 ### Impact summary
+
 - The codebase is back to the exact state of the last pushed commit.
 - In-progress untracked files and refactoring changes were completely wiped.
 
-
 ## [2026-06-09] - UI: Chart Info Row and Compact Drawing Toolbar
+
 - **What changed**:
   - Removed the Binance/source/loading cluster from the panel header while keeping the pair selector and existing chart controls in place.
   - Added a top-left chart info row above the indicator labels showing pair, chart market type, Binance, Spot/Futures/Both source buttons, and panel-scoped loading dots.
@@ -427,6 +585,7 @@ esolveIndexFromTimeOrFallback.
   - The chart area now carries the market/source legend where users scan indicators, and the toolbar can collapse into a small draggable pill.
 
 ## [2026-06-09] - UI: TradingView Colors and Header Loading Dots
+
 - **What changed**:
   - Added shared chart bullish/bearish color constants for `#089981` and `#f23645`, plus RGB/rgba helpers and legacy semantic color normalization.
   - Updated candlesticks, footprint cells/delta, footprint thin candles, bubbles, Volume bars, price line, CVD defaults, liquidity bid/ask helpers, iceberg/absorption visuals, measurement colors, and Long/Short drawing risk/reward visuals to use the shared green/red theme.
@@ -440,6 +599,7 @@ esolveIndexFromTimeOrFallback.
   - Loading feedback is smaller and panel-specific while data fetching, restore, rendering, indicators, settings, and debug logic remain unchanged.
 
 ## [2026-06-09] - UI: Popup Control Contrast
+
 - **What changed**:
   - Added a scoped popup contrast layer that keeps popup shells on `#1F1F1F` while giving inner controls a clearer `#262626` surface.
   - Applied the contrast layer to Global Settings, indicator settings dialogs, the symbol selector modal, floating drawing/profile toolbars, and the internal debug popup.
@@ -453,6 +613,7 @@ esolveIndexFromTimeOrFallback.
   - The elevated popup style remains intact while controls have a clearer visual hierarchy.
 
 ## [2026-06-08] - UI: Consistent Dark Theme Surfaces
+
 - **What changed**:
   - Set the main app, chart panel, canvas, CVD, header/sidebar, price scale, and time scale surfaces to `#0F0F0F`.
   - Set elevated/floating UI surfaces such as settings windows, symbol selector modal, drawing toolbars, tooltips, indicator hover controls, restore badge, and debug panel surfaces to `#1F1F1F`.
@@ -467,6 +628,7 @@ esolveIndexFromTimeOrFallback.
   - Canvas grid lines should render thinner and cleaner without changing chart logic or interactions.
 
 ## [2026-06-08] - Fix: Safe Footprint Restore Window
+
 - **What changed**:
   - Kept `needsFootprintWork` intact for footprint mode, footprint-cell bubbles, CVD, footprint-dependent signals, liquidity vacuum, and browser market writes.
   - Changed stored footprint restore to derive a bounded current/visible chart window, clamp oversized footprint spans, and fetch canonical `1m/$5` rows in 2-hour chunks.
@@ -482,8 +644,8 @@ esolveIndexFromTimeOrFallback.
   - Oversized visible/current restore spans are clamped and chunked, with failures reported without breaking candle rendering.
   - `npx.cmd tsc --noEmit` passes.
 
-
 ## [2026-06-08] - Fix: Volume History After Flow Source Cleanup
+
 - **What changed**:
   - Changed the Volume renderer so `Input Data = Volume` always builds bars from visible candle history and updates the live candle bar from candle volume.
   - Kept Orders/Agg Trades Volume inputs on the existing aggregate-event path, with Flow Source filtering and explicit aggregate-data unavailable/live-only debug reasons.
@@ -500,6 +662,7 @@ esolveIndexFromTimeOrFallback.
   - Bubbles continue to use the shared Flow Source without restoring duplicate Market Source controls.
 
 ## [2026-06-08] - UI: Indicator Source Cleanup
+
 - **What changed**:
   - Removed the duplicate `Market Source` selector from Bubbles settings while keeping Bubble Source, Size By, thresholds, side filter, scale mode, and radius controls unchanged.
   - Renamed the user-facing `Volume Bars` indicator to `Volume` in indicator labels and the settings popup title/section.
@@ -514,6 +677,7 @@ esolveIndexFromTimeOrFallback.
   - Feed, candle price source, footprint calculation, aggregate bubble rendering logic, Volume rendering logic, persistence, profile logic, and debug panel behavior are otherwise unchanged.
 
 ## [2026-06-08] - UI: Flow Source Moved To Chart Header
+
 - **What changed**:
   - Removed the `Contract Type` control from the Global Settings chart tab while keeping the underlying panel contract state intact.
   - Removed the old Global Settings `Aggregate Trades` spot/futures/both source selector from the chart tab.
@@ -526,6 +690,7 @@ esolveIndexFromTimeOrFallback.
   - Candle price source, selected symbol, contract type state, footprint calculations, bubbles, Volume Bars, and Volume Profile logic are unchanged.
 
 ## [2026-06-08] - Feature: Volume Bars Indicator
+
 - **What changed**:
   - Added a default-off `Volume Bars` indicator to the top-left indicator labels with eye toggle and its own focused settings dialog.
   - Added persisted per-timeframe Volume Bars settings for input data, market source, min/max filters, color mode, opacity, height, value text, text size, average line, and average length.
@@ -542,6 +707,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-07] - UI: Crypto Selector Settings-Style Modal
+
 - **What changed**:
   - Changed `PairSelector` so the symbol chooser opens as a fixed settings-style modal/window with backdrop, header, close button, backdrop close, and Escape close.
   - Kept the existing panel-scoped symbol, Spot, and Perpetual Futures selection behavior unchanged.
@@ -555,6 +721,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-07] - Feature: Crypto Instrument Selector
+
 - **What changed**:
   - Replaced the chart header BTC/ETH toggle with the existing panel-scoped `PairSelector` rendered as one rounded current-symbol button.
   - Expanded `PairSelector` into a local Binance USDT popup with the supported hardcoded symbols and expandable Spot / Perpetual Futures options.
@@ -570,6 +737,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-07] - Fix: Collector Survives Aggregate Bubble MongoDB TLS Failure
+
 - **What changed**:
   - Changed `scripts/collector/btcusdtCollector.mjs` so the dedicated aggregate bubble MongoDB connection is initialized as an optional persistence path after the main footprint/profile MongoDB connection succeeds.
   - Removed fatal startup validation for `BUBBLES_MONGODB_URI` and `BUBBLES_MONGODB_DB_NAME`; missing or failing bubble DB config now logs a warning and keeps the collector running.
@@ -586,6 +754,7 @@ esolveIndexFromTimeOrFallback.
   - A short `COLLECTOR_EXIT_AFTER_MS=5000` collector run continued past the bubble MongoDB TLS warning, connected spot/futures streams, and stopped cleanly.
 
 ## [2026-06-07] - Fix: MongoDB Restore Indexes And Footprint Range Guard
+
 - **What changed**:
   - Added `scripts/ensureIndexes.ts` to create/repair MongoDB query indexes for candles, footprint cells, fine profile rows, collector metadata, and aggregate bubble restore/TTL indexes.
   - Added the `db:indexes` npm script and `ts-node` dev dependency entry required to run the index maintenance script.
@@ -604,6 +773,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-07] - Feature: Internal Debug Panel v1
+
 - **What changed**:
   - Added `lib/debug/debugPanelAdapter.ts` to summarize existing `window.__MARKET_DEBUG__` metrics, persisted chart settings, and non-persisted runtime store state for display/copy use without copying raw market arrays.
   - Added `components/debug/DebugPanel.tsx`, a gated floating debug panel opened with `Ctrl+Shift+D`, polling at a low cadence with Performance, Restore, Runtime, Bubbles, Signals, and Store/Updates tabs.
@@ -618,6 +788,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-06] - Performance: Zustand Runtime State Separation
+
 - **What changed**:
   - Added `lib/store/chartRuntime.ts` as a non-persisted Zustand store for panel runtime data: candles, trades, connection/loading/restore status, signal maps, aggregate bubble buffers, liquidity zones, footprint redraw triggers, profile/measurement selection, and the shared crosshair payload.
   - Routed `FeedProvider`, `ChartPanel`, `ConnectionStatus`, keyboard shortcuts, drawing/position toolbars, `ChartCanvas`, and `CvdPanel` runtime reads/writes through the runtime store while leaving user settings in `lib/store/chart.ts`.
@@ -632,6 +803,7 @@ esolveIndexFromTimeOrFallback.
   - Persisted settings remain responsible for user preferences, layout, drawing configuration, and feature toggles.
 
 ## [2026-06-06] - Performance: Need-Based Footprint And Iceberg Work
+
 - **What changed**:
   - Added a per-panel footprint-work predicate covering footprint mode, footprint-cell bubbles, CVD, footprint-dependent signals, liquidity vacuum, and explicit browser market writes.
   - Gated stored footprint restore and live footprint trade ingestion behind that predicate while keeping candle updates, aggregate-trade bubbles, profile trade handling, and raw-trade restore behavior intact.
@@ -646,6 +818,7 @@ esolveIndexFromTimeOrFallback.
   - Iceberg behavior remains unchanged when enabled, while disabled no-op state writes are avoided.
 
 ## [2026-06-06] - Performance: Phase 1 Chart Restore And Hidden Work Skips
+
 - **What changed**:
   - Disabled raw-trade restore by default and gated it behind `NEXT_PUBLIC_ENABLE_RAW_TRADE_RESTORE=true`.
   - Kept browser-side market writes, including raw trade writes, behind `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES=true`.
@@ -663,6 +836,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-05] - Fix: Profile Settings And Signal Defaults After Indicator Cleanup
+
 - **What changed**:
   - Restored the global Profiles tab Volume Profile controls that were accidentally hidden during indicator cleanup.
   - Removed the global Indicators tab entirely while keeping per-indicator settings dialogs for Bubbles, CVD, Sessions, Heatmap, and Liquidity.
@@ -678,6 +852,7 @@ esolveIndexFromTimeOrFallback.
   - Existing persisted user settings remain authoritative during hydration.
 
 ## [2026-06-05] - UI: Focused Indicator Settings And Clean Defaults
+
 - **What changed**:
   - Changed new/default panel visibility so indicators and heavy overlays start disabled: Bubbles, CVD, Sessions, Volume Profile, Liquidity Map, Heatmap, Absorption, Exhaustion, Iceberg, and Liquidity Vacuum.
   - Kept persisted panel values authoritative during hydration while updating missing-value migration fallbacks to the cleaner default-off behavior.
@@ -692,6 +867,7 @@ esolveIndexFromTimeOrFallback.
   - Indicator-specific settings still update the same underlying persisted panel state, but are now opened from each indicator's own gear button.
 
 ## [2026-06-05] - Feature: Aggregate Bubble Collector Persistence
+
 - **What changed**:
   - Added dedicated Aggregate Trade bubble MongoDB storage using `BUBBLES_MONGODB_URI` and `BUBBLES_MONGODB_DB_NAME`, with a regular `aggregate_bubble_events` collection, unique source/id index, restore index, and TTL from `MARKET_DATA_RETENTION_DAYS`.
   - Extended `scripts/collector/btcusdtCollector.mjs` to persist only qualified spot/futures aggTrade bubble candidates once per real stream, using defaults of 15 BTC, or at least 75 trades with at least 3 BTC.
@@ -708,6 +884,7 @@ esolveIndexFromTimeOrFallback.
   - `node --check scripts/collector/btcusdtCollector.mjs` and `npx.cmd tsc --noEmit` pass.
 
 ## [2026-06-05] - Audit: Aggregate Bubble Collector Persistence
+
 - **What changed**:
   - Added `artifacts/aggregate_bubble_persistence_audit.md` documenting the current collector, database, restore, and live Aggregate Trade bubble architecture.
   - Identified the standalone BTCUSDT collector as the correct future write path for aggregate bubble persistence.
@@ -721,6 +898,7 @@ esolveIndexFromTimeOrFallback.
   - Future implementation should add collector candidate writes, a restore API, and frontend hydration while leaving footprint storage unchanged.
 
 ## [2026-06-05] - Feature: Aggregate Bubble Market Source And Min Orders Debug
+
 - **What changed**:
   - Added persisted `aggregateBubbleMarketSource` with `active` default and Aggregate Trades-only UI options for Active Chart, Spot, Futures, and Both.
   - Routed the market-source setting and active panel contract/source context through `ChartPanel`, `ChartCanvas`, and `drawAggregateTradeBubbles`.
@@ -737,6 +915,7 @@ esolveIndexFromTimeOrFallback.
   - No tooltip, persistence/history restore, grouping/clustering, raw trade bubbles, iceberg logic, or footprint storage changes were added.
 
 ## [2026-06-04] - Feature: Aggregate Bubble Size By Volume Or Orders
+
 - **What changed**:
   - Added persisted `bubbleSizeBy` with `volume` default and `bubbleMinOrders` with `1` default.
   - Exposed `Size By` controls only for Aggregate Trades bubbles and swapped Min Volume for Min Orders when Orders mode is selected.
@@ -754,6 +933,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-04] - Fix: Aggregate Trade Bubble Reliability And Debug
+
 - **What changed**:
   - Increased the live aggregate bubble buffer cap from 10,000 to 20,000 events per panel.
   - Stopped timeframe changes from clearing aggregate bubble events; symbol, contract type, and data source changes still clear the buffer to prevent stale cross-market bubbles.
@@ -773,6 +953,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-04] - Feature: Aggregate Trade Bubble Source
+
 - **What changed**:
   - Added a `BubbleEvent` model for live aggregate-trade bubbles with time, price, side, volume, optional trade count, source, symbol, and contract type.
   - Added persisted `bubbleSource` selection with Footprint Cells as the backward-compatible default and a live-only capped aggregate bubble buffer per panel.
@@ -789,6 +970,7 @@ esolveIndexFromTimeOrFallback.
   - `npx.cmd tsc --noEmit` passes.
 
 ## [2026-06-04] - UI: Volume Bubbles Scale And Radius Controls
+
 - **What changed**:
   - Added `bubbleScaleMode` with `linear`, `sqrt`, and `log` options, defaulting new/legacy panels to `sqrt`.
   - Routed bubble scale mode through persisted chart state, panel props, `ChartCanvas`, and `drawBubbles`.
@@ -806,6 +988,7 @@ esolveIndexFromTimeOrFallback.
   - `npm.cmd run lint` still fails on existing unrelated unused variables in `lib/feeds/feedRegistry.ts`.
 
 ## [2026-06-04] - UI: Panel Settings And Fine Profile Restore
+
 - **What changed**:
   - Removed the global chart-settings launcher from the header and turned the sidebar into a compact icon rail with active-panel context.
   - Anchored the settings window near the clicked panel button, moved Heatmap and Liquidity Map controls into the Indicators tab, and added clearer Volume Profile auto/manual row-size handling with scaling hints.
@@ -819,6 +1002,7 @@ esolveIndexFromTimeOrFallback.
   - Profile renderer visuals, indicator toggles, and restore flows improved without changing the underlying profile math or live feed behavior.
 
 ## [2026-06-04] - UI: Position Tool Border And Toolbar Spacing
+
 - **What changed**:
   - Removed the outer red/green stroke around Long/Short Position boxes and kept the 1px white entry separator between risk and reward zones.
   - Added extra selected-drawing toolbar offset for Long/Short Position drawings so the style toolbar no longer overlaps the active position labels.
@@ -830,6 +1014,7 @@ esolveIndexFromTimeOrFallback.
   - Market data, feeds, storage, Volume Profile, footprint, heatmap, and signal calculations were not changed.
 
 ## [2026-06-04] - Fix: Position Tool Layering And Label Design
+
 - **What changed**:
   - Moved Long/Short Position drawings into a later chart drawing pass so they render above candles, footprint cells, bubbles, order-flow overlays, Volume Profile, and the heatmap strip while remaining below React UI overlays.
   - Added darker candle-overlap shading inside risk/reward zones by intersecting each visible candle high/low range with the position box price ranges.
@@ -845,6 +1030,7 @@ esolveIndexFromTimeOrFallback.
   - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
 
 ## [2026-06-04] - Fix: Position Tool Risk-First Preview And Details
+
 - **What changed**:
   - Changed Long/Short Position drag preview to render only the red risk/stop-loss zone while the pointer is down.
   - Changed initial entry/stop assignment so the user-drawn risk box becomes the actual stop zone: long uses the upper edge as entry and lower edge as stop, short uses the lower edge as entry and upper edge as stop.
@@ -860,6 +1046,7 @@ esolveIndexFromTimeOrFallback.
   - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
 
 ## [2026-06-04] - Feature: Long/Short Position Drawing Tools
+
 - **What changed**:
   - Added Long Position and Short Position buttons to each panel header.
   - Added persisted `long-position` and `short-position` drawing variants with entry, stop, and target levels.
@@ -874,8 +1061,8 @@ esolveIndexFromTimeOrFallback.
   - Market data, feeds, storage, order placement, live positions, Volume Profile, footprint, heatmap, and signal calculations were not changed.
   - `npm.cmd run build` compiles successfully, then fails on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
 
-
 ## [2026-06-03] - Fix: Volume Profile Phase 1 Rendering
+
 - **What changed**:
   - Task 1: Added auto profile row sizing in `components/chart/ChartCanvas.tsx` for default and custom Volume Profile builds, with `profileResolutionTicks = 0` as auto mode in `lib/store/chart.ts`.
   - Task 2: Added per-row volume-strength opacity gradients to `components/chart/drawVolumeProfile.ts` and `components/chart/drawSelectionRect.ts`, while keeping VA fills and POC/VA/LVN lines separate.
@@ -890,6 +1077,7 @@ esolveIndexFromTimeOrFallback.
   - Profile engine internals, cache keys, fine-row aggregation, feeds, storage, heatmap, drawings, and signal logic were not changed.
 
 ## [2026-06-03] - Fix: Horizontal And Vertical Drawing Drag
+
 - **What changed**:
   - Made selected horizontal lines draggable up/down by updating their price value.
   - Made selected vertical lines draggable left/right by updating their candle index and timestamp anchor.
@@ -901,6 +1089,7 @@ esolveIndexFromTimeOrFallback.
   - Styling toolbar, delete, color, width, ray, box, market data, feeds, storage, footprint, Volume Profile, heatmap, indicators, and collector behavior were not changed.
 
 ## [2026-06-03] - UI: Selectable Drawing Styling Toolbar
+
 - **What changed**:
   - Added click selection for existing horizontal lines, vertical lines, right-extending rays, and boxes.
   - Added a floating selected-drawing toolbar with delete, lock/unlock, 1-4 px stroke width, and the required drawing color swatches.
@@ -915,6 +1104,7 @@ esolveIndexFromTimeOrFallback.
   - Market data, feeds, MongoDB/storage, footprint, Volume Profile, heatmap, indicators, and collector code were not changed.
 
 ## [2026-06-03] - Fix: Chunked Volume Profile Restore
+
 - **What changed**:
   - Changed default fine Volume Profile restore to load only the most recent four hours first, split into two-hour `/api/history/profile` chunks.
   - Added lazy fine-profile backfill for scrolled-back chart ranges and custom profile selections, using the same chunked fetch/hydrate path.
@@ -930,6 +1120,7 @@ esolveIndexFromTimeOrFallback.
   - Collector scripts, footprint restore, candle restore, heatmap/liquidity, and Volume Profile calculation/rendering math were not changed.
 
 ## [2026-06-03] - UI: Panel-Scoped Settings Layering
+
 - **What changed**:
   - Removed the chart settings button/dropdown ownership from the global header.
   - Added a settings button to each chart panel header next to the Focus button.
@@ -944,6 +1135,7 @@ esolveIndexFromTimeOrFallback.
   - Settings content, market data, feeds, storage, footprint, Volume Profile, heatmap calculations, and drawing tool logic were not changed.
 
 ## [2026-06-03] - UI: Dismiss History Restore Badge
+
 - **What changed**:
   - Added an icon-only close button to the chart history restore status badge.
   - Auto-dismissed the badge a few seconds after a successful restore completes.
@@ -954,6 +1146,7 @@ esolveIndexFromTimeOrFallback.
   - No feed, storage, collector, MongoDB, market calculation, footprint/profile, heatmap, or drawing behavior changed.
 
 ## [2026-06-02] - UI: History Restore Progress Status
+
 - **What changed**:
   - Added transient per-panel history restore status to the chart store.
   - Published restore stages from `FeedProvider` for connecting, candles, Volume Profile, raw trades, footprint, completion, and failure.
@@ -967,6 +1160,7 @@ esolveIndexFromTimeOrFallback.
   - No collector, MongoDB schema, storage write behavior, market calculations, footprint/profile math, heatmap/liquidity, or drawing tool behavior changed.
 
 ## [2026-06-02] - Fix: Time-Anchored Chart Drawings
+
 - **What changed**:
   - Added timestamp anchors for vertical lines, horizontal rays, boxes, and custom Volume Profile selections while keeping legacy index fields as fallback.
   - Resolved timestamp anchors back to retained candle indices only at render, hit-test, drag/resize, and custom profile build time.
@@ -979,6 +1173,7 @@ esolveIndexFromTimeOrFallback.
   - Market data, feeds, MongoDB/storage, footprint, heatmap, indicators, and Volume Profile math were not changed.
 
 ## [2026-06-02] - Fix: Per-Panel Indicator Collapse State
+
 - **What changed**:
   - Moved indicator-label collapsed/expanded persistence from one global store field into each chart panel's state.
   - Updated the indicator label collapse button to read/write only the owning panel's collapsed state.
@@ -989,6 +1184,7 @@ esolveIndexFromTimeOrFallback.
   - Indicator enable/disable state, heatmap/liquidity behavior, market data, feeds, storage, calculations, and rendering logic were not changed.
 
 ## [2026-06-02] - UI: Thin Sidebar And Indicator Organization
+
 - **What changed**:
   - Replaced the expandable sidebar with a fixed thin tools/sidebar strip and removed tick-size input plus signal/count summary clutter from it.
   - Moved the global tick-size input into the settings dropdown under Chart > Aggregation.
@@ -1004,6 +1200,7 @@ esolveIndexFromTimeOrFallback.
   - `npm.cmd run build` compiled successfully, then failed on existing unrelated lint errors in `lib/feeds/feedRegistry.ts` for unused `streamKey`, `subscriberCount`, and `runtime`.
 
 ## [2026-06-02] - Website: Disable Browser Footprint/Profile Writes
+
 - **What changed**:
   - Added a default-off `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES` gate around website-side footprint and fine Volume Profile persistence in `components/FeedProvider.tsx`.
   - Stopped browser fine profile row queueing/flushing and stopped browser base footprint write requests unless the flag is explicitly set to `true`.
@@ -1016,6 +1213,7 @@ esolveIndexFromTimeOrFallback.
   - The old website persistence code remains available for emergency/debug re-enable via `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES=true`.
 
 ## [2026-06-02] - Collector: BTCUSDT Footprint And Profile Persistence
+
 - **What changed**:
   - Added `scripts/collector/btcusdtCollector.mjs`, a standalone Node.js collector for BTCUSDT Binance spot/futures aggTrade streams.
   - Added `npm run collector:btc` to start the collector.
@@ -1026,6 +1224,7 @@ esolveIndexFromTimeOrFallback.
   - Website persistence was not disabled. UI/rendering, heatmap/liquidity, raw trades, and Mongo schema were not changed.
 
 ## [2026-06-02] - Design: Node Collector Persistence
+
 - **What changed**:
   - Added `artifacts/node_collector_design.md` for a standalone Node.js collector that persists canonical footprint and fine Volume Profile rows to MongoDB.
   - Updated `skills/map.md` with the collector persistence audit and design artifacts.
@@ -1035,6 +1234,7 @@ esolveIndexFromTimeOrFallback.
   - Documentation only. Website runtime code, storage writes, MongoDB adapters, feeds, heatmap/liquidity, and UI/rendering were not changed.
 
 ## [2026-06-01] - UI: Indicator Label Size And Hover Contrast
+
 - **What changed**:
   - Reduced the indicator label text, icon, and collapse-button sizing slightly.
   - Darkened the indicator-row hover background so the hover state reads more clearly.
@@ -1044,6 +1244,7 @@ esolveIndexFromTimeOrFallback.
   - This is visual refinement only. Indicator toggles, settings jumps, rendering, calculations, feeds, storage, footprint, volume profile, heatmap, and chart logic were not changed.
 
 ## [2026-06-01] - UI: Compact Indicator Labels
+
 - **What changed**:
   - Added a very small collapse/expand button for the chart indicator label list.
   - Changed indicator rows to a text-only default state with no persistent background or always-visible icons.
@@ -1054,6 +1255,7 @@ esolveIndexFromTimeOrFallback.
   - This is a UX-only refinement of the existing label overlay. Indicator visibility toggles, settings jumps, rendering behavior, calculations, feeds, storage, footprint, volume profile, heatmap, and chart logic were not changed.
 
 ## [2026-06-01] - UI: TradingView-Style Indicator Labels
+
 - **What changed**:
   - Added top-left chart indicator labels for Bubbles, CVD, Sessions, and VOP/Volume Profile.
   - Added eye buttons that toggle the existing per-panel indicator visibility settings.
@@ -1065,6 +1267,7 @@ esolveIndexFromTimeOrFallback.
   - This is UX/control organization only. Indicator calculations, chart rendering logic, market data, feeds, MongoDB/storage, footprint, volume profile engine, heatmap, and signals were not changed.
 
 ## [2026-06-01] - UI: Wider Settings Dropdown And Thin Scrollbar
+
 - **What changed**:
   - Increased the global settings dropdown width by `104px`, from `440px` to `544px`.
   - Added a scoped `.custom-scrollbar` style for the dropdown content area with a thin dark thumb and transparent track.
@@ -1074,6 +1277,7 @@ esolveIndexFromTimeOrFallback.
   - This is visual polish only. Settings behavior, persistence, chart calculations, rendering logic, feeds, storage, footprint, volume profile, heatmap, and signals were not changed.
 
 ## [2026-06-01] - UI: Indicators Settings Tab
+
 - **What changed**:
   - Added a global Settings > Indicators tab.
   - Moved Sessions, CVD, and Bubbles controls into the Indicators tab while keeping their existing store actions and persisted settings.
@@ -1085,6 +1289,7 @@ esolveIndexFromTimeOrFallback.
   - Existing CVD, session, and bubble settings continue to persist through the same panel state fields.
 
 ## [2026-06-01] - UI: Icon-Only Drawing Toolbar Buttons
+
 - **What changed**:
   - Removed the text letters from the floating drawing toolbar buttons and left icon-only controls with hover titles and aria labels.
 - **Why it changed**:
@@ -1093,6 +1298,7 @@ esolveIndexFromTimeOrFallback.
   - Toolbar behavior, drag bounds, drawing selection state, and existing drawing logic remain unchanged.
 
 ## [2026-06-01] - UI: Draggable Drawing Favorites Toolbar
+
 - **What changed**:
   - Added a draggable per-panel floating drawing favorites toolbar that can move beyond the canvas into header/sidebar space while staying horizontally bounded to its owning panel side.
   - Moved Profile, Measure, Horizontal Line, Vertical Line, existing Line/Right-Ray, and Box selection onto the floating toolbar using the existing drawing store actions.
@@ -1108,6 +1314,7 @@ esolveIndexFromTimeOrFallback.
   - Chart rendering, drawing storage, feeds, MongoDB/storage, footprint, volume profile, heatmap, and signal logic were not changed.
 
 ## [2026-06-01] - UI: Fix Focus Toggle Scope And Resizable Settings Window
+
 - **What changed**:
   - Removed the mistaken per-panel header hiding behavior and reverted chart panels to always keep their own toolbar visible.
   - Rewired the panel toolbar expand button to toggle a global `focusMode` that hides the app-level header and sidebar while leaving panel toolbars visible.
@@ -1123,6 +1330,7 @@ esolveIndexFromTimeOrFallback.
   - `next build` now succeeds for the touched UI files and still stops only on the existing unrelated lint errors in `lib/feeds/feedRegistry.ts`.
 
 ## [2026-06-01] - UI: Cleaner Chart Panel Header And Settings
+
 - **What changed**:
   - Limited the global chart settings dropdown to `min(400px, calc(100vh - 32px))` and kept the inner content area scrollable.
   - Removed the Absorption, Exhaustion, Iceberg, and Liquidity Vacuum quick buttons from the per-panel header toolbar.
@@ -1136,6 +1344,7 @@ esolveIndexFromTimeOrFallback.
   - `next build` compiled the updated chart UI successfully, but the build still fails at the existing unrelated lint errors in `lib/feeds/feedRegistry.ts`.
 
 ## [2026-06-01] - Fix: Mongo Profile Restore Indexing And Fine Bucket Size
+
 - **What changed**:
   - Added canonical fine profile base-bucket sizing with a minimum stored bucket of `1.5`.
   - Changed live fine profile aggregation, shared profile cache keys, storage writes, and `/api/history/profile` restore requests to use the canonical base bucket instead of raw `tickSize`.
@@ -1149,6 +1358,7 @@ esolveIndexFromTimeOrFallback.
   - Candles, footprints, raw trades, heatmap, feeds, and Mongo candle/footprint storage were not changed.
 
 ## [2026-06-01] - Audit: Volume Profile Rendering
+
 - **What changed**:
   - Added `artifacts/volume_profile_rendering_audit.md` covering custom/default profile data flow, row-size aggregation, width normalization, visual clamping, POC/VA/LVN behavior, visual noise causes, and recommended fix order.
   - Updated `skills/map.md` with the new audit artifact.
@@ -1158,6 +1368,7 @@ esolveIndexFromTimeOrFallback.
   - Documentation-only audit. Runtime chart code, storage, feeds, cache, MongoDB, and profile engine behavior were not changed.
 
 ## [2026-05-31] - Polish: Orderbook Heatmap Labels And Intensity
+
 - **What changed**:
   - Reused one orderbook heatmap column/metrics snapshot per chart redraw so the background cell pass and late label pass derive from the same heatmap data.
   - Kept labels tied to the final clipped heatmap rectangle geometry used for visible cells, with existing merge, size, and overlap gates plus draw-count limits for zoomed-out readability.
@@ -1172,6 +1383,7 @@ esolveIndexFromTimeOrFallback.
   - Depth adapters, orderbook sync, storage, candles, footprint, volume profile, and trade logic were not changed.
 
 ## [2026-05-31] - Fix: Responsive Heatmap Label Settings And Geometry
+
 - **What changed**:
   - Added normal settings for real orderbook heatmap labels: `Show Liquidity Labels`, label visibility mode (`Off`, `Auto`, `Readable`), label detail (`Total quantity` or `Total + max level`), and minimum label quantity.
   - Changed heatmap labels to be built from final visible heatmap rectangle geometry after clipping and pixel-column grouping, instead of drawing one label per raw/render bucket blindly.
@@ -1187,6 +1399,7 @@ esolveIndexFromTimeOrFallback.
   - The real heatmap bar intensity/width calculation, heatmap engine data model, depth adapters, orderbook sync, MongoDB/storage, candles, footprints, and profiles were not changed.
 
 ## [2026-05-31] - Fix: Forced Debug And Late-Pass Heatmap Labels
+
 - **What changed**:
   - Added a force-label debug path for the real orderbook heatmap renderer. It can be enabled with `window.__ORDERFLOW_FORCE_HEATMAP_LABELS__ = true` or `localStorage.setItem('orderflow.forceHeatmapLabels', 'true')`, then a chart redraw.
   - Moved the heatmap label pass later in `ChartCanvas`, after candles/footprints, bubbles, signals, profiles, and measurement overlays, while still clipping text to the chart plot area.
@@ -1202,6 +1415,7 @@ esolveIndexFromTimeOrFallback.
   - Depth adapters, orderbook sync, MongoDB/storage, candle logic, footprint logic, profile logic, heatmap engine data shape, and heatmap bar intensity calculation were not changed.
 
 ## [2026-05-31] - Fix: Real Heatmap Asset Quantity Label Overlay
+
 - **What changed**:
   - Split real orderbook heatmap rendering so cells still draw in the background pass while asset-quantity labels draw in a later text-only pass after candles/footprints.
   - Kept labels gated to strong/readable cells, lowered the normalized label strength gate slightly, and continued falling back to total-only labels when total + max-level text is too wide or max-level data is unavailable.
@@ -1214,6 +1428,7 @@ esolveIndexFromTimeOrFallback.
   - Depth adapters, orderbook sync, MongoDB/storage, candle logic, footprint logic, volume profile logic, and the legacy right-side liquidity summary were not changed.
 
 ## [2026-05-31] - Fix: Orderbook Heatmap Label Visibility
+
 - **What changed**:
   - Relaxed heatmap label readability gates to use the clipped visible cell size, lower the required visible strength, and allow total-only labels on narrower cells.
   - Centered labels inside the actually visible heatmap rectangle and added a small dark text stroke so labels remain legible over colored liquidity cells.
@@ -1226,6 +1441,7 @@ esolveIndexFromTimeOrFallback.
   - Heatmap collection, depth adapters, orderbook sync, storage, candles, footprints, profiles, and color rendering were not changed.
 
 ## [2026-05-31] - Feature: Orderbook Heatmap Asset Quantity Labels
+
 - **What changed**:
   - Added real orderbook heatmap label settings for label enablement, total-only vs total-plus-max-level mode, and a minimum label quantity threshold.
   - Added per-bucket `maxLevelQty` tracking in the heatmap engine so labels can show total bucket asset quantity and the largest single aggregated price-level quantity inside that bucket.
@@ -1239,6 +1455,7 @@ esolveIndexFromTimeOrFallback.
   - Vertical heatmap coverage remains controlled by max-distance settings, visible chart price range, bucket size, intensity threshold, and actual depth-source liquidity; depth adapters, sync, storage, candles, footprints, profiles, and color rendering behavior were not changed.
 
 ## [2026-05-31] - Feature: Real Orderbook Heatmap Settings
+
 - **What changed**:
   - Added panel-scoped real orderbook heatmap controls in the global settings dropdown for enable/disable, opacity, price bucket size, lookback window, max near-price distance, intensity mode, quantity labels, and bid/ask/both colors.
   - Added persisted store fields and setters for the new heatmap visual/window settings, with migration defaults for existing saved panels.
@@ -1252,6 +1469,7 @@ esolveIndexFromTimeOrFallback.
   - MongoDB/storage, candles, trades, footprint/profile logic, depth adapters, feed registry, volume profile rendering, and orderbook sync logic were not changed.
 
 ## [2026-05-31] - Reliability: Orderbook Depth Synchronization
+
 - **What changed**:
   - Changed depth initialization to subscribe first, buffer incoming depth updates, fetch the REST snapshot, and only mark each local book ready after a valid snapshot-to-stream bridge.
   - Added sequence continuity checks for Binance spot/futures depth, including Binance futures `pu` validation when present, plus stale/gap state and safe resync on broken continuity.
@@ -1266,6 +1484,7 @@ esolveIndexFromTimeOrFallback.
   - Candles, trades, footprint/profile calculations, MongoDB/storage, settings layout, and heatmap rendering style were left unchanged.
 
 ## [2026-05-31] - Refinement: Orderbook Heatmap Readability
+
 - **What changed**:
   - Updated the real orderbook heatmap renderer to compress sub-pixel one-second samples into readable pixel-width time groups.
   - Aggregated grouped columns by peak bid/ask liquidity per price bucket so stable levels render as continuous horizontal zones instead of barcode-like vertical stripes.
@@ -1279,6 +1498,7 @@ esolveIndexFromTimeOrFallback.
   - No heatmap engine sampling, depth adapters, MongoDB/storage, candle, footprint, or profile calculation behavior changed.
 
 ## [2026-05-31] - Feature: Real Orderbook Heatmap Rendering
+
 - **What changed**:
   - Added a clipped canvas renderer for the `OrderbookHeatmapEngine` rolling columns so snapshot time maps to chart X and bucket price maps to chart Y.
   - Drew bid liquidity with teal/green tones, ask liquidity with red/orange tones, and mixed buckets with amber tones using log-scaled opacity.
@@ -1293,6 +1513,7 @@ esolveIndexFromTimeOrFallback.
   - Heatmap data still resets through the existing engine lifecycle on symbol, contract, depth source, trade source mode, bucket size, or range changes, with no storage, MongoDB, depth adapter, candle, footprint, or profile calculation changes.
 
 ## [2026-05-31] - Feature: Orderbook Heatmap Engine
+
 - **What changed**:
   - Added `OrderbookHeatmapEngine`, a rolling time x price data model that stores sampled columns of bucketed bid, ask, total quantity, side, notional, and timestamp data.
   - Added fixed-cadence 1000 ms heatmap sampling in the panel feed lifecycle using the active aggregate orderbook from Binance, Bybit, or Combined depth.
@@ -1307,6 +1528,7 @@ esolveIndexFromTimeOrFallback.
   - The next step is rendering these heatmap columns across the chart canvas.
 
 ## [2026-05-30] - Feature: Combined Depth Aggregation
+
 - **What changed**:
   - Added a `Combined` per-panel depth source option alongside Binance and Bybit.
   - Kept the shared feed registry limited to concrete exchange depth streams while `FeedProvider` expands Combined into separate Binance and Bybit snapshot/stream subscriptions.
@@ -1320,6 +1542,7 @@ esolveIndexFromTimeOrFallback.
   - Exchange precision and available depth can differ, so merged bucket strength is useful for visualization but is not a consolidated tradable orderbook.
 
 ## [2026-05-30] - Feature: Bybit Depth Source
+
 - **What changed**:
   - Added Bybit spot and USDT linear futures depth adapters using public v5 REST orderbook snapshots and public v5 WebSocket orderbook streams.
   - Added a persisted per-panel depth source setting with Binance and Bybit options in Settings > Chart > Liquidity Map.
@@ -1334,6 +1557,7 @@ esolveIndexFromTimeOrFallback.
   - Unsupported Bybit symbol/category combinations fail closed with an empty liquidity overlay instead of mixing in Binance depth.
 
 ## [2026-05-30] - Feature: Contract-Routed Depth Adapters
+
 - **What changed**:
   - Added a dedicated depth adapter abstraction with Binance spot and Binance futures REST snapshot and depth WebSocket implementations.
   - Routed shared orderbook snapshots and depth streams through contract-scoped depth keys in the feed registry.
@@ -1345,6 +1569,7 @@ esolveIndexFromTimeOrFallback.
   - Existing liquidity zones now consume depth from the selected contract type. Spot panels stay on Binance spot depth, while futures panels use Binance futures depth without adding new exchanges or rebuilding the heatmap engine.
 
 ## [2026-05-30] - Cleanup: Liquidity Overlay Near-Price Filtering
+
 - **What changed**:
   - Changed current liquidity zone aggregation to include near-price orderbook levels, cap the range to a small near-price percent, rank by size with a near-price preference, and limit displayed zones per side.
   - Deemphasized the current liquidity renderer from full-width bands into faint fills plus right-edge markers.
@@ -1356,6 +1581,7 @@ esolveIndexFromTimeOrFallback.
   - This is a small cleanup of the existing spot-only liquidity overlay. It does not add the real time x price heatmap engine and does not change futures orderbook support, storage, candles, footprints, or profiles.
 
 ## [2026-05-30] - Audit: Liquidity Heatmap Implementation
+
 - **What changed**:
   - Added `artifacts/liquidity_heatmap_audit.md` documenting the current spot-only orderbook source, liquidity zone aggregation, sparse history snapshots, right-side heatmap strip rendering, root causes, and ranked rebuild plan.
   - Updated `skills/map.md` with the new audit artifact.
@@ -1365,6 +1591,7 @@ esolveIndexFromTimeOrFallback.
   - Documentation-only audit. Chart rendering, storage, feeds, settings, and liquidity code were not changed.
 
 ## [2026-05-30] - Feature: VWAP Chart Overlay
+
 - **What changed**:
   - Added persisted per-panel VWAP settings for enable/disable, line color, line width, and reset mode.
   - Added VWAP controls to the Settings > Chart tab.
@@ -1379,6 +1606,7 @@ esolveIndexFromTimeOrFallback.
   - Footprint, Volume Profile, feeds, storage, MongoDB, and cache behavior were not changed.
 
 ## [2026-05-30] - UI: Signals Settings And Persistent Tools
+
 - **What changed**:
   - Removed the Absorption, Exhaustion, Iceberg, and Liquidity Vacuum quick toggles from the per-panel toolbar.
   - Kept those signal controls in the existing Settings > Signals tab, using the same store actions and panel state.
@@ -1392,6 +1620,7 @@ esolveIndexFromTimeOrFallback.
   - Market data, chart calculations, storage, feeds, cache behavior, and render math were not changed.
 
 ## [2026-05-30] - Fix: Footprint Persistence Restore Gaps
+
 - **What changed**:
   - Moved canonical 1m/$5 footprint row persistence out of the selected chart candle-close path.
   - Base footprint rows are now queued only after the selected aggTrade source stream(s) advance past a closed 1m slice, so MongoDB receives the finalized live footprint slice instead of an early kline-close snapshot.
@@ -1405,6 +1634,7 @@ esolveIndexFromTimeOrFallback.
   - Recent rendering/performance optimization logic was not changed except for adding renderer coverage diagnostics.
 
 ## [2026-05-29] - Performance: Footprint Passive Redraw Throttle
+
 - **What changed**:
   - Made the main chart passive redraw throttle depend on chart mode.
   - Kept candle/default passive redraws at the existing 125 ms interval.
@@ -1418,6 +1648,7 @@ esolveIndexFromTimeOrFallback.
   - Footprint calculations, footprint cache, feed registry, MongoDB/storage, raw trades, fine profile persistence, and chart visuals were not changed.
 
 ## [2026-05-29] - Feature: Focus Layout Mode
+
 - **What changed**:
   - Added a header Focus button that toggles a layout-only focus mode.
   - Focus mode hides the top header and sidebar, allowing the chart workspace to expand into the freed screen space.
@@ -1433,6 +1664,7 @@ esolveIndexFromTimeOrFallback.
   - Chart rendering, data feeds, cache, storage, settings behavior, and sidebar collapse behavior were not changed.
 
 ## [2026-06-02] - Website: Disable Browser Footprint/Profile Writes
+
 - **What changed**:
   - Added a default-off `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES` gate around website-side footprint and fine Volume Profile persistence in `components/FeedProvider.tsx`.
   - Stopped browser fine profile row queueing/flushing and stopped browser base footprint write requests unless the flag is explicitly set to `true`.
@@ -1445,6 +1677,7 @@ esolveIndexFromTimeOrFallback.
   - The old website persistence code remains available for emergency/debug re-enable via `NEXT_PUBLIC_ENABLE_BROWSER_MARKET_WRITES=true`.
 
 ## [2026-06-02] - Collector: BTCUSDT Footprint And Profile Persistence
+
 - **What changed**:
   - Added `scripts/collector/btcusdtCollector.mjs`, a standalone Node.js collector for BTCUSDT Binance spot/futures aggTrade streams.
   - Added `npm run collector:btc` to start the collector.
@@ -1455,6 +1688,7 @@ esolveIndexFromTimeOrFallback.
   - Website persistence was not disabled. UI/rendering, heatmap/liquidity, raw trades, and Mongo schema were not changed.
 
 ## [2026-06-02] - Design: Node Collector Persistence
+
 - **What changed**:
   - Added `artifacts/node_collector_design.md` for a standalone Node.js collector that persists canonical footprint and fine Volume Profile rows to MongoDB.
   - Updated `skills/map.md` with the collector persistence audit and design artifacts.
@@ -1464,6 +1698,7 @@ esolveIndexFromTimeOrFallback.
   - Documentation only. Website runtime code, storage writes, MongoDB adapters, feeds, heatmap/liquidity, and UI/rendering were not changed.
 
 ## [2026-06-01] - UI: Indicator Label Size And Hover Contrast
+
 - **What changed**:
   - Reduced the indicator label text, icon, and collapse-button sizing slightly.
   - Darkened the indicator-row hover background so the hover state reads more clearly.
@@ -1473,6 +1708,7 @@ esolveIndexFromTimeOrFallback.
   - This is visual refinement only. Indicator toggles, settings jumps, rendering, calculations, feeds, storage, footprint, volume profile, heatmap, and chart logic were not changed.
 
 ## [2026-06-01] - UI: Compact Indicator Labels
+
 - **What changed**:
   - Added a very small collapse/expand button for the chart indicator label list.
   - Changed indicator rows to a text-only default state with no persistent background or always-visible icons.
@@ -1483,6 +1719,7 @@ esolveIndexFromTimeOrFallback.
   - This is a UX-only refinement of the existing label overlay. Indicator visibility toggles, settings jumps, rendering behavior, calculations, feeds, storage, footprint, volume profile, heatmap, and chart logic were not changed.
 
 ## [2026-06-01] - UI: TradingView-Style Indicator Labels
+
 - **What changed**:
   - Added top-left chart indicator labels for Bubbles, CVD, Sessions, and VOP/Volume Profile.
   - Added eye buttons that toggle the existing per-panel indicator visibility settings.
@@ -1494,6 +1731,7 @@ esolveIndexFromTimeOrFallback.
   - This is UX/control organization only. Indicator calculations, chart rendering logic, market data, feeds, MongoDB/storage, footprint, volume profile engine, heatmap, and signals were not changed.
 
 ## [2026-06-01] - UI: Wider Settings Dropdown And Thin Scrollbar
+
 - **What changed**:
   - Increased the global settings dropdown width by `104px`, from `440px` to `544px`.
   - Added a scoped `.custom-scrollbar` style for the dropdown content area with a thin dark thumb and transparent track.
@@ -1503,6 +1741,7 @@ esolveIndexFromTimeOrFallback.
   - This is visual polish only. Settings behavior, persistence, chart calculations, rendering logic, feeds, storage, footprint, volume profile, heatmap, and signals were not changed.
 
 ## [2026-06-01] - UI: Indicators Settings Tab
+
 - **What changed**:
   - Added a global Settings > Indicators tab.
   - Moved Sessions, CVD, and Bubbles controls into the Indicators tab while keeping their existing store actions and persisted settings.
@@ -1514,6 +1753,7 @@ esolveIndexFromTimeOrFallback.
   - Existing CVD, session, and bubble settings continue to persist through the same panel state fields.
 
 ## [2026-06-01] - UI: Icon-Only Drawing Toolbar Buttons
+
 - **What changed**:
   - Removed the text letters from the floating drawing toolbar buttons and left icon-only controls with hover titles and aria labels.
 - **Why it changed**:
@@ -1522,6 +1762,7 @@ esolveIndexFromTimeOrFallback.
   - Toolbar behavior, drag bounds, drawing selection state, and existing drawing logic remain unchanged.
 
 ## [2026-06-01] - UI: Draggable Drawing Favorites Toolbar
+
 - **What changed**:
   - Added a draggable per-panel floating drawing favorites toolbar that can move beyond the canvas into header/sidebar space while staying horizontally bounded to its owning panel side.
   - Moved Profile, Measure, Horizontal Line, Vertical Line, existing Line/Right-Ray, and Box selection onto the floating toolbar using the existing drawing store actions.
@@ -1537,6 +1778,7 @@ esolveIndexFromTimeOrFallback.
   - Chart rendering, drawing storage, feeds, MongoDB/storage, footprint, volume profile, heatmap, and signal logic were not changed.
 
 ## [2026-06-01] - UI: Fix Focus Toggle Scope And Resizable Settings Window
+
 - **What changed**:
   - Removed the mistaken per-panel header hiding behavior and reverted chart panels to always keep their own toolbar visible.
   - Rewired the panel toolbar expand button to toggle a global `focusMode` that hides the app-level header and sidebar while leaving panel toolbars visible.
@@ -1552,6 +1794,7 @@ esolveIndexFromTimeOrFallback.
   - `next build` now succeeds for the touched UI files and still stops only on the existing unrelated lint errors in `lib/feeds/feedRegistry.ts`.
 
 ## [2026-06-01] - UI: Cleaner Chart Panel Header And Settings
+
 - **What changed**:
   - Limited the global chart settings dropdown to `min(400px, calc(100vh - 32px))` and kept the inner content area scrollable.
   - Removed the Absorption, Exhaustion, Iceberg, and Liquidity Vacuum quick buttons from the per-panel header toolbar.
@@ -1565,6 +1808,7 @@ esolveIndexFromTimeOrFallback.
   - `next build` compiled the updated chart UI successfully, but the build still fails at the existing unrelated lint errors in `lib/feeds/feedRegistry.ts`.
 
 ## [2026-06-01] - Fix: Mongo Profile Restore Indexing And Fine Bucket Size
+
 - **What changed**:
   - Added canonical fine profile base-bucket sizing with a minimum stored bucket of `1.5`.
   - Changed live fine profile aggregation, shared profile cache keys, storage writes, and `/api/history/profile` restore requests to use the canonical base bucket instead of raw `tickSize`.
@@ -1578,6 +1822,7 @@ esolveIndexFromTimeOrFallback.
   - Candles, footprints, raw trades, heatmap, feeds, and Mongo candle/footprint storage were not changed.
 
 ## [2026-06-01] - Audit: Volume Profile Rendering
+
 - **What changed**:
   - Added `artifacts/volume_profile_rendering_audit.md` covering custom/default profile data flow, row-size aggregation, width normalization, visual clamping, POC/VA/LVN behavior, visual noise causes, and recommended fix order.
   - Updated `skills/map.md` with the new audit artifact.
@@ -1587,6 +1832,7 @@ esolveIndexFromTimeOrFallback.
   - Documentation-only audit. Runtime chart code, storage, feeds, cache, MongoDB, and profile engine behavior were not changed.
 
 ## [2026-05-31] - Polish: Orderbook Heatmap Labels And Intensity
+
 - **What changed**:
   - Reused one orderbook heatmap column/metrics snapshot per chart redraw so the background cell pass and late label pass derive from the same heatmap data.
   - Kept labels tied to the final clipped heatmap rectangle geometry used for visible cells, with existing merge, size, and overlap gates plus draw-count limits for zoomed-out readability.
@@ -1601,6 +1847,7 @@ esolveIndexFromTimeOrFallback.
   - Depth adapters, orderbook sync, storage, candles, footprint, volume profile, and trade logic were not changed.
 
 ## [2026-05-31] - Fix: Responsive Heatmap Label Settings And Geometry
+
 - **What changed**:
   - Added normal settings for real orderbook heatmap labels: `Show Liquidity Labels`, label visibility mode (`Off`, `Auto`, `Readable`), label detail (`Total quantity` or `Total + max level`), and minimum label quantity.
   - Changed heatmap labels to be built from final visible heatmap rectangle geometry after clipping and pixel-column grouping, instead of drawing one label per raw/render bucket blindly.
@@ -1616,6 +1863,7 @@ esolveIndexFromTimeOrFallback.
   - The real heatmap bar intensity/width calculation, heatmap engine data model, depth adapters, orderbook sync, MongoDB/storage, candles, footprints, and profiles were not changed.
 
 ## [2026-05-31] - Fix: Forced Debug And Late-Pass Heatmap Labels
+
 - **What changed**:
   - Added a force-label debug path for the real orderbook heatmap renderer. It can be enabled with `window.__ORDERFLOW_FORCE_HEATMAP_LABELS__ = true` or `localStorage.setItem('orderflow.forceHeatmapLabels', 'true')`, then a chart redraw.
   - Moved the heatmap label pass later in `ChartCanvas`, after candles/footprints, bubbles, signals, profiles, and measurement overlays, while still clipping text to the chart plot area.
@@ -1631,6 +1879,7 @@ esolveIndexFromTimeOrFallback.
   - Depth adapters, orderbook sync, MongoDB/storage, candle logic, footprint logic, profile logic, heatmap engine data shape, and heatmap bar intensity calculation were not changed.
 
 ## [2026-05-31] - Fix: Real Heatmap Asset Quantity Label Overlay
+
 - **What changed**:
   - Split real orderbook heatmap rendering so cells still draw in the background pass while asset-quantity labels draw in a later text-only pass after candles/footprints.
   - Kept labels gated to strong/readable cells, lowered the normalized label strength gate slightly, and continued falling back to total-only labels when total + max-level text is too wide or max-level data is unavailable.
@@ -1643,6 +1892,7 @@ esolveIndexFromTimeOrFallback.
   - Depth adapters, orderbook sync, MongoDB/storage, candle logic, footprint logic, volume profile logic, and the legacy right-side liquidity summary were not changed.
 
 ## [2026-05-31] - Fix: Orderbook Heatmap Label Visibility
+
 - **What changed**:
   - Relaxed heatmap label readability gates to use the clipped visible cell size, lower the required visible strength, and allow total-only labels on narrower cells.
   - Centered labels inside the actually visible heatmap rectangle and added a small dark text stroke so labels remain legible over colored liquidity cells.
@@ -1655,6 +1905,7 @@ esolveIndexFromTimeOrFallback.
   - Heatmap collection, depth adapters, orderbook sync, storage, candles, footprints, profiles, and color rendering were not changed.
 
 ## [2026-05-31] - Feature: Orderbook Heatmap Asset Quantity Labels
+
 - **What changed**:
   - Added real orderbook heatmap label settings for label enablement, total-only vs total-plus-max-level mode, and a minimum label quantity threshold.
   - Added per-bucket `maxLevelQty` tracking in the heatmap engine so labels can show total bucket asset quantity and the largest single aggregated price-level quantity inside that bucket.
@@ -1668,6 +1919,7 @@ esolveIndexFromTimeOrFallback.
   - Vertical heatmap coverage remains controlled by max-distance settings, visible chart price range, bucket size, intensity threshold, and actual depth-source liquidity; depth adapters, sync, storage, candles, footprints, profiles, and color rendering behavior were not changed.
 
 ## [2026-05-31] - Feature: Real Orderbook Heatmap Settings
+
 - **What changed**:
   - Added panel-scoped real orderbook heatmap controls in the global settings dropdown for enable/disable, opacity, price bucket size, lookback window, max near-price distance, intensity mode, quantity labels, and bid/ask/both colors.
   - Added persisted store fields and setters for the new heatmap visual/window settings, with migration defaults for existing saved panels.
@@ -1681,6 +1933,7 @@ esolveIndexFromTimeOrFallback.
   - MongoDB/storage, candles, trades, footprint/profile logic, depth adapters, feed registry, volume profile rendering, and orderbook sync logic were not changed.
 
 ## [2026-05-31] - Reliability: Orderbook Depth Synchronization
+
 - **What changed**:
   - Changed depth initialization to subscribe first, buffer incoming depth updates, fetch the REST snapshot, and only mark each local book ready after a valid snapshot-to-stream bridge.
   - Added sequence continuity checks for Binance spot/futures depth, including Binance futures `pu` validation when present, plus stale/gap state and safe resync on broken continuity.
@@ -1695,6 +1948,7 @@ esolveIndexFromTimeOrFallback.
   - Candles, trades, footprint/profile calculations, MongoDB/storage, settings layout, and heatmap rendering style were left unchanged.
 
 ## [2026-05-31] - Refinement: Orderbook Heatmap Readability
+
 - **What changed**:
   - Updated the real orderbook heatmap renderer to compress sub-pixel one-second samples into readable pixel-width time groups.
   - Aggregated grouped columns by peak bid/ask liquidity per price bucket so stable levels render as continuous horizontal zones instead of barcode-like vertical stripes.
@@ -1708,6 +1962,7 @@ esolveIndexFromTimeOrFallback.
   - No heatmap engine sampling, depth adapters, MongoDB/storage, candle, footprint, or profile calculation behavior changed.
 
 ## [2026-05-31] - Feature: Real Orderbook Heatmap Rendering
+
 - **What changed**:
   - Added a clipped canvas renderer for the `OrderbookHeatmapEngine` rolling columns so snapshot time maps to chart X and bucket price maps to chart Y.
   - Drew bid liquidity with teal/green tones, ask liquidity with red/orange tones, and mixed buckets with amber tones using log-scaled opacity.
@@ -1722,6 +1977,7 @@ esolveIndexFromTimeOrFallback.
   - Heatmap data still resets through the existing engine lifecycle on symbol, contract, depth source, trade source mode, bucket size, or range changes, with no storage, MongoDB, depth adapter, candle, footprint, or profile calculation changes.
 
 ## [2026-05-31] - Feature: Orderbook Heatmap Engine
+
 - **What changed**:
   - Added `OrderbookHeatmapEngine`, a rolling time x price data model that stores sampled columns of bucketed bid, ask, total quantity, side, notional, and timestamp data.
   - Added fixed-cadence 1000 ms heatmap sampling in the panel feed lifecycle using the active aggregate orderbook from Binance, Bybit, or Combined depth.
@@ -1736,6 +1992,7 @@ esolveIndexFromTimeOrFallback.
   - The next step is rendering these heatmap columns across the chart canvas.
 
 ## [2026-05-30] - Feature: Combined Depth Aggregation
+
 - **What changed**:
   - Added a `Combined` per-panel depth source option alongside Binance and Bybit.
   - Kept the shared feed registry limited to concrete exchange depth streams while `FeedProvider` expands Combined into separate Binance and Bybit snapshot/stream subscriptions.
@@ -1749,6 +2006,7 @@ esolveIndexFromTimeOrFallback.
   - Exchange precision and available depth can differ, so merged bucket strength is useful for visualization but is not a consolidated tradable orderbook.
 
 ## [2026-05-30] - Feature: Bybit Depth Source
+
 - **What changed**:
   - Added Bybit spot and USDT linear futures depth adapters using public v5 REST orderbook snapshots and public v5 WebSocket orderbook streams.
   - Added a persisted per-panel depth source setting with Binance and Bybit options in Settings > Chart > Liquidity Map.
@@ -1763,6 +2021,7 @@ esolveIndexFromTimeOrFallback.
   - Unsupported Bybit symbol/category combinations fail closed with an empty liquidity overlay instead of mixing in Binance depth.
 
 ## [2026-05-30] - Feature: Contract-Routed Depth Adapters
+
 - **What changed**:
   - Added a dedicated depth adapter abstraction with Binance spot and Binance futures REST snapshot and depth WebSocket implementations.
   - Routed shared orderbook snapshots and depth streams through contract-scoped depth keys in the feed registry.
@@ -1774,6 +2033,7 @@ esolveIndexFromTimeOrFallback.
   - Existing liquidity zones now consume depth from the selected contract type. Spot panels stay on Binance spot depth, while futures panels use Binance futures depth without adding new exchanges or rebuilding the heatmap engine.
 
 ## [2026-05-30] - Cleanup: Liquidity Overlay Near-Price Filtering
+
 - **What changed**:
   - Changed current liquidity zone aggregation to include near-price orderbook levels, cap the range to a small near-price percent, rank by size with a near-price preference, and limit displayed zones per side.
   - Deemphasized the current liquidity renderer from full-width bands into faint fills plus right-edge markers.
@@ -1785,6 +2045,7 @@ esolveIndexFromTimeOrFallback.
   - This is a small cleanup of the existing spot-only liquidity overlay. It does not add the real time x price heatmap engine and does not change futures orderbook support, storage, candles, footprints, or profiles.
 
 ## [2026-05-30] - Audit: Liquidity Heatmap Implementation
+
 - **What changed**:
   - Added `artifacts/liquidity_heatmap_audit.md` documenting the current spot-only orderbook source, liquidity zone aggregation, sparse history snapshots, right-side heatmap strip rendering, root causes, and ranked rebuild plan.
   - Updated `skills/map.md` with the new audit artifact.
@@ -1794,6 +2055,7 @@ esolveIndexFromTimeOrFallback.
   - Documentation-only audit. Chart rendering, storage, feeds, settings, and liquidity code were not changed.
 
 ## [2026-05-30] - Feature: VWAP Chart Overlay
+
 - **What changed**:
   - Added persisted per-panel VWAP settings for enable/disable, line color, line width, and reset mode.
   - Added VWAP controls to the Settings > Chart tab.
@@ -1808,6 +2070,7 @@ esolveIndexFromTimeOrFallback.
   - Footprint, Volume Profile, feeds, storage, MongoDB, and cache behavior were not changed.
 
 ## [2026-05-30] - UI: Signals Settings And Persistent Tools
+
 - **What changed**:
   - Removed the Absorption, Exhaustion, Iceberg, and Liquidity Vacuum quick toggles from the per-panel toolbar.
   - Kept those signal controls in the existing Settings > Signals tab, using the same store actions and panel state.
@@ -1821,6 +2084,7 @@ esolveIndexFromTimeOrFallback.
   - Market data, chart calculations, storage, feeds, cache behavior, and render math were not changed.
 
 ## [2026-05-30] - Fix: Footprint Persistence Restore Gaps
+
 - **What changed**:
   - Moved canonical 1m/$5 footprint row persistence out of the selected chart candle-close path.
   - Base footprint rows are now queued only after the selected aggTrade source stream(s) advance past a closed 1m slice, so MongoDB receives the finalized live footprint slice instead of an early kline-close snapshot.
@@ -1834,6 +2098,7 @@ esolveIndexFromTimeOrFallback.
   - Recent rendering/performance optimization logic was not changed except for adding renderer coverage diagnostics.
 
 ## [2026-05-29] - Performance: Footprint Passive Redraw Throttle
+
 - **What changed**:
   - Made the main chart passive redraw throttle depend on chart mode.
   - Kept candle/default passive redraws at the existing 125 ms interval.
@@ -1847,6 +2112,7 @@ esolveIndexFromTimeOrFallback.
   - Footprint calculations, footprint cache, feed registry, MongoDB/storage, raw trades, fine profile persistence, and chart visuals were not changed.
 
 ## [2026-05-29] - Feature: Focus Layout Mode
+
 - **What changed**:
   - Added a header Focus button that toggles a layout-only focus mode.
   - Focus mode hides the top header and sidebar, allowing the chart workspace to expand into the freed screen space.
@@ -1862,6 +2128,7 @@ esolveIndexFromTimeOrFallback.
   - Chart rendering, data feeds, cache, storage, settings behavior, and sidebar collapse behavior were not changed.
 
 ## [2026-05-30] - Feature: Combined Depth Aggregation
+
 - **What changed**:
   - Added a `Combined` per-panel depth source option alongside Binance and Bybit.
   - Kept the shared feed registry limited to concrete exchange depth streams while `FeedProvider` expands Combined into separate Binance and Bybit snapshot/stream subscriptions.
@@ -1875,6 +2142,7 @@ esolveIndexFromTimeOrFallback.
   - Exchange precision and available depth can differ, so merged bucket strength is useful for visualization but is not a consolidated tradable orderbook.
 
 ## [2026-05-30] - Feature: Bybit Depth Source
+
 - **What changed**:
   - Added Bybit spot and USDT linear futures depth adapters using public v5 REST orderbook snapshots and public v5 WebSocket orderbook streams.
   - Added a persisted per-panel depth source setting with Binance and Bybit options in Settings > Chart > Liquidity Map.
@@ -1889,6 +2157,7 @@ esolveIndexFromTimeOrFallback.
   - Unsupported Bybit symbol/category combinations fail closed with an empty liquidity overlay instead of mixing in Binance depth.
 
 ## [2026-05-30] - Feature: Contract-Routed Depth Adapters
+
 - **What changed**:
   - Added a dedicated depth adapter abstraction with Binance spot and Binance futures REST snapshot and depth WebSocket implementations.
   - Routed shared orderbook snapshots and depth streams through contract-scoped depth keys in the feed registry.
@@ -1900,6 +2169,7 @@ esolveIndexFromTimeOrFallback.
   - Existing liquidity zones now consume depth from the selected contract type. Spot panels stay on Binance spot depth, while futures panels use Binance futures depth without adding new exchanges or rebuilding the heatmap engine.
 
 ## [2026-05-30] - Cleanup: Liquidity Overlay Near-Price Filtering
+
 - **What changed**:
   - Changed current liquidity zone aggregation to include near-price orderbook levels, cap the range to a small near-price percent, rank by size with a near-price preference, and limit displayed zones per side.
   - Deemphasized the current liquidity renderer from full-width bands into faint fills plus right-edge markers.
@@ -1911,6 +2181,7 @@ esolveIndexFromTimeOrFallback.
   - This is a small cleanup of the existing spot-only liquidity overlay. It does not add the real time x price heatmap engine and does not change futures orderbook support, storage, candles, footprints, or profiles.
 
 ## [2026-05-30] - Audit: Liquidity Heatmap Implementation
+
 - **What changed**:
   - Added `artifacts/liquidity_heatmap_audit.md` documenting the current spot-only orderbook source, liquidity zone aggregation, sparse history snapshots, right-side heatmap strip rendering, root causes, and ranked rebuild plan.
   - Updated `skills/map.md` with the new audit artifact.
@@ -1920,6 +2191,7 @@ esolveIndexFromTimeOrFallback.
   - Documentation-only audit. Chart rendering, storage, feeds, settings, and liquidity code were not changed.
 
 ## [2026-05-30] - Feature: VWAP Chart Overlay
+
 - **What changed**:
   - Added persisted per-panel VWAP settings for enable/disable, line color, line width, and reset mode.
   - Added VWAP controls to the Settings > Chart tab.
@@ -1934,6 +2206,7 @@ esolveIndexFromTimeOrFallback.
   - Footprint, Volume Profile, feeds, storage, MongoDB, and cache behavior were not changed.
 
 ## [2026-05-30] - UI: Signals Settings And Persistent Tools
+
 - **What changed**:
   - Removed the Absorption, Exhaustion, Iceberg, and Liquidity Vacuum quick toggles from the per-panel toolbar.
   - Kept those signal controls in the existing Settings > Signals tab, using the same store actions and panel state.
@@ -1947,6 +2220,7 @@ esolveIndexFromTimeOrFallback.
   - Market data, chart calculations, storage, feeds, cache behavior, and render math were not changed.
 
 ## [2026-05-30] - Fix: Footprint Persistence Restore Gaps
+
 - **What changed**:
   - Moved canonical 1m/$5 footprint row persistence out of the selected chart candle-close path.
   - Base footprint rows are now queued only after the selected aggTrade source stream(s) advance past a closed 1m slice, so MongoDB receives the finalized live footprint slice instead of an early kline-close snapshot.
@@ -1960,6 +2234,7 @@ esolveIndexFromTimeOrFallback.
   - Recent rendering/performance optimization logic was not changed except for adding renderer coverage diagnostics.
 
 ## [2026-05-29] - Performance: Footprint Passive Redraw Throttle
+
 - **What changed**:
   - Made the main chart passive redraw throttle depend on chart mode.
   - Kept candle/default passive redraws at the existing 125 ms interval.
@@ -1973,6 +2248,7 @@ esolveIndexFromTimeOrFallback.
   - Footprint calculations, footprint cache, feed registry, MongoDB/storage, raw trades, fine profile persistence, and chart visuals were not changed.
 
 ## [2026-05-29] - Feature: Focus Layout Mode
+
 - **What changed**:
   - Added a header Focus button that toggles a layout-only focus mode.
   - Focus mode hides the top header and sidebar, allowing the chart workspace to expand into the freed screen space.
@@ -1988,6 +2264,7 @@ esolveIndexFromTimeOrFallback.
   - Chart rendering, data feeds, cache, storage, settings behavior, and sidebar collapse behavior were not changed.
 
 ## [2026-05-27] - Feature: Filled Volume Profile Rendering
+
 - **What changed**:
   - Added a third Volume Profile scaling/render option, `filled`, beside `linear` and `sqrt` in the Profiles settings panel.
   - Updated the default and custom total-volume profile renderers to draw a stepped filled contour from existing row widths in `filled` mode.
@@ -2003,6 +2280,7 @@ esolveIndexFromTimeOrFallback.
   - Filled mode uses a continuous stepped contour/fill with row-detail overlay; no data smoothing or profile-row mutation is performed.
 
 ## [2026-05-25] - Performance: Passive Redraw And Enabled-Layer Reuse
+
 - **What changed**:
   - Added passive/live redraw throttling to the main chart canvas and CVD canvas while keeping interaction redraws on the immediate rAF path.
   - Added chart-local runtime reuse keys for default and custom Volume Profile builds so enabled profiles remain visible without rebuilding profile inputs for unrelated redraws.
@@ -2018,6 +2296,7 @@ esolveIndexFromTimeOrFallback.
   - Passive live-flow redraws are capped around 8/sec per surface, interaction redraws remain responsive, profile/CVD rebuild work is reused more aggressively, and repeated skipped-open diagnostics should grow much slower.
 
 ## [2026-05-25] - Performance: Small Rendering Optimizations
+
 - **What changed**:
   - Guarded the default Volume Profile build so it only runs when the default profile is enabled.
   - Replaced the one-entry `RawTradeVolumeProfileEngine` profile cache with a bounded keyed cache and exposed cache stats for render metrics.
@@ -2032,6 +2311,7 @@ esolveIndexFromTimeOrFallback.
   - Disabled default profiles no longer build hidden default profile data, default/custom profiles can coexist in a small bounded cache, CVD redraws can reuse series data, and repeated visible footprint aggregation within one redraw is avoided.
 
 ## [2026-05-24] - Audit: Rendering Performance Path
+
 - **What changed**:
   - Added `artifacts/rendering_performance_audit.md` documenting chart/CVD redraw triggers, rAF coalescing behavior, visible-range rendering boundaries, expensive layers, React re-render risks, long-session risks, and a ranked fix order.
   - Updated `skills/map.md` with the new audit artifact responsibility.
@@ -2041,6 +2321,7 @@ esolveIndexFromTimeOrFallback.
   - Audit only; runtime chart rendering, data/cache/storage logic, and UI behavior were not changed.
 
 ## [2026-05-24] - Fix: Browser Debug Growth And Redraw Metrics
+
 - **What changed**:
   - Normalized candle cache `loadedRanges` so duplicate, overlapping, and adjacent ranges merge into compact coverage entries instead of being appended on every restore/live update.
   - Added Volume Profile raw-trade/key pruning around retention cleanup and max-trade enforcement, with metrics for removed trades and seen trade keys.
@@ -2054,6 +2335,7 @@ esolveIndexFromTimeOrFallback.
   - Candle loaded ranges now stay deduped/merged, Volume Profile trade identity tracking is bounded with cleanup visibility, restore diagnostics remain capped, and `window.__MARKET_DEBUG__.getSnapshot()` now exposes render/redraw frequency metrics.
 
 ## [2026-05-23] - Migration: MongoDB Footprint/Profile Rows
+
 - **What changed**:
   - Implemented MongoDB storage for canonical `footprint_cells_ts` rows behind `MARKET_DB_DRIVER=mongodb`, keyed by `symbol`, `contractType`, `dataSourceMode`, canonical `1m` timeframe, `$5` bucket size, candle time, and `bucketPriceKey`.
   - Implemented MongoDB storage for canonical `profile_rows_ts` rows behind `MARKET_DB_DRIVER=mongodb`, keyed by `symbol`, `contractType`, `dataSourceMode`, canonical `1m` timeframe, `baseBucketSizeKey`, candle time, and `bucketPriceKey`.
@@ -2069,6 +2351,7 @@ esolveIndexFromTimeOrFallback.
   - Duplicate protection uses adapter-level source/time/price existence checks before inserting into MongoDB time-series collections.
 
 ## [2026-05-23] - Migration: MongoDB Candle/OHLCV Storage
+
 - **What changed**:
   - Implemented MongoDB candle/OHLCV storage in `market_candles_ts` behind `MARKET_DB_DRIVER=mongodb`.
   - Added MongoDB time-series collection initialization with `timeField: "time"`, `metaField: "meta"`, 7-day TTL, and source/time restore index.
@@ -2085,6 +2368,7 @@ esolveIndexFromTimeOrFallback.
   - Because MongoDB time-series collections do not support unique indexes or upsert measurement updates, duplicate protection is implemented as an adapter-level source-scoped existence check before insert plus the existing client-side closed-candle claim.
 
 ## [2026-05-23] - Foundation: MongoDB Storage Adapter Skeleton
+
 - **What changed**:
   - Added the official MongoDB Node driver dependency and lockfile entries.
   - Added a singleton-safe MongoDB client module using `MONGODB_URI`, `MONGODB_DB_NAME`, and ping verification.
@@ -2099,6 +2383,7 @@ esolveIndexFromTimeOrFallback.
   - No candle, footprint, profile, raw-trade, feed, cache, or chart behavior was migrated to MongoDB in this task.
 
 ## [2026-05-23] - Design: MongoDB Time-Series Storage Migration
+
 - **What changed**:
   - Added `artifacts/mongodb_storage_design.md` with MongoDB time-series collection designs for source-scoped candles, canonical footprint cells, canonical fine Volume Profile rows, metadata, and future raw trades.
   - Defined migration strategy, time-series options, meta fields, restore indexes, 7-day TTL policy, duplicate-write strategy, decimal storage guidance, and a storage adapter interface using `MARKET_DB_DRIVER=libsql | mongodb`.
@@ -2110,6 +2395,7 @@ esolveIndexFromTimeOrFallback.
   - The design keeps libSQL as the default fallback and calls out source-safe MongoDB candle restore as the first migration step.
 
 ## [2026-05-23] - Memory: Shared Market Cache TTL Cleanup
+
 - **What changed**:
   - Added shared market cache policy constants/env overrides for retention, cleanup interval, inactive grace, max base slices, and max row/cell/candle caps.
   - Added subscriber-aware cleanup to shared footprint, Volume Profile, and candle caches: active keys are trimmed, zero-subscriber keys remain warm during grace, then inactive keys are evicted from memory.
@@ -2122,6 +2408,7 @@ esolveIndexFromTimeOrFallback.
   - Database retention/storage, chart UI, feed registry behavior, and footprint/profile calculation logic are unchanged.
 
 ## [2026-05-23] - Observability: Market Debug Metrics Snapshot
+
 - **What changed**:
   - Added a central dev-only `lib/debug/marketMetrics.ts` metrics registry exposed as `window.__MARKET_DEBUG__`.
   - Instrumented the shared feed registry with stream creation/reuse/close counts, subscriber counts, last event timestamps, and per-stream event rates.
@@ -2134,6 +2421,7 @@ esolveIndexFromTimeOrFallback.
   - Chart rendering, database schema, storage format, and feed/cache behavior are unchanged; only lightweight counters and derived summaries were added.
 
 ## [2026-05-23] - Architecture: Shared Candle/OHLCV Cache
+
 - **What changed**:
   - Added a shared in-memory candle cache keyed by `contractType::symbol::timeframe`.
   - Routed panel candle history restore and live kline updates through the cache while syncing snapshots back into panel Zustand candle state.
@@ -2148,6 +2436,7 @@ esolveIndexFromTimeOrFallback.
   - The extra logs are verification-only and do not change footprint cache, Volume Profile cache, feed registry, chart UI, or storage behavior.
 
 ## [2026-05-23] - Architecture: Shared Live Feed Registry
+
 - **What changed**:
   - Added a shared ref-counted feed registry for Binance kline, aggTrade, and spot depth streams.
   - Routed panel feed subscriptions through registry keys so identical panels reuse live streams while each panel keeps its own callbacks.
@@ -2158,6 +2447,7 @@ esolveIndexFromTimeOrFallback.
   - Matching panels now share underlying live feed subscriptions until the final subscriber unsubscribes, while footprint/profile caches, contract alignment, signals, orderbook managers, storage, and chart rendering remain panel-local.
 
 ## [2026-05-23] - Architecture: Shared Volume Profile Base Cache
+
 - **What changed**:
   - Added a shared in-memory Volume Profile base cache keyed by `symbol::contractType::dataSourceMode::baseBucketSize`.
   - Updated `RawTradeVolumeProfileEngine` to keep panel-local build/cache state while reading and writing canonical 1m fine rows through the shared cache.
@@ -2168,6 +2458,7 @@ esolveIndexFromTimeOrFallback.
   - Panels with the same symbol/source/base bucket reuse restored and live fine Volume Profile rows while keeping independent timeframe, visible/profile range, display row size, chart settings, drawings, and render state. Different symbol/source/base-bucket combinations remain isolated.
 
 ## [2026-05-22] - Architecture: Shared Footprint Base Cache
+
 - **What changed**:
   - Added a shared source-scoped in-memory footprint cache keyed by `symbol::contractType::dataSourceMode`.
   - Updated `AggregationEngine` to keep panel-specific display settings and candle metadata while reading/writing canonical 1m/$5 base slices through the shared cache.
@@ -2178,6 +2469,7 @@ esolveIndexFromTimeOrFallback.
   - Panels with the same symbol/source can reuse loaded base footprints while keeping independent timeframes, display bucket sizes, signals, overlays, and render state. Different symbol/source combinations remain isolated.
 
 ## [2026-05-22] - Architecture: Source-Scoped Base Footprints
+
 - **What changed**:
   - Added `contractType` and `dataSourceMode` to footprint persistence and query identity, with a schema migration that isolates old rows under `legacy/legacy`.
   - Changed footprint storage/restore to use canonical `1m` timeframe and `$5` bucket rows only.
@@ -2188,6 +2480,7 @@ esolveIndexFromTimeOrFallback.
   - Source combinations no longer overwrite each other in `footprint_cells`. 5m/15m/etc. chart footprints are derived from restored/live 1m/$5 base slices, while display bucket changes remain DB-free.
 
 ## [2026-05-22] - Architecture: Fixed Base Footprint Bucket
+
 - **What changed**:
   - Updated the footprint aggregation engine to ingest and hydrate footprint cells at a fixed $5 base bucket size.
   - Added in-memory display aggregation so larger selected bucket sizes combine existing $5 cells instead of changing the stored footprint resolution.
@@ -2198,6 +2491,7 @@ esolveIndexFromTimeOrFallback.
   - Changing display bucket size now re-aggregates loaded $5 footprint data in memory. $10 combines two $5 levels, $25 combines five $5 levels, and stored/restored DB footprint rows stay on one base resolution.
 
 ## [2026-05-21] - Fix: Source-Scoped Volume Profile History
+
 - **What changed**:
   - Scoped fine-grain Volume Profile row restore/storage by the active Candles & Prices contract and Aggregate Trades source selection.
   - Updated live closed-candle profile row handoff so full-coverage rows are retained in the profile engine for spot, futures, and combined source modes.
@@ -2208,6 +2502,7 @@ esolveIndexFromTimeOrFallback.
   - Default and custom Volume Profiles can rebuild across historical candles from source-matched fine rows or safe spot/spot raw-trade fallback without changing candle price alignment or aggregate-trade source behavior.
 
 ## [2026-05-21] - Fix: Routed Binance Futures Market WebSocket
+
 - **What changed**:
   - Updated the Binance futures adapter to connect kline/aggTrade combined streams through the routed `/market/stream` WebSocket endpoint.
   - Left futures REST history, message parsing, reconnect handling, and feed routing unchanged.
@@ -2217,6 +2512,7 @@ esolveIndexFromTimeOrFallback.
   - Futures candle and aggregate-trade WebSocket messages can now reach the existing provider callbacks, allowing Futures/Futures mode to populate footprint/delta cells and report `LIVE` once messages arrive.
 
 ## [2026-05-21] - Fix: Futures Live Connection Status
+
 - **What changed**:
   - Updated the panel feed lifecycle so the connected flag flips to live when any selected live stream message arrives, including futures aggTrades.
   - Kept candle handling unchanged for price/chart updates while allowing trade-only live flow to report an active connection.
@@ -2226,6 +2522,7 @@ esolveIndexFromTimeOrFallback.
   - Futures-only aggregate trade mode can now report `LIVE` once futures live data is flowing, without changing working spot routing or chart rendering behavior.
 
 ## [2026-05-21] - Fix: Separate Contract Type From Aggregate Trades
+
 - **What changed**:
   - Added a persisted per-panel Contract Type setting for `Spot` or `Futures` candles/price, defaulting to spot.
   - Extended the futures adapter to support futures REST kline history and WebSocket kline streams in addition to aggTrades.
@@ -2238,6 +2535,7 @@ esolveIndexFromTimeOrFallback.
   - Candle OHLCV and the price axis now come from one clean contract source, while footprint volume, delta, CVD, profiles, and signals can still use spot-only, futures-only, or combined aggression without price-axis drift.
 
 ## [2026-05-21] - Feature: Binance Futures AggTrade Feed
+
 - **What changed**:
   - Added a Binance futures trade-only feed adapter using the public futures aggTrade WebSocket.
   - Added persisted per-panel data source mode with `Spot`, `Futures`, and default `Both` options in chart settings.
@@ -2249,6 +2547,7 @@ esolveIndexFromTimeOrFallback.
   - Delta, footprint cells, volume profile, CVD, and signals can now reflect spot-only, futures-only, or combined live trade activity. Switching the source setting reconnects the active trade streams while candles and liquidity remain spot-based.
 
 ## [2026-05-20] - Fix: CVD Compact Bar Time-Axis Position
+
 - **What changed**:
   - Moved the minimized CVD compact bar from a bottom flex row to an absolute overlay directly above the chart time axis.
 - **Why it changed**:

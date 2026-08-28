@@ -27,6 +27,8 @@ interface CvdPanelProps {
   volumeProfileRevision: number;
   profileWidth: number;
   sessions: PanelState['sessions'];
+  globalTimezone?: string;
+  globalTimeFormat?: '12h' | '24h';
   cvdMode: PanelState['cvdMode'];
   cvdSmoothing: number;
   cvdResetMode: PanelState['cvdResetMode'];
@@ -47,6 +49,8 @@ export function CvdPanel({
   volumeProfileRevision,
   profileWidth,
   sessions,
+  globalTimezone = 'local',
+  globalTimeFormat = '24h',
   cvdMode,
   cvdSmoothing,
   cvdResetMode,
@@ -175,6 +179,7 @@ export function CvdPanel({
         resetMode: cvdResetMode,
         smoothing: cvdSmoothing,
         sessions,
+        timezone: globalTimezone,
       });
       const autoScale = getCvdScale(points, firstIndex, lastIndex, cvdMode, cvdScaleMode, cvdFixedRange, chartHeight);
       const scale = getViewportScale(chartHeight, autoScale);
@@ -280,12 +285,18 @@ export function CvdPanel({
     cvdShowDivergence,
     cvdDivergenceLookback,
     getViewportScale,
+    globalTimezone,
+    globalTimeFormat,
   ]);
 
   const redrawRef = useRef(redraw);
   useEffect(() => {
     redrawRef.current = redraw;
   }, [redraw]);
+
+  useEffect(() => {
+    redrawRef.current();
+  }, [globalTimezone, globalTimeFormat]);
 
   const updateCrosshair = useCallback((x: number | null, y: number | null) => {
     if (x === null || y === null) {

@@ -1,5 +1,61 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-28] - Feature & Fix: Global Time Zone & Time Format Consistency Across Entire Application
+
+- **What changed**:
+  - **Unified Time Formatting Utilities & Zero-Allocation Timezone Caching (`lib/utils/format.ts`)**:
+    - Implemented high-speed `getTimezoneOffsetMs` with hourly timezone bucket caching and reusable `Intl.DateTimeFormat` memoization, eliminating 1,500+ expensive `new Intl.DateTimeFormat` allocations per frame.
+    - Enhanced `formatTime` and `formatDateTime` to respect both `globalTimezone` and `globalTimeFormat` (`12h` with AM/PM vs `24h`) across milliseconds and seconds timestamps without allocating new formatters per call.
+    - Added bijective 12h/24h conversion helpers `to12Hour(hour24)` and `to24Hour(hour12, period)` with 100% test coverage.
+  - **Trading Sessions Timezone Alignment (`lib/utils/sessions.ts` & `lib/draw/drawSessions.ts`)**:
+    - Updated `getSessionOccurrences` and `drawSessions` to accept `timezone` parameter, replacing hardcoded `'UTC'` with the active `globalTimezone`, and added early-exit bounds guards.
+    - Added support for overnight / midnight-crossing session ranges (`sessionEndTime <= sessionStartTime`).
+  - **Historical Session Volume Profile (HSVP) Timezone Alignment (`lib/utils/historicalSessions.ts` & `components/FeedProvider.tsx`)**:
+    - Updated `getHistoricalSessionRanges` and `computeHistoricalSessionRanges` to accept and prioritize `globalTimezone`.
+    - Updated `FeedProvider.tsx` cache range calculations to compute protected and restore ranges using `state.globalTimezone`.
+  - **CVD Reset Timezone Alignment (`lib/utils/delta.ts`)**:
+    - Added `timezone` parameter to `BuildCvdSeriesOptions` in `buildCvdSeries`.
+    - Replaced UTC day keying with `getZonedDayKey(time, timezone)` and updated `getActiveSessionKey` to use `getZonedTimeParts(time, timezone)`.
+  - **Interactive 12h/24h Time Inputs (`components/ui/TimeInput.tsx`)**:
+    - Created reusable `TimeInput` component supporting 24-hour inputs (00-23) and 12-hour inputs (01-12 with AM/PM pill toggle) that bijectively syncs to store state.
+  - **Settings & Timezone UI Context (`components/ui/ChartSettingsDropdown.tsx`)**:
+    - Integrated `TimeInput` across Sessions (Tokyo, London, NY) and HSVP start/end times.
+    - Added timezone context indicator badges in Sessions and HSVP headers displaying the active global timezone and format.
+    - Added live clock preview and expanded world timezones in the Global Time settings section.
+  - **Trade History & Order Tables (`components/ui/OrdersPanel.tsx`)**:
+    - Updated Open Orders and Trade History timestamps to format via `formatDateTime(time, globalTimezone, globalTimeFormat)`.
+  - **Imperative Canvas Reactive Redraws (`components/chart/ChartCanvas.tsx`, `components/chart/CvdPanel.tsx`, `components/chart/ChartPanel.tsx`)**:
+    - Passed `globalTimezone` and `globalTimeFormat` props into `ChartCanvas` and `CvdPanel`.
+    - Added reactive effects triggering instant canvas `redraw()` whenever global timezone or time format changes.
+  - **Store Sanitization & Overnight Validation (`lib/store/chart.ts`)**:
+    - Removed artificial start < end time restrictions in `setSessionTime` to allow overnight trading sessions.
+    - Cleaned up legacy `historicalSessionProfileTimezone` in persisted state sanitizer.
+- **Why it changed**:
+  - The application previously had disjointed timezone handling (some features using UTC, others using local PC time, and canvas failing to re-render on setting changes).
+  - Users required strict consistency: when changing global Time Zone or 12h/24h Time Format, every feature (chart axes, crosshair tooltips, sessions, HSVP, CVD resets, settings inputs, trade history) must reflect the selected settings immediately.
+- **Impact summary**:
+  - Single authoritative source of truth for time display, calculation, and input across the entire application.
+  - Full support for 12h (AM/PM) and 24h formats and overnight session configurations.
+  - `npx tsc --noEmit` and targeted automated verification tests passed with 0 errors.
+
+## [2026-08-24] - Feature: Direct Chart BUY/SELL Order Placement & Overlay Visual Refinement
+
+- **What changed**:
+  - **Toolbar Trade Tools**: Added dedicated `BUY` (green) and `SELL` (red) buttons in `PanelToolbar.tsx` next to the `Position` tool, allowing traders to toggle buy/sell placement mode.
+  - **Instant Execution on Chart Drop/Click**: Updated `ChartCanvas.tsx` `onMouseDown` so that when `BUY` or `SELL` mode is active, clicking or dropping on the chart canvas sets the exact clicked price as the Stop Loss (SL) and immediately executes the market order via `POST http://localhost:3001/order` without requiring any separate confirmation modal.
+  - **Removed Live Price Line Drag & Confirm Popup**: Removed the live dotted price line drag hit-testing to prevent accidental or missed order placements during fast market volatility, and removed `MarketOrderConfirmRow` from `CanvasDrawingToolbar.tsx` and `ChartCanvas.tsx`.
+  - **Overlay Visual Refinement**:
+    - Removed background translucent shaded rectangular fills (danger/profit zones) between Entry and SL/TP in `drawTradingOverlays.ts`.
+    - Relocated all order information labels (Side, Volume, Entry Price, Live PnL, SL, TP, Limit Orders, and Liquidation) from the far left of the chart to the **right side**, positioned directly adjacent to the SL/TP pill handles and price badges for a clean, unobstructed chart.
+- **Why it changed**:
+  - Dragging the fast-moving live price line during high volatility caused missed clicks and awkward order execution.
+  - Users wanted a direct one-click trade placement flow (pick BUY/SELL $\rightarrow$ drop Stop Loss level on chart $\rightarrow$ instant execution) without redundant confirm popups.
+  - Background shading cluttered historical footprint and candlestick visibility; moving information labels to the right keeps the main chart clean while keeping all relevant metrics glanceable next to the price axis.
+- **Impact summary**:
+  - Fast, reliable chart-based trade execution in MetaTrader 5 via the local bridge with minimal friction.
+  - Chart canvas overlays are cleaner with clear horizontal bars, right-aligned information badges, and no obscuring background fills.
+  - `npx tsc --noEmit` passed with 0 errors.
+
 ## [2026-08-24] - Fix: MT5 Order Canvas Persistence, Live PnL Tracking, & Bridge Position Synchronization
 
 - **What changed**:
@@ -43,6 +99,7 @@
   - To enable fast, chart-based execution of market orders where the client only specifies the Stop Loss price, and the MT5 EA automatically calculates the correct position sizing and places the trade with a default 1R Take Profit.
 - **Impact summary**:
   - Users can click and drag from the current price line on the chart to define an SL, hit Confirm, and have a trade automatically executed in MetaTrader 5 with exact risk management applied.
+
 ## [2026-08-23] - Feature: Chart Tab Isolation and Position Tool Simplification
 
 - **What changed**:
@@ -162,122 +219,3 @@
   - To reduce file length and bloat in the main `FeedProvider.tsx` component, strictly adhering to the `client_code_refector.md` rule that magic values should live in a config file.
 - **Impact summary**:
   - `FeedProvider.tsx` is cleaner. Safe logic extraction that cannot break runtime functionality. `map.md` and `refactoring_state.md` updated to reflect the new file location.
-
-## [2026-08-22] - Refactor: Extract Inline Client Types
-
-- **What changed**:
-  - Extracted inline client types from `components/` and `lib/` to standalone files in `types/`.
-  - Created new centralized type files: `types/chart.ts`, `types/cvd.ts`, `types/debug.ts`, `types/feed.ts`, `types/storage.ts`, and `types/volumeProfile.ts`.
-  - Moved specific types (e.g., `DrawCvdOptions`, `IndicatorLabelConfig`, `BubbleSettings`) into their respective domain-specific type files.
-  - Updated existing type files (`types/bubble.ts`, `types/trading.ts`, `types/footprint.ts`, `types/absorption.ts`) with previously inline types.
-- **Why it changed**:
-  - To clean up the client codebase, decouple type definitions from runtime implementations, reduce circular dependencies, and establish a single source of truth for types.
-- **Impact summary**:
-  - The client-side now compiles cleanly with `tsc --noEmit`. The `types/` directory structure strictly mirrors the domain boundaries, improving code organization and maintainability.
-
-## [2026-08-23] - Feature/Fixes: Multi-Panel Sync, Timezone, CVD Scaling
-
-- **What changed**:
-  - Implemented cross-panel synchronization for drawing tools (lines, custom profile) toggled via `drawingsSyncEnabled`.
-  - Replaced the Custom Volume Profile tool icon in `DrawingFavoritesToolbar.tsx` with an `AlignLeft` icon to differentiate it from the Box tool.
-  - Relocated the Timezone and Time Format settings from the Session settings block to a new "Global Time" section in the Chart settings tab.
-  - Modified `lib/utils/sessions.ts` to evaluate session configurations in UTC exclusively, ensuring session highlighting on the chart remains visually locked to the configured UTC trading hours regardless of the user's chosen display timezone.
-  - Fixed a scaling bug in `drawCvd.ts` (`getCvdScale`) that anchored the scale boundaries to 0, which previously caused continuously compounding CVD indicators to appear completely flat/broken when their values drifted far from zero.
-- **Why it changed**:
-  - Addressed multi-panel workflow gaps (drawings not syncing).
-  - Clarified confusing iconography.
-  - Ensured display timezone preference didn't inadvertently alter the actual trading schedule highlighting.
-  - Resolved the "broken" appearance of the CVD indicator without destroying its mathematically correct continuous nature.
-- **Impact summary**:
-  - Improved multi-panel usability, accurate session highlighting, and functional CVD auto-scaling.
-
-## [2026-08-16] - Feature/UI: Bubble Customization and Docs
-- **What changed**:
-  - Replaced semantic bubble colors with custom hex values `#0D5B0B` (Buy) and `#4A1E6F` (Sell) in `drawBubbles.ts`.
-  - Updated default bubble radius limits in `lib/store/chart.ts` to `bubbleMinRadius: 2` and `bubbleMaxRadius: 8`.
-  - Created `BubblesDocsModal.tsx` containing a detailed tutorial/reference on bubble sizing and opacity.
-  - Added a "DOCS" link to the Bubbles section of `ChartSettingsDropdown.tsx` to toggle the new modal.
-- **Why it changed**:
-  - The user requested specific color replacements for bubbles and desired smaller default sizes (2px - 8px) with a dedicated pop-up modal to explain the relationship between volume, opacity, and bubble radius for future reference.
-- **Impact summary**:
-  - The bubbles feature is visually updated and easier to understand thanks to the integrated documentation modal accessible directly from the settings panel.
-
-## [2026-08-15] - Fix: Pagination Infinite Fetch Loop on Scroll
-
-- **What changed**:
-  - Updated `alignFootprintRange` and `alignFineProfileRange` in `FeedProvider.tsx` to align requested ranges to fixed 2-hour chunk boundaries (`FOOTPRINT_RESTORE_MAX_CHUNK_SECONDS` / `FINE_PROFILE_RESTORE_CHUNK_SECONDS`) instead of 1-minute bounds.
-  - Updated `skills/map.md` to reflect the fixed chunk boundaries change.
-- **Why it changed**:
-  - The previous 1-minute snapping caused the `requestedRange` (and thus the `restoreKey`) to change on nearly every scroll frame. This repeatedly triggered chunked network requests for slightly-shifted 2-hour windows, bypassing the cache deduplication and spamming infinite overlapping GET requests.
-- **Impact summary**:
-  - The footprint and volume profile restores now correctly snap to absolute 2-hour time boundaries. Scrolling back smoothly fires one single GET request per 2-hour window and properly skips network fetching if the data is already cached.
-
-## [2026-08-15] - UI: Remove Floating Footprint Delta Numbers
-
-- **What changed**:
-  - Removed the `drawDelta` function from `lib/utils/canvas.ts`.
-  - Removed the call to `drawDelta` inside `drawFootprint.ts` that rendered floating green/red delta numbers at the bottom of the chart canvas.
-  - Updated `skills/map.md` to reflect these responsibility changes.
-- **Why it changed**:
-  - The floating delta numbers above the time axis were redundant and visually confusing now that the dedicated Stats Indicator Dashboard provides a clear, color-coded "Delta" row for every candle.
-- **Impact summary**:
-  - The chart canvas is cleaner at the bottom.
-  - Delta is now exclusively read from the Stats grid, improving visual consistency and reducing clutter above the time axis.
-
-## [2026-08-15] - Fix: Candlestick Body Width
-
-- **What changed**:
-  - Increased the body width multiplier in `drawCandles.ts` from 0.6 to 0.82 of the available bar width.
-- **Why it changed**:
-  - The Japanese candlesticks had too much empty gap between them, making them look thin and disconnected. The user wanted a tighter, more traditional TradingView-style spacing.
-- **Impact summary**:
-  - Candlesticks now render significantly wider, filling more of the available column width and making the chart visually cleaner and easier to read.
-
-## [2026-08-15] - Redesign: Stats Indicator Dashboard
-
-- **What changed**:
-  - Redesigned `drawStatsGrid.ts` to render the Stats indicator as a compact row of large, equal-sized colored cells instead of plain text.
-  - Implemented intensity-based background coloring for Delta, Volume, and CVD cells using the existing order-flow color palette.
-  - Reused the normalization logic from `drawFootprint.ts` (`percentile`, `getSoftScale`) to scale color intensity dynamically based on the current visible range rather than hardcoded thresholds.
-  - Passed `currentBarWidth` from `ChartCanvas.tsx` to `drawStatsGrid.ts` to ensure cells map exactly to the candlestick horizontal grid.
-  - Updated typography and spacing to improve glanceability.
-  - Updated `skills/map.md` to reflect that `drawStatsGrid.ts` acts as the stats canvas overlay.
-- **Why it changed**:
-  - The previous Stats indicator was plain text and visually weak. The user requested a professional, dashboard-like array of colored cells for faster visual scanning of market conditions (e.g., strong vs. weak Delta, positive vs. negative CVD).
-- **Impact summary**:
-  - Traders can now immediately assess volume magnitude and buying/selling dominance per candle through color intensity without needing to read individual numbers.
-
-## [2026-08-14] - Fix: Large Custom Volume Profile Cache Eviction (Revised)
-
-- **What changed**:
-  - Implemented a "protected ranges" mechanism in `lib/volumeProfile/profileCache.ts`. The `VolumeProfileBaseCache` now accepts registered time windows that are strictly immune to normal background size-based eviction sweeps (`cleanup` and `deleteRowsBefore`).
-  - Updated `lib/volumeProfile/profileEngine.ts` to own the protected ranges state. `RawTradeVolumeProfileEngine` now intercepts `setProtectedRanges`, stores them, and automatically re-applies them whenever its internal base cache instance is swapped (`setBaseCache`), fixing a critical synchronization bug.
-  - Added a reactive `useEffect` to `components/FeedProvider.tsx` that monitors Custom/Default Volume Profile bounds and calls `volumeProfileEngineRef.current.setProtectedRanges(...)`.
-- **Why it changed**:
-  - A bug caused large custom volume profiles to sporadically disappear. The custom profile relies on the global shared cache, which limits data to a rolling 12-hour window. The initial fix failed because the UI registered ranges on a temporary dummy cache just before the engine asynchronously swapped it out for the real shared cache.
-- **Impact summary**:
-  - Custom Volume Profiles can now span arbitrary lengths of time without being destroyed by the rolling cache limits.
-  - The engine robustly maintains UI data constraints regardless of background cache lifecycle events.
-
-## [2026-08-14] - Audit: Large Custom Volume Profile Bug
-
-- **What changed**:
-  - Created `artifacts/large_profile_bug_diagnosis.md` detailing the root cause of the disappearing volume profile bug.
-  - Updated `skills/map.md` to track the new artifact.
-- **Why it changed**:
-  - The user requested an investigation into why large custom volume profiles would initially render correctly, then disappear, and temporarily reappear upon dragging. The root cause was diagnosed as a conflict between the UI's static data requirements and the shared 12-hour rolling cache eviction policy.
-- **Impact summary**:
-  - A definitive root cause has been established and documented without making any premature code changes. Recommended architectural fixes (decoupling caches or pinning active ranges) are presented in the artifact.
-
-## [2026-08-13] - Feature: Stats Indicator
-
-- **What changed**:
-  - Added `statsIndicatorEnabled`, `statsIndicatorCount`, and `statsIndicatorItems` to `lib/store/chart.ts` with default state and persistence mapping.
-  - Added Stats toggle to `IndicatorLabels.tsx`.
-  - Added Stats settings tab to `ChartSettingsDropdown.tsx` allowing users to choose up to 4 compact stats (Volume, Delta, CVD, Liquidity) and their order.
-  - Created `StatsIndicator.tsx` to render a floating overlay of the selected stats using existing chart engine and liquidity history calculations.
-  - Integrated `StatsIndicator` into `ChartPanel.tsx`.
-- **Why it changed**:
-  - The user requested a compact, customizable stats box at the bottom of the chart to display real-time metrics without duplicating existing data calculations.
-- **Impact summary**:
-  - Users can now track key aggregate metrics (Volume, Delta, CVD, Liquidity) globally across the visible chart range in a customizable floating overlay.

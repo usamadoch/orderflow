@@ -45,6 +45,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const setCvdMinimized = useChartStore(s => s.setCvdMinimized);
   const setHistoryRestoreStatus = useChartRuntimeStore(s => s.setHistoryRestoreStatus);
   const tickSize = useChartStore(s => s.tickSize);
+  const globalTimezone = useChartStore(s => s.globalTimezone);
+  const globalTimeFormat = useChartStore(s => s.globalTimeFormat);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
   const { volumeProfileEngine, volumeProfileRevision } = useVolumeProfileEngine();
@@ -75,6 +77,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
               resetMode: panel.cvdResetMode,
               smoothing: panel.cvdSmoothing,
               sessions: panel.sessions,
+              timezone: globalTimezone,
             });
             setLatestValue(points[points.length - 1]?.close ?? 0);
           }
@@ -93,7 +96,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           mounted = false;
           unsub();
         };
-      }, [panel.cvdResetMode, panel.cvdSmoothing, panel.sessions, panel.cvdPositiveColor, panel.cvdNegativeColor]);
+      }, [panel.cvdResetMode, panel.cvdSmoothing, panel.sessions, panel.cvdPositiveColor, panel.cvdNegativeColor, globalTimezone]);
 
       return (
         <span
@@ -104,7 +107,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
         </span>
       );
     };
-  }, [panelId, engine, isCvdCompact, panel.cvdResetMode, panel.cvdSmoothing, panel.sessions, panel.cvdPositiveColor, panel.cvdNegativeColor]);
+  }, [panelId, engine, isCvdCompact, panel.cvdResetMode, panel.cvdSmoothing, panel.sessions, panel.cvdPositiveColor, panel.cvdNegativeColor, globalTimezone]);
 
 
   const restoreStatus = panel.historyRestoreStatus;
@@ -267,6 +270,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             liquidityHeatmapProfileSync={panel.liquidityHeatmapProfileSync}
             statsIndicatorEnabled={panel.statsIndicatorEnabled}
             statsIndicatorItems={panel.statsIndicatorItems}
+            globalTimezone={globalTimezone}
+            globalTimeFormat={globalTimeFormat}
             showTimeAxis={!panel.cvdEnabled || panel.cvdMinimized}
             onBarWidthChange={(v) => setBarWidth(panelId, v)}
             onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
@@ -316,6 +321,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
               volumeProfileRevision={volumeProfileRevision}
               profileWidth={chartProfileWidth}
               sessions={panel.sessions}
+              globalTimezone={globalTimezone}
+              globalTimeFormat={globalTimeFormat}
               cvdMode={panel.cvdMode}
               cvdSmoothing={panel.cvdSmoothing}
               cvdResetMode={panel.cvdResetMode}

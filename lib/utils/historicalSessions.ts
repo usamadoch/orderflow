@@ -7,7 +7,7 @@ export interface HistoricalSessionRange {
 }
 
 /**
- * Calculates the previous N completed trading session ranges based on the local system time.
+ * Calculates the previous N completed trading session ranges based on the specified timezone.
  */
 export function getHistoricalSessionRanges(
   currentTimeMs: number,
@@ -15,15 +15,16 @@ export function getHistoricalSessionRanges(
   startHour: number,
   startMin: number,
   endHour: number,
-  endMin: number
+  endMin: number,
+  timezone: string = useChartStore.getState().globalTimezone || 'local'
 ): HistoricalSessionRange[] {
   const ranges: HistoricalSessionRange[] = [];
   
   const crossesMidnight = endHour < startHour || (endHour === startHour && endMin <= startMin);
   
   // Start with today in the chosen timezone
-  const timezone = useChartStore.getState().globalTimezone;
-  const currentZoned = getZonedTimeParts(currentTimeMs, timezone);
+  const tz = timezone || useChartStore.getState().globalTimezone || 'local';
+  const currentZoned = getZonedTimeParts(currentTimeMs, tz);
   
   let currentYear = currentZoned.year;
   let currentMonth = currentZoned.month;
@@ -33,7 +34,7 @@ export function getHistoricalSessionRanges(
   for (let i = 0; i < 60; i++) {
     if (ranges.length >= count) break;
 
-    const sTime = getTimestampForZonedDate(currentYear, currentMonth, currentDate, startHour, startMin, timezone);
+    const sTime = getTimestampForZonedDate(currentYear, currentMonth, currentDate, startHour, startMin, tz);
     
     let eTime: number;
     if (crossesMidnight) {
@@ -46,10 +47,10 @@ export function getHistoricalSessionRanges(
         nextDayNaive.getDate(),
         endHour,
         endMin,
-        timezone
+        tz
       );
     } else {
-      eTime = getTimestampForZonedDate(currentYear, currentMonth, currentDate, endHour, endMin, timezone);
+      eTime = getTimestampForZonedDate(currentYear, currentMonth, currentDate, endHour, endMin, tz);
     }
     
     // Check if the session is completed relative to the currentTimeMs

@@ -41,6 +41,12 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
     setLineDrawMode(panelId, panel.lineDrawMode === 'position' ? 'none' : 'position');
   }, [panel.lineDrawMode, panelId, setActivePanel, setLineDrawMode, setMeasureToolActive]);
 
+  const selectTradeTool = React.useCallback((mode: 'buy' | 'sell') => {
+    setActivePanel(panelId);
+    setMeasureToolActive(panelId, false);
+    setLineDrawMode(panelId, panel.lineDrawMode === mode ? 'none' : mode);
+  }, [panel.lineDrawMode, panelId, setActivePanel, setLineDrawMode, setMeasureToolActive]);
+
   const getSettingsAnchor = React.useCallback(() => {
     const rect = settingsButtonRef.current?.getBoundingClientRect();
     if (!rect) return null;
@@ -124,7 +130,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
           onClick={() => selectPositionTool()}
           className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
             panel.lineDrawMode === 'position'
-              ? 'bg-[#089981] text-white shadow-sm shadow-[#089981]/20'
+              ? 'bg-[#3D7EFF] text-white shadow-sm shadow-[#3D7EFF]/20'
               : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
           }`}
           title="Position Tool (Drag Up for Short, Down for Long)"
@@ -133,6 +139,34 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         >
           <TrendingUp size={11} strokeWidth={2.5} />
           Position
+        </button>
+        <button
+          type="button"
+          onClick={() => selectTradeTool('buy')}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
+            panel.lineDrawMode === 'buy'
+              ? 'bg-[#089981] text-white shadow-sm shadow-[#089981]/25'
+              : 'text-[#089981] hover:text-white hover:bg-[#089981]/20'
+          }`}
+          title="Buy Market Order (Click chart to set Stop Loss)"
+          aria-pressed={panel.lineDrawMode === 'buy'}
+          aria-label="Buy Market Order"
+        >
+          BUY
+        </button>
+        <button
+          type="button"
+          onClick={() => selectTradeTool('sell')}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
+            panel.lineDrawMode === 'sell'
+              ? 'bg-[#F23645] text-white shadow-sm shadow-[#F23645]/25'
+              : 'text-[#F23645] hover:text-white hover:bg-[#F23645]/20'
+          }`}
+          title="Sell Market Order (Click chart to set Stop Loss)"
+          aria-pressed={panel.lineDrawMode === 'sell'}
+          aria-label="Sell Market Order"
+        >
+          SELL
         </button>
       </div>
 

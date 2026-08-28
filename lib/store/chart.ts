@@ -1086,15 +1086,6 @@ export const useChartStore = create<ChartState>()(
           const session = panel.sessions[sessionId];
           const nextSession = { ...session, [field]: value };
 
-          // Validation: end time must be after start time
-          const startTotal = nextSession.startHour * 60 + nextSession.startMin;
-          const endTotal = nextSession.endHour * 60 + nextSession.endMin;
-
-          if (endTotal <= startTotal) {
-            // Revert if invalid
-            return state;
-          }
-
           return updatePanel(state, panelId, {
             sessions: {
               ...panel.sessions,
@@ -1329,10 +1320,9 @@ export const useChartStore = create<ChartState>()(
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
             historicalSessionProfileEnabled: p.historicalSessionProfileEnabled ?? false,
-            historicalSessionProfileTimezone: p.historicalSessionProfileTimezone ?? 'America/New_York',
-            historicalSessionProfileStartHour: p.historicalSessionProfileStartHour ?? 9,
-            historicalSessionProfileStartMin: p.historicalSessionProfileStartMin ?? 30,
-            historicalSessionProfileEndHour: p.historicalSessionProfileEndHour ?? 16,
+            historicalSessionProfileStartHour: p.historicalSessionProfileStartHour ?? 13,
+            historicalSessionProfileStartMin: p.historicalSessionProfileStartMin ?? 0,
+            historicalSessionProfileEndHour: p.historicalSessionProfileEndHour ?? 22,
             historicalSessionProfileEndMin: p.historicalSessionProfileEndMin ?? 0,
             historicalSessionProfileCount: p.historicalSessionProfileCount ?? 1,
             historicalSessionProfileMinTimeframe: p.historicalSessionProfileMinTimeframe ?? '15m',

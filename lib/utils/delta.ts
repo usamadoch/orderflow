@@ -2,6 +2,7 @@ import type { AggregationEngine } from '@/lib/aggregation/engine';
 import type { Candle } from '@/types/candle';
 import type { CvdResetMode, SessionConfig } from '@/lib/store/chart';
 import type { CvdPoint, CvdDivergenceMarker } from '../../types/cvd';
+import { getZonedTimeParts } from './format';
 
 export type { CvdPoint, CvdDivergenceMarker };
 
@@ -9,6 +10,7 @@ interface BuildCvdSeriesOptions {
   resetMode: CvdResetMode;
   smoothing: number;
   sessions?: Record<string, SessionConfig>;
+  timezone?: string;
 }
 
 export function buildCvdSeries(
@@ -18,14 +20,15 @@ export function buildCvdSeries(
 ): CvdPoint[] {
   const rawPoints: CvdPoint[] = [];
   const smoothing = Math.max(1, Math.round(options.smoothing || 1));
+  const tz = options.timezone || 'local';
   let cumulative = 0;
   let previousDayKey: string | null = null;
   let previousSessionKey: string | null = null;
 
   for (let index = 0; index < candles.length; index += 1) {
     const candle = candles[index];
-    const dayKey = getUtcDayKey(candle.time);
-    const sessionKey = getActiveSessionKey(candle, options.sessions);
+    const dayKey = getZonedDayKey(candle.time, tz);
+    const sessionKey = getActiveSessionKey(candle, options.sessions, tz);
     const reset =
       index === 0 ||
       (options.resetMode === 'daily' && previousDayKey !== null && dayKey !== previousDayKey) ||
@@ -168,16 +171,16 @@ function windowCrossesReset(points: CvdPoint[], startIndex: number, endIndex: nu
   return false;
 }
 
-function getUtcDayKey(timeSeconds: number) {
-  const date = new Date(timeSeconds * 1000);
-  return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+function getZonedDayKey(timeSeconds: number, timezone: string) {
+  const parts = getZonedTimeParts(timeSeconds * 1000, timezone);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-function getActiveSessionKey(candle: Candle, sessions?: Record<string, SessionConfig>) {
+function getActiveSessionKey(candle: Candle, sessions?: Record<string, SessionConfig>, timezone: string = 'local') {
   if (!sessions) return null;
 
-  const date = new Date(candle.time * 1000);
-  const minutes = date.getUTCHours() * 60 + date.getUTCMinutes();
+  const parts = getZonedTimeParts(candle.time * 1000, timezone);
+  const minutes = parts.hour * 60 + parts.minute;
 
   for (const [key, session] of Object.entries(sessions)) {
     if (!session.enabled) continue;
