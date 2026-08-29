@@ -1,5 +1,30 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-29] - Update: Default Chart, Indicator, Market, and Stats Settings
+
+- **What changed**:
+  - **Volume Profile Defaults (`lib/store/chart.ts`, `components/chart/drawVolumeProfile.ts`, `components/chart/drawSelectionRect.ts`)**:
+    - Updated default `profileWidthPct` from `70` to `45`.
+    - Maintained default `profileOpacity` at `0.6` (60%).
+  - **Volume Bubbles Defaults (`lib/store/chart.ts`)**:
+    - Updated default `bubbleThreshold` (Minimum Volume) from `50` to `100`.
+    - Updated default `bubbleMinRadius` (Minimum Radius) from `2` to `4` px.
+    - Updated default `bubbleMaxRadius` (Maximum Radius) from `8` to `20` px.
+  - **Default Market Selection (`lib/store/chart.ts`)**:
+    - Updated initial default panel contract from `contractType: 'spot'` to `contractType: 'futures'` and `dataSourceMode: 'futures'` (BTCUSD Perpetual Futures).
+  - **Stats Indicator Defaults (`lib/store/chart.ts`)**:
+    - Updated default `statsIndicatorItems` from `['volume', 'delta', 'cvd']` to `['volume', 'delta']` (CVD disabled by default; volume and delta enabled).
+    - Updated default `statsIndicatorCount` to `2`.
+- **Why it changed**:
+  - Adjusted out-of-the-box defaults to preferred trader standards: perpetual futures as the initial market, tighter volume profile width, cleaner volume bubble scaling, and essential volume/delta stats without default CVD clutter.
+- **Impact summary**:
+  - New charts and panels initialize with BTCUSD Perpetual Futures by default.
+  - Volume profiles render at 45% default width.
+  - Volume bubbles default to 100 min volume, 4px min radius, and 20px max radius.
+  - Stats indicator displays Volume + Delta by default, with CVD available via settings.
+  - All indicator and market logic remains fully intact and configurable.
+  - TypeScript validation passes with 0 errors.
+
 ## [2026-08-29] - Fix: Stats and Volume Simultaneous Display with Dynamic Vertical Stacking
 
 - **What changed**:

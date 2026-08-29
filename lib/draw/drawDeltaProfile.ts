@@ -12,7 +12,7 @@ export function drawDeltaProfile(
   stripRightEdge: number,
   deltaProfileWidth: number,
   profileBucketSize: number,
-  profileOpacity: number = 0.4,
+  profileOpacity: number = 0.6,
   profileMinRowWidth: number = 2,
   profileMinRowHeight: number = 1,
   profileScaleMode: 'linear' | 'sqrt' = 'sqrt'

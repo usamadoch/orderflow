@@ -15,8 +15,8 @@ export function drawVolumeProfile(
   priceAxisWidth: number,
   bucketSize: number,
   isCustomActive: boolean = false,
-  profileWidthPct: number = 70,
-  profileOpacity: number = 0.4,
+  profileWidthPct: number = 45,
+  profileOpacity: number = 0.6,
   profileMinRowWidth: number = 2,
   profileMinRowHeight: number = 1,
   profileBucketSize: number = bucketSize,
@@ -191,7 +191,7 @@ export function drawVolumeProfile(
     ctx.restore();
   }
 
-  // â”€â”€ Step 4: LVN Lines â”€â”€
+  // ── Step 4: LVN Lines ──
   if (profile.lvns.length > 0) {
     ctx.save();
     ctx.globalAlpha = lineOpacity;
