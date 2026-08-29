@@ -28,7 +28,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 │   ├── aggregation/              # Footprint aggregation and shared footprint cache
 │   ├── cache/                    # Shared cache retention/cleanup policy
 │   ├── config/                   # Market/timeframe/source validation and constants
-│   ├── db/                       # libSQL/Turso and MongoDB storage adapters
+│   ├── db/                       # libSQL/Turso and TimescaleDB storage adapters
 │   ├── debug/                    # Dev-only market metrics snapshot registry
 │   ├── draw/                     # Pure canvas drawing helpers
 │   ├── feeds/                    # Binance spot/futures adapters and shared feed registry
@@ -237,23 +237,24 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/db/repositories/profileRepository.ts` → Fine Volume Profile row persistence and range queries.
 - `lib/db/repositories/libsqlStorageAdapter.ts` → libSQL implementation of the unified MarketStorageAdapter interface.
 - `lib/db/marketStorage.ts` → High-level persistence router for candles, footprint, profile, and trade records.
-- `lib/db/aggregateBubbleStorage.ts` → MongoDB storage facade for aggregate trade bubble history.
+- `lib/db/aggregateBubbleStorage.ts` → TimescaleDB storage facade for aggregate trade bubble history.
 - `lib/db/cleanupJob.ts` → Background maintenance task purging expired records based on retention policies.
-- `lib/db/mongo/client.ts` → MongoDB client connection singleton.
-- `lib/db/mongo/marketStorageMongo.ts` → MongoDB storage facade delegating queries to domain repositories.
-- `lib/db/mongo/repositories/mongoCandleRepository.ts` → MongoDB candle collection setup, candle batch insertion, and range queries.
-- `lib/db/mongo/repositories/mongoFootprintRepository.ts` → MongoDB footprint collection setup, cell batch insertion, and range queries.
-- `lib/db/mongo/repositories/mongoProfileRepository.ts` → MongoDB profile row collection setup, fine row batch insertion, and range queries.
-- `lib/db/mongo/repositories/mongoBubbleRepository.ts` → Dedicated MongoDB collection repository storing aggregate trade bubble history.
+- `lib/db/timescale/client.ts` → TimescaleDB/pg pool singleton and connection logic.
+- `lib/db/timescale/migrations.ts` → TimescaleDB schema definition and hypertable setup.
+- `lib/db/timescale/repositories/timescaleCandleRepository.ts` → TimescaleDB candle batch insertion and range queries.
+- `lib/db/timescale/repositories/timescaleFootprintRepository.ts` → TimescaleDB footprint batch insertion and range queries.
+- `lib/db/timescale/repositories/timescaleProfileRepository.ts` → TimescaleDB profile batch insertion and range queries.
+- `lib/db/timescale/repositories/timescaleBubbleRepository.ts` → TimescaleDB bubble candidate storage and deduplication logic.
+- `lib/db/_mongo_quarantine/` → Quarantined MongoDB code (slated for deletion).
 - `lib/actions/storageActions.ts` → Server Actions bridging frontend persistence requests to DB storage adapters.
 - `data/market.db` → Local SQLite/libSQL database file for offline/dev storage.
 - `scripts/testDb.ts` → Verification script testing database connection and operations.
-- `scripts/ensureIndexes.ts` → Script maintaining MongoDB collection indexes and TTL policies.
+- `scripts/migrateMongoToTimescale.ts` → Optional one-time script for data migration.
 - `types/storage.ts` → Definitions for storage adapters, schemas, and query parameters.
 
 ### Scripts
 
-- `scripts/collector/btcusdtCollector.mjs` → Standalone Node.js collector fetching and storing BTCUSDT market data to MongoDB.
+- `scripts/collector/btcusdtCollector.mjs` → Standalone Node.js collector fetching and storing BTCUSDT market data to TimescaleDB.
 - `scripts/collector/runBackfill.mjs` → Data backfill script fetching historical market feeds to populate storage.
 
 ### Local Market Order Bridge
@@ -318,7 +319,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - **State:** Zustand with persisted panel settings
 - **Charting:** Custom HTML5 Canvas per chart/CVD surface
 - **Market Data:** Binance spot/futures REST and WebSocket feeds plus selectable Binance, Bybit, or combined depth streams through shared feed registry
-- **Storage:** libSQL/Turso fallback plus MongoDB time-series adapter behind `MARKET_DB_DRIVER=mongodb`
+- **Storage:** libSQL/Turso fallback plus TimescaleDB adapter behind `MARKET_DB_DRIVER=timescaledb`
 - **Caches:** Shared in-memory candle, footprint, and Volume Profile caches with TTL cleanup
 - **Observability:** Dev-only `window.__MARKET_DEBUG__` snapshot metrics, including orderbook heatmap sampling stats
 - **Layout:** Single/split chart panels with focus layout mode

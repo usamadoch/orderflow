@@ -1,32 +1,26 @@
 import {
-  AGGREGATE_BUBBLE_COLLECTION,
-  ensureAggregateBubbleCollection,
   getAggregateBubbleEvents,
-  getAggregateBubbleMongoClient,
-  getAggregateBubbleMongoDb,
   storeAggregateBubbleEvents,
-} from './mongo/repositories/mongoBubbleRepository'
+} from './timescale/repositories/bubbleRepository'
 import type {
-  AggregateBubbleEventDocument,
   AggregateBubbleEventWriteInput,
-  AggregateBubbleThresholds,
   GetAggregateBubbleEventsInput,
   StoreAggregateBubbleEventsResult,
-} from './mongo/repositories/mongoBubbleRepository'
+} from './timescale/repositories/bubbleRepository'
+
+export interface AggregateBubbleThresholds {
+  minVolume: number
+  minTradeCount: number
+  minTradeCountVolume: number
+}
 
 export {
-  AGGREGATE_BUBBLE_COLLECTION,
-  ensureAggregateBubbleCollection,
   getAggregateBubbleEvents,
-  getAggregateBubbleMongoClient,
-  getAggregateBubbleMongoDb,
   storeAggregateBubbleEvents,
 }
 
 export type {
-  AggregateBubbleEventDocument,
   AggregateBubbleEventWriteInput,
-  AggregateBubbleThresholds,
   GetAggregateBubbleEventsInput,
   StoreAggregateBubbleEventsResult,
 }

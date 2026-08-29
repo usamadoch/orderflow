@@ -1,5 +1,5 @@
-import { fileURLToPath } from 'url'
-import { MongoClient } from 'mongodb'
+import pg from 'pg'
+const { Pool } = pg
 
 const SYMBOL = 'BTCUSDT'
 const BASE_TIMEFRAME = '1m'
@@ -19,12 +19,7 @@ const DEFAULT_HEARTBEAT_MS = 30000
 // const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC = 3
 const DEFAULT_AGG_BUBBLE_FLUSH_SIZE = 1000
 
-const COLLECTIONS = {
-  footprint: 'footprint_cells_ts',
-  profile: 'profile_rows_ts',
-  collectorMeta: 'collector_meta',
-  aggregateBubbles: 'aggregate_bubble_events',
-}
+// No longer using MongoDB collections
 
 const SOURCES = ['spot', 'futures']
 const TARGETS = [
@@ -64,10 +59,7 @@ const metrics = {
   },
 }
 
-let mongoClient = null
-let mongoDb = null
-let bubbleMongoClient = null
-let bubbleMongoDb = null
+let pgPool = null
 let shuttingDown = false
 let persistPromise = null
 
@@ -95,8 +87,7 @@ if (process.env.NODE_ENV !== 'test') {
 
 async function main() {
   assertRuntimeSupport()
-  await initMongo()
-  await initAggregateBubblePersistence()
+  await initTimescale()
   runtimes = TARGETS.map((target) => createRuntime(target))
 
   logger.info('active aggregation identities', {
@@ -154,10 +145,7 @@ function loadConfig() {
   const tickSize = DEFAULT_TICK_SIZE
 
   return {
-    mongoUri: 'mongodb://usamadoch_db_user:17ZvfflxOlDWgWOC@ac-nqzf95f-shard-00-00.vvdhsab.mongodb.net:27017,ac-nqzf95f-shard-00-01.vvdhsab.mongodb.net:27017,ac-nqzf95f-shard-00-02.vvdhsab.mongodb.net:27017/orderflow?ssl=true&replicaSet=atlas-1x7o74-shard-0&authSource=admin&appName=Cluster0',
-    mongoDbName: 'orderflow',
-    bubblesMongoUri: 'mongodb://usamadoch_db_user:3aAhUVGGWOQRyMRc@ac-skht2qq-shard-00-00.lx6pbxx.mongodb.net:27017,ac-skht2qq-shard-00-01.lx6pbxx.mongodb.net:27017,ac-skht2qq-shard-00-02.lx6pbxx.mongodb.net:27017/orderflow_bubbles?ssl=true&replicaSet=atlas-o30yvr-shard-0&authSource=admin&appName=Cluster0',
-    bubblesMongoDbName: 'orderflow_bubbles',
+    timescaleUrl: process.env.TIMESCALEDB_URL || process.env.PG_URL,
     retentionSeconds: Math.floor(DEFAULT_RETENTION_DAYS * 24 * 60 * 60),
     flushIntervalMs: DEFAULT_FLUSH_INTERVAL_MS,
     statusIntervalMs: DEFAULT_STATUS_INTERVAL_MS,
@@ -174,15 +162,15 @@ function loadConfig() {
     profileBaseBucketSize: Math.max(MIN_PROFILE_BASE_BUCKET_SIZE, tickSize),
     enableWrites: true,
     dryRun: false,
-    aggregateBubbleWritesEnabled: false,
+    aggregateBubbleWritesEnabled: true,
     logLevel: 'info',
     logFormat: 'pretty',
   }
 }
 
 function assertRuntimeSupport() {
-  if (!config.mongoUri) {
-    throw new Error('MONGODB_URI is required for the BTCUSDT collector')
+  if (!config.timescaleUrl) {
+    throw new Error('TIMESCALEDB_URL or PG_URL is required for the BTCUSDT collector')
   }
 
   if (typeof WebSocket === 'undefined') {
@@ -190,152 +178,22 @@ function assertRuntimeSupport() {
   }
 }
 
-async function initAggregateBubblePersistence() {
-  if (!config.enableWrites || config.dryRun) return
-
-  if (!config.bubblesMongoUri || !config.bubblesMongoDbName) {
-    logger.warn('aggregate bubble persistence disabled; continuing footprint/profile collector', {
-      requiredEnv: 'Set BUBBLES_MONGODB_URI and BUBBLES_MONGODB_DB_NAME to persist aggregate bubble candidates.',
-      hasBubblesMongoUri: Boolean(config.bubblesMongoUri),
-      hasBubblesMongoDbName: Boolean(config.bubblesMongoDbName),
-    })
-    return
-  }
-
-  try {
-    await initBubbleMongo()
-    config.aggregateBubbleWritesEnabled = true
-  } catch (error) {
-    if (bubbleMongoClient) {
-      try {
-        await bubbleMongoClient.close()
-      } catch {
-        // Best-effort cleanup after a failed startup connection.
-      }
-    }
-    bubbleMongoClient = null
-    bubbleMongoDb = null
-    config.aggregateBubbleWritesEnabled = false
-    logger.warn('aggregate bubble mongodb unavailable; continuing footprint/profile collector', {
-      error: getErrorMessage(error),
-      impact: 'Aggregate bubble candidates will be skipped until the collector is restarted with a healthy bubbles MongoDB connection.',
-    })
-  }
-}
-
-async function initMongo() {
-  mongoClient = new MongoClient(config.mongoUri)
-  await mongoClient.connect()
-  mongoDb = mongoClient.db(config.mongoDbName)
-  await mongoDb.command({ ping: 1 })
-  await ensureCollections()
-  logger.info('mongodb connected', {
-    dbName: mongoDb.databaseName,
-    footprintCollection: COLLECTIONS.footprint,
-    profileCollection: COLLECTIONS.profile,
+async function initTimescale() {
+  pgPool = new Pool({
+    connectionString: config.timescaleUrl,
+    max: 10,
+    idleTimeoutMillis: 30000,
   })
-}
 
-async function initBubbleMongo() {
-  bubbleMongoClient = new MongoClient(config.bubblesMongoUri)
-  await bubbleMongoClient.connect()
-  bubbleMongoDb = bubbleMongoClient.db(config.bubblesMongoDbName)
-  await bubbleMongoDb.command({ ping: 1 })
-  await ensureAggregateBubbleCollection()
-  logger.info('aggregate bubble mongodb connected', {
-    dbName: bubbleMongoDb.databaseName,
-    collection: COLLECTIONS.aggregateBubbles,
-    retentionSeconds: config.retentionSeconds,
-  })
-}
-
-async function ensureCollections() {
-  await ensureTimeSeriesCollection(COLLECTIONS.footprint)
-  await ensureTimeSeriesCollection(COLLECTIONS.profile)
-  await mongoDb.collection(COLLECTIONS.footprint).createIndex(
-    {
-      'meta.symbol': 1,
-      'meta.contractType': 1,
-      'meta.dataSourceMode': 1,
-      'meta.timeframe': 1,
-      'meta.bucketSize': 1,
-      time: 1,
-      bucketPriceKey: 1,
-    },
-    { name: 'idx_footprint_cells_source_time_price' },
-  )
-  await mongoDb.collection(COLLECTIONS.profile).createIndex(
-    {
-      'meta.symbol': 1,
-      'meta.contractType': 1,
-      'meta.dataSourceMode': 1,
-      'meta.timeframe': 1,
-      'meta.baseBucketSizeKey': 1,
-      time: 1,
-      bucketPriceKey: 1,
-    },
-    { name: 'idx_profile_rows_source_time_price' },
-  )
-  await mongoDb.collection(COLLECTIONS.collectorMeta).createIndex(
-    { key: 1 },
-    { unique: true, name: 'idx_collector_meta_key' },
-  )
-}
-
-async function ensureAggregateBubbleCollection() {
-  const existing = await bubbleMongoDb.listCollections({ name: COLLECTIONS.aggregateBubbles }).toArray()
-
-  if (existing.length === 0) {
-    await bubbleMongoDb.createCollection(COLLECTIONS.aggregateBubbles)
-  } else if (existing[0].type === 'timeseries') {
-    throw new Error(`${COLLECTIONS.aggregateBubbles} must be a regular MongoDB collection for aggregate trade id deduplication`)
-  }
-
-  const collection = bubbleMongoDb.collection(COLLECTIONS.aggregateBubbles)
-  await collection.createIndex(
-    { symbol: 1, contractType: 1, aggregateTradeId: 1 },
-    { unique: true, name: 'uniq_aggregate_bubbles_source_id' },
-  )
-  await collection.createIndex(
-    { symbol: 1, contractType: 1, eventTime: 1, aggregateTradeId: 1 },
-    { name: 'idx_aggregate_bubbles_restore', background: true },
-  )
-
-  const indexes = await collection.indexes()
-  const existingTtl = indexes.find((index) => index.name === 'ttl_aggregate_bubbles_event_time')
-  if (existingTtl && existingTtl.expireAfterSeconds !== config.retentionSeconds) {
-    await collection.dropIndex('ttl_aggregate_bubbles_event_time')
-  }
-  await collection.createIndex(
-    { eventTime: 1 },
-    { expireAfterSeconds: config.retentionSeconds, name: 'ttl_aggregate_bubbles_event_time' },
-  )
-}
-
-async function ensureTimeSeriesCollection(name) {
-  const existing = await mongoDb.listCollections({ name }).toArray()
-
-  if (existing.length === 0) {
-    await mongoDb.createCollection(name, {
-      timeseries: {
-        timeField: 'time',
-        metaField: 'meta',
-        granularity: 'seconds',
-      },
-      expireAfterSeconds: config.retentionSeconds,
-    })
-    return
-  }
-
-  if (existing[0].type !== 'timeseries') {
-    throw new Error(`${name} exists but is not a MongoDB time-series collection`)
-  }
-
+  // Verify connection
+  const client = await pgPool.connect()
   try {
-    await mongoDb.command({ collMod: name, expireAfterSeconds: config.retentionSeconds })
-  } catch (error) {
-    logger.warn('could not update collection retention', { collection: name, error: getErrorMessage(error) })
+    await client.query('SELECT 1')
+  } finally {
+    client.release()
   }
+
+  logger.info('timescaledb connected')
 }
 
 function createRuntime(target) {
@@ -922,91 +780,132 @@ function toProfileDocuments(runtime, sliceTime, rows) {
 async function insertMissingFootprintDocuments(documents) {
   if (documents.length === 0) return { inserted: 0, skipped: 0 }
 
-  const collection = mongoDb.collection(COLLECTIONS.footprint)
-  const first = documents[0]
-  const existing = await collection
-    .find({
-      'meta.symbol': first.meta.symbol,
-      'meta.contractType': first.meta.contractType,
-      'meta.dataSourceMode': first.meta.dataSourceMode,
-      'meta.timeframe': first.meta.timeframe,
-      'meta.bucketSize': first.meta.bucketSize,
-      time: first.time,
-      bucketPriceKey: { $in: documents.map((document) => document.bucketPriceKey) },
-    })
-    .project({ candleTimeSec: 1, bucketPriceKey: 1 })
-    .toArray()
-  const existingKeys = new Set(existing.map((document) => (
-    `${Number(document.candleTimeSec)}:${String(document.bucketPriceKey)}`
-  )))
-  const missing = documents.filter((document) => !existingKeys.has(getDocumentIdentityKey(document)))
+  const values = []
+  const placeholders = []
+  let paramIndex = 1
 
-  if (missing.length > 0) {
-    await collection.insertMany(missing, { ordered: false })
+  for (const doc of documents) {
+    placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`)
+    
+    values.push(
+      doc.time,
+      doc.meta.symbol,
+      doc.meta.contractType,
+      doc.meta.dataSourceMode,
+      doc.meta.timeframe,
+      doc.meta.bucketSize,
+      doc.candleTimeSec,
+      Number(doc.bucketPrice),
+      Number(doc.bidVol),
+      Number(doc.askVol),
+      Number(doc.totalVol),
+      Number(doc.delta)
+    )
   }
 
-  return { inserted: missing.length, skipped: documents.length - missing.length }
+  const sql = `
+    INSERT INTO footprint_cells (
+      time, symbol, contract_type, data_source_mode, timeframe, bucket_size, 
+      candle_time_sec, bucket_price, bid_vol, ask_vol, total_vol, delta
+    ) VALUES ${placeholders.join(', ')}
+    ON CONFLICT (symbol, contract_type, data_source_mode, timeframe, bucket_size, time, bucket_price) DO NOTHING
+  `
+
+  const result = await pgPool.query(sql, values)
+  const inserted = result.rowCount ?? 0
+  return { inserted, skipped: documents.length - inserted }
 }
 
 async function insertMissingProfileDocuments(documents) {
   if (documents.length === 0) return { inserted: 0, skipped: 0 }
 
-  const collection = mongoDb.collection(COLLECTIONS.profile)
-  const first = documents[0]
-  const existing = await collection
-    .find({
-      'meta.symbol': first.meta.symbol,
-      'meta.contractType': first.meta.contractType,
-      'meta.dataSourceMode': first.meta.dataSourceMode,
-      'meta.timeframe': first.meta.timeframe,
-      'meta.baseBucketSizeKey': first.meta.baseBucketSizeKey,
-      time: first.time,
-      bucketPriceKey: { $in: documents.map((document) => document.bucketPriceKey) },
-    })
-    .project({ candleTimeSec: 1, bucketPriceKey: 1 })
-    .toArray()
-  const existingKeys = new Set(existing.map((document) => (
-    `${Number(document.candleTimeSec)}:${String(document.bucketPriceKey)}`
-  )))
-  const missing = documents.filter((document) => !existingKeys.has(getDocumentIdentityKey(document)))
+  const values = []
+  const placeholders = []
+  let paramIndex = 1
 
-  if (missing.length > 0) {
-    await collection.insertMany(missing, { ordered: false })
+  for (const doc of documents) {
+    placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`)
+    
+    values.push(
+      doc.time,
+      doc.meta.symbol,
+      doc.meta.contractType,
+      doc.meta.dataSourceMode,
+      doc.meta.timeframe,
+      doc.candleTimeSec,
+      Number(doc.baseBucketSize),
+      Number(doc.bucketPrice),
+      Number(doc.bidVol),
+      Number(doc.askVol),
+      Number(doc.totalVol),
+      doc.tradeCount
+    )
   }
 
-  return { inserted: missing.length, skipped: documents.length - missing.length }
+  const sql = `
+    INSERT INTO profile_rows (
+      time, symbol, contract_type, data_source_mode, timeframe, 
+      candle_time_sec, base_bucket_size, bucket_price, bid_vol, ask_vol, total_vol, trade_count
+    ) VALUES ${placeholders.join(', ')}
+    ON CONFLICT (symbol, contract_type, data_source_mode, timeframe, base_bucket_size, time, bucket_price) DO NOTHING
+  `
+
+  const result = await pgPool.query(sql, values)
+  const inserted = result.rowCount ?? 0
+  return { inserted, skipped: documents.length - inserted }
 }
 
 async function insertAggregateBubbleDocuments(documents) {
   if (documents.length === 0) return { inserted: 0, duplicatesSkipped: 0 }
 
-  const collection = bubbleMongoDb.collection(COLLECTIONS.aggregateBubbles)
+  const values = []
+  const placeholders = []
+  let paramIndex = 1
 
-  try {
-    const result = await collection.insertMany(documents, { ordered: false })
-    return { inserted: result.insertedCount, duplicatesSkipped: 0 }
-  } catch (error) {
-    const writeErrors = Array.isArray(error?.writeErrors) ? error.writeErrors : []
-    const duplicateCount = writeErrors.filter((writeError) => writeError.code === 11000).length
-    const inserted = Number(error?.result?.insertedCount ?? error?.insertedCount ?? 0)
-
-    if (writeErrors.length > 0 && duplicateCount === writeErrors.length) {
-      return { inserted, duplicatesSkipped: duplicateCount }
-    }
-
-    throw error
+  for (const doc of documents) {
+    placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`)
+    
+    values.push(
+      doc.eventTime,
+      doc.symbol,
+      doc.contractType,
+      doc.aggregateTradeId,
+      doc.eventTimeMs,
+      Number(doc.price),
+      doc.side,
+      Number(doc.volume),
+      doc.tradeCount,
+      doc.firstTradeId,
+      doc.lastTradeId,
+      doc.qualifiedBy,
+      Number(doc.minVolumeAtIngest),
+      doc.minTradeCountAtIngest
+    )
   }
+
+  const sql = `
+    INSERT INTO aggregate_bubble_events (
+      event_time, symbol, contract_type, aggregate_trade_id, event_time_ms, price, side, 
+      volume, trade_count, first_trade_id, last_trade_id, qualified_by, min_volume_at_ingest, min_trade_count_at_ingest
+    ) VALUES ${placeholders.join(', ')}
+    ON CONFLICT (symbol, contract_type, aggregate_trade_id, event_time) DO NOTHING
+  `
+
+  const result = await pgPool.query(sql, values)
+  const inserted = result.rowCount ?? 0
+  return { inserted, duplicatesSkipped: documents.length - inserted }
 }
 
 async function updateCollectorMeta(values) {
-  const collection = mongoDb.collection(COLLECTIONS.collectorMeta)
   const updates = Object.entries(values)
     .filter(([, value]) => value !== undefined)
-    .map(([key, value]) => collection.updateOne(
-      { key },
-      { $set: { key, value: String(value), updatedAt: new Date() } },
-      { upsert: true },
-    ))
+    .map(async ([key, value]) => {
+      await pgPool.query(
+        `INSERT INTO collector_meta (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+        [key, String(value)]
+      )
+    })
 
   await Promise.all(updates)
 }
@@ -1082,14 +981,10 @@ async function logStatus() {
 
     // Informational size log.
     try {
-      const stats = await mongoDb.command({ dbStats: 1 })
-      const dataSizeMB = ((stats.dataSize || 0) / 1024 / 1024).toFixed(2)
-      const storageSizeMB = ((stats.storageSize || 0) / 1024 / 1024).toFixed(2)
-      const indexSizeMB = ((stats.indexSize || 0) / 1024 / 1024).toFixed(2)
+      const stats = await pgPool.query('SELECT pg_database_size(current_database()) as size')
+      const dataSizeMB = (parseInt(stats.rows[0].size || '0', 10) / 1024 / 1024).toFixed(2)
       logger.info('database size report', {
         dataSizeMB,
-        storageSizeMB,
-        indexSizeMB,
         retentionDays: DEFAULT_RETENTION_DAYS,
       })
     } catch (e) {
@@ -1116,11 +1011,8 @@ async function shutdown(signal, flushTimer, statusTimer) {
   }
 
   streamClients.forEach((client) => client.close())
-  if (mongoClient) {
-    await mongoClient.close()
-  }
-  if (bubbleMongoClient) {
-    await bubbleMongoClient.close()
+  if (pgPool) {
+    await pgPool.end()
   }
   logger.info('collector stopped')
   process.exit(0)
@@ -1149,9 +1041,7 @@ function toNumberKey(value) {
   return fixed === '-0' || fixed === '' ? '0' : fixed
 }
 
-function getDocumentIdentityKey(document) {
-  return `${document.candleTimeSec}:${document.bucketPriceKey}`
-}
+
 
 function isValidTrade(trade) {
   return SOURCES.includes(trade.source)
@@ -1356,8 +1246,7 @@ export const _test = {
   deleteSlice,
   ingestTrade,
   persistRuntimeEligibleSlices,
-  setMongoDb: (db) => { mongoDb = db },
-  setBubbleMongoDb: (db) => { bubbleMongoDb = db },
+  setPgPool: (p) => { pgPool = p },
   setShuttingDown: (val) => { shuttingDown = val },
   setPersistPromise: (val) => { persistPromise = val },
   getRuntimes: () => runtimes,

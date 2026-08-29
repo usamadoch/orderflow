@@ -1,5 +1,35 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-29] - Feature: TimescaleDB Migration
+
+- **What changed**:
+  - Replaced MongoDB time-series collections with a unified TimescaleDB schema running via PostgreSQL (`pg`).
+  - Added new TimescaleDB repositories for candles, footprint, profile, and bubbles under `lib/db/timescale/`.
+  - Migrated `btcusdtCollector.mjs` to use PostgreSQL pooling directly instead of MongoClient.
+  - Quarantined the old MongoDB driver under `lib/db/_mongo_quarantine` for future deletion.
+  - Created optional `scripts/migrateMongoToTimescale.ts` to aid in data export.
+- **Why it changed**:
+  - MongoDB time-series collections presented limitations and performance scaling issues for raw OHLCV and tick volume aggregation. 
+  - TimescaleDB natively supports continuous aggregates, hypertables, and relational cross-analysis, which is vastly superior for complex order flow data queries.
+- **Impact summary**:
+  - Storage adapter automatically mounts TimescaleDB when `MARKET_DB_DRIVER=timescaledb`.
+  - Faster ingestion and more flexible time-windowing for analytical endpoints.
+
+## [2026-08-29] - Fix: TimescaleDB Migration Audit Fixes
+
+- **What changed**:
+  - Fixed duplicate `let shuttingDown = false` declaration in `btcusdtCollector.mjs` (would have caused SyntaxError at runtime).
+  - Fixed dead `_test.setMongoDb` / `_test.setBubbleMongoDb` exports in `btcusdtCollector.mjs` referencing removed variables. Replaced with `_test.setPgPool`.
+  - Added missing `UNIQUE (symbol, contract_type, timeframe, time)` constraint on `market_candles` table so `ON CONFLICT DO NOTHING` actually prevents duplicate insertions.
+  - Added compression policies for all 4 hypertables (previously defined as a variable but never applied).
+  - Added missing `db:migrate` script to `package.json`.
+  - Commented out old MongoDB URIs in `.env.local`.
+  - Removed unused `fileURLToPath` import from collector.
+- **Why it changed**:
+  - Senior audit of the previous implementation identified 2 critical, 2 functional, and 3 minor issues against the approved plan.
+- **Impact summary**:
+  - Collector can now start without a SyntaxError. Candle deduplication actually works. Compression policies will compress old chunks automatically.
+  
 ## [2026-08-29] - Update: Default Chart, Indicator, Market, and Stats Settings
 
 - **What changed**:
@@ -326,8 +356,7 @@
   - To reduce file length and bloat in the main `FeedProvider.tsx` component, strictly adhering to the `client_code_refector.md` rule that magic values should live in a config file.
 - **Impact summary**:
   - `FeedProvider.tsx` is cleaner. Safe logic extraction that cannot break runtime functionality. `map.md` and `refactoring_state.md` updated to reflect the new file location.
--   * * [ 2 0 2 6 - 0 8 - 2 9 ]   A d d   I n d i c a t o r   M a n a g e r * * :   M o v e d   a c t i v e   i n d i c a t o r s   t o   t h e   t o p   r i g h t   o f   t h e   c a n v a s ,   i n t r o d u c e d   a n   ' I n d i c a t o r s '   m o d a l   i n   t h e   P a n e l T o o l b a r ,   a n d   r e f a c t o r e d   s t a t e   t o   s u p p o r t   a n   e x p l i c i t   l i s t   o f   a c t i v e   i n d i c a t o r s .  
- 
+
 ## [2026-08-29] - Feat: Data Pipeline Gap Recovery
 
 - **What changed**:

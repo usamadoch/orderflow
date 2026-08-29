@@ -11,6 +11,11 @@ export async function register() {
       return
     }
 
+    if (getMarketDbDriver() === 'timescaledb') {
+      console.log('[DB] TimescaleDB storage adapter initialized')
+      return
+    }
+
     console.log('[DB] MongoDB storage adapter initialized')
   }
 }

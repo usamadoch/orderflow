@@ -1,6 +1,4 @@
-import { getMongoDb } from '../db/mongo/client'
-import { getAggregateBubbleMongoDb, AGGREGATE_BUBBLE_COLLECTION } from '../db/aggregateBubbleStorage'
-import { MONGO_MARKET_COLLECTIONS } from '../db/mongo/marketStorageMongo'
+import { query } from '../db/timescale/client'
 
 const ESTIMATED_BYTES_PER_FOOTPRINT = 150
 const ESTIMATED_BYTES_PER_PROFILE = 180
@@ -27,52 +25,34 @@ export interface StorageSummaryResult {
 }
 
 export async function getStorageSummary(): Promise<StorageSummaryResult> {
-  const db = await getMongoDb()
-  let bubbleDb: Awaited<ReturnType<typeof getAggregateBubbleMongoDb>> | null = null
-  try {
-    bubbleDb = await getAggregateBubbleMongoDb()
-  } catch (e) {
-    console.warn('Bubble DB not accessible for storage summary', e)
-  }
-
-  const mainStats = await db.command({ dbStats: 1 })
-  const mainUsedMb = +(mainStats.dataSize / (1024 * 1024)).toFixed(2)
-
+  let mainUsedMb = 0
   let bubbleUsedMb = 0
-  if (bubbleDb) {
-    const bubbleStats = await bubbleDb.command({ dbStats: 1 })
-    bubbleUsedMb = +(bubbleStats.dataSize / (1024 * 1024)).toFixed(2)
+
+  try {
+    const sizeResult = await query('SELECT pg_database_size(current_database()) as size')
+    mainUsedMb = +(parseInt(sizeResult.rows[0].size || '0', 10) / (1024 * 1024)).toFixed(2)
+    bubbleUsedMb = 0 // In timescale, bubbles and main are in the same DB. We'll just put total size in main.
+  } catch (e) {
+    console.warn('Could not read timescale db size', e)
   }
 
-  const footprintAgg = await db.collection(MONGO_MARKET_COLLECTIONS.footprintCells).aggregate([
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$time' } },
-        count: { $sum: 1 },
-      },
-    },
-  ]).toArray()
+  const footprintAgg = await query(`
+    SELECT to_char(time, 'YYYY-MM-DD') as _id, count(*) as count 
+    FROM footprint_cells 
+    GROUP BY _id
+  `).catch(() => ({ rows: [] }))
 
-  const profileAgg = await db.collection(MONGO_MARKET_COLLECTIONS.profileRows).aggregate([
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$time' } },
-        count: { $sum: 1 },
-      },
-    },
-  ]).toArray()
+  const profileAgg = await query(`
+    SELECT to_char(time, 'YYYY-MM-DD') as _id, count(*) as count 
+    FROM profile_rows 
+    GROUP BY _id
+  `).catch(() => ({ rows: [] }))
 
-  let bubbleAgg: { _id: string; count: number }[] = []
-  if (bubbleDb) {
-    bubbleAgg = await bubbleDb.collection(AGGREGATE_BUBBLE_COLLECTION).aggregate([
-      {
-        $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$eventTime' } },
-          count: { $sum: 1 },
-        },
-      },
-    ]).toArray() as { _id: string; count: number }[]
-  }
+  const bubbleAgg = await query(`
+    SELECT to_char(event_time, 'YYYY-MM-DD') as _id, count(*) as count 
+    FROM aggregate_bubble_events 
+    GROUP BY _id
+  `).catch(() => ({ rows: [] }))
 
   const dailyUsage = new Map<string, { mainMb: number; bubbleMb: number }>()
 
@@ -83,22 +63,22 @@ export async function getStorageSummary(): Promise<StorageSummaryResult> {
     return dailyUsage.get(date)!
   }
 
-  footprintAgg.forEach((doc) => {
+  footprintAgg.rows.forEach((doc: any) => {
     if (!doc._id) return
     const day = getDay(doc._id)
-    day.mainMb += (doc.count * ESTIMATED_BYTES_PER_FOOTPRINT) / (1024 * 1024)
+    day.mainMb += (parseInt(doc.count, 10) * ESTIMATED_BYTES_PER_FOOTPRINT) / (1024 * 1024)
   })
 
-  profileAgg.forEach((doc) => {
+  profileAgg.rows.forEach((doc: any) => {
     if (!doc._id) return
     const day = getDay(doc._id)
-    day.mainMb += (doc.count * ESTIMATED_BYTES_PER_PROFILE) / (1024 * 1024)
+    day.mainMb += (parseInt(doc.count, 10) * ESTIMATED_BYTES_PER_PROFILE) / (1024 * 1024)
   })
 
-  bubbleAgg.forEach((doc) => {
+  bubbleAgg.rows.forEach((doc: any) => {
     if (!doc._id) return
     const day = getDay(doc._id)
-    day.bubbleMb += (doc.count * ESTIMATED_BYTES_PER_BUBBLE) / (1024 * 1024)
+    day.bubbleMb += (parseInt(doc.count, 10) * ESTIMATED_BYTES_PER_BUBBLE) / (1024 * 1024)
   })
 
   let totalEstMain = 0
@@ -108,8 +88,8 @@ export async function getStorageSummary(): Promise<StorageSummaryResult> {
     totalEstBubble += sizes.bubbleMb
   }
 
-  const mainScale = totalEstMain > 0 ? (mainUsedMb / totalEstMain) : 1
-  const bubbleScale = totalEstBubble > 0 ? (bubbleUsedMb / totalEstBubble) : 1
+  const mainScale = totalEstMain > 0 ? (mainUsedMb / (totalEstMain + totalEstBubble)) : 1
+  const bubbleScale = mainScale // Same database, same scale factor
 
   const days: DayStorageInfo[] = Array.from(dailyUsage.entries())
     .map(([date, sizes]) => {
@@ -135,17 +115,6 @@ export async function getStorageSummary(): Promise<StorageSummaryResult> {
 
 export async function deleteStorageDays(dates: string[], targets?: string[]): Promise<number> {
   const targetSet = new Set(Array.isArray(targets) ? targets : ['main', 'bubbles'])
-  const db = await getMongoDb()
-
-  let bubbleDb: Awaited<ReturnType<typeof getAggregateBubbleMongoDb>> | null = null
-  if (targetSet.has('bubbles')) {
-    try {
-      bubbleDb = await getAggregateBubbleMongoDb()
-    } catch (e) {
-      console.warn('Bubble DB not accessible for deletion', e)
-    }
-  }
-
   let totalDeleted = 0
 
   for (const dateStr of dates) {
@@ -153,22 +122,16 @@ export async function deleteStorageDays(dates: string[], targets?: string[]): Pr
     const end = new Date(`${dateStr}T23:59:59.999Z`)
 
     if (targetSet.has('main')) {
-      const fpResult = await db.collection(MONGO_MARKET_COLLECTIONS.footprintCells).deleteMany({
-        time: { $gte: start, $lte: end },
-      })
-      totalDeleted += fpResult.deletedCount
+      const fpResult = await query('DELETE FROM footprint_cells WHERE time >= $1 AND time <= $2', [start, end]).catch(() => ({ rowCount: 0 }))
+      totalDeleted += fpResult.rowCount ?? 0
 
-      const prResult = await db.collection(MONGO_MARKET_COLLECTIONS.profileRows).deleteMany({
-        time: { $gte: start, $lte: end },
-      })
-      totalDeleted += prResult.deletedCount
+      const prResult = await query('DELETE FROM profile_rows WHERE time >= $1 AND time <= $2', [start, end]).catch(() => ({ rowCount: 0 }))
+      totalDeleted += prResult.rowCount ?? 0
     }
 
-    if (targetSet.has('bubbles') && bubbleDb) {
-      const bResult = await bubbleDb.collection(AGGREGATE_BUBBLE_COLLECTION).deleteMany({
-        eventTime: { $gte: start, $lte: end },
-      })
-      totalDeleted += bResult.deletedCount
+    if (targetSet.has('bubbles')) {
+      const bResult = await query('DELETE FROM aggregate_bubble_events WHERE event_time >= $1 AND event_time <= $2', [start, end]).catch(() => ({ rowCount: 0 }))
+      totalDeleted += bResult.rowCount ?? 0
     }
   }
 

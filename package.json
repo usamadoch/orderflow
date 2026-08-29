@@ -9,6 +9,7 @@
     "collector:btc": "node scripts/collector/btcusdtCollector.mjs",
     "test:collector": "node --test scripts/collector/btcusdtCollector.test.mjs",
     "db:indexes": "ts-node scripts/ensureIndexes.ts",
+    "db:migrate": "ts-node lib/db/timescale/migrations.ts",
     "lint": "next lint"
   },
   "dependencies": {
@@ -17,19 +18,21 @@
     "lucide-react": "^0.471.0",
     "mongodb": "^7.2.0",
     "next": "14.2.35",
+    "pg": "^8.23.0",
     "react": "^18",
     "react-dom": "^18",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "postcss": "^8",
-    "ts-node": "^10.9.2",
     "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }

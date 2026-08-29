@@ -2,10 +2,10 @@ import type { Candle } from '../../types/candle'
 import type { Trade } from '../../types/trade'
 import type { CandleRow, FineProfileRow, FineProfileRowWriteInput, FootprintCellRow, RawTradeQueryOptions, RawTradeRow } from './database'
 import type { SerializedFootprintCell } from './marketStorage'
-import { createMongoMarketStorageAdapter } from './mongo/marketStorageMongo'
+import { createTimescaleMarketStorageAdapter } from './timescale/timescaleStorageAdapter'
 import { libsqlMarketStorageAdapter } from './repositories/libsqlStorageAdapter'
 
-export type MarketDbDriver = 'libsql' | 'mongodb'
+export type MarketDbDriver = 'libsql' | 'mongodb' | 'timescaledb'
 
 export interface StoreClosedCandleInput {
   symbol: string
@@ -103,13 +103,21 @@ export interface MarketStorageAdapter {
 }
 
 export function getMarketDbDriver(): MarketDbDriver {
-  return process.env.MARKET_DB_DRIVER === 'mongodb' ? 'mongodb' : 'libsql'
+  const driver = process.env.MARKET_DB_DRIVER
+  if (driver === 'mongodb') return 'mongodb'
+  if (driver === 'timescaledb') return 'timescaledb'
+  return 'libsql'
 }
 
 export function getMarketStorageAdapter(): MarketStorageAdapter {
-  return getMarketDbDriver() === 'mongodb'
-    ? createMongoMarketStorageAdapter()
-    : libsqlMarketStorageAdapter
+  const driver = getMarketDbDriver()
+  switch (driver) {
+    case 'mongodb':
+      throw new Error('MongoDB is quarantined. Please use timescaledb or libsql.')
+    case 'timescaledb':
+      return createTimescaleMarketStorageAdapter()
+  }
+  return libsqlMarketStorageAdapter
 }
 
 export async function getStoredCandles(input: GetStoredCandlesInput): Promise<CandleRow[]> {
