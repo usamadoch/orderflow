@@ -10,6 +10,8 @@ import { deleteSharedCandleCache } from '../../lib/feeds/candleCache';
 import { deleteSharedFootprintCache } from '../../lib/aggregation/footprintCache';
 import { deleteSharedVolumeProfileCache } from '../../lib/volumeProfile/profileCache';
 import { getFineProfileBaseBucketSize } from '../../lib/config/markets';
+import { IndicatorsModal } from './IndicatorsModal';
+import { Activity } from 'lucide-react';
 
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h'];
 
@@ -32,6 +34,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const [showSettings, setShowSettings] = React.useState(false);
   const [settingsAnchor, setSettingsAnchor] = React.useState<{ x: number; y: number } | null>(null);
   const [settingsFocusRequest, setSettingsFocusRequest] = React.useState<SettingsOpenRequest | null>(null);
+  const [showIndicatorsModal, setShowIndicatorsModal] = React.useState(false);
   const settingsContainerRef = React.useRef<HTMLDivElement | null>(null);
   const settingsButtonRef = React.useRef<HTMLButtonElement | null>(null);
 
@@ -122,6 +125,25 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
         >
           F
         </button>
+      </div>
+
+      {/* Indicators Button */}
+      <div className="relative flex items-center h-full">
+        <button
+          onClick={() => setShowIndicatorsModal(!showIndicatorsModal)}
+          className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-bold tracking-tight transition-all duration-200 ${
+            showIndicatorsModal
+              ? 'bg-[#1F1F1F] text-accent border border-[#252525] shadow-sm'
+              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
+          }`}
+          title="Indicators"
+        >
+          <Activity size={13} strokeWidth={2.5} />
+          Indicators
+        </button>
+        {showIndicatorsModal && (
+          <IndicatorsModal panelId={panelId} onClose={() => setShowIndicatorsModal(false)} />
+        )}
       </div>
 
       <div className="flex gap-0.5 bg-[#0F0F0F] p-0.5 rounded-md border border-[#1F1F1F]">
