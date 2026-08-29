@@ -7,7 +7,7 @@ import { getFineProfileRows, storeFineProfileRows } from './repositories/profile
 
 export function createTimescaleMarketStorageAdapter(): MarketStorageAdapter {
   return {
-    driver: 'timescaledb' as any,
+    driver: 'timescaledb',
     
     async init() {
       await runTimescaleMigrations()

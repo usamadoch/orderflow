@@ -28,9 +28,11 @@ export function getTimescalePool(): Pool {
   return pool
 }
 
-export async function query<R extends QueryResultRow = any>(
+export type QueryParam = string | number | boolean | Date | null | Buffer | QueryParam[]
+
+export async function query<R extends QueryResultRow = QueryResultRow>(
   text: string,
-  params?: any[]
+  params?: QueryParam[]
 ): Promise<QueryResult<R>> {
   const p = getTimescalePool()
   return p.query<R>(text, params)

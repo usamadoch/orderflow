@@ -1051,14 +1051,14 @@ function isValidTrade(trade) {
     && trade.quantity > 0
 }
 
-function getNumberEnv(name, fallback) {
-  const value = Number(process.env[name])
-  return Number.isFinite(value) && value > 0 ? value : fallback
-}
+// function getNumberEnv(name, fallback) {
+//   const value = Number(process.env[name])
+//   return Number.isFinite(value) && value > 0 ? value : fallback
+// }
 
-function getIntegerEnv(name, fallback) {
-  return Math.floor(getNumberEnv(name, fallback))
-}
+// function getIntegerEnv(name, fallback) {
+//   return Math.floor(getNumberEnv(name, fallback))
+// }
 
 async function runBackfill(source, startTime, endTime) {
   if (endTime - startTime < 1000) return // Ignore gaps under 1s

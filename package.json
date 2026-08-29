@@ -6,8 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "collector:btc": "node scripts/collector/btcusdtCollector.mjs",
-    "test:collector": "node --test scripts/collector/btcusdtCollector.test.mjs",
+    "collector:btc": "node --env-file=.env.local scripts/collector/btcusdtCollector.mjs",
+    "test:collector": "node --test --env-file=.env.local scripts/collector/btcusdtCollector.test.mjs",
     "db:indexes": "ts-node scripts/ensureIndexes.ts",
     "db:migrate": "ts-node lib/db/timescale/migrations.ts",
     "lint": "next lint"

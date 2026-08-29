@@ -1,4 +1,4 @@
-import { query } from '../client'
+import { query, type QueryParam } from '../client'
 import type { BubbleEventContractType, BubbleEventSide } from '../../../../types/bubble'
 
 export interface AggregateBubbleEventWriteInput {
@@ -35,7 +35,7 @@ export async function storeAggregateBubbleEvents(
 ): Promise<StoreAggregateBubbleEventsResult> {
   if (inputs.length === 0) return { inserted: 0, duplicatesSkipped: 0 }
 
-  const values: any[] = []
+  const values: QueryParam[] = []
   const placeholders: string[] = []
   let paramIndex = 1
 
