@@ -93,6 +93,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           mounted = false;
           unsub();
         };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [panel.cvdResetMode, panel.cvdSmoothing, panel.sessions, panel.cvdPositiveColor, panel.cvdNegativeColor, globalTimezone]);
 
       return (

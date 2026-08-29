@@ -344,10 +344,9 @@ export interface PanelState {
   };
   // Historical Session Volume Profile
   historicalSessionProfileEnabled: boolean;
-  historicalSessionProfileStartHour: number;
-  historicalSessionProfileStartMin: number;
-  historicalSessionProfileEndHour: number;
-  historicalSessionProfileEndMin: number;
+  historicalSessionProfileSession: SessionId | 'multiple';
+  historicalSessionProfileSessions: SessionId[];
+  historicalSessionProfileDisplayMode: 'separate' | 'combined';
   historicalSessionProfileCount: number;
   historicalSessionProfileMinTimeframe: string;
 

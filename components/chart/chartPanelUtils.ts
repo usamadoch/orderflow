@@ -37,11 +37,7 @@ export function computeHistoricalSessionRanges(panel: PanelState, candles: Candl
   const latestTimeMs = candles.length > 0 ? candles[candles.length - 1].time * 1000 : Date.now();
   return getHistoricalSessionRanges(
     latestTimeMs,
-    panel.historicalSessionProfileCount,
-    panel.historicalSessionProfileStartHour,
-    panel.historicalSessionProfileStartMin,
-    panel.historicalSessionProfileEndHour,
-    panel.historicalSessionProfileEndMin,
+    panel,
     timezone
   );
 }

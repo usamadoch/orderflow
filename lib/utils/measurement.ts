@@ -22,11 +22,12 @@ export function computeMeasurementMetrics(
   scrollOffset: number,
   barWidth: number,
   profileWidth: number,
-  timeAxisHeight: number
+  timeAxisHeight: number,
+  statsGridHeight: number = 0
 ): MeasurementMetrics | null {
   if (candles.length === 0) return null;
 
-  const drawableHeight = canvasHeight - timeAxisHeight;
+  const drawableHeight = canvasHeight - timeAxisHeight - statsGridHeight;
 
   // Step 1 — Convert pixels to chart coordinates
   const startPrice = yToPrice(startY, coords.visiblePriceMin, coords.visiblePriceMax, drawableHeight);

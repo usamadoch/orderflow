@@ -108,6 +108,7 @@ export function CvdPanel({
     barWidthProp,
     profileWidth,
     cvdResetMode,
+    panelId,
     cvdSmoothing,
     sessions,
     cvdMode,

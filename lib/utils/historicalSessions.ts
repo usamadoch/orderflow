@@ -1,9 +1,10 @@
 import { useChartStore } from '../store/chart';
 import { getTimestampForZonedDate, getZonedTimeParts } from './format';
+import type { PanelState, SessionId } from '../../types/chart';
 
 export interface HistoricalSessionRange {
-  startTimeMs: number;
-  endTimeMs: number;
+  id: string;
+  segments: { startTimeMs: number; endTimeMs: number }[];
 }
 
 /**
@@ -11,52 +12,96 @@ export interface HistoricalSessionRange {
  */
 export function getHistoricalSessionRanges(
   currentTimeMs: number,
-  count: number,
-  startHour: number,
-  startMin: number,
-  endHour: number,
-  endMin: number,
+  panel: PanelState,
   timezone: string = useChartStore.getState().globalTimezone || 'local'
 ): HistoricalSessionRange[] {
   const ranges: HistoricalSessionRange[] = [];
   
-  const crossesMidnight = endHour < startHour || (endHour === startHour && endMin <= startMin);
-  
-  // Start with today in the chosen timezone
+  const activeSessions: SessionId[] = panel.historicalSessionProfileSession === 'multiple'
+    ? panel.historicalSessionProfileSessions
+    : [panel.historicalSessionProfileSession as SessionId];
+
+  if (activeSessions.length === 0) return ranges;
+
+  const displayMode = panel.historicalSessionProfileDisplayMode;
+  const count = panel.historicalSessionProfileCount;
   const tz = timezone || useChartStore.getState().globalTimezone || 'local';
+
+  const getSessionTimes = (sessionId: SessionId, year: number, month: number, date: number) => {
+    const config = panel.sessions[sessionId];
+    const crossesMidnight = config.endHour < config.startHour || (config.endHour === config.startHour && config.endMin <= config.startMin);
+    
+    const sTime = getTimestampForZonedDate(year, month, date, config.startHour, config.startMin, tz);
+    
+    let eTime: number;
+    if (crossesMidnight) {
+      // The session ends on the next local day
+      // To reliably add 1 day, we add it to the naive date and then extract the parts
+      const nextDayNaive = new Date(year, month - 1, date + 1);
+      eTime = getTimestampForZonedDate(
+        nextDayNaive.getFullYear(),
+        nextDayNaive.getMonth() + 1,
+        nextDayNaive.getDate(),
+        config.endHour,
+        config.endMin,
+        tz
+      );
+    } else {
+      eTime = getTimestampForZonedDate(year, month, date, config.endHour, config.endMin, tz);
+    }
+    return { startTimeMs: sTime, endTimeMs: eTime };
+  };
+
+  // Start with today in the chosen timezone
   const currentZoned = getZonedTimeParts(currentTimeMs, tz);
   
   let currentYear = currentZoned.year;
   let currentMonth = currentZoned.month;
   let currentDate = currentZoned.day;
   
+  let daysFound = 0;
+
   // Search back up to 60 days to find enough completed sessions
   for (let i = 0; i < 60; i++) {
-    if (ranges.length >= count) break;
+    if (daysFound >= count) break;
 
-    const sTime = getTimestampForZonedDate(currentYear, currentMonth, currentDate, startHour, startMin, tz);
-    
-    let eTime: number;
-    if (crossesMidnight) {
-      // The session ends on the next local day
-      // To reliably add 1 day, we add it to the naive date and then extract the parts
-      const nextDayNaive = new Date(currentYear, currentMonth - 1, currentDate + 1);
-      eTime = getTimestampForZonedDate(
-        nextDayNaive.getFullYear(),
-        nextDayNaive.getMonth() + 1,
-        nextDayNaive.getDate(),
-        endHour,
-        endMin,
-        tz
-      );
+    let allCompleted = true;
+    const dayRanges: HistoricalSessionRange[] = [];
+
+    if (displayMode === 'combined' || panel.historicalSessionProfileSession !== 'multiple') {
+      const daySegments: { startTimeMs: number; endTimeMs: number }[] = [];
+      for (const sessionId of activeSessions) {
+        const times = getSessionTimes(sessionId, currentYear, currentMonth, currentDate);
+        if (times.endTimeMs > currentTimeMs) {
+          allCompleted = false;
+        }
+        daySegments.push(times);
+      }
+      
+      if (allCompleted && daySegments.length > 0) {
+        daySegments.sort((a, b) => a.startTimeMs - b.startTimeMs);
+        dayRanges.push({
+          id: `combined-${currentYear}-${currentMonth}-${currentDate}`,
+          segments: daySegments
+        });
+      }
     } else {
-      eTime = getTimestampForZonedDate(currentYear, currentMonth, currentDate, endHour, endMin, tz);
+      for (const sessionId of activeSessions) {
+        const times = getSessionTimes(sessionId, currentYear, currentMonth, currentDate);
+        if (times.endTimeMs > currentTimeMs) {
+          allCompleted = false;
+        }
+        dayRanges.push({
+          id: `${sessionId}-${currentYear}-${currentMonth}-${currentDate}`,
+          segments: [times]
+        });
+      }
     }
     
-    // Check if the session is completed relative to the currentTimeMs
-    if (eTime <= currentTimeMs) {
-      // Unshift to put oldest sessions first
-      ranges.unshift({ startTimeMs: sTime, endTimeMs: eTime });
+    if (allCompleted && dayRanges.length > 0) {
+      dayRanges.sort((a, b) => a.segments[0].startTimeMs - b.segments[0].startTimeMs);
+      ranges.unshift(...dayRanges);
+      daysFound++;
     }
     
     // Step back one day using naive date logic to handle month boundaries properly

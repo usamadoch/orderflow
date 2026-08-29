@@ -1,5 +1,35 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-29] - Feature: Session-Based Historical Session Volume Profile (HSVP) Configuration
+
+- **What changed**:
+  - **Refactored Settings (`components/ui/ChartSettingsDropdown.tsx`)**: Replaced raw start/end time inputs with a Session selector (Tokyo, London, New York) and a Multiple selection mode.
+  - **Store State Migration (`lib/store/chart.ts`, `types/chart.ts`)**: Removed legacy time-based properties (`historicalSessionProfileStartHour`, etc.) and added `historicalSessionProfileSession`, `historicalSessionProfileSessions`, and `historicalSessionProfileDisplayMode`.
+  - **Segment-Based Session Math (`lib/utils/historicalSessions.ts`)**: Upgraded `getHistoricalSessionRanges` to support segment-based ranges, correctly handling overlapping and discontinuous sessions across dates.
+  - **Profile Restoration & Cache Logic (`components/FeedProvider.tsx`)**: Updated history restoration and cache eviction algorithms to evaluate min/max timestamps of segment arrays instead of flat span dates.
+  - **Segmented Canvas Rendering (`components/chart/ChartCanvas.tsx`)**: Refactored the volume profile drawing loop to properly aggregate candles across non-contiguous session segments before calculating the final combined profile.
+- **Why it changed**:
+  - The HSVP configuration was overly complex (raw time inputs). Users wanted simple check-box style configurations mapping to existing global sessions (Tokyo, London, NY) with the ability to combine multi-session data into one continuous profile.
+- **Impact summary**:
+  - Simplified, intuitive configuration. Seamless combining of multiple overlapping or disjointed global sessions into one precise Volume Profile.
+
+## [2026-08-29] - Fix: Drawing Tool Coordinate / Hit-Testing Misalignment
+
+- **What changed**:
+  - **Shared Coordinate Bounds (`components/chart/ChartCanvas.tsx`)**:
+    - Computed `statsGridHeight` globally at the top of the canvas rendering cycle.
+    - Updated all mouse interaction boundaries (`onMouseDown`, `onMouseMove`, `getUnifiedHitTarget`) to calculate `chartHeight` as `rect.height - timeAxisHeight - statsGridHeight`.
+  - **Panning Coordinate Fix (`components/chart/usePanZoom.ts`)**:
+    - Added `statsGridHeight` to `usePanZoom` function signature and used it to compute correct vertical panning ratio (`pricePerPixel`), keeping panning perfectly bound to the drawable chart height.
+  - **Measurement Tool Coordinates (`lib/utils/measurement.ts`)**:
+    - Updated `computeMeasurementMetrics` to accept `statsGridHeight` and apply it to chart bounds for accurate coordinate measurement when stats grid is enabled.
+- **Why it changed**:
+  - The rendering pipeline scaled the vertical drawing area (`drawableHeight`) by subtracting `statsGridHeight`. However, the mouse interaction pipeline and hit-testing functions ignored `statsGridHeight`, using the full canvas height.
+  - This divergence created a vertical offset in price-to-pixel coordinate translation that scaled linearly with price depth, causing drawing tools (rectangles, positions, lines, volume profiles) to render out-of-sync with their hit-testing hitboxes when the Stats Indicator was active.
+- **Impact summary**:
+  - 100% pixel-to-pixel accuracy restored for drawing tool hit-testing, panning, and interaction, irrespective of the presence or size of the Stats Indicator Grid.
+  - `npx tsc --noEmit` validates clean type signatures across updated hooks and utilities.
+
 ## [2026-08-29] - Fix: HSVP & Current-Candle Stats Indicator Canvas Blinking & Render Lifecycle
 
 - **What changed**:

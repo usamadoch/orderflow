@@ -400,6 +400,8 @@ export function ChartCanvas({
     profileWidth += liquidityHeatmapWidth;
   }
 
+  const statsGridHeight = statsIndicatorEnabled ? statsIndicatorItems.length * STATS_GRID_ROW_HEIGHT : 0;
+
   const redraw = useCallback((layer: 'all' | 'overlay' | 'background' | 'live' | 'live-dirty' = 'all') => {
     scheduledLayers.current.add(layer);
     if (isRedrawScheduled.current) return;
@@ -422,7 +424,6 @@ export function ChartCanvas({
       const logicalHeight = heightRef.current;
 
       const chartWidth = logicalWidth - priceAxisWidth;
-      const statsGridHeight = statsIndicatorEnabled ? statsIndicatorItems.length * STATS_GRID_ROW_HEIGHT : 0;
       const chartHeight = logicalHeight - timeAxisHeight - statsGridHeight;
 
       if (drawAll || layersToDraw.has('background')) {
@@ -966,40 +967,47 @@ export function ChartCanvas({
         // Historical Session Volume Profiles
         if (historicalSessionProfileEnabled && historicalSessionRanges.length > 0) {
           for (const sessionRange of historicalSessionRanges) {
-            const startTime = sessionRange.startTimeMs / 1000;
-            const endTime = sessionRange.endTimeMs / 1000;
-            
-            // Binary search for first candle with time >= startTime
-            let lo = 0, hi = candles.length;
-            while (lo < hi) {
-              const mid = (lo + hi) >>> 1;
-              if (candles[mid].time < startTime) lo = mid + 1; else hi = mid;
-            }
-            const firstIndex = lo;
-
-            // Binary search for last candle with time < endTime
-            lo = firstIndex; hi = candles.length;
-            while (lo < hi) {
-              const mid = (lo + hi) >>> 1;
-              if (candles[mid].time < endTime) lo = mid + 1; else hi = mid;
-            }
-            const lastIndex = lo - 1;
-
-            if (firstIndex > lastIndex || firstIndex >= candles.length) continue;
-
+            const sessionCandles: typeof candles = [];
             let sHigh = -Infinity;
             let sLow = Infinity;
-            for (let ci = firstIndex; ci <= lastIndex; ci++) {
-              if (candles[ci].high > sHigh) sHigh = candles[ci].high;
-              if (candles[ci].low < sLow) sLow = candles[ci].low;
-            }
-            if (sHigh === -Infinity || sLow === Infinity) continue;
+            let minFirstIndex = Infinity;
+            let maxLastIndex = -Infinity;
 
-            const sessionCandles = candles.slice(firstIndex, lastIndex + 1);
-            
+            for (const segment of sessionRange.segments) {
+              const startTime = segment.startTimeMs / 1000;
+              const endTime = segment.endTimeMs / 1000;
+              
+              let lo = 0, hi = candles.length;
+              while (lo < hi) {
+                const mid = (lo + hi) >>> 1;
+                if (candles[mid].time < startTime) lo = mid + 1; else hi = mid;
+              }
+              const firstIndex = lo;
+
+              lo = firstIndex; hi = candles.length;
+              while (lo < hi) {
+                const mid = (lo + hi) >>> 1;
+                if (candles[mid].time < endTime) lo = mid + 1; else hi = mid;
+              }
+              const lastIndex = lo - 1;
+
+              if (firstIndex > lastIndex || firstIndex >= candles.length) continue;
+
+              for (let ci = firstIndex; ci <= lastIndex; ci++) {
+                if (candles[ci].high > sHigh) sHigh = candles[ci].high;
+                if (candles[ci].low < sLow) sLow = candles[ci].low;
+              }
+
+              sessionCandles.push(...candles.slice(firstIndex, lastIndex + 1));
+              if (firstIndex < minFirstIndex) minFirstIndex = firstIndex;
+              if (lastIndex > maxLastIndex) maxLastIndex = lastIndex;
+            }
+
+            if (sessionCandles.length === 0 || sHigh === -Infinity || sLow === Infinity) continue;
+
             const sessionProfileRange = {
-              firstIndex,
-              lastIndex,
+              firstIndex: minFirstIndex,
+              lastIndex: maxLastIndex,
               priceHigh: sHigh,
               priceLow: sLow,
             };
@@ -1022,8 +1030,8 @@ export function ChartCanvas({
               debugContext: {
                 label: 'historical-session-profile-render',
                 panelId,
-                selectedStartTime: startTime,
-                selectedEndTime: endTime,
+                selectedStartTime: sessionRange.segments[0].startTimeMs / 1000,
+                selectedEndTime: sessionRange.segments[sessionRange.segments.length - 1].endTimeMs / 1000,
               },
             });
             
@@ -1318,6 +1326,7 @@ export function ChartCanvas({
     priceAxisWidth,
     timeAxisHeight,
     profileWidth,
+    statsGridHeight,
     barWidthProp,
     scrollOffsetProp,
     onBarWidthChange,
@@ -1946,7 +1955,7 @@ export function ChartCanvas({
 
       if (lineDrawMode !== 'none') {
         const chartWidth = rect.width - priceAxisWidth;
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
         if (x > chartWidth || y > chartHeight) return;
 
         if (lineDrawMode === 'horizontal') {
@@ -1999,7 +2008,7 @@ export function ChartCanvas({
       const measureToolActive = useChartRuntimeStore.getState().panels[panelId]?.measureToolActive ?? false;
       if (isDrawMode || measureToolActive) {
         const chartWidth = rect.width - priceAxisWidth;
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
         if (x > chartWidth || y > chartHeight) return;
         dragStart.current = { x, y };
         dragEnd.current = { x, y };
@@ -2022,7 +2031,7 @@ export function ChartCanvas({
       const openOrders = runtimeState.tradingStatus.openOrders;
 
       const chartWidth = rect.width - priceAxisWidth;
-      const chartHeight = rect.height - timeAxisHeight;
+      const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
       const pCenter = priceCenter.current ?? 0;
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
@@ -2220,7 +2229,7 @@ export function ChartCanvas({
 
     const getUnifiedHitTarget = (x: number, y: number) => {
       const chartWidth = rect.width - priceAxisWidth;
-      const chartHeight = rect.height - timeAxisHeight;
+      const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
       const pCenter = priceCenter.current ?? 0;
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
@@ -2308,7 +2317,7 @@ export function ChartCanvas({
         let foundEx = false;
         if (!hitTarget && exhaustionEnabled && exhaustionMap.size > 0) {
           const chartWidth = rect.width - priceAxisWidth;
-          const chartHeight = rect.height - timeAxisHeight;
+          const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
           const pCenter = priceCenter.current ?? 0;
           const pRange = priceRange.current ?? 100;
           const priceMin = pCenter - pRange / 2;
@@ -2347,7 +2356,7 @@ export function ChartCanvas({
           let foundIceberg = false;
           if (!hitTarget && icebergEnabled && icebergLevels.length > 0) {
             const chartWidth = rect.width - priceAxisWidth;
-            const chartHeight = rect.height - timeAxisHeight;
+            const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
             const pCenter = priceCenter.current ?? 0;
             const pRange = priceRange.current ?? 100;
             const priceMin = pCenter - pRange / 2;
@@ -2389,7 +2398,7 @@ export function ChartCanvas({
 
       // Drag Logic
       if (isDraggingBracket.current && bracketDragRef.current) {
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange  = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2417,7 +2426,7 @@ export function ChartCanvas({
           redraw();
         }
       } else if (isDraggingOrderLine.current) {
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2437,7 +2446,7 @@ export function ChartCanvas({
         redraw();
       } else if (isDraggingDrawing.current && dragAnchor.current && drawingSnapshot.current && drawingDragZone.current) {
         const chartWidth = rect.width - priceAxisWidth;
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2595,7 +2604,7 @@ export function ChartCanvas({
           return;
         }
 
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2621,7 +2630,7 @@ export function ChartCanvas({
         redraw();
       } else if (isDraggingResize.current && dragAnchor.current && profileSnapshot.current) {
         const chartWidth = rect.width - priceAxisWidth;
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2839,7 +2848,7 @@ export function ChartCanvas({
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
 
         const widthPx = Math.abs(dragEnd.current.x - dragStart.current.x);
         const heightPx = Math.abs(dragEnd.current.y - dragStart.current.y);
@@ -2885,7 +2894,7 @@ export function ChartCanvas({
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
 
         const idx1 = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
         const idx2 = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
@@ -2940,7 +2949,7 @@ export function ChartCanvas({
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
-        const chartHeight = rect.height - timeAxisHeight;
+        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
 
         const idx1 = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
         const idx2 = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
@@ -3011,7 +3020,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, statsGridHeight, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({

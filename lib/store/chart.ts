@@ -193,7 +193,9 @@ export interface ChartState {
   setSessionColor: (panelId: PanelId, sessionId: SessionId, color: string) => void;
 
   setHistoricalSessionProfileEnabled: (panelId: PanelId, enabled: boolean) => void;
-  setHistoricalSessionProfileTime: (panelId: PanelId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
+  setHistoricalSessionProfileSession: (panelId: PanelId, session: SessionId | 'multiple') => void;
+  setHistoricalSessionProfileSessions: (panelId: PanelId, sessions: SessionId[]) => void;
+  setHistoricalSessionProfileDisplayMode: (panelId: PanelId, mode: 'separate' | 'combined') => void;
   setHistoricalSessionProfileCount: (panelId: PanelId, count: number) => void;
   setHistoricalSessionProfileMinTimeframe: (panelId: PanelId, minTimeframe: string) => void;
 
@@ -353,10 +355,9 @@ function createDefaultPanel(id: PanelId): PanelState {
       },
     },
     historicalSessionProfileEnabled: true,
-    historicalSessionProfileStartHour: 13,
-    historicalSessionProfileStartMin: 0,
-    historicalSessionProfileEndHour: 22,
-    historicalSessionProfileEndMin: 0,
+    historicalSessionProfileSession: 'newYork',
+    historicalSessionProfileSessions: ['newYork'],
+    historicalSessionProfileDisplayMode: 'separate',
     historicalSessionProfileCount: 1,
     historicalSessionProfileMinTimeframe: '15m',
     settingsByTimeframe: {},
@@ -1108,24 +1109,14 @@ export const useChartStore = create<ChartState>()(
       setHistoricalSessionProfileEnabled: (panelId, historicalSessionProfileEnabled) =>
         set((state) => updatePanel(state, panelId, { historicalSessionProfileEnabled })),
 
-      setHistoricalSessionProfileTime: (panelId, field, value) =>
-        set((state) => {
-          const panel = state.panels[panelId];
-          const startTotal = (field === 'startHour' ? value : panel.historicalSessionProfileStartHour) * 60 +
-            (field === 'startMin' ? value : panel.historicalSessionProfileStartMin);
-          const endTotal = (field === 'endHour' ? value : panel.historicalSessionProfileEndHour) * 60 +
-            (field === 'endMin' ? value : panel.historicalSessionProfileEndMin);
+      setHistoricalSessionProfileSession: (panelId, historicalSessionProfileSession) =>
+        set((state) => updatePanel(state, panelId, { historicalSessionProfileSession })),
 
-          if (endTotal <= startTotal && startTotal - endTotal < 12 * 60) {
-              // Allows crossing midnight by just setting it. We don't strictly revert here because midnight crossing is valid
-          }
-          
-          if (field === 'startHour') return updatePanel(state, panelId, { historicalSessionProfileStartHour: value });
-          if (field === 'startMin') return updatePanel(state, panelId, { historicalSessionProfileStartMin: value });
-          if (field === 'endHour') return updatePanel(state, panelId, { historicalSessionProfileEndHour: value });
-          if (field === 'endMin') return updatePanel(state, panelId, { historicalSessionProfileEndMin: value });
-          return {};
-        }),
+      setHistoricalSessionProfileSessions: (panelId, historicalSessionProfileSessions) =>
+        set((state) => updatePanel(state, panelId, { historicalSessionProfileSessions })),
+
+      setHistoricalSessionProfileDisplayMode: (panelId, historicalSessionProfileDisplayMode) =>
+        set((state) => updatePanel(state, panelId, { historicalSessionProfileDisplayMode })),
 
       setHistoricalSessionProfileCount: (panelId, historicalSessionProfileCount) =>
         set((state) => updatePanel(state, panelId, { historicalSessionProfileCount: Math.max(1, Math.min(15, historicalSessionProfileCount)) })),
@@ -1320,10 +1311,9 @@ export const useChartStore = create<ChartState>()(
               newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
             },
             historicalSessionProfileEnabled: p.historicalSessionProfileEnabled ?? true,
-            historicalSessionProfileStartHour: p.historicalSessionProfileStartHour ?? 13,
-            historicalSessionProfileStartMin: p.historicalSessionProfileStartMin ?? 0,
-            historicalSessionProfileEndHour: p.historicalSessionProfileEndHour ?? 22,
-            historicalSessionProfileEndMin: p.historicalSessionProfileEndMin ?? 0,
+            historicalSessionProfileSession: p.historicalSessionProfileSession ?? 'newYork',
+            historicalSessionProfileSessions: p.historicalSessionProfileSessions ?? ['newYork'],
+            historicalSessionProfileDisplayMode: p.historicalSessionProfileDisplayMode ?? 'separate',
             historicalSessionProfileCount: p.historicalSessionProfileCount ?? 1,
             historicalSessionProfileMinTimeframe: p.historicalSessionProfileMinTimeframe ?? '15m',
             historicalSessionProfileResolutionTicks: clampProfileResolutionTicks(p.historicalSessionProfileResolutionTicks ?? 0, tickSize),
@@ -1574,10 +1564,9 @@ export const useChartStore = create<ChartState>()(
             liquidityHeatmapShowCurrentLabel: state.panels.left.liquidityHeatmapShowCurrentLabel,
             liquidityHeatmapProfileSync: state.panels.left.liquidityHeatmapProfileSync,
             historicalSessionProfileEnabled: state.panels.left.historicalSessionProfileEnabled,
-            historicalSessionProfileStartHour: state.panels.left.historicalSessionProfileStartHour,
-            historicalSessionProfileStartMin: state.panels.left.historicalSessionProfileStartMin,
-            historicalSessionProfileEndHour: state.panels.left.historicalSessionProfileEndHour,
-            historicalSessionProfileEndMin: state.panels.left.historicalSessionProfileEndMin,
+            historicalSessionProfileSession: state.panels.left.historicalSessionProfileSession,
+            historicalSessionProfileSessions: state.panels.left.historicalSessionProfileSessions,
+            historicalSessionProfileDisplayMode: state.panels.left.historicalSessionProfileDisplayMode,
             historicalSessionProfileCount: state.panels.left.historicalSessionProfileCount,
             historicalSessionProfileMinTimeframe: state.panels.left.historicalSessionProfileMinTimeframe,
             statsIndicatorEnabled: state.panels.left.statsIndicatorEnabled,
@@ -1691,10 +1680,9 @@ export const useChartStore = create<ChartState>()(
             liquidityHeatmapShowCurrentLabel: state.panels.right.liquidityHeatmapShowCurrentLabel,
             liquidityHeatmapProfileSync: state.panels.right.liquidityHeatmapProfileSync,
             historicalSessionProfileEnabled: state.panels.right.historicalSessionProfileEnabled,
-            historicalSessionProfileStartHour: state.panels.right.historicalSessionProfileStartHour,
-            historicalSessionProfileStartMin: state.panels.right.historicalSessionProfileStartMin,
-            historicalSessionProfileEndHour: state.panels.right.historicalSessionProfileEndHour,
-            historicalSessionProfileEndMin: state.panels.right.historicalSessionProfileEndMin,
+            historicalSessionProfileSession: state.panels.right.historicalSessionProfileSession,
+            historicalSessionProfileSessions: state.panels.right.historicalSessionProfileSessions,
+            historicalSessionProfileDisplayMode: state.panels.right.historicalSessionProfileDisplayMode,
             historicalSessionProfileCount: state.panels.right.historicalSessionProfileCount,
             historicalSessionProfileMinTimeframe: state.panels.right.historicalSessionProfileMinTimeframe,
             statsIndicatorEnabled: state.panels.right.statsIndicatorEnabled,

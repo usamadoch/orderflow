@@ -278,7 +278,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/utils/delta.ts` → Delta calculation and CVD series formatting utilities.
 - `lib/utils/format.ts` → Formatter functions for currency, numbers, volume, and timestamps.
 - `lib/utils/sessions.ts` → Trading session timezone and market hours calculations.
-- `lib/utils/historicalSessions.ts` → Local timezone mapping for historical session profile ranges.
+- `lib/utils/historicalSessions.ts` → Segment-based math and timezone mapping for historical session profile ranges.
 - `lib/utils/measurement.ts` → Calculations for measurement tool distance, price change, and duration.
 - `types/candle.ts` → OHLCV candlestick data types.
 - `types/bubble.ts` → Volume bubble event and configuration types.

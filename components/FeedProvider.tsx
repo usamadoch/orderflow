@@ -1955,11 +1955,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const timezone = useChartStore.getState().globalTimezone;
       const ranges = getHistoricalSessionRanges(
         latestTimeMs,
-        panel.historicalSessionProfileCount,
-        panel.historicalSessionProfileStartHour,
-        panel.historicalSessionProfileStartMin,
-        panel.historicalSessionProfileEndHour,
-        panel.historicalSessionProfileEndMin,
+        panel,
         timezone
       );
 
@@ -1968,7 +1964,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const profileCache = volumeProfileEngineRef.current.getBaseCache();
       
       const missingRanges = ranges
-        .map(r => alignFineProfileRange(r.startTimeMs / 1000, r.endTimeMs / 1000))
+        .flatMap(r => r.segments)
+        .map(segment => alignFineProfileRange(segment.startTimeMs / 1000, segment.endTimeMs / 1000))
         .filter(r => profileCache.getMissingBaseCandleTimes(r.startSeconds, r.endSeconds).length > 0);
         
       return missingRanges.length > 0 ? missingRanges : null;
@@ -2788,24 +2785,23 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         const latestTimeMs = runtimePanel.candles[runtimePanel.candles.length - 1].time * 1000;
         const sessionRanges = getHistoricalSessionRanges(
           latestTimeMs,
-          panel.historicalSessionProfileCount,
-          panel.historicalSessionProfileStartHour,
-          panel.historicalSessionProfileStartMin,
-          panel.historicalSessionProfileEndHour,
-          panel.historicalSessionProfileEndMin,
+          panel,
           state.globalTimezone
         );
         for (const sr of sessionRanges) {
-          ranges.push({
-            startSeconds: Math.floor(sr.startTimeMs / 1000),
-            endSeconds: Math.ceil(sr.endTimeMs / 1000),
-          });
+          for (const segment of sr.segments) {
+            ranges.push({
+              startSeconds: Math.floor(segment.startTimeMs / 1000),
+              endSeconds: Math.ceil(segment.endTimeMs / 1000),
+            });
+          }
         }
       }
       
       volumeProfileEngineRef.current.setProtectedRanges(panelId, ranges);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelId]);
 
   // Clear protected ranges on unmount

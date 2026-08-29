@@ -201,7 +201,9 @@ export function ChartSettingsDropdown({
   const timezoneLabel = TIMEZONE_OPTIONS.find(tz => tz.value === globalTimezone)?.label ?? (globalTimezone === 'local' ? 'Local (PC)' : globalTimezone);
 
   const setHistoricalSessionProfileEnabled = useChartStore(s => s.setHistoricalSessionProfileEnabled);
-  const setHistoricalSessionProfileTime = useChartStore(s => s.setHistoricalSessionProfileTime);
+  const setHistoricalSessionProfileSession = useChartStore(s => s.setHistoricalSessionProfileSession);
+  const setHistoricalSessionProfileSessions = useChartStore(s => s.setHistoricalSessionProfileSessions);
+  const setHistoricalSessionProfileDisplayMode = useChartStore(s => s.setHistoricalSessionProfileDisplayMode);
   const setHistoricalSessionProfileCount = useChartStore(s => s.setHistoricalSessionProfileCount);
 
   const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
@@ -1331,28 +1333,74 @@ export function ChartSettingsDropdown({
             <span className="text-text-dim/80">Format: <strong className="text-accent">{globalTimeFormat}</strong></span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <TimeInput
-              label="Start Time"
-              hour={panel.historicalSessionProfileStartHour}
-              minute={panel.historicalSessionProfileStartMin}
-              timeFormat={globalTimeFormat}
-              onChange={(h, m) => {
-                setHistoricalSessionProfileTime(panelId, 'startHour', h);
-                setHistoricalSessionProfileTime(panelId, 'startMin', m);
-              }}
-            />
-            <TimeInput
-              label="End Time"
-              hour={panel.historicalSessionProfileEndHour}
-              minute={panel.historicalSessionProfileEndMin}
-              timeFormat={globalTimeFormat}
-              onChange={(h, m) => {
-                setHistoricalSessionProfileTime(panelId, 'endHour', h);
-                setHistoricalSessionProfileTime(panelId, 'endMin', m);
-              }}
-            />
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Session</label>
+            <select
+              value={panel.historicalSessionProfileSession}
+              onChange={(e) => setHistoricalSessionProfileSession(panelId, e.target.value as SessionId | 'multiple')}
+              className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
+            >
+              <option value="tokyo">Tokyo</option>
+              <option value="london">London</option>
+              <option value="newYork">New York</option>
+              <option value="multiple">Multiple</option>
+            </select>
           </div>
+
+          {panel.historicalSessionProfileSession === 'multiple' && (
+            <div className="space-y-2">
+              <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sessions</label>
+                <div className="flex flex-col gap-2">
+                  {(['tokyo', 'london', 'newYork'] as const).map(sid => (
+                    <label key={sid} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={panel.historicalSessionProfileSessions.includes(sid)}
+                        onChange={(e) => {
+                          const current = panel.historicalSessionProfileSessions;
+                          if (e.target.checked) {
+                            setHistoricalSessionProfileSessions(panelId, [...current, sid]);
+                          } else {
+                            if (current.length > 1) { // Prevent unchecking all
+                              setHistoricalSessionProfileSessions(panelId, current.filter(s => s !== sid));
+                            }
+                          }
+                        }}
+                        className="w-3.5 h-3.5 rounded border-[#333] bg-[#1F1F1F] text-accent focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                      />
+                      <span className="text-[11px] font-bold text-main">
+                        {sid === 'newYork' ? 'New York' : sid.charAt(0).toUpperCase() + sid.slice(1)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Profile Display</label>
+                <div className="grid grid-cols-2 gap-1">
+                  <button
+                    onClick={() => setHistoricalSessionProfileDisplayMode(panelId, 'separate')}
+                    className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.historicalSessionProfileDisplayMode === 'separate'
+                      ? 'bg-accent/10 border-accent text-accent'
+                      : 'bg-[#1F1F1F] border-[#333] text-text-dim hover:border-[#444]'
+                      }`}
+                  >
+                    Separate
+                  </button>
+                  <button
+                    onClick={() => setHistoricalSessionProfileDisplayMode(panelId, 'combined')}
+                    className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.historicalSessionProfileDisplayMode === 'combined'
+                      ? 'bg-accent/10 border-accent text-accent'
+                      : 'bg-[#1F1F1F] border-[#333] text-text-dim hover:border-[#444]'
+                      }`}
+                  >
+                    Combined
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sessions to Display</label>

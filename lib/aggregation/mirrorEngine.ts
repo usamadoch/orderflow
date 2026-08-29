@@ -13,6 +13,7 @@ export class MirrorAggregationEngine {
     this.displayBucketSize = Math.max(BASE_FOOTPRINT_BUCKET_SIZE, bucketSize);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setDisplayTimeframeSeconds(_seconds: number) {
     // We don't use this directly in the mirror engine, but FeedProvider calls it
   }
