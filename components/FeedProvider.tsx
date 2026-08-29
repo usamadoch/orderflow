@@ -2160,6 +2160,20 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             return;
           }
 
+          if (snapshot.reason === 'connection-restored') {
+            console.log(`[PanelFeed:${panelId}] Connection restored, fetching recent Binance history to heal gaps...`);
+            void candleCache.restoreHistory(async () => {
+              const binanceHistory = await fetchSharedHistory(contractType, pair, timeframe).catch(() => []);
+              return {
+                candles: binanceHistory,
+                source: 'Binance',
+                storedCandles: 0,
+                binanceCandles: binanceHistory.length,
+              };
+            });
+            return;
+          }
+
           console.log(`[CANDLE_CACHE_VERIFY:${panelId}] syncing candle snapshot from shared cache`, {
             candleCacheKey: snapshot.key,
             pair,
@@ -2633,32 +2647,52 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
     }, 1200);
     const obManager = orderbookRef.current;
+    let isDepthSubscribed = false;
 
-    const initOrderbook = async () => {
+    const loadOrderbookSnapshot = async () => {
       try {
-        const panelState = useChartStore.getState().panels[panelId];
-        if (!panelState.liquidityEnabled && !panelState.liquidityHeatmapEnabled) {
-          pendingAggregationRef.current = false;
-          return;
-        }
-
         console.log(`[PanelFeed:${panelId}] Fetching orderbook snapshot for ${pair}...`);
         const snapshot = await fetchSharedOrderbookSnapshot(pair, 500);
         if (!active) return;
-
         obManager.initFromSnapshot(snapshot);
         console.log(`[PanelFeed:${panelId}] Orderbook snapshot loaded (${snapshot.bids.length} bids, ${snapshot.asks.length} asks)`);
+      } catch (err) {
+        console.warn(`[PanelFeed:${panelId}] Failed to fetch orderbook snapshot:`, err);
+      }
+    };
 
-        // Subscribe to incremental updates
+    obManager.onGapDetected = () => {
+      console.log(`[PanelFeed:${panelId}] Gap detected in orderbook, refetching snapshot...`);
+      void loadOrderbookSnapshot();
+    };
+
+    const initOrderbook = async () => {
+      const panelState = useChartStore.getState().panels[panelId];
+      if (!panelState.liquidityEnabled && !panelState.liquidityHeatmapEnabled) {
+        pendingAggregationRef.current = false;
+        return;
+      }
+
+      if (!isDepthSubscribed) {
+        isDepthSubscribed = true;
         feedUnsubscribers.push(
           subscribeDepthStream(pair, (update: DepthUpdate) => {
             obManager.applyUpdate(update);
             if (useChartStore.getState().panels[panelId].liquidityEnabled) {
               pendingAggregationRef.current = true;
             }
+          }, (state) => {
+            if (state === 'LIVE' && !obManager.isReady()) {
+              console.log(`[PanelFeed:${panelId}] Depth connection restored, refetching snapshot...`);
+              void loadOrderbookSnapshot();
+            }
           })
         );
+      }
 
+      await loadOrderbookSnapshot();
+
+      if (!aggregationInterval) {
         // Throttled aggregation at 500ms
         aggregationInterval = setInterval(() => {
           if (!pendingAggregationRef.current) return;
@@ -2685,8 +2719,6 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
           setLiquidityZones(panelId, zones);
         }, 500);
-      } catch (err) {
-        console.error(`[PanelFeed:${panelId}] Orderbook init failed:`, err);
       }
     };
 

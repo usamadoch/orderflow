@@ -1,6 +1,7 @@
 import { Candle } from "../../types/candle";
 import { Trade } from "../../types/trade";
 import { OrderbookSnapshot, DepthUpdate } from "../liquidity/orderbook";
+import { ConnectionState } from "../../types/feed";
 
 export interface FeedAdapter {
   fetchHistory(pair: string, timeframe: string, limit?: number): Promise<Candle[]>;
@@ -8,6 +9,12 @@ export interface FeedAdapter {
   subscribeTrades(pair: string, cb: (trade: Trade) => void): void;
   disconnect(): void;
   clone(): FeedAdapter;
+
+  getConnectionState?(): ConnectionState;
+  onConnectionStateChange?(cb: (state: ConnectionState) => void): void;
+
+  getObConnectionState?(): ConnectionState;
+  onObConnectionStateChange?(cb: (state: ConnectionState) => void): void;
 
   // Orderbook support (optional — implemented by adapters that support it)
   fetchOrderbookSnapshot?(pair: string, limit?: number): Promise<OrderbookSnapshot>;

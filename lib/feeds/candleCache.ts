@@ -1,4 +1,5 @@
 import { Candle } from '../../types/candle';
+import { ConnectionState } from '../../types/feed';
 import {
   getCoverageFromTimes,
   recordCacheCleanup,
@@ -24,7 +25,7 @@ export interface CandleCacheKeyParts {
   timeframe: string;
 }
 
-export type CandleCacheUpdateReason = 'snapshot' | 'history-restored' | 'live';
+export type CandleCacheUpdateReason = 'snapshot' | 'history-restored' | 'live' | 'connection-restored';
 
 export interface CandleCacheSnapshot {
   key: string;
@@ -115,6 +116,8 @@ export class CandleCache {
   private unsubscribeLive: (() => void) | null = null;
   private inactiveSince: number | null = null;
   private focalTime: number | null = null;
+  private lastConnectionState: ConnectionState = 'DISCONNECTED';
+  private wasDisconnected = false;
 
   constructor(
     readonly key: string,
@@ -292,12 +295,26 @@ export class CandleCache {
       this.parts.symbol,
       this.parts.timeframe,
       (candle) => this.ingestLiveCandle(candle),
+      (state) => this.handleConnectionStateChange(state)
     );
     log('live stream attached', {
       cacheKey: this.key,
       subscriberCount: this.subscribers.size,
       candleCount: this.candleCount,
     });
+  }
+
+  private handleConnectionStateChange(state: ConnectionState) {
+    if (state === 'RESYNCING' || state === 'DISCONNECTED') {
+      this.wasDisconnected = true;
+    } else if (state === 'LIVE') {
+      if (this.wasDisconnected) {
+        log('connection restored, refetching history to heal gaps', { cacheKey: this.key });
+        this.notify('connection-restored');
+        this.wasDisconnected = false;
+      }
+    }
+    this.lastConnectionState = state;
   }
 
   private ingestLiveCandle(candle: Candle) {

@@ -1,6 +1,7 @@
 import { FeedAdapter } from './adapter';
 import { Candle } from '../../types/candle';
 import { Trade } from '../../types/trade';
+import { ConnectionState } from '../../types/feed';
 
 export class BinanceFuturesAdapter implements FeedAdapter {
   private ws: WebSocket | null = null;
@@ -11,8 +12,44 @@ export class BinanceFuturesAdapter implements FeedAdapter {
   private reconnectAttempts: number = 0;
   private shouldReconnect: boolean = true;
   private reconnectTimer: NodeJS.Timeout | null = null;
-  private connectPending: boolean = false;
+  private state: ConnectionState = 'DISCONNECTED';
+  private stateListeners = new Set<(state: ConnectionState) => void>();
   private restBase = 'https://fapi.binance.com/fapi/v1';
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        console.log('[BinanceFuturesAdapter] Network online detected, triggering immediate reconnect...');
+        if (this.shouldReconnect && this.currentPair) {
+          this.setState('RESYNCING');
+          this.connect();
+        }
+      });
+    }
+  }
+
+  getConnectionState(): ConnectionState {
+    return this.state;
+  }
+
+  onConnectionStateChange(cb: (state: ConnectionState) => void): () => void {
+    this.stateListeners.add(cb);
+    return () => {
+      this.stateListeners.delete(cb);
+    };
+  }
+
+  private setState(newState: ConnectionState) {
+    if (this.state === newState) return;
+    this.state = newState;
+    for (const listener of Array.from(this.stateListeners)) {
+      try {
+        listener(newState);
+      } catch (e) {
+        console.error('[BinanceFuturesAdapter] State listener error:', e);
+      }
+    }
+  }
 
   async fetchHistory(pair: string, timeframe: string, limit: number = 500): Promise<Candle[]> {
     const symbol = pair.toUpperCase();
@@ -57,10 +94,9 @@ export class BinanceFuturesAdapter implements FeedAdapter {
   }
 
   private deferConnect(): void {
-    if (this.connectPending) return;
-    this.connectPending = true;
+    if (this.state === 'CONNECTING') return;
+    this.setState('CONNECTING');
     queueMicrotask(() => {
-      this.connectPending = false;
       this.connect();
     });
   }
@@ -92,6 +128,7 @@ export class BinanceFuturesAdapter implements FeedAdapter {
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
+      this.setState('LIVE');
       console.log(`[BinanceFuturesAdapter] Connected to ${streams.join('/')}`);
     };
 
@@ -107,7 +144,10 @@ export class BinanceFuturesAdapter implements FeedAdapter {
 
     this.ws.onclose = (event) => {
       if (this.shouldReconnect && event.code !== 1000) {
+        this.setState('RESYNCING');
         this.scheduleReconnect();
+      } else {
+        this.setState('DISCONNECTED');
       }
     };
   }
@@ -158,7 +198,9 @@ export class BinanceFuturesAdapter implements FeedAdapter {
       clearTimeout(this.reconnectTimer);
     }
 
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    const baseDelay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    const jitter = Math.floor(Math.random() * 1000);
+    const delay = baseDelay + jitter;
     this.reconnectAttempts++;
     console.log(`[BinanceFuturesAdapter] Reconnecting in ${delay}ms (Attempt ${this.reconnectAttempts})`);
 
@@ -169,7 +211,6 @@ export class BinanceFuturesAdapter implements FeedAdapter {
 
   disconnect(): void {
     this.shouldReconnect = false;
-    this.connectPending = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -182,6 +223,7 @@ export class BinanceFuturesAdapter implements FeedAdapter {
       this.ws.close();
       this.ws = null;
     }
+    this.setState('DISCONNECTED');
     this.currentPair = null;
     this.currentTimeframe = null;
     this.candleCb = null;

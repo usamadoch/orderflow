@@ -1,3 +1,5 @@
+export type ConnectionState = 'CONNECTING' | 'SYNCING' | 'LIVE' | 'RESYNCING' | 'DISCONNECTED';
+
 export type TradeSource = 'spot' | 'futures';
 
 export type FootprintWorkReason =

@@ -35,8 +35,13 @@ Do not start the Next dev server unless the change specifically requires browser
 ...
 
 Work only on the approved plan. Before making changes, identify the exact implementation steps. Execute them sequentially. After each major step, validate the result. Do not start additional investigation or implementation loops. If you encounter an issue outside the plan, stop and report it. Do not continue autonomously.
+[part-1-data-ingestion-pipeline.md#L8-21](textBlock;file:///c%3A/Users/d/Documents/ob/orderflowApp/skills/new/parts/part-1-data-ingestion-pipeline.md#L8-21) make plan for this implementation and explain our current system and how it better or improved or why this needed and if not thne just let me know we can move to [part-1-data-ingestion-pipeline.md#L23-23](textBlock;file:///c%3A/Users/d/Documents/ob/orderflowApp/skills/new/parts/part-1-data-ingestion-pipeline.md#L23-23) this step
 
----
+and dont you fuck go trick or bitch code or ignore somthing for no reason
+
+Work only on the approved plan. Before making changes, identify the exact implementation steps. Execute them sequentially. After each major step, validate the result. Do not start additional investigation or implementation loops. If you encounter an issue outside the plan, stop and report it. Do not continue autonomously.
+
+## conte
 
 After completing the task:
 

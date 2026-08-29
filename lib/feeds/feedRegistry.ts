@@ -11,6 +11,7 @@ import {
   recordStreamSubscriberCount,
 } from '../debug/marketMetrics';
 import type { FeedAdapter } from './adapter';
+import type { ConnectionState } from '../../types/feed';
 import { feedAdapter, futuresFeedAdapter } from './index';
 
 type SourceType = 'spot' | 'futures';
@@ -19,6 +20,7 @@ type Unsubscribe = () => void;
 interface StreamEntry<T> {
   adapter: FeedAdapter;
   subscribers: Set<(event: T) => void>;
+  stateSubscribers: Set<(state: ConnectionState) => void>;
 }
 
 interface InFlightHistoryEntry {
@@ -116,6 +118,7 @@ export function subscribeCandleStream(
   symbol: string,
   timeframe: string,
   callback: (candle: Candle) => void,
+  onStateChange?: (state: ConnectionState) => void,
 ): Unsubscribe {
   const key = getCandleKey(contractType, symbol, timeframe);
   let entry = candleStreams.get(key);
@@ -125,6 +128,7 @@ export function subscribeCandleStream(
     entry = {
       adapter,
       subscribers: new Set(),
+      stateSubscribers: new Set(),
     };
     candleStreams.set(key, entry);
     recordStreamCreated('kline', key, 0);
@@ -142,6 +146,16 @@ export function subscribeCandleStream(
         subscriber(candle);
       }
     });
+
+    if (adapter.onConnectionStateChange) {
+      adapter.onConnectionStateChange((state) => {
+        const current = candleStreams.get(key);
+        if (!current) return;
+        for (const sub of Array.from(current.stateSubscribers)) {
+          sub(state);
+        }
+      });
+    }
   } else {
     recordStreamReused('kline', key, entry.subscribers.size);
     log('stream reused', {
@@ -159,15 +173,31 @@ export function subscribeCandleStream(
     subscriberCount: entry.subscribers.size,
   });
 
-  return () => removeSubscriber(candleStreams, key, 'kline', callback, (current) => {
-    current.adapter.disconnect();
-  });
+  if (onStateChange) {
+    entry.stateSubscribers.add(onStateChange);
+    if (entry.adapter.getConnectionState) {
+      onStateChange(entry.adapter.getConnectionState());
+    } else {
+      onStateChange('LIVE');
+    }
+  }
+
+  return () => {
+    if (onStateChange) {
+      const current = candleStreams.get(key);
+      if (current) current.stateSubscribers.delete(onStateChange);
+    }
+    removeSubscriber(candleStreams, key, 'kline', callback, (current) => {
+      current.adapter.disconnect();
+    });
+  };
 }
 
 export function subscribeTradeStream(
   sourceType: SourceType,
   symbol: string,
   callback: (trade: Trade) => void,
+  onStateChange?: (state: ConnectionState) => void,
 ): Unsubscribe {
   const key = getTradeKey(sourceType, symbol);
   let entry = tradeStreams.get(key);
@@ -177,6 +207,7 @@ export function subscribeTradeStream(
     entry = {
       adapter,
       subscribers: new Set(),
+      stateSubscribers: new Set(),
     };
     tradeStreams.set(key, entry);
     recordStreamCreated('aggTrade', key, 0);
@@ -194,6 +225,16 @@ export function subscribeTradeStream(
         subscriber(trade);
       }
     });
+
+    if (adapter.onConnectionStateChange) {
+      adapter.onConnectionStateChange((state) => {
+        const current = tradeStreams.get(key);
+        if (!current) return;
+        for (const sub of Array.from(current.stateSubscribers)) {
+          sub(state);
+        }
+      });
+    }
   } else {
     recordStreamReused('aggTrade', key, entry.subscribers.size);
     log('stream reused', {
@@ -211,14 +252,30 @@ export function subscribeTradeStream(
     subscriberCount: entry.subscribers.size,
   });
 
-  return () => removeSubscriber(tradeStreams, key, 'aggTrade', callback, (current) => {
-    current.adapter.disconnect();
-  });
+  if (onStateChange) {
+    entry.stateSubscribers.add(onStateChange);
+    if (entry.adapter.getConnectionState) {
+      onStateChange(entry.adapter.getConnectionState());
+    } else {
+      onStateChange('LIVE');
+    }
+  }
+
+  return () => {
+    if (onStateChange) {
+      const current = tradeStreams.get(key);
+      if (current) current.stateSubscribers.delete(onStateChange);
+    }
+    removeSubscriber(tradeStreams, key, 'aggTrade', callback, (current) => {
+      current.adapter.disconnect();
+    });
+  };
 }
 
 export function subscribeDepthStream(
   symbol: string,
   callback: (update: DepthUpdate) => void,
+  onStateChange?: (state: ConnectionState) => void,
 ): Unsubscribe {
   const key = getDepthKey(symbol);
   let entry = depthStreams.get(key);
@@ -237,6 +294,7 @@ export function subscribeDepthStream(
     entry = {
       adapter,
       subscribers: new Set(),
+      stateSubscribers: new Set(),
     };
     depthStreams.set(key, entry);
     recordStreamCreated('depth', key, 0);
@@ -254,6 +312,16 @@ export function subscribeDepthStream(
         subscriber(update);
       }
     });
+
+    if (adapter.onObConnectionStateChange) {
+      adapter.onObConnectionStateChange((state: ConnectionState) => {
+        const current = depthStreams.get(key);
+        if (!current) return;
+        for (const sub of Array.from(current.stateSubscribers)) {
+          sub(state);
+        }
+      });
+    }
   } else {
     recordStreamReused('depth', key, entry.subscribers.size);
     log('stream reused', {
@@ -271,10 +339,25 @@ export function subscribeDepthStream(
     subscriberCount: entry.subscribers.size,
   });
 
-  return () => removeSubscriber(depthStreams, key, 'depth', callback, (current) => {
-    current.adapter.disconnectOrderbook?.();
-    current.adapter.disconnect();
-  });
+  if (onStateChange) {
+    entry.stateSubscribers.add(onStateChange);
+    if (entry.adapter.getObConnectionState) {
+      onStateChange(entry.adapter.getObConnectionState());
+    } else {
+      onStateChange('LIVE');
+    }
+  }
+
+  return () => {
+    if (onStateChange) {
+      const current = depthStreams.get(key);
+      if (current) current.stateSubscribers.delete(onStateChange);
+    }
+    removeSubscriber(depthStreams, key, 'depth', callback, (current) => {
+      current.adapter.disconnectOrderbook?.();
+      current.adapter.disconnect();
+    });
+  };
 }
 
 export async function fetchSharedHistory(

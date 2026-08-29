@@ -24,6 +24,8 @@ export class OrderbookManager {
   private asks: Map<number, number> = new Map();
   private lastUpdateId: number = 0;
   private initialized: boolean = false;
+  private buffer: DepthUpdate[] = [];
+  public onGapDetected?: () => void;
 
   /**
    * Populate from REST snapshot.
@@ -46,6 +48,12 @@ export class OrderbookManager {
 
     this.lastUpdateId = snapshot.lastUpdateId;
     this.initialized = true;
+
+    const pending = [...this.buffer];
+    this.buffer = [];
+    for (const update of pending) {
+      this.applyUpdate(update);
+    }
   }
 
   /**
@@ -53,10 +61,26 @@ export class OrderbookManager {
    * Skips stale updates (u <= lastUpdateId from snapshot).
    */
   applyUpdate(update: DepthUpdate): void {
-    if (!this.initialized) return;
+    if (!this.initialized) {
+      this.buffer.push(update);
+      // Prevent buffer from growing infinitely if snapshot fails
+      if (this.buffer.length > 5000) {
+        this.buffer.shift();
+      }
+      return;
+    }
 
     // Skip stale updates
     if (update.u <= this.lastUpdateId) return;
+
+    // Gap detection: U must be <= lastUpdateId + 1
+    if (update.U > this.lastUpdateId + 1) {
+      console.warn(`[Orderbook] Sequence gap detected! lastUpdateId=${this.lastUpdateId}, new update.U=${update.U}`);
+      this.initialized = false;
+      this.buffer = [];
+      if (this.onGapDetected) this.onGapDetected();
+      return;
+    }
 
     for (const [p, q] of update.b) {
       const price = parseFloat(p);
@@ -162,5 +186,6 @@ export class OrderbookManager {
     this.asks.clear();
     this.lastUpdateId = 0;
     this.initialized = false;
+    this.buffer = [];
   }
 }

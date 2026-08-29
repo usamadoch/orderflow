@@ -162,14 +162,14 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Feeds / Shared Live Data
 
-- `lib/feeds/adapter.ts` → Abstract interface for market feed adapters.
+- `lib/feeds/adapter.ts` → Abstract interface for market feed adapters, exposing explicit connection states.
 - `lib/feeds/depthAdapter.ts` → Orderbook depth stream adapter supporting Binance and Bybit REST/WebSocket feeds.
-- `lib/feeds/binance.ts` → Binance Spot WebSocket/REST market data adapter.
-- `lib/feeds/binanceFutures.ts` → Binance Futures WebSocket/REST market data adapter.
+- `lib/feeds/binance.ts` → Binance Spot WebSocket/REST market data adapter with explicit state machine and jitter.
+- `lib/feeds/binanceFutures.ts` → Binance Futures WebSocket/REST market data adapter with explicit state machine and jitter.
 - `lib/feeds/feedRegistry.ts` → Central ref-counted manager for shared market feeds and stream deduplication.
 - `lib/feeds/candleCache.ts` → Shared in-memory candle cache with subscriber fanout and range tracking.
 - `lib/feeds/index.ts` → Module exports for market feed adapters.
-- `types/feed.ts` → Types for feed interfaces, trade events, and subscription options.
+- `types/feed.ts` → Types for feed interfaces, connection states, trade events, and subscription options.
 
 ### Trading Foundation
 

@@ -328,3 +328,24 @@
   - `FeedProvider.tsx` is cleaner. Safe logic extraction that cannot break runtime functionality. `map.md` and `refactoring_state.md` updated to reflect the new file location.
 -   * * [ 2 0 2 6 - 0 8 - 2 9 ]   A d d   I n d i c a t o r   M a n a g e r * * :   M o v e d   a c t i v e   i n d i c a t o r s   t o   t h e   t o p   r i g h t   o f   t h e   c a n v a s ,   i n t r o d u c e d   a n   ' I n d i c a t o r s '   m o d a l   i n   t h e   P a n e l T o o l b a r ,   a n d   r e f a c t o r e d   s t a t e   t o   s u p p o r t   a n   e x p l i c i t   l i s t   o f   a c t i v e   i n d i c a t o r s .  
  
+## [2026-08-29] - Feat: Data Pipeline Gap Recovery
+
+- **What changed**:
+  - Wired up gap recovery for Candles and Trades in FeedProvider.tsx by listening to onConnectionStateChange from eedRegistry.
+  - Implemented Orderbook Sequence Gap Checking in lib/liquidity/orderbook.ts with diff buffering.
+  - Integrated GAP_DETECTED event to re-fetch the orderbook snapshot on sequence mismatch.
+- **Why it changed**:
+  - To implement robust gap recovery so that data is not lost (or rendered stale) during short internet disconnects.
+- **Impact summary**:
+  - Intermittent connection drops will now automatically heal the visual gap by fetching missing history upon reconnection, and the orderbook will correctly self-heal if websocket events skip a sequence.
+
+## [2026-08-29] - Fix: Multiple State Listeners & Reconnection Gap Recovery
+
+- **What changed**:
+  - Fixed `BinanceAdapter` and `BinanceFuturesAdapter` to support multiple connection state listeners using `Set` collections instead of a single callback variable that was getting overwritten by simultaneous trade and candle streams.
+  - Added `window.addEventListener('online')` listener to automatically trigger immediate reconnect upon network recovery.
+  - Fixed `CandleCache` to track `wasDisconnected` flag so that transitioning to `LIVE` from intermediate reconnection states reliably triggers history refetching.
+- **Why it changed**:
+  - The candle cache state listener was being overwritten by trade streams and failing to trigger history fetch when internet dropped and reconnected.
+- **Impact summary**:
+  - Turning off and on internet now reliably refetches the missing candle range and updates the chart without gaps.
