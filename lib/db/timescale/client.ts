@@ -10,11 +10,14 @@ export function getTimescalePool(): Pool {
       throw new Error('TIMESCALEDB_URL or PG_URL is required for the TimescaleDB driver')
     }
 
+    const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
+    
     pool = new Pool({
       connectionString,
       max: 20,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      connectionTimeoutMillis: 10000,
+      ssl: isLocalhost ? false : { rejectUnauthorized: false },
     })
 
     pool.on('error', (err) => {

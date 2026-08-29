@@ -25,10 +25,11 @@
   - Added missing `db:migrate` script to `package.json`.
   - Commented out old MongoDB URIs in `.env.local`.
   - Removed unused `fileURLToPath` import from collector.
+  - Added `ssl: { rejectUnauthorized: false }` to pg Pool in `client.ts` to support Timescale Cloud connections.
 - **Why it changed**:
-  - Senior audit of the previous implementation identified 2 critical, 2 functional, and 3 minor issues against the approved plan.
+  - Senior audit of the previous implementation identified 2 critical, 2 functional, and 3 minor issues against the approved plan. Timescale Cloud connections timed out without SSL explicitly configured.
 - **Impact summary**:
-  - Collector can now start without a SyntaxError. Candle deduplication actually works. Compression policies will compress old chunks automatically.
+  - Collector can now start without a SyntaxError. Candle deduplication actually works. Compression policies will compress old chunks automatically. Timescale Cloud connection works successfully.
   
 ## [2026-08-29] - Update: Default Chart, Indicator, Market, and Stats Settings
 
