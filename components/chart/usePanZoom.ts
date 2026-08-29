@@ -15,7 +15,7 @@ export function usePanZoom(
   priceAxisWidth: number,
   timeAxisHeight: number,
   profileWidth: number,
-  statsGridHeight: number = 0,
+  bottomPanelsHeight: number = 0,
   initialBarWidth: number = 12,
   initialScrollOffset: number = 0,
   onBarWidthChange?: (v: number) => void,
@@ -150,7 +150,7 @@ export function usePanZoom(
         
         // Panning in price
         if (priceCenter.current !== null && priceRange.current !== null) {
-          const pricePerPixel = priceRange.current / Math.max(1, rect.height - timeAxisHeight - statsGridHeight);
+          const pricePerPixel = priceRange.current / Math.max(1, rect.height - timeAxisHeight - bottomPanelsHeight);
           priceCenter.current += deltaY * pricePerPixel;
         }
       } else if (dragMode.current === 'price') {

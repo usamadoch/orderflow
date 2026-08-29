@@ -90,7 +90,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/AccountBalanceWidget.tsx` → Header widget displaying available asset balances from live account snapshots.
 - `components/ui/OrdersPanel.tsx` → Bottom pane table displaying open limit orders with real-time status and cancellation controls.
 - `components/ui/DrawingFavoritesToolbar.tsx` → Floating toolbar for quick selection of favorite drawing tools (Profile, Measure, Lines, Boxes).
-- `components/ui/ChartSettingsDropdown.tsx` → Panel settings modal providing controls for aggregation, indicators, Volume Profiles, CVD, signals, aggregate bubbles, and orderbook heatmap.
+- `components/ui/ChartSettingsDropdown.tsx` → The main popup/dropdown for configuring indicator settings and profiles.
+- `components/ui/IndicatorsModal.tsx` → The popup modal for adding new indicators from the PanelToolbar.
+- `components/ui/GlobalSettingsModal.tsx` → Application-wide settings (e.g., UI preferences, global time format).
 - `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with AM/PM toggle) and 24-hour modes matching global settings.
 - `components/ui/BubblesDocsModal.tsx` → Reference modal explaining Volume Bubbles visualization, sizing, and color indicators.
 - `components/ui/PairSelector.tsx` → Symbol selection modal supporting Spot and Perpetual Futures contracts.
@@ -109,7 +111,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 - `components/chart/ChartPanel.tsx` → Panel container bridging chart settings, runtime state, symbol filtering, and historical session ranges.
 - `components/chart/chartPanelUtils.ts` → Utilities for symbol filtering (orders, positions, fills) and historical session ranges.
-- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values and quick toggles.
+- `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots and heights for bottom chart indicators.
+- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, reordering controls, and quick toggles.
+- `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
 - `components/chart/ChartCanvas.tsx` → Main canvas rendering coordinator, imperatively updated via Zustand subscription to avoid React re-renders.
 - `components/chart/chartCanvasUtils.ts` → Coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).

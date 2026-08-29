@@ -47,6 +47,7 @@ export type VolumeBarsColorMode = 'fixed' | 'priceDirection' | 'delta' | 'volume
 export type VolumeBarsFilterMode = 'absolute' | 'relative';
 export type IndicatorSettingsSection = 'sessions' | 'historicalSessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap' | 'stats';
 export type SettingsFocusSection = IndicatorSettingsSection | 'profiles';
+export type IndicatorId = 'bubbles' | 'cvd' | 'volumeBars' | 'sessions' | 'historicalSessions' | 'profile' | 'heatmap' | 'liquidityMap' | 'stats';
 export type StatsIndicatorItem = 'volume' | 'delta' | 'cvd';
 export type HistoryRestoreStage = 'idle' | 'connecting' | 'candles' | 'volumeProfile' | 'rawTrades' | 'footprint' | 'complete' | 'error';
 export type BubbleThresholdMode = 'absolute' | 'relative';
@@ -206,6 +207,8 @@ export interface DrawVolumeBarsOptions {
   activeChartContractType: 'spot' | 'futures';
   activeDataSourceMode: 'spot' | 'futures' | 'both';
   onDebug?: (snapshot: VolumeBarsDebugSnapshot) => void;
+  panelTop?: number;
+  panelHeight?: number;
 }
 
 export interface VolumeBarPoint {
@@ -238,6 +241,7 @@ export interface DrawnLine {
 
 export interface PanelState {
   id: PanelId;
+  activeIndicators?: IndicatorId[];
   pair: string;
   timeframe: string;
   chartMode: ChartMode;

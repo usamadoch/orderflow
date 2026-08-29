@@ -189,9 +189,13 @@ export function drawVolumeBars(
     liveOnlyReason,
   });
 
-  const panelHeight = Math.max(24, Math.min(chartHeight * 0.35, chartHeight * (options.heightPct / 100)));
-  const bottom = chartHeight - 2;
-  const top = Math.max(0, bottom - panelHeight);
+  const panelHeight = options.panelHeight !== undefined
+    ? options.panelHeight
+    : Math.max(24, Math.min(chartHeight * 0.35, chartHeight * (options.heightPct / 100)));
+  const top = options.panelTop !== undefined
+    ? options.panelTop
+    : Math.max(0, chartHeight - 2 - panelHeight);
+  const bottom = top + panelHeight - 2;
   const drawableRight = Math.max(0, chartWidth - profileWidth);
 
   if (points.length === 0 || maxVisibleValue <= 0) {
@@ -200,8 +204,10 @@ export function drawVolumeBars(
         ? 'ORDERS UNAVAILABLE'
         : 'AGG DATA UNAVAILABLE';
       ctx.save();
-      ctx.fillStyle = 'rgba(5, 5, 5, 0.28)';
+      ctx.fillStyle = '#0F0F0F';
       ctx.fillRect(0, top, drawableRight, panelHeight);
+      ctx.fillStyle = '#1F1F1F';
+      ctx.fillRect(0, top, drawableRight, 1);
       ctx.fillStyle = 'rgba(156, 163, 175, 0.76)';
       ctx.font = '700 10px Inter, sans-serif';
       ctx.textAlign = 'left';
@@ -216,11 +222,13 @@ export function drawVolumeBars(
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, top, drawableRight, panelHeight + timeAxisHeight);
+  ctx.rect(0, top, drawableRight, panelHeight);
   ctx.clip();
 
-  ctx.fillStyle = 'rgba(5, 5, 5, 0.28)';
+  ctx.fillStyle = '#0F0F0F';
   ctx.fillRect(0, top, drawableRight, panelHeight);
+  ctx.fillStyle = '#1F1F1F';
+  ctx.fillRect(0, top, drawableRight, 1);
 
   let previousPoint: VolumeBarPoint | null = null;
   for (const point of points) {

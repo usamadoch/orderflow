@@ -36,6 +36,7 @@ import { formatPrice, formatVol } from '@/lib/utils/format';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
 import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource, BubbleScaleMode } from '@/types/bubble';
 import type { DrawingHitZone } from '@/types/chart';
+import type { IndicatorId } from '@/types/chart';
 import type { ExhaustionResult } from '@/types/exhaustion';
 import type { FootprintMode } from '@/types/footprint';
 import type { IcebergLevel } from '@/types/iceberg';
@@ -44,6 +45,7 @@ import type { Order, BracketDragState, PendingModifyOrder, Position } from '@/ty
 import type { VolumeProfileSource } from '@/types/volumeProfile';
 
 // 3. Relative component & canvas imports
+import { computeBottomPanelsLayout } from './chartBottomPanels';
 import { CustomProfileToolbar, DrawingToolbar, ModifyConfirmRow } from './CanvasDrawingToolbar';
 import {
   resolveProfileBucketSize,
@@ -189,6 +191,7 @@ interface ChartCanvasProps {
   liquidityHeatmapShowPersistence: boolean;
   liquidityHeatmapShowCurrentLabel: boolean;
   liquidityHeatmapProfileSync: boolean;
+  activeIndicators?: IndicatorId[];
   statsIndicatorEnabled: boolean;
   statsIndicatorItems: string[];
   globalTimezone?: string;
@@ -200,6 +203,7 @@ interface ChartCanvasProps {
 
 export function ChartCanvas({
   panelId,
+  activeIndicators,
   chartMode,
   footprintMode,
   bucketSize,
@@ -400,7 +404,27 @@ export function ChartCanvas({
     profileWidth += liquidityHeatmapWidth;
   }
 
-  const statsGridHeight = statsIndicatorEnabled ? statsIndicatorItems.length * STATS_GRID_ROW_HEIGHT : 0;
+  const getBottomLayout = useCallback((canvasHeight: number) => {
+    return computeBottomPanelsLayout({
+      activeIndicators,
+      statsIndicatorEnabled,
+      statsIndicatorItems,
+      volumeBarsEnabled,
+      volumeBarsHeightPct,
+      canvasHeight,
+      timeAxisHeight,
+    });
+  }, [
+    activeIndicators,
+    statsIndicatorEnabled,
+    statsIndicatorItems,
+    volumeBarsEnabled,
+    volumeBarsHeightPct,
+    timeAxisHeight,
+  ]);
+
+  const bottomPanelsLayout = getBottomLayout(heightRef.current);
+  const bottomPanelsHeight = bottomPanelsLayout.totalHeight;
 
   const redraw = useCallback((layer: 'all' | 'overlay' | 'background' | 'live' | 'live-dirty' = 'all') => {
     scheduledLayers.current.add(layer);
@@ -423,8 +447,9 @@ export function ChartCanvas({
       const logicalWidth = widthRef.current;
       const logicalHeight = heightRef.current;
 
+      const liveBottomLayout = getBottomLayout(logicalHeight);
       const chartWidth = logicalWidth - priceAxisWidth;
-      const chartHeight = logicalHeight - timeAxisHeight - statsGridHeight;
+      const chartHeight = liveBottomLayout.mainChartHeight;
 
       if (drawAll || layersToDraw.has('background')) {
         bgCtx.clearRect(0, 0, logicalWidth, logicalHeight);
@@ -628,42 +653,7 @@ export function ChartCanvas({
       }
 
       if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
-        if (volumeBarsEnabled) {
-          drawVolumeBars(
-            liveCtx,
-            candles,
-            firstIndex,
-            lastIndex,
-            indexToX,
-            currentBarWidth,
-            chartWidth,
-            chartHeight,
-            timeAxisHeight,
-            profileWidth,
-            engine,
-            aggregateBubbleEvents,
-            {
-              panelId,
-              enabled: volumeBarsEnabled,
-              inputData: volumeBarsInputData,
-              marketSource: volumeBarsMarketSource,
-              filterMode: volumeBarsFilterMode,
-              movingAverageLength: volumeBarsMovingAverageLength,
-              filterMin: volumeBarsFilterMin,
-              filterMax: volumeBarsFilterMax,
-              colorMode: volumeBarsColorMode,
-              opacity: volumeBarsOpacity,
-              heightPct: volumeBarsHeightPct,
-              showValueText: volumeBarsShowValueText,
-              textSize: volumeBarsTextSize,
-              averageLineEnabled: volumeBarsAverageLineEnabled,
-              averageLength: volumeBarsAverageLength,
-              activeChartContractType,
-              activeDataSourceMode,
-              onDebug: recordVolumeBarsDebug,
-            },
-          );
-        }
+
 
         // Volume bubbles — drawn above candles/footprint, below volume profile
         if (bubblesEnabled) {
@@ -823,21 +813,60 @@ export function ChartCanvas({
           });
         }
 
-        // 5d. Stats Indicator Grid (drawn inside clip for live-dirty ticks, or across all candles for full live redraws)
-        if (statsIndicatorEnabled && statsIndicatorItems.length > 0) {
+        // 5d. Bottom indicator panels (Stats grid, Volume bars, etc. stacked in layout order)
+        if (liveBottomLayout.statsPanel) {
           drawStatsGrid(
             liveCtx,
             candles,
             firstIndex,
             lastIndex,
             indexToX,
-            chartHeight,
+            liveBottomLayout.statsPanel.top,
             statsIndicatorItems,
             engine,
             liquidityHistory,
             logicalWidth,
             priceAxisWidth,
             currentBarWidth
+          );
+        }
+
+        if (liveBottomLayout.volumePanel) {
+          drawVolumeBars(
+            liveCtx,
+            candles,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            currentBarWidth,
+            chartWidth,
+            chartHeight,
+            timeAxisHeight,
+            profileWidth,
+            engine,
+            aggregateBubbleEvents,
+            {
+              panelId,
+              enabled: volumeBarsEnabled,
+              inputData: volumeBarsInputData,
+              marketSource: volumeBarsMarketSource,
+              filterMode: volumeBarsFilterMode,
+              movingAverageLength: volumeBarsMovingAverageLength,
+              filterMin: volumeBarsFilterMin,
+              filterMax: volumeBarsFilterMax,
+              colorMode: volumeBarsColorMode,
+              opacity: volumeBarsOpacity,
+              heightPct: volumeBarsHeightPct,
+              showValueText: volumeBarsShowValueText,
+              textSize: volumeBarsTextSize,
+              averageLineEnabled: volumeBarsAverageLineEnabled,
+              averageLength: volumeBarsAverageLength,
+              activeChartContractType,
+              activeDataSourceMode,
+              panelTop: liveBottomLayout.volumePanel.top,
+              panelHeight: liveBottomLayout.volumePanel.height,
+              onDebug: recordVolumeBarsDebug,
+            },
           );
         }
 
@@ -1306,7 +1335,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, statsIndicatorEnabled, statsIndicatorItems, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1326,7 +1355,7 @@ export function ChartCanvas({
     priceAxisWidth,
     timeAxisHeight,
     profileWidth,
-    statsGridHeight,
+    bottomPanelsHeight,
     barWidthProp,
     scrollOffsetProp,
     onBarWidthChange,
@@ -1955,7 +1984,7 @@ export function ChartCanvas({
 
       if (lineDrawMode !== 'none') {
         const chartWidth = rect.width - priceAxisWidth;
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
         if (x > chartWidth || y > chartHeight) return;
 
         if (lineDrawMode === 'horizontal') {
@@ -2008,7 +2037,7 @@ export function ChartCanvas({
       const measureToolActive = useChartRuntimeStore.getState().panels[panelId]?.measureToolActive ?? false;
       if (isDrawMode || measureToolActive) {
         const chartWidth = rect.width - priceAxisWidth;
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
         if (x > chartWidth || y > chartHeight) return;
         dragStart.current = { x, y };
         dragEnd.current = { x, y };
@@ -2031,7 +2060,7 @@ export function ChartCanvas({
       const openOrders = runtimeState.tradingStatus.openOrders;
 
       const chartWidth = rect.width - priceAxisWidth;
-      const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+      const chartHeight = getBottomLayout(rect.height).mainChartHeight;
       const pCenter = priceCenter.current ?? 0;
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
@@ -2229,7 +2258,7 @@ export function ChartCanvas({
 
     const getUnifiedHitTarget = (x: number, y: number) => {
       const chartWidth = rect.width - priceAxisWidth;
-      const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+      const chartHeight = getBottomLayout(rect.height).mainChartHeight;
       const pCenter = priceCenter.current ?? 0;
       const pRange = priceRange.current ?? 100;
       const priceMin = pCenter - pRange / 2;
@@ -2317,7 +2346,7 @@ export function ChartCanvas({
         let foundEx = false;
         if (!hitTarget && exhaustionEnabled && exhaustionMap.size > 0) {
           const chartWidth = rect.width - priceAxisWidth;
-          const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+          const chartHeight = getBottomLayout(rect.height).mainChartHeight;
           const pCenter = priceCenter.current ?? 0;
           const pRange = priceRange.current ?? 100;
           const priceMin = pCenter - pRange / 2;
@@ -2356,7 +2385,7 @@ export function ChartCanvas({
           let foundIceberg = false;
           if (!hitTarget && icebergEnabled && icebergLevels.length > 0) {
             const chartWidth = rect.width - priceAxisWidth;
-            const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+            const chartHeight = getBottomLayout(rect.height).mainChartHeight;
             const pCenter = priceCenter.current ?? 0;
             const pRange = priceRange.current ?? 100;
             const priceMin = pCenter - pRange / 2;
@@ -2398,7 +2427,7 @@ export function ChartCanvas({
 
       // Drag Logic
       if (isDraggingBracket.current && bracketDragRef.current) {
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange  = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2426,7 +2455,7 @@ export function ChartCanvas({
           redraw();
         }
       } else if (isDraggingOrderLine.current) {
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2446,7 +2475,7 @@ export function ChartCanvas({
         redraw();
       } else if (isDraggingDrawing.current && dragAnchor.current && drawingSnapshot.current && drawingDragZone.current) {
         const chartWidth = rect.width - priceAxisWidth;
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2604,7 +2633,7 @@ export function ChartCanvas({
           return;
         }
 
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2630,7 +2659,7 @@ export function ChartCanvas({
         redraw();
       } else if (isDraggingResize.current && dragAnchor.current && profileSnapshot.current) {
         const chartWidth = rect.width - priceAxisWidth;
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
         const pCenter = priceCenter.current ?? 0;
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
@@ -2848,7 +2877,7 @@ export function ChartCanvas({
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
 
         const widthPx = Math.abs(dragEnd.current.x - dragStart.current.x);
         const heightPx = Math.abs(dragEnd.current.y - dragStart.current.y);
@@ -2894,7 +2923,7 @@ export function ChartCanvas({
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
 
         const idx1 = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
         const idx2 = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
@@ -2949,7 +2978,7 @@ export function ChartCanvas({
         const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
-        const chartHeight = rect.height - timeAxisHeight - statsGridHeight;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
 
         const idx1 = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
         const idx2 = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
@@ -3020,7 +3049,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, statsGridHeight, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({

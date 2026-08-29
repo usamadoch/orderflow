@@ -82,6 +82,8 @@ export function drawStatsGrid(
 
   ctx.fillStyle = '#0F0F0F';
   ctx.fillRect(0, startY, chartWidth, items.length * STATS_GRID_ROW_HEIGHT);
+  ctx.fillStyle = '#1F1F1F';
+  ctx.fillRect(0, startY, chartWidth, 1);
 
   const rowLabels = items.map(id => {
     switch(id) {

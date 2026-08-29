@@ -1,6 +1,5 @@
 'use client';
 
-// 1. External packages
 import React from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
 
@@ -170,7 +169,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
       <div ref={chartAreaRef} className="flex-1 relative min-h-0 flex flex-col bg-[#0F0F0F]">
         <div
           className={`relative min-h-0 ${isCvdCompact ? 'flex-1' : ''}`}
-          style={{ height: isCvdExpanded ? `${100 - panel.cvdPanelHeightPct}%` : panel.cvdEnabled ? undefined : '100%' }}
+          style={{ height: isCvdExpanded ? `${100 - panel.cvdPanelHeightPct}%` : panel.cvdEnabled ? '100%' : '100%' }}
         >
           <ChartCanvas
             panelId={panelId}
@@ -204,7 +203,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             activeDataSourceMode={panel.dataSourceMode}
             tradingSymbol={panelSymbol}
             tradingContractType={panel.contractType}
-            volumeBarsEnabled={panel.statsIndicatorEnabled ? false : panel.volumeBarsEnabled}
+            activeIndicators={panel.activeIndicators}
+            volumeBarsEnabled={panel.volumeBarsEnabled}
             volumeBarsInputData={panel.volumeBarsInputData}
             volumeBarsMarketSource={volumeFlowSource}
             volumeBarsFilterMode={panel.volumeBarsFilterMode}
@@ -214,7 +214,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             volumeBarsColorMode={panel.volumeBarsColorMode}
             volumeBarsOpacity={panel.volumeBarsOpacity}
             volumeBarsHeightPct={panel.volumeBarsHeightPct}
-            volumeBarsShowValueText={panel.statsIndicatorEnabled ? false : panel.volumeBarsShowValueText}
+            volumeBarsShowValueText={panel.volumeBarsShowValueText}
             volumeBarsTextSize={panel.volumeBarsTextSize}
             volumeBarsAverageLineEnabled={panel.volumeBarsAverageLineEnabled}
             volumeBarsAverageLength={panel.volumeBarsAverageLength}

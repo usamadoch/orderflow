@@ -22,6 +22,7 @@ import type {
   VolumeBarsColorMode,
   VolumeBarsFilterMode,
   IndicatorSettingsSection,
+  IndicatorId,
   SettingsFocusSection,
   StatsIndicatorItem,
   HistoryRestoreStage,
@@ -56,6 +57,7 @@ export type {
   VolumeBarsColorMode,
   VolumeBarsFilterMode,
   IndicatorSettingsSection,
+  IndicatorId,
   SettingsFocusSection,
   StatsIndicatorItem,
   HistoryRestoreStage,
@@ -97,7 +99,10 @@ export interface ChartState {
   globalTimezone: string;
   globalTimeFormat: '12h' | '24h';
 
-  // Per-panel actions
+  addIndicator: (panelId: PanelId, indicatorId: IndicatorId) => void;
+  removeIndicator: (panelId: PanelId, indicatorId: IndicatorId) => void;
+  reorderIndicators: (panelId: PanelId, activeIndicators: IndicatorId[]) => void;
+  moveIndicator: (panelId: PanelId, indicatorId: IndicatorId, direction: 'up' | 'down') => void;
   setPair: (panelId: PanelId, pair: string) => void;
   setTimeframe: (panelId: PanelId, timeframe: string) => void;
   setChartMode: (panelId: PanelId, mode: ChartMode) => void;
@@ -246,6 +251,7 @@ export interface ChartState {
 function createDefaultPanel(id: PanelId): PanelState {
   return {
     id,
+    activeIndicators: ['volumeBars', 'stats'],
     pair: 'BTCUSDT',
     timeframe: '1m',
     chartMode: 'candle',
@@ -319,7 +325,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     cvdShowDivergence: false,
     cvdDivergenceLookback: 8,
     cvdMinimized: false,
-    volumeBarsEnabled: false,
+    volumeBarsEnabled: true,
     volumeBarsInputData: 'volume',
     volumeBarsMarketSource: 'active',
     volumeBarsFilterMode: 'absolute',
@@ -354,7 +360,7 @@ function createDefaultPanel(id: PanelId): PanelState {
         color: '#81C784',
       },
     },
-    historicalSessionProfileEnabled: true,
+    historicalSessionProfileEnabled: false,
     historicalSessionProfileSession: 'newYork',
     historicalSessionProfileSessions: ['newYork'],
     historicalSessionProfileDisplayMode: 'separate',
@@ -664,6 +670,60 @@ export const useChartStore = create<ChartState>()(
       isAuthenticated: false,
 
       // Per-panel actions
+      addIndicator: (panelId, indicatorId) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          const activeIndicators = Array.from(new Set([...(panel.activeIndicators || ['volumeBars', 'stats']), indicatorId]));
+          const updates: Partial<PanelState> = { activeIndicators };
+          
+          if (indicatorId === 'bubbles') updates.bubblesEnabled = true;
+          if (indicatorId === 'cvd') updates.cvdEnabled = true;
+          if (indicatorId === 'volumeBars') updates.volumeBarsEnabled = true;
+          if (indicatorId === 'sessions') updates.sessionsEnabled = true;
+          if (indicatorId === 'historicalSessions') updates.historicalSessionProfileEnabled = true;
+          if (indicatorId === 'profile') updates.defaultProfileEnabled = true;
+          if (indicatorId === 'heatmap') updates.liquidityHeatmapEnabled = true;
+          if (indicatorId === 'liquidityMap') updates.liquidityEnabled = true;
+          if (indicatorId === 'stats') updates.statsIndicatorEnabled = true;
+          
+          return updatePanel(state, panelId, updates);
+        }),
+
+      removeIndicator: (panelId, indicatorId) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          const activeIndicators = (panel.activeIndicators || ['volumeBars', 'stats']).filter(id => id !== indicatorId);
+          const updates: Partial<PanelState> = { activeIndicators };
+          
+          if (indicatorId === 'bubbles') updates.bubblesEnabled = false;
+          if (indicatorId === 'cvd') updates.cvdEnabled = false;
+          if (indicatorId === 'volumeBars') updates.volumeBarsEnabled = false;
+          if (indicatorId === 'sessions') updates.sessionsEnabled = false;
+          if (indicatorId === 'historicalSessions') updates.historicalSessionProfileEnabled = false;
+          if (indicatorId === 'profile') updates.defaultProfileEnabled = false;
+          if (indicatorId === 'heatmap') updates.liquidityHeatmapEnabled = false;
+          if (indicatorId === 'liquidityMap') updates.liquidityEnabled = false;
+          if (indicatorId === 'stats') updates.statsIndicatorEnabled = false;
+          
+          return updatePanel(state, panelId, updates);
+        }),
+
+      reorderIndicators: (panelId, activeIndicators) =>
+        set((state) => updatePanel(state, panelId, { activeIndicators })),
+
+      moveIndicator: (panelId, indicatorId, direction) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          const list = [...(panel.activeIndicators || ['volumeBars', 'stats'])];
+          const currentIndex = list.indexOf(indicatorId);
+          if (currentIndex === -1) return state;
+          const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+          if (targetIndex < 0 || targetIndex >= list.length) return state;
+          const [moved] = list.splice(currentIndex, 1);
+          list.splice(targetIndex, 0, moved);
+          return updatePanel(state, panelId, { activeIndicators: list });
+        }),
+
       setPair: (panelId, pair) =>
         set((state) => updatePanel(state, panelId, { pair })),
 
@@ -967,7 +1027,14 @@ export const useChartStore = create<ChartState>()(
         set((state) => updatePanel(state, panelId, { cvdMinimized })),
 
       setVolumeBarsEnabled: (panelId, volumeBarsEnabled) =>
-        set((state) => updatePanel(state, panelId, { volumeBarsEnabled })),
+        set((state) => {
+          const panel = state.panels[panelId];
+          const current: IndicatorId[] = panel.activeIndicators || ['volumeBars', 'stats'];
+          const activeIndicators: IndicatorId[] = volumeBarsEnabled
+            ? (current.includes('volumeBars') ? current : [...current, 'volumeBars'])
+            : current;
+          return updatePanel(state, panelId, { volumeBarsEnabled, activeIndicators });
+        }),
 
       setVolumeBarsInputData: (panelId, volumeBarsInputData) =>
         set((state) => updatePanel(state, panelId, { volumeBarsInputData: normalizeVolumeBarsInputData(volumeBarsInputData) })),
@@ -1062,7 +1129,14 @@ export const useChartStore = create<ChartState>()(
 
       // Stats Indicator actions
       setStatsIndicatorEnabled: (panelId, statsIndicatorEnabled) =>
-        set((state) => updatePanel(state, panelId, { statsIndicatorEnabled })),
+        set((state) => {
+          const panel = state.panels[panelId];
+          const current: IndicatorId[] = panel.activeIndicators || ['volumeBars', 'stats'];
+          const activeIndicators: IndicatorId[] = statsIndicatorEnabled
+            ? (current.includes('stats') ? current : [...current, 'stats'])
+            : current;
+          return updatePanel(state, panelId, { statsIndicatorEnabled, activeIndicators });
+        }),
 
       setStatsIndicatorCount: (panelId, statsIndicatorCount) =>
         set((state) => updatePanel(state, panelId, { statsIndicatorCount: Math.max(1, Math.min(4, Math.round(statsIndicatorCount))) })),
@@ -1350,6 +1424,7 @@ export const useChartStore = create<ChartState>()(
             statsIndicatorEnabled: p.statsIndicatorEnabled ?? true,
             statsIndicatorCount: Math.max(1, Math.min(4, p.statsIndicatorCount ?? 4)),
             statsIndicatorItems: p.statsIndicatorItems ?? ['volume', 'delta', 'cvd'],
+            activeIndicators: Array.isArray(p.activeIndicators) ? (p.activeIndicators as IndicatorId[]) : (['volumeBars', 'stats'] as IndicatorId[]),
           };
         };
         if (persisted.panels) {
@@ -1572,6 +1647,7 @@ export const useChartStore = create<ChartState>()(
             statsIndicatorEnabled: state.panels.left.statsIndicatorEnabled,
             statsIndicatorCount: state.panels.left.statsIndicatorCount,
             statsIndicatorItems: state.panels.left.statsIndicatorItems,
+            activeIndicators: state.panels.left.activeIndicators,
             settingsByTimeframe: state.panels.left.settingsByTimeframe,
           },
           right: {
@@ -1688,6 +1764,7 @@ export const useChartStore = create<ChartState>()(
             statsIndicatorEnabled: state.panels.right.statsIndicatorEnabled,
             statsIndicatorCount: state.panels.right.statsIndicatorCount,
             statsIndicatorItems: state.panels.right.statsIndicatorItems,
+            activeIndicators: state.panels.right.activeIndicators,
             settingsByTimeframe: state.panels.right.settingsByTimeframe,
           },
         },

@@ -1,14 +1,13 @@
 'use client';
 
+import React from 'react';
 // 1. External packages
-import { useState } from 'react';
-import { ChevronRight, ChevronDown, Eye, EyeOff, Settings } from 'lucide-react';
+import { ChevronRight, ChevronDown, Eye, EyeOff, Settings, X, ArrowUp, ArrowDown } from 'lucide-react';
 
 // 2. Internal packages & stores
-import { useChartStore, type DataSourceMode, type PanelId, type IndicatorSettingsSection } from '@/lib/store/chart';
+import { useChartStore, type DataSourceMode, type PanelId, type IndicatorId } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { ChartSettingsDropdown } from '@/components/ui/ChartSettingsDropdown';
-import type { IndicatorLabelConfig } from '@/types/chart';
 
 interface IndicatorLabelsProps {
   panelId: PanelId;
@@ -22,80 +21,55 @@ const SOURCE_OPTIONS: { label: string; value: DataSourceMode }[] = [
 ];
 
 export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsProps) {
-  const [openSection, setOpenSection] = useState<IndicatorSettingsSection | null>(null);
+  const [openSection, setOpenSection] = React.useState<string | null>(null);
   const collapsed = useChartStore(s => s.panels[panelId].indicatorLabelsCollapsed);
   const setCollapsed = useChartStore(s => s.setIndicatorLabelsCollapsed);
   const panel = useChartStore(s => s.panels[panelId]);
   const setDataSourceMode = useChartStore(s => s.setDataSourceMode);
+  const connected = useChartRuntimeStore(s => s.panels[panelId].connected);
+  const contractLabel = panel.contractType === 'futures' ? 'Futures' : 'Spot';
+
+  const removeIndicator = useChartStore(s => s.removeIndicator);
+  const moveIndicator = useChartStore(s => s.moveIndicator);
+  const openIndicatorSettings = useChartStore(s => s.openIndicatorSettings);
+  
   const setBubblesEnabled = useChartStore(s => s.setBubblesEnabled);
   const setCvdEnabled = useChartStore(s => s.setCvdEnabled);
   const setVolumeBarsEnabled = useChartStore(s => s.setVolumeBarsEnabled);
   const setSessionsEnabled = useChartStore(s => s.setSessionsEnabled);
   const setHistoricalSessionProfileEnabled = useChartStore(s => s.setHistoricalSessionProfileEnabled);
   const setDefaultProfileEnabled = useChartStore(s => s.setDefaultProfileEnabled);
-  const setLiquidityEnabled = useChartStore(s => s.setLiquidityEnabled);
   const setLiquidityHeatmapEnabled = useChartStore(s => s.setLiquidityHeatmapEnabled);
+  const setLiquidityEnabled = useChartStore(s => s.setLiquidityEnabled);
   const setStatsIndicatorEnabled = useChartStore(s => s.setStatsIndicatorEnabled);
-  const openIndicatorSettings = useChartStore(s => s.openIndicatorSettings);
-  const connected = useChartRuntimeStore(s => s.panels[panelId].connected);
-  const contractLabel = panel.contractType === 'futures' ? 'Futures' : 'Spot';
 
-  const indicators: IndicatorLabelConfig[] = [
-    {
-      id: 'bubbles',
-      label: 'Bubbles',
-      enabled: panel.bubblesEnabled,
-      onToggle: () => setBubblesEnabled(panelId, !panel.bubblesEnabled),
-    },
-    {
-      id: 'cvd',
-      label: 'CVD',
-      enabled: panel.cvdEnabled,
-      onToggle: () => setCvdEnabled(panelId, !panel.cvdEnabled),
-    },
-    {
-      id: 'volumeBars',
-      label: 'Volume',
-      enabled: panel.volumeBarsEnabled,
-      onToggle: () => setVolumeBarsEnabled(panelId, !panel.volumeBarsEnabled),
-    },
-    {
-      id: 'sessions',
-      label: 'Sessions',
-      enabled: panel.sessionsEnabled,
-      onToggle: () => setSessionsEnabled(panelId, !panel.sessionsEnabled),
-    },
-    {
-      id: 'historicalSessions',
-      label: 'HSVP',
-      enabled: panel.historicalSessionProfileEnabled,
-      onToggle: () => setHistoricalSessionProfileEnabled(panelId, !panel.historicalSessionProfileEnabled),
-    },
-    {
-      id: 'profile',
-      label: 'VOP',
-      enabled: panel.defaultProfileEnabled,
-      onToggle: () => setDefaultProfileEnabled(panelId, !panel.defaultProfileEnabled),
-    },
-    {
-      id: 'heatmap',
-      label: 'Heatmap',
-      enabled: panel.liquidityHeatmapEnabled,
-      onToggle: () => setLiquidityHeatmapEnabled(panelId, !panel.liquidityHeatmapEnabled),
-    },
-    {
-      id: 'liquidityMap',
-      label: 'Liquidity',
-      enabled: panel.liquidityEnabled,
-      onToggle: () => setLiquidityEnabled(panelId, !panel.liquidityEnabled),
-    },
-    {
-      id: 'stats',
-      label: 'Stats',
-      enabled: panel.statsIndicatorEnabled,
-      onToggle: () => setStatsIndicatorEnabled(panelId, !panel.statsIndicatorEnabled),
-    },
-  ];
+  const effectiveActiveIndicators = Array.from(new Set([
+    ...(panel.activeIndicators || ['volumeBars', 'stats']),
+    ...(panel.bubblesEnabled ? ['bubbles'] : []),
+    ...(panel.cvdEnabled ? ['cvd'] : []),
+    ...(panel.volumeBarsEnabled ? ['volumeBars'] : []),
+    ...(panel.sessionsEnabled ? ['sessions'] : []),
+    ...(panel.historicalSessionProfileEnabled ? ['historicalSessions'] : []),
+    ...(panel.defaultProfileEnabled ? ['profile'] : []),
+    ...(panel.liquidityHeatmapEnabled ? ['heatmap'] : []),
+    ...(panel.liquidityEnabled ? ['liquidityMap'] : []),
+    ...(panel.statsIndicatorEnabled ? ['stats'] : []),
+  ]));
+
+  const getIndicatorConfig = (id: IndicatorId) => {
+    switch (id) {
+      case 'bubbles': return { label: 'Bubbles', enabled: panel.bubblesEnabled, toggle: () => setBubblesEnabled(panelId, !panel.bubblesEnabled) };
+      case 'cvd': return { label: 'CVD', enabled: panel.cvdEnabled, toggle: () => setCvdEnabled(panelId, !panel.cvdEnabled) };
+      case 'volumeBars': return { label: 'Volume', enabled: panel.volumeBarsEnabled, toggle: () => setVolumeBarsEnabled(panelId, !panel.volumeBarsEnabled) };
+      case 'sessions': return { label: 'Sessions', enabled: panel.sessionsEnabled, toggle: () => setSessionsEnabled(panelId, !panel.sessionsEnabled) };
+      case 'historicalSessions': return { label: 'HSVP', enabled: panel.historicalSessionProfileEnabled, toggle: () => setHistoricalSessionProfileEnabled(panelId, !panel.historicalSessionProfileEnabled) };
+      case 'profile': return { label: 'VOP', enabled: panel.defaultProfileEnabled, toggle: () => setDefaultProfileEnabled(panelId, !panel.defaultProfileEnabled) };
+      case 'heatmap': return { label: 'Heatmap', enabled: panel.liquidityHeatmapEnabled, toggle: () => setLiquidityHeatmapEnabled(panelId, !panel.liquidityHeatmapEnabled) };
+      case 'liquidityMap': return { label: 'Liquidity', enabled: panel.liquidityEnabled, toggle: () => setLiquidityEnabled(panelId, !panel.liquidityEnabled) };
+      case 'stats': return { label: 'Stats', enabled: panel.statsIndicatorEnabled, toggle: () => setStatsIndicatorEnabled(panelId, !panel.statsIndicatorEnabled) };
+      default: return null;
+    }
+  };
 
   return (
     <>
@@ -164,51 +138,78 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
               )}
             </div>
 
-            {indicators.map((indicator) => (
-              <div
-                key={indicator.id}
-                className={`group flex h-4.5 items-center rounded px-1 text-[12px] font-black uppercase tracking-[0.14em] text-[#E8E8E8] transition-all duration-150 hover:bg-[#1F1F1F] hover:shadow-[0_4px_18px_rgba(0,0,0,0.32)] hover:backdrop-blur-sm ${
-                  indicator.enabled ? 'opacity-100' : 'opacity-45'
-                }`}
-              >
-                <span className="whitespace-nowrap">{indicator.label}</span>
-                <div className="ml-1.5 flex w-0 translate-x-[-4px] items-center gap-0.5 overflow-hidden opacity-0 transition-all duration-180 group-hover:w-[36px] group-hover:translate-x-0 group-hover:opacity-100">
-                  <button
-                    type="button"
-                    onClick={indicator.onToggle}
-                    className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
-                    title={`${indicator.enabled ? 'Hide' : 'Show'} ${indicator.label}`}
-                    aria-label={`${indicator.enabled ? 'Hide' : 'Show'} ${indicator.label}`}
-                  >
-                    {indicator.enabled ? <Eye size={16} strokeWidth={2.4} /> : <EyeOff size={16} strokeWidth={2.4} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (indicator.id === 'profile') {
-                        openIndicatorSettings(panelId, 'profiles');
-                        return;
-                      }
+            {effectiveActiveIndicators.map((id) => {
+              const config = getIndicatorConfig(id as IndicatorId);
+              if (!config) return null;
 
-                      setOpenSection(indicator.id);
-                    }}
-                    className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-accent"
-                    title={`${indicator.label} settings`}
-                    aria-label={`${indicator.label} settings`}
-                  >
-                    <Settings size={16} strokeWidth={2.4} />
-                  </button>
+              return (
+                <div
+                  key={id}
+                  className={`group flex h-4.5 items-center rounded px-1.5 text-[12px] font-black uppercase tracking-[0.14em] text-[#E8E8E8] transition-all duration-150 hover:bg-[#1F1F1F] hover:shadow-[0_4px_18px_rgba(0,0,0,0.32)] hover:backdrop-blur-sm ${
+                    config.enabled ? 'opacity-100' : 'opacity-45'
+                  }`}
+                >
+                  <span className="whitespace-nowrap">{config.label}</span>
+                  <div className="ml-1.5 flex w-0 translate-x-[-4px] items-center gap-0.5 overflow-hidden opacity-0 transition-all duration-180 group-hover:w-[105px] group-hover:translate-x-0 group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => moveIndicator(panelId, id as IndicatorId, 'up')}
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
+                      title={`Move ${config.label} up`}
+                    >
+                      <ArrowUp size={12} strokeWidth={2.4} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveIndicator(panelId, id as IndicatorId, 'down')}
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
+                      title={`Move ${config.label} down`}
+                    >
+                      <ArrowDown size={12} strokeWidth={2.4} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={config.toggle}
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
+                      title={`${config.enabled ? 'Hide' : 'Show'} ${config.label}`}
+                    >
+                      {config.enabled ? <Eye size={14} strokeWidth={2.4} /> : <EyeOff size={14} strokeWidth={2.4} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (id === 'profile') {
+                          openIndicatorSettings(panelId, 'profiles');
+                          return;
+                        }
+                        setOpenSection(id);
+                      }}
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-accent"
+                      title={`${config.label} settings`}
+                    >
+                      <Settings size={14} strokeWidth={2.4} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeIndicator(panelId, id as IndicatorId)}
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#f23645]"
+                      title={`Remove ${config.label}`}
+                    >
+                      <X size={14} strokeWidth={2.5} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
       </div>
+
       {openSection && (
         <ChartSettingsDropdown
           panelId={panelId}
-          indicatorSection={openSection}
-          indicatorTitle={indicators.find((indicator) => indicator.id === openSection)?.label}
+          indicatorSection={openSection as any}
+          indicatorTitle={getIndicatorConfig(openSection as IndicatorId)?.label}
           onClose={() => setOpenSection(null)}
         />
       )}

@@ -1,5 +1,34 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-29] - Fix: Stats and Volume Simultaneous Display with Dynamic Vertical Stacking
+
+- **What changed**:
+  - **Dynamic Multi-Indicator Bottom Panel Engine (`components/chart/chartBottomPanels.ts`)**:
+    - Created `computeBottomPanelsLayout` which calculates non-overlapping vertical slots (`top`, `height`, `bottom`) for all active bottom-docked chart indicators (`stats`, `volumeBars`).
+    - Stacking order dynamically responds to `panel.activeIndicators` (e.g. `['volumeBars', 'stats']` stacks Volume above Stats, `['stats', 'volumeBars']` stacks Stats above Volume).
+    - Accurately computes `mainChartHeight = Math.max(40, canvasHeight - timeAxisHeight - totalHeight)`, reserving clean space for candlestick/footprint charts.
+  - **Removed Suppression Logic (`components/chart/ChartPanel.tsx`)**:
+    - Removed `volumeBarsEnabled={panel.statsIndicatorEnabled ? false : panel.volumeBarsEnabled}` and `volumeBarsShowValueText={panel.statsIndicatorEnabled ? false : panel.volumeBarsShowValueText}` which previously disabled volume whenever stats was turned on.
+    - Passed `activeIndicators={panel.activeIndicators}` down to `ChartCanvas`.
+  - **Panel Positioning & Clipping (`components/chart/drawVolumeBars.ts`, `components/chart/drawStatsGrid.ts`)**:
+    - Extended `DrawVolumeBarsOptions` with `panelTop?: number` and `panelHeight?: number`.
+    - Updated `drawVolumeBars` to clip and fill within its designated vertical slot with a crisp 1px separator top border.
+    - Updated `drawStatsGrid` to render with a crisp 1px separator top border.
+  - **Unified Canvas Coordinate & Mouse Hit Bounds (`components/chart/ChartCanvas.tsx`, `components/chart/usePanZoom.ts`)**:
+    - Replaced all hardcoded `statsGridHeight` math in mouse handlers (`onMouseDown`, `onMouseMove`, `onMouseUp`, `getUnifiedHitTarget`, `pricePerPixel`) with layout-aware `getBottomLayout(rect.height).mainChartHeight`.
+  - **Store Reordering Actions & UI Controls (`lib/store/chart.ts`, `components/chart/IndicatorLabels.tsx`)**:
+    - Added `reorderIndicators` and `moveIndicator(panelId, indicatorId, 'up' | 'down')` store actions.
+    - Added Move Up / Move Down buttons to indicator header labels for easy user-driven reordering.
+- **Why it changed**:
+  - `ChartPanel.tsx` intentionally suppressed Volume Bars when Stats Indicator was active because the previous canvas layout hardcoded a single vertical offset (`statsGridHeight`), causing indicator visual collisions.
+  - Users require both Stats and Volume to be simultaneously active, visible, functional, and vertically stacked in their preferred order without hardcoded offsets or hacks.
+- **Impact summary**:
+  - Stats only → works cleanly.
+  - Volume only → works cleanly.
+  - Stats + Volume → both visible simultaneously without overlap.
+  - Enabling either indicator or reordering positions dynamically updates both indicator positions and price coordinate scaling.
+  - `npx tsc --noEmit` and unit verification tests pass with 0 errors.
+
 ## [2026-08-29] - Feature: Session-Based Historical Session Volume Profile (HSVP) Configuration
 
 - **What changed**:
@@ -272,3 +301,5 @@
   - To reduce file length and bloat in the main `FeedProvider.tsx` component, strictly adhering to the `client_code_refector.md` rule that magic values should live in a config file.
 - **Impact summary**:
   - `FeedProvider.tsx` is cleaner. Safe logic extraction that cannot break runtime functionality. `map.md` and `refactoring_state.md` updated to reflect the new file location.
+-   * * [ 2 0 2 6 - 0 8 - 2 9 ]   A d d   I n d i c a t o r   M a n a g e r * * :   M o v e d   a c t i v e   i n d i c a t o r s   t o   t h e   t o p   r i g h t   o f   t h e   c a n v a s ,   i n t r o d u c e d   a n   ' I n d i c a t o r s '   m o d a l   i n   t h e   P a n e l T o o l b a r ,   a n d   r e f a c t o r e d   s t a t e   t o   s u p p o r t   a n   e x p l i c i t   l i s t   o f   a c t i v e   i n d i c a t o r s .  
+ 
