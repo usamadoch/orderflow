@@ -73,9 +73,9 @@ export type {
   PanelState,
 };
 
-import { AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource, BubbleScaleMode, BubbleSide } from '../../types/bubble';
+import { AggregateBubbleMarketSource, BubbleSizeBy, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleSide, BubbleDisplayMode } from '../../types/bubble';
 
-export type { AggregateBubbleMarketSource, BubbleScaleMode, BubbleSide, BubbleSizeBy, BubbleSource };
+export type { AggregateBubbleMarketSource, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleSide, BubbleSizeBy, BubbleDisplayMode };
 
 export const MAX_AGGREGATE_BUBBLE_EVENTS = 20000;
 
@@ -117,18 +117,25 @@ export interface ChartState {
   setAbsorptionSide: (panelId: PanelId, side: AbsorptionSide) => void;
   setAbsorptionShowLabels: (panelId: PanelId, show: boolean) => void;
   setBubblesEnabled: (panelId: PanelId, enabled: boolean) => void;
-  setBubbleSource: (panelId: PanelId, source: BubbleSource) => void;
   setBubbleSizeBy: (panelId: PanelId, sizeBy: BubbleSizeBy) => void;
   setAggregateBubbleMarketSource: (panelId: PanelId, source: AggregateBubbleMarketSource) => void;
   setBubbleThreshold: (panelId: PanelId, threshold: number) => void;
   setBubbleThresholdMode: (panelId: PanelId, mode: BubbleThresholdMode) => void;
   setBubbleMinOrders: (panelId: PanelId, minOrders: number) => void;
-  setBubbleMinRadius: (panelId: PanelId, radius: number) => void;
+  setBubbleFilterRender: (panelId: PanelId, val: number) => void;
+  setBubbleStdDevVal: (panelId: PanelId, val: number) => void;
+  setBubbleOutStdDevPerc: (panelId: PanelId, val: number) => void;
   setAutoBucketSize: (panelId: PanelId, auto: boolean) => void;
   setComputedBucketSize: (panelId: PanelId, bucketSize: number) => void;
-  setBubbleMaxRadius: (panelId: PanelId, radius: number) => void;
   setBubbleSide: (panelId: PanelId, side: BubbleSide) => void;
   setBubbleScaleMode: (panelId: PanelId, mode: BubbleScaleMode) => void;
+  setBubbleColorMode: (panelId: PanelId, mode: BubbleColorMode) => void;
+  setBubbleVolumeColorMode: (panelId: PanelId, mode: BubbleVolumeColorMode) => void;
+  setBubbleDisplayMode: (panelId: PanelId, mode: BubbleDisplayMode) => void;
+  setBubbleBidColor: (panelId: PanelId, color: string) => void;
+  setBubbleAskColor: (panelId: PanelId, color: string) => void;
+  setBubbleLineWidth: (panelId: PanelId, width: number) => void;
+  setBubbleOpacity: (panelId: PanelId, opacity: number) => void;
   setDrawMode: (panelId: PanelId, enabled: boolean) => void;
   setCustomProfileRange: (panelId: PanelId, range: PanelState['customProfileRange']) => void;
   setCustomProfileLocked: (panelId: PanelId, locked: boolean) => void;
@@ -267,16 +274,23 @@ function createDefaultPanel(id: PanelId): PanelState {
     absorptionSide: 'both' as AbsorptionSide,
     absorptionShowLabels: true,
     bubblesEnabled: false,
-    bubbleSource: 'footprintCells',
-    bubbleSizeBy: 'volume',
+    bubbleSizeBy: 'volume' as BubbleSizeBy,
     aggregateBubbleMarketSource: 'active',
     bubbleThreshold: 100,
+    bubbleMinOrders: 10,
     bubbleThresholdMode: 'absolute',
-    bubbleMinOrders: 1,
-    bubbleMinRadius: 4,
-    bubbleMaxRadius: 20,
+    bubbleFilterRender: 2,
+    bubbleStdDevVal: 2.0,
+    bubbleOutStdDevPerc: 5,
     bubbleSide: 'both' as BubbleSide,
     bubbleScaleMode: 'sqrt' as BubbleScaleMode,
+    bubbleColorMode: 'askBidSplit' as BubbleColorMode,
+    bubbleVolumeColorMode: 'deltaAbsolute' as BubbleVolumeColorMode,
+    bubbleDisplayMode: '2d' as BubbleDisplayMode,
+    bubbleBidColor: '#4ade80',
+    bubbleAskColor: '#f87171',
+    bubbleLineWidth: 1,
+    bubbleOpacity: 0.5,
     isDrawMode: false,
     customProfileRange: null,
     customProfileLocked: false,
@@ -407,12 +421,9 @@ function clampTimeframeSettings(settings: Partial<TimeframeSettings>, tickSize: 
     ...(settings.profileResolutionTicks === undefined
       ? {}
       : { profileResolutionTicks: clampProfileResolutionTicks(settings.profileResolutionTicks, tickSize) }),
-    ...(settings.bubbleSource === undefined
-      ? {}
-      : { bubbleSource: normalizeBubbleSource(settings.bubbleSource) }),
     ...(settings.bubbleSizeBy === undefined
       ? {}
-      : { bubbleSizeBy: normalizeBubbleSizeBy(settings.bubbleSizeBy) }),
+      : { bubbleSizeBy: (settings.bubbleSizeBy === 'orders' ? 'orders' : 'volume') as BubbleSizeBy }),
     ...(settings.aggregateBubbleMarketSource === undefined
       ? {}
       : { aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(settings.aggregateBubbleMarketSource) }),
@@ -478,13 +489,9 @@ function normalizeBubbleScaleMode(scaleMode: unknown): BubbleScaleMode {
     : 'sqrt';
 }
 
-function normalizeBubbleSizeBy(sizeBy: unknown): BubbleSizeBy {
-  return sizeBy === 'orders' ? 'orders' : 'volume';
-}
 
-function normalizeBubbleSource(source: unknown): BubbleSource {
-  return source === 'aggregateTrades' ? 'aggregateTrades' : 'footprintCells';
-}
+
+
 
 function normalizeAggregateBubbleMarketSource(source: unknown): AggregateBubbleMarketSource {
   return source === 'spot' || source === 'futures' || source === 'both'
@@ -547,8 +554,8 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
 
   // If any timeframe setting is updated, save it to settingsByTimeframe for the CURRENT timeframe
   const timeframeSettingsKeys: (keyof TimeframeSettings)[] = [
-    'bucketSize', 'autoBucketSize', 'bubbleSource', 'bubbleThreshold', 'bubbleThresholdMode',
-    'bubbleSizeBy', 'aggregateBubbleMarketSource', 'bubbleMinOrders', 'bubbleScaleMode',
+    'bucketSize', 'autoBucketSize', 'bubbleThreshold', 'bubbleThresholdMode',
+    'bubbleSizeBy', 'aggregateBubbleMarketSource', 'bubbleFilterRender', 'bubbleStdDevVal', 'bubbleOutStdDevPerc', 'bubbleScaleMode', 'bubbleColorMode', 'bubbleVolumeColorMode', 'bubbleDisplayMode', 'bubbleBidColor', 'bubbleAskColor', 'bubbleLineWidth', 'bubbleOpacity',
     'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
     'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
     'icebergShowLabels', 'icebergShowTint', 'liquidityVacuumMinScore',
@@ -779,17 +786,14 @@ export const useChartStore = create<ChartState>()(
       setBubblesEnabled: (panelId, bubblesEnabled) =>
         set((state) => updatePanel(state, panelId, { bubblesEnabled })),
 
-      setBubbleSource: (panelId, bubbleSource) =>
-        set((state) => updatePanel(state, panelId, { bubbleSource: normalizeBubbleSource(bubbleSource) })),
-
       setBubbleSizeBy: (panelId, bubbleSizeBy) =>
-        set((state) => updatePanel(state, panelId, { bubbleSizeBy: normalizeBubbleSizeBy(bubbleSizeBy) })),
+        set((state) => updatePanel(state, panelId, { bubbleSizeBy: bubbleSizeBy === 'orders' ? 'orders' : 'volume' })),
 
       setAggregateBubbleMarketSource: (panelId, aggregateBubbleMarketSource) =>
         set((state) => updatePanel(state, panelId, { aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(aggregateBubbleMarketSource) })),
 
       setBubbleThreshold: (panelId, bubbleThreshold) =>
-        set((state) => updatePanel(state, panelId, { bubbleThreshold: Math.max(0.1, bubbleThreshold) })),
+        set((state) => updatePanel(state, panelId, { bubbleThreshold: Math.max(1, bubbleThreshold) })),
 
       setBubbleThresholdMode: (panelId, bubbleThresholdMode) =>
         set((state) => updatePanel(state, panelId, { bubbleThresholdMode })),
@@ -797,25 +801,40 @@ export const useChartStore = create<ChartState>()(
       setBubbleMinOrders: (panelId, bubbleMinOrders) =>
         set((state) => updatePanel(state, panelId, { bubbleMinOrders: clampBubbleMinOrders(bubbleMinOrders) })),
 
-      setBubbleMinRadius: (panelId, bubbleMinRadius) =>
-        set((state) => {
-          const panel = state.panels[panelId];
-          const nextMinRadius = Math.max(1, Math.min(20, bubbleMinRadius));
-          return updatePanel(state, panelId, { bubbleMinRadius: Math.min(nextMinRadius, panel.bubbleMaxRadius - 1) });
-        }),
+      setBubbleFilterRender: (panelId, bubbleFilterRender) =>
+        set((state) => updatePanel(state, panelId, { bubbleFilterRender: Math.max(0, Math.min(20, bubbleFilterRender)) })),
 
-      setBubbleMaxRadius: (panelId, bubbleMaxRadius) =>
-        set((state) => {
-          const panel = state.panels[panelId];
-          const nextMaxRadius = Math.max(5, Math.min(60, bubbleMaxRadius));
-          return updatePanel(state, panelId, { bubbleMaxRadius: Math.max(nextMaxRadius, panel.bubbleMinRadius + 1) });
-        }),
+      setBubbleStdDevVal: (panelId, bubbleStdDevVal) =>
+        set((state) => updatePanel(state, panelId, { bubbleStdDevVal: Math.max(0.5, Math.min(5, bubbleStdDevVal)) })),
+
+      setBubbleOutStdDevPerc: (panelId, bubbleOutStdDevPerc) =>
+        set((state) => updatePanel(state, panelId, { bubbleOutStdDevPerc: Math.max(0, Math.min(50, bubbleOutStdDevPerc)) })),
 
       setBubbleSide: (panelId, bubbleSide) =>
         set((state) => updatePanel(state, panelId, { bubbleSide })),
-
       setBubbleScaleMode: (panelId, bubbleScaleMode) =>
         set((state) => updatePanel(state, panelId, { bubbleScaleMode })),
+
+      setBubbleColorMode: (panelId, bubbleColorMode) =>
+        set((state) => updatePanel(state, panelId, { bubbleColorMode })),
+
+      setBubbleVolumeColorMode: (panelId, bubbleVolumeColorMode) =>
+        set((state) => updatePanel(state, panelId, { bubbleVolumeColorMode })),
+
+      setBubbleDisplayMode: (panelId, bubbleDisplayMode) =>
+        set((state) => updatePanel(state, panelId, { bubbleDisplayMode })),
+
+      setBubbleBidColor: (panelId, bubbleBidColor) =>
+        set((state) => updatePanel(state, panelId, { bubbleBidColor })),
+
+      setBubbleAskColor: (panelId, bubbleAskColor) =>
+        set((state) => updatePanel(state, panelId, { bubbleAskColor })),
+
+      setBubbleLineWidth: (panelId, bubbleLineWidth) =>
+        set((state) => updatePanel(state, panelId, { bubbleLineWidth })),
+
+      setBubbleOpacity: (panelId, bubbleOpacity) =>
+        set((state) => updatePanel(state, panelId, { bubbleOpacity })),
 
       setDrawMode: (panelId, isDrawMode) =>
         set((state) => {
@@ -1305,17 +1324,10 @@ export const useChartStore = create<ChartState>()(
             absorptionMinScore: p.absorptionMinScore ?? 50,
             absorptionSide: p.absorptionSide || 'both',
             absorptionShowLabels: p.absorptionShowLabels ?? true,
-            bubblesEnabled: p.bubblesEnabled ?? false,
-            bubbleSource: normalizeBubbleSource(p.bubbleSource),
-            bubbleSizeBy: normalizeBubbleSizeBy(p.bubbleSizeBy),
-            aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(p.aggregateBubbleMarketSource),
+            bubblesEnabled: p.bubblesEnabled ?? false,            aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(p.aggregateBubbleMarketSource),
             bubbleThreshold: p.bubbleThreshold ?? 100,
             bubbleThresholdMode: p.bubbleThresholdMode || 'absolute',
-            bubbleMinOrders: clampBubbleMinOrders(p.bubbleMinOrders),
-            bubbleMinRadius: p.bubbleMinRadius ?? 4,
-            bubbleMaxRadius: p.bubbleMaxRadius ?? 20,
-            bubbleSide: p.bubbleSide || 'both',
-            bubbleScaleMode: normalizeBubbleScaleMode(p.bubbleScaleMode),
+            bubbleMinOrders: clampBubbleMinOrders(p.bubbleMinOrders),            bubbleMaxRadius: p.bubbleMaxRadius ?? 20,            bubbleScaleMode: normalizeBubbleScaleMode(p.bubbleScaleMode),
             isDrawMode: p.isDrawMode ?? false,
             customProfileRange: p.customProfileRange ?? null,
             customProfileLocked: p.customProfileLocked ?? false,
@@ -1461,12 +1473,7 @@ export const useChartStore = create<ChartState>()(
                 persistedLeft.settingsByTimeframe ?? currentState.panels.left.settingsByTimeframe,
                 tickSize,
               ),
-              bubbleSource: normalizeBubbleSource(
-                persistedLeft.bubbleSource ?? currentState.panels.left.bubbleSource,
-              ),
-              bubbleSizeBy: normalizeBubbleSizeBy(
-                persistedLeft.bubbleSizeBy ?? currentState.panels.left.bubbleSizeBy,
-              ),
+              bubbleSizeBy: (persistedLeft.bubbleSizeBy ?? currentState.panels.left.bubbleSizeBy) === 'orders' ? 'orders' : 'volume',
               aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(
                 persistedLeft.aggregateBubbleMarketSource ?? currentState.panels.left.aggregateBubbleMarketSource,
               ),
@@ -1499,12 +1506,7 @@ export const useChartStore = create<ChartState>()(
                 persistedRight.settingsByTimeframe ?? currentState.panels.right.settingsByTimeframe,
                 tickSize,
               ),
-              bubbleSource: normalizeBubbleSource(
-                persistedRight.bubbleSource ?? currentState.panels.right.bubbleSource,
-              ),
-              bubbleSizeBy: normalizeBubbleSizeBy(
-                persistedRight.bubbleSizeBy ?? currentState.panels.right.bubbleSizeBy,
-              ),
+              bubbleSizeBy: (persistedRight.bubbleSizeBy ?? currentState.panels.right.bubbleSizeBy) === 'orders' ? 'orders' : 'volume',
               aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(
                 persistedRight.aggregateBubbleMarketSource ?? currentState.panels.right.aggregateBubbleMarketSource,
               ),
@@ -1548,14 +1550,14 @@ export const useChartStore = create<ChartState>()(
             absorptionSide: state.panels.left.absorptionSide,
             absorptionShowLabels: state.panels.left.absorptionShowLabels,
             bubblesEnabled: state.panels.left.bubblesEnabled,
-            bubbleSource: state.panels.left.bubbleSource,
-            bubbleSizeBy: state.panels.left.bubbleSizeBy,
+            bubbleSizeBy: state.panels.left.bubbleSizeBy === 'orders' ? 'orders' : 'volume',
             aggregateBubbleMarketSource: state.panels.left.aggregateBubbleMarketSource,
             bubbleThreshold: state.panels.left.bubbleThreshold,
             bubbleThresholdMode: state.panels.left.bubbleThresholdMode,
             bubbleMinOrders: state.panels.left.bubbleMinOrders,
-            bubbleMinRadius: state.panels.left.bubbleMinRadius,
-            bubbleMaxRadius: state.panels.left.bubbleMaxRadius,
+            bubbleFilterRender: state.panels.left.bubbleFilterRender,
+            bubbleStdDevVal: state.panels.left.bubbleStdDevVal,
+            bubbleOutStdDevPerc: state.panels.left.bubbleOutStdDevPerc,
             bubbleSide: state.panels.left.bubbleSide,
             bubbleScaleMode: state.panels.left.bubbleScaleMode,
             isDrawMode: state.panels.left.isDrawMode,
@@ -1665,14 +1667,14 @@ export const useChartStore = create<ChartState>()(
             absorptionSide: state.panels.right.absorptionSide,
             absorptionShowLabels: state.panels.right.absorptionShowLabels,
             bubblesEnabled: state.panels.right.bubblesEnabled,
-            bubbleSource: state.panels.right.bubbleSource,
-            bubbleSizeBy: state.panels.right.bubbleSizeBy,
+            bubbleSizeBy: state.panels.right.bubbleSizeBy === 'orders' ? 'orders' : 'volume',
             aggregateBubbleMarketSource: state.panels.right.aggregateBubbleMarketSource,
             bubbleThreshold: state.panels.right.bubbleThreshold,
             bubbleThresholdMode: state.panels.right.bubbleThresholdMode,
             bubbleMinOrders: state.panels.right.bubbleMinOrders,
-            bubbleMinRadius: state.panels.right.bubbleMinRadius,
-            bubbleMaxRadius: state.panels.right.bubbleMaxRadius,
+            bubbleFilterRender: state.panels.right.bubbleFilterRender,
+            bubbleStdDevVal: state.panels.right.bubbleStdDevVal,
+            bubbleOutStdDevPerc: state.panels.right.bubbleOutStdDevPerc,
             bubbleSide: state.panels.right.bubbleSide,
             bubbleScaleMode: state.panels.right.bubbleScaleMode,
             isDrawMode: state.panels.right.isDrawMode,
@@ -1780,3 +1782,5 @@ export const useChartStore = create<ChartState>()(
     }
   )
 );
+
+

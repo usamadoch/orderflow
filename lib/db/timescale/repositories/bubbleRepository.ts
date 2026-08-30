@@ -112,12 +112,13 @@ export async function getAggregateBubbleEvents({
     symbol: row.symbol,
     contractType: row.contract_type as BubbleEventContractType,
     time: Number(row.event_time_ms ?? row.event_time.getTime()),
-    price: row.price,
+    price: Number(row.price),
     side: row.side as BubbleEventSide,
-    volume: row.volume,
+    volume: Number(row.volume),
     tradeCount: row.trade_count,
     firstTradeId: Number(row.first_trade_id),
     lastTradeId: Number(row.last_trade_id),
     qualifiedBy: row.qualified_by,
+    source: 'aggregateTrade' as const,
   }))
 }

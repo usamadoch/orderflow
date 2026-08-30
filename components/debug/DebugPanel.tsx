@@ -290,7 +290,7 @@ function BubblesTab({ snapshot }: { snapshot: DebugPanelSnapshot }) {
 
         return (
           <PanelBlock key={panelId} title={`${panelId} panel`}>
-            <InfoRow label="Bubble source" value={bubbleDebug?.bubbleSource ?? settings.bubbleSource} />
+
             <InfoRow label="Aggregate market source" value={bubbleDebug?.aggregateBubbleMarketSource ?? settings.aggregateBubbleMarketSource} />
             <InfoRow label="Buffer" value={`${bubbleDebug?.bufferSize ?? runtime.aggregateBubbleEventCount} / ${bubbleDebug?.maxBufferSize ?? 'n/a'}`} />
             <InfoRow label="Live count" value={bubbleDebug?.liveEventCount ?? runtime.aggregateBubbleLiveCount} />

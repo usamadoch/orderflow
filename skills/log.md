@@ -1,5 +1,21 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-30] - Feature: Volume Bubbles Configuration & Cosmetic Upgrades
+
+- **What changed**:
+  - **Bubble Data Strategy**: Dropped 'Footprint' source option; standardized exclusively on high-performance 'Orders' scaling (`bubbleSizeBy='orders'`).
+  - **Threshold Config**: Abstracted global volume thresholds to `process.env.NEXT_PUBLIC_BUBBLE_MIN_BTC_THRESHOLD` and added informative UI warnings inside `ChartSettingsDropdown.tsx`.
+  - **Bubble Settings Store (`types/bubble.ts`, `types/chart.ts`, `lib/store/chart.ts`)**: Replaced deprecated radius configuration with robust `bubbleDisplayMode` (`2d` / `3d`), customizable hex colors (`bubbleBidColor`, `bubbleAskColor`), adjustable `bubbleLineWidth` and global `bubbleOpacity`. Implemented `bubbleColorMode` and `bubbleVolumeColorMode` enums.
+  - **Bubble Renderer (`components/chart/drawBubbles.ts`)**: Integrated the new sizing and semantic styling fields into the drawing loop, removing unused legacy `BUBBLE_BULLISH_RGB`/`BUBBLE_BEARISH_RGB` logic, fixing duplicate loop declarations, and introducing 3D canvas `createRadialGradient` support.
+  - **UI Selectors (`components/ui/ChartSettingsDropdown.tsx`)**: Built a complete aesthetic control panel to control Bubble display modes, standardizing hex inputs for custom Bid/Ask colors, and adding visual slider elements for line width and opacity tuning.
+- **Why it changed**:
+  - To finalize the required visual and logical upgrades requested in the Volume Bubbles modernization plan (Tiers 1, 2, 3, and 5). 
+  - Centralizes configuration and provides traders with advanced visual customization options (flat vs. spheres, adjustable opacity, colors, etc.) previously unavailable.
+- **Impact summary**:
+  - Enhanced customization and a unified logical rendering path.
+  - UI seamlessly links setting changes to drawing loop execution.
+  - `npx tsc --noEmit` validates all related file typings properly (ignoring unrelated legacy `.ts` scripts).
+
 ## [2026-08-30] - Fix & Refactor: StorageManager TimescaleDB Migration & UI Z-Index Overlay
 
 - **What changed**:

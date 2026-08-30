@@ -1,5 +1,5 @@
 import { FootprintMode } from './footprint';
-import { BubbleScaleMode, BubbleSide, AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource, BubbleEvent } from './bubble';
+import { BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleDisplayMode, BubbleSide, AggregateBubbleMarketSource, BubbleSizeBy, BubbleEvent } from './bubble';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from './measurement';
 import { Candle } from './candle';
 import { Trade } from './trade';
@@ -112,13 +112,24 @@ export interface GlobalCrosshair {
 export interface TimeframeSettings {
   bucketSize: number;
   autoBucketSize: boolean;
-  bubbleSource: BubbleSource;
+
   bubbleSizeBy: BubbleSizeBy;
   aggregateBubbleMarketSource: AggregateBubbleMarketSource;
   bubbleThreshold: number;
   bubbleThresholdMode: BubbleThresholdMode;
   bubbleMinOrders: number;
+  bubbleFilterRender: number;
+  bubbleStdDevVal: number;
+  bubbleOutStdDevPerc: number;
+  bubbleSide: BubbleSide;
   bubbleScaleMode: BubbleScaleMode;
+  bubbleColorMode: BubbleColorMode;
+  bubbleVolumeColorMode: BubbleVolumeColorMode;
+  bubbleDisplayMode: BubbleDisplayMode;
+  bubbleBidColor: string;
+  bubbleAskColor: string;
+  bubbleLineWidth: number;
+  bubbleOpacity: number;
   absorptionMinScore: number;
   exhaustionMinScore: number;
   exhaustionLookback: number;
@@ -257,16 +268,24 @@ export interface PanelState {
   absorptionSide: AbsorptionSide;
   absorptionShowLabels: boolean;
   bubblesEnabled: boolean;
-  bubbleSource: BubbleSource;
+
   bubbleSizeBy: BubbleSizeBy;
   aggregateBubbleMarketSource: AggregateBubbleMarketSource;
   bubbleThreshold: number;
   bubbleThresholdMode: BubbleThresholdMode;
   bubbleMinOrders: number;
-  bubbleMinRadius: number;
-  bubbleMaxRadius: number;
+  bubbleFilterRender: number;
+  bubbleStdDevVal: number;
+  bubbleOutStdDevPerc: number;
   bubbleSide: BubbleSide;
   bubbleScaleMode: BubbleScaleMode;
+  bubbleColorMode: BubbleColorMode;
+  bubbleVolumeColorMode: BubbleVolumeColorMode;
+  bubbleDisplayMode: BubbleDisplayMode;
+  bubbleBidColor: string;
+  bubbleAskColor: string;
+  bubbleLineWidth: number;
+  bubbleOpacity: number;
   isDrawMode: boolean;
   customProfileRange: {
     firstTime?: number;

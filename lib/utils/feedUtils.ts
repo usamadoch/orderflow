@@ -35,7 +35,7 @@ export function getFootprintWorkNeed(panel: PanelState): FootprintWorkNeed {
   const reasons: FootprintWorkReason[] = [];
 
   if (panel.chartMode === 'footprint') reasons.push('chart-mode-footprint');
-  if (panel.bubblesEnabled && panel.bubbleSource === 'footprintCells') reasons.push('footprint-cell-bubbles');
+
   if (panel.cvdEnabled) reasons.push('cvd');
   if (panel.absorptionEnabled) reasons.push('absorption');
   if (panel.exhaustionEnabled) reasons.push('exhaustion');
@@ -73,8 +73,8 @@ export function needsAggregateEventsForVolumeBars(panel: PanelState) {
 
 export function needsAggregateEvents(panel: PanelState) {
   return (
-    (panel.bubblesEnabled && panel.bubbleSource === 'aggregateTrades')
-    || needsAggregateEventsForVolumeBars(panel)
+    panel.bubblesEnabled ||
+    needsAggregateEventsForVolumeBars(panel)
   );
 }
 

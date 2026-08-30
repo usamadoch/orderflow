@@ -45,7 +45,7 @@ export function useFeedAggregation(
   const pendingAggregationRef = useRef(false);
   const liquidityHistoryRef = useRef<LiquidityHistoryManager>(new LiquidityHistoryManager(liquidityBucketSize, liquidityHistoryDepth));
   const bubblesEnabledRef = useRef(false);
-  const bubbleSourceRef = useRef<string>('aggregateTrades');
+
   const aggregateEventsNeededRef = useRef(false);
   const footprintIngestionSkippedRef = useRef(0);
   const icebergDisabledNoopSkippedRef = useRef(0);
@@ -93,7 +93,7 @@ export function useFeedAggregation(
     pendingAggregationRef,
     liquidityHistoryRef,
     bubblesEnabledRef,
-    bubbleSourceRef,
+
     aggregateEventsNeededRef,
     footprintIngestionSkippedRef,
     icebergDisabledNoopSkippedRef,

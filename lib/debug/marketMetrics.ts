@@ -1,4 +1,4 @@
-import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleSource } from '../../types/bubble';
+import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy } from '../../types/bubble';
 import type { VolumeBarsInputData, VolumeBarsMarketSource } from '../store/chart';
 
 type StreamType = 'kline' | 'aggTrade' | 'depth';
@@ -100,7 +100,6 @@ interface AggregateBubbleRestoreDebugState {
 
 export interface AggregateBubbleDebugSnapshot {
   panelId: string;
-  bubbleSource: BubbleSource;
   bubbleSizeBy: BubbleSizeBy;
   aggregateBubbleMarketSource: AggregateBubbleMarketSource;
   activeChartMarketSource: {
@@ -150,8 +149,9 @@ export interface AggregateBubbleDebugSnapshot {
     thresholdMode: 'absolute' | 'relative';
     side: 'both' | 'buy' | 'sell';
     scaleMode: 'linear' | 'sqrt' | 'log';
-    minRadius: number;
-    maxRadius: number;
+    filterRender: number;
+    stdDevVal: number;
+    outlierPerc: number;
     actualThreshold: number | null;
     actualThresholdMode: BubbleSizeBy | null;
   };

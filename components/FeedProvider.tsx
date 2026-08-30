@@ -116,7 +116,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const contractType = useChartStore(s => s.panels[panelId].contractType);
   const dataSourceMode = useChartStore(s => s.panels[panelId].dataSourceMode);
   const bubblesEnabled = useChartStore(s => s.panels[panelId].bubblesEnabled);
-  const bubbleSource = useChartStore(s => s.panels[panelId].bubbleSource);
+
   const volumeBarsEnabled = useChartStore(s => s.panels[panelId].volumeBarsEnabled);
   const volumeBarsInputData = useChartStore(s => s.panels[panelId].volumeBarsInputData);
   const tickSize = useChartStore(s => s.tickSize);
@@ -170,7 +170,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     pendingAggregationRef,
     liquidityHistoryRef,
     bubblesEnabledRef,
-    bubbleSourceRef,
+
     aggregateEventsNeededRef,
     footprintIngestionSkippedRef,
     icebergDisabledNoopSkippedRef,
@@ -209,16 +209,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   useEffect(() => {
     const aggregateEventsNeeded = needsAggregateEvents(useChartStore.getState().panels[panelId]);
     bubblesEnabledRef.current = bubblesEnabled;
-    bubbleSourceRef.current = bubbleSource;
     aggregateEventsNeededRef.current = aggregateEventsNeeded;
     if (!aggregateEventsNeeded) {
       pendingAggregateBubbleEventsRef.current = [];
     }
-  }, [bubblesEnabled, bubbleSource, contractType, dataSourceMode, panelId, volumeBarsEnabled, volumeBarsInputData, bubblesEnabledRef, bubbleSourceRef, aggregateEventsNeededRef, pendingAggregateBubbleEventsRef]);
+  }, [bubblesEnabled, contractType, dataSourceMode, panelId, volumeBarsEnabled, volumeBarsInputData, bubblesEnabledRef, aggregateEventsNeededRef, pendingAggregateBubbleEventsRef]);
 
   useEffect(() => {
     const requiredSources = new Set<TradeSource>();
-    if (bubblesEnabled && bubbleSource === 'aggregateTrades') {
+    if (bubblesEnabled) {
       getTradeSourcesForAggregateMarketSource(
         aggregateBubbleMarketSource,
         contractType,
@@ -245,7 +244,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [aggregateBubbleMarketSource, bubblesEnabled, bubbleSource, contractType, dataSourceMode, markProcessedTrade, pair, pendingAggregateBubbleEventsRef]);
+  }, [aggregateBubbleMarketSource, bubblesEnabled, contractType, dataSourceMode, markProcessedTrade, pair, pendingAggregateBubbleEventsRef]);
 
   useEffect(() => {
     rebuildLiquidityVacuumZones();
@@ -2774,7 +2773,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       volumeProfileEngine.releaseSharedBaseCache();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, triggerWorkerComputeSignals, absorptionEnabled, exhaustionEnabled, bubblesEnabled, bubbleSource, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
+  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, triggerWorkerComputeSignals, absorptionEnabled, exhaustionEnabled, bubblesEnabled, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
   // Register protected ranges for Volume Profile cache to prevent eviction
   useEffect(() => {
     return useChartStore.subscribe((state) => {

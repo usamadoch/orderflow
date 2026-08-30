@@ -4,8 +4,6 @@ import { chartColorToRgba } from '@/lib/config/chartColors';
 import { recordAggregateBubbleDebug } from '@/lib/debug/marketMetrics';
 import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleScaleMode, BubbleSettings, AggregateBubbleDebugContext, SourceCountMap } from '@/types/bubble';
 
-const BUBBLE_BULLISH_RGB: { r: number; g: number; b: number } = { r: 13, g: 91, b: 11 }; // #0D5B0B
-const BUBBLE_BEARISH_RGB: { r: number; g: number; b: number } = { r: 74, g: 30, b: 111 }; // #4A1E6F
 
 
 
@@ -34,7 +32,7 @@ function abbreviateVol(vol: number): string {
   return vol.toFixed(0);
 }
 
-const TRADE_COUNT_FALLBACK_POLICY = 'missing-or-invalid-trade-count-treated-as-1';
+
 
 function getAggregateBubbleSizingValue(event: BubbleEvent, bubbleSizeBy: BubbleSizeBy) {
   if (bubbleSizeBy === 'volume') {
@@ -211,121 +209,6 @@ function isEventIncludedByMarketSource(
   return resolvedMarketSource === 'both' || event.contractType === resolvedMarketSource;
 }
 
-export function drawBubbles(
-  ctx: CanvasRenderingContext2D,
-  candles: Candle[],
-  firstIndex: number,
-  lastIndex: number,
-  indexToX: (i: number) => number,
-  priceToY: (price: number) => number,
-  bucketSize: number,
-  engine: AggregationEngine,
-  barWidth: number,
-  settings: BubbleSettings
-) {
-  const { bubbleThreshold, bubbleThresholdMode = 'absolute', bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode = 'sqrt' } = settings;
-
-  // Performance guard - bars too small, bubbles would overlap and be unreadable
-  if (barWidth < 4) return;
-
-  // Compute adaptive threshold if relative
-  let actualThreshold = bubbleThreshold;
-  if (bubbleThresholdMode === 'relative') {
-    let sumVol = 0;
-    let count = 0;
-    for (let i = firstIndex; i <= lastIndex; i++) {
-      if (candles[i]) {
-        sumVol += candles[i].volume;
-        count++;
-      }
-    }
-    const avgCandleVol = count > 0 ? sumVol / count : 0;
-    const avgCellVol = avgCandleVol / 25; // Estimate average volume per bucket cell
-    actualThreshold = bubbleThreshold * avgCellVol;
-  }
-
-  // Use a high-percentile scale so one outlier or edge-culling change does not
-  // make all bubbles shrink or lose labels while panning.
-  const scaleVolumes: number[] = [];
-  for (let i = firstIndex; i <= lastIndex; i++) {
-    const c = candles[i];
-    if (!c) continue;
-    const fp = engine.getFootprintCandle(c.time);
-    if (!fp) continue;
-
-    fp.cells.forEach((cell) => {
-      if (bubbleSide !== 'sell' && cell.askVol >= actualThreshold) scaleVolumes.push(cell.askVol);
-      if (bubbleSide !== 'buy' && cell.bidVol >= actualThreshold) scaleVolumes.push(cell.bidVol);
-    });
-  }
-
-  if (scaleVolumes.length === 0) return;
-
-  scaleVolumes.sort((a, b) => a - b);
-  const percentileIndex = Math.min(scaleVolumes.length - 1, Math.floor((scaleVolumes.length - 1) * 0.95));
-  const maxVol = Math.max(1, scaleVolumes[percentileIndex]);
-
-  // Step 2 - Iterate visible candles and draw bubbles
-  for (let i = firstIndex; i <= lastIndex; i++) {
-    const c = candles[i];
-    if (!c) continue;
-    const fp = engine.getFootprintCandle(c.time);
-    if (!fp) continue;
-    const x = indexToX(i);
-    if (x === null || x === undefined || !Number.isFinite(x)) continue;
-
-    const qualifiedCells: { price: number; vol: number; side: 'buy' | 'sell' }[] = [];
-
-    fp.cells.forEach((cell, priceBucket) => {
-      if (bubbleSide !== 'sell' && cell.askVol >= actualThreshold) {
-        qualifiedCells.push({ price: priceBucket, vol: cell.askVol, side: 'buy' });
-      }
-      if (bubbleSide !== 'buy' && cell.bidVol >= actualThreshold) {
-        qualifiedCells.push({ price: priceBucket, vol: cell.bidVol, side: 'sell' });
-      }
-    });
-
-    // Cap at 20 bubbles per candle - keep highest volume ones
-    if (qualifiedCells.length > 20) {
-      qualifiedCells.sort((a, b) => b.vol - a.vol);
-      qualifiedCells.length = 20;
-    }
-
-    for (const { price, vol, side } of qualifiedCells) {
-      const y = priceToY(price + bucketSize / 2);
-      if (!Number.isFinite(y)) continue;
-
-      const t = scaleBubbleValue(vol, actualThreshold, maxVol, bubbleScaleMode);
-      const radius = bubbleMinRadius + t * (bubbleMaxRadius - bubbleMinRadius);
-      const opacity = 0.4 + t * 0.5;
-
-      const isBuy = side === 'buy';
-      const rgb = isBuy ? BUBBLE_BULLISH_RGB : BUBBLE_BEARISH_RGB;
-
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = chartColorToRgba(rgb, opacity);
-      ctx.fill();
-
-      ctx.strokeStyle = chartColorToRgba(rgb, 1);
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      if (radius >= 12) {
-        const label = abbreviateVol(vol);
-        ctx.font = '500 9px "JetBrains Mono"';
-        const textWidth = ctx.measureText(label).width;
-        if (radius * 1.6 >= textWidth) {
-          ctx.fillStyle = '#E8E8E8';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(label, x, y);
-        }
-      }
-    }
-  }
-}
-
 export function drawAggregateTradeBubbles(
   ctx: CanvasRenderingContext2D,
   events: BubbleEvent[],
@@ -345,15 +228,18 @@ export function drawAggregateTradeBubbles(
     activeDataSourceMode = activeChartContractType,
     bubbleThreshold,
     bubbleThresholdMode = 'absolute',
-    bubbleMinOrders = 1,
-    bubbleMinRadius,
-    bubbleMaxRadius,
+    bubbleFilterRender,
+    bubbleStdDevVal,
+    bubbleOutStdDevPerc,
     bubbleSide,
     bubbleScaleMode = 'sqrt',
+    bubbleMinOrders = 10,
+    bubbleDisplayMode = '2d',
+    bubbleBidColor = '#4ade80',
+    bubbleAskColor = '#f87171',
+    bubbleLineWidth = 1,
+    bubbleOpacity = 0.5,
   } = settings;
-  const actualMinOrders = Number.isFinite(bubbleMinOrders)
-    ? Math.max(1, Math.min(1000, Math.round(bubbleMinOrders)))
-    : 1;
   const filterReasons: Record<string, number> = {};
   const latestEvent = events.length > 0 ? events[events.length - 1] : null;
   const resolvedMarketSource = getResolvedAggregateMarketSource(
@@ -397,7 +283,6 @@ export function drawAggregateTradeBubbles(
 
     recordAggregateBubbleDebug({
       panelId: debugContext.panelId,
-      bubbleSource: debugContext.bubbleSource,
       bubbleSizeBy,
       aggregateBubbleMarketSource,
       activeChartMarketSource: {
@@ -422,18 +307,12 @@ export function drawAggregateTradeBubbles(
       totalEventCountBySource,
       visibleEventCountBySource,
       renderedCountBySource,
-      visibleEventCountBySizeMode: {
-        volume: bubbleSizeBy === 'volume' ? visibleEventCount : 0,
-        orders: bubbleSizeBy === 'orders' ? visibleEventCount : 0,
-      },
-      renderedCountBySizeMode: {
-        volume: bubbleSizeBy === 'volume' ? renderedCount : 0,
-        orders: bubbleSizeBy === 'orders' ? renderedCount : 0,
-      },
+      visibleEventCountBySizeMode: { volume: visibleEventCount, orders: 0 },
+      renderedCountBySizeMode: { volume: renderedCount, orders: 0 },
       filteredCount: Object.values(filterReasons).reduce((sum, count) => sum + count, 0),
       filterReasons,
       tradeCountFallbackCount,
-      tradeCountFallbackPolicy: bubbleSizeBy === 'orders' ? TRADE_COUNT_FALLBACK_POLICY : null,
+      tradeCountFallbackPolicy: null,
       latestEvent: latestEvent ? summarizeEvent(latestEvent) : null,
       latestRendered,
       latestFiltered,
@@ -443,14 +322,15 @@ export function drawAggregateTradeBubbles(
         marketSource: aggregateBubbleMarketSource,
         resolvedMarketSource,
         minVolume: bubbleThreshold,
-        minOrders: actualMinOrders,
+        minOrders: bubbleMinOrders,
         thresholdMode: bubbleThresholdMode,
         side: bubbleSide,
         scaleMode: bubbleScaleMode,
-        minRadius: bubbleMinRadius,
-        maxRadius: bubbleMaxRadius,
+        filterRender: bubbleFilterRender,
+        stdDevVal: bubbleStdDevVal,
+        outlierPerc: bubbleOutStdDevPerc,
         actualThreshold,
-        actualThresholdMode: actualThreshold === null ? null : bubbleSizeBy,
+        actualThresholdMode: null,
       },
     });
   };
@@ -488,9 +368,8 @@ export function drawAggregateTradeBubbles(
 
     if (event.source !== 'aggregateTrade') reason = 'not-aggregate-trade';
     else if (!isEventIncludedByMarketSource(event, resolvedMarketSource)) reason = 'excluded-by-market-source';
-    else if (bubbleSide !== 'both' && event.side !== bubbleSide) reason = 'excluded-by-side-filter';
     else if (!Number.isFinite(event.price)) reason = 'invalid-price';
-    else if (bubbleSizeBy === 'volume' && (!Number.isFinite(event.volume) || event.volume <= 0)) reason = 'invalid-volume';
+    else if (!Number.isFinite(event.volume) || event.volume <= 0) reason = 'invalid-volume';
     else if (eventSeconds === null || !Number.isFinite(eventSeconds)) reason = 'invalid-time';
     else if (eventSeconds < visibleStartSeconds || eventSeconds > visibleEndSeconds) reason = 'outside-visible-time-range';
 
@@ -555,21 +434,18 @@ export function drawAggregateTradeBubbles(
     ), 0);
   }
 
-  let actualThreshold = bubbleSizeBy === 'orders' ? actualMinOrders : bubbleThreshold;
-  if (bubbleSizeBy === 'volume' && bubbleThresholdMode === 'relative') {
+  let actualThreshold = bubbleThreshold;
+  if (bubbleThresholdMode === 'relative') {
     const avgEventVol = groupedEvents.reduce((sum, event) => sum + event.volume, 0) / groupedEvents.length;
     actualThreshold = bubbleThreshold * avgEventVol;
   }
 
   const qualifiedEvents = groupedEvents.filter((event) => {
-    const sizing = getAggregateBubbleSizingValue(event, bubbleSizeBy);
-    if (sizing.value >= actualThreshold) return true;
-
-    const reason = bubbleSizeBy === 'orders' ? 'below-min-orders' : 'below-min-volume';
-    incrementReason(filterReasons, reason);
+    if (event.volume >= actualThreshold) return true;
+    incrementReason(filterReasons, 'below-min-volume');
     latestFiltered = {
       ...summarizeEvent(event),
-      reason,
+      reason: 'below-min-volume',
       eventSeconds: normalizeEventSeconds(event.time),
     };
     return false;
@@ -580,19 +456,26 @@ export function drawAggregateTradeBubbles(
   }
 
   const scaleValues = qualifiedEvents
-    .map((event) => getAggregateBubbleSizingValue(event, bubbleSizeBy).value)
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .sort((a, b) => a - b);
+    .map((event) => event.volume)
+    .filter((value) => Number.isFinite(value) && value > 0);
 
-  // Use a stable anchor so one whale trade doesn't crush all other bubbles.
-  // The median gives us a reliable "normal" trade size. We cap maxValue at 5×
-  // the median so large trades still stand out but smaller trades remain visible.
-  const medianIndex = Math.floor((scaleValues.length - 1) / 2);
-  const medianValue = scaleValues[medianIndex] ?? 1;
-  const percentileIndex = Math.min(scaleValues.length - 1, Math.floor((scaleValues.length - 1) * 0.95));
-  const rawMax = scaleValues[percentileIndex] ?? 1;
-  const anchoredCap = Math.max(medianValue * 5, actualThreshold * 3);
-  const maxValue = Math.max(1, Math.min(rawMax, anchoredCap));
+  let mean = 1;
+  let stdDev = 0;
+  let maxValue = 1;
+  if (scaleValues.length > 0) {
+    mean = scaleValues.reduce((sum, val) => sum + val, 0) / scaleValues.length;
+    const variance = scaleValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / scaleValues.length;
+    stdDev = Math.sqrt(variance);
+
+    const calculatedMax = mean + (stdDev * bubbleStdDevVal);
+    
+    // Process outliers
+    scaleValues.sort((a, b) => a - b);
+    const outlierIndex = Math.min(scaleValues.length - 1, Math.floor(scaleValues.length * (1 - (bubbleOutStdDevPerc / 100))));
+    const outlierCap = scaleValues[outlierIndex] ?? calculatedMax;
+
+    maxValue = Math.max(1, Math.min(calculatedMax, outlierCap));
+  }
 
 
   let renderedCount = 0;
@@ -619,28 +502,50 @@ export function drawAggregateTradeBubbles(
       continue;
     }
 
-    const sizing = getAggregateBubbleSizingValue(event, bubbleSizeBy);
+    const sizing = { value: event.volume, tradeCountFallback: false };
     const t = scaleBubbleValue(sizing.value, actualThreshold, maxValue, bubbleScaleMode);
-    const radius = bubbleMinRadius + t * (bubbleMaxRadius - bubbleMinRadius);
-    const opacity = 0.4 + t * 0.5;
+    const radius = t * 60; // Max radius internally clamped to 60px
+    const opacity = (0.4 + t * 0.5) * (bubbleOpacity / 0.5);
 
     const isBuy = event.side === 'buy';
-    const rgb = isBuy ? BUBBLE_BULLISH_RGB : BUBBLE_BEARISH_RGB;
-
+    if (radius < bubbleFilterRender) continue;
+    
+    // In Tier 3, since we don't have price level grouping yet (Tier 4), 
+    // each bubble is a single raw event (either pure buy or pure sell).
+    // Therefore, for 'delta' and 'volume' modes, it is equivalent to 'askBidSplit' 
+    // (100% buy or 100% sell delta). The color logic will be expanded in Tier 4.
+    const colorStr = isBuy ? bubbleBidColor : bubbleAskColor;
+    
     ctx.beginPath();
     ctx.arc(placement.x, y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = chartColorToRgba(rgb, opacity);
+
+    if (bubbleDisplayMode === '3d') {
+      const gradient = ctx.createRadialGradient(
+        placement.x - radius * 0.3, y - radius * 0.3, radius * 0.1,
+        placement.x, y, radius
+      );
+      gradient.addColorStop(0, chartColorToRgba(colorStr, Math.min(1, opacity + 0.4)));
+      gradient.addColorStop(0.7, chartColorToRgba(colorStr, opacity));
+      gradient.addColorStop(1, chartColorToRgba(colorStr, opacity * 0.4));
+      ctx.fillStyle = gradient;
+    } else {
+      ctx.fillStyle = chartColorToRgba(colorStr, opacity);
+    }
+    
     ctx.fill();
 
     const distinguishMarketSource = resolvedMarketSource === 'both';
-    ctx.strokeStyle = chartColorToRgba(rgb, 1);
-    ctx.lineWidth = distinguishMarketSource && event.contractType === 'futures' ? 1.5 : 1;
+    ctx.strokeStyle = chartColorToRgba(colorStr, Math.min(1, opacity + 0.2));
+    ctx.lineWidth = distinguishMarketSource && event.contractType === 'futures' ? Math.max(1.5, bubbleLineWidth * 1.5) : bubbleLineWidth;
     ctx.setLineDash(distinguishMarketSource && event.contractType === 'futures' ? [3, 2] : []);
-    ctx.stroke();
+    
+    if (bubbleLineWidth > 0) {
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
 
     if (radius >= 12) {
-      const label = formatAggregateBubbleLabel(sizing.value, bubbleSizeBy);
+      const label = formatAggregateBubbleLabel(sizing.value, 'volume');
       ctx.font = '500 9px "JetBrains Mono"';
       const textWidth = ctx.measureText(label).width;
       if (radius * 1.6 >= textWidth) {
@@ -663,7 +568,7 @@ export function drawAggregateTradeBubbles(
       latestRendered = {
         ...summarizeEvent(event),
         renderedValue: sizing.value,
-        renderedValueSource: bubbleSizeBy,
+        renderedValueSource: 'volume' as const,
         tradeCountFallback: sizing.tradeCountFallback,
         renderedX: placement.x,
         renderedY: y,
@@ -679,3 +584,5 @@ export function drawAggregateTradeBubbles(
 
   publishDebug(visibleEvents.length, renderedCount, actualThreshold, visibleWindow);
 }
+
+

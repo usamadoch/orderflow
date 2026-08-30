@@ -21,7 +21,7 @@ import {
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
-import { recordAggregateBubbleDebug, recordVolumeBarsDebug } from '@/lib/debug/marketMetrics';
+import { recordVolumeBarsDebug } from '@/lib/debug/marketMetrics';
 import { drawDeltaProfile } from '@/lib/draw/drawDeltaProfile';
 import { drawIceberg } from '@/lib/draw/drawIceberg';
 import { drawLiquidity } from '@/lib/draw/drawLiquidity';
@@ -34,7 +34,7 @@ import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { initCanvas } from '@/lib/utils/canvas';
 import { formatPrice, formatVol } from '@/lib/utils/format';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
-import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleSource, BubbleScaleMode } from '@/types/bubble';
+import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleDisplayMode } from '@/types/bubble';
 import type { DrawingHitZone } from '@/types/chart';
 import type { IndicatorId } from '@/types/chart';
 import type { ExhaustionResult } from '@/types/exhaustion';
@@ -70,7 +70,7 @@ import {
 } from './chartCanvasHitTest';
 import { drawAbsorption } from './drawAbsorption';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
-import { drawAggregateTradeBubbles, drawBubbles } from './drawBubbles';
+import { drawAggregateTradeBubbles } from './drawBubbles';
 import { drawCandles } from './drawCandles';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
 import { drawExhaustion } from './drawExhaustion';
@@ -108,16 +108,23 @@ interface ChartCanvasProps {
   absorptionSide: AbsorptionSide;
   absorptionShowLabels: boolean;
   bubblesEnabled: boolean;
-  bubbleSource: BubbleSource;
   bubbleSizeBy: BubbleSizeBy;
   aggregateBubbleMarketSource: AggregateBubbleMarketSource;
   bubbleThreshold: number;
   bubbleThresholdMode: 'absolute' | 'relative';
   bubbleMinOrders: number;
-  bubbleMinRadius: number;
-  bubbleMaxRadius: number;
+  bubbleFilterRender: number;
+  bubbleStdDevVal: number;
+  bubbleOutStdDevPerc: number;
   bubbleSide: BubbleSide;
   bubbleScaleMode: BubbleScaleMode;
+  bubbleColorMode: BubbleColorMode;
+  bubbleVolumeColorMode: BubbleVolumeColorMode;
+  bubbleDisplayMode: BubbleDisplayMode;
+  bubbleBidColor: string;
+  bubbleAskColor: string;
+  bubbleLineWidth: number;
+  bubbleOpacity: number;
   activeChartContractType: ContractType;
   activeDataSourceMode: DataSourceMode;
   tradingSymbol: string;
@@ -220,16 +227,23 @@ export function ChartCanvas({
   absorptionSide,
   absorptionShowLabels,
   bubblesEnabled,
-  bubbleSource,
   bubbleSizeBy,
   aggregateBubbleMarketSource,
   bubbleThreshold,
   bubbleThresholdMode,
   bubbleMinOrders,
-  bubbleMinRadius,
-  bubbleMaxRadius,
+  bubbleFilterRender,
+  bubbleStdDevVal,
+  bubbleOutStdDevPerc,
   bubbleSide,
   bubbleScaleMode,
+  bubbleColorMode,
+  bubbleVolumeColorMode,
+  bubbleDisplayMode,
+  bubbleBidColor,
+  bubbleAskColor,
+  bubbleLineWidth,
+  bubbleOpacity,
   activeChartContractType,
   activeDataSourceMode,
   tradingSymbol,
@@ -657,138 +671,35 @@ export function ChartCanvas({
 
         // Volume bubbles — drawn above candles/footprint, below volume profile
         if (bubblesEnabled) {
-          if (bubbleSource === 'aggregateTrades') {
-            drawAggregateTradeBubbles(liveCtx, aggregateBubbleEvents, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, {
-              bubbleSizeBy,
-              aggregateBubbleMarketSource,
-              activeChartContractType,
-              activeDataSourceMode,
-              bubbleThreshold,
-              bubbleThresholdMode,
-              bubbleMinOrders,
-              bubbleMinRadius,
-              bubbleMaxRadius,
-              bubbleSide,
-              bubbleScaleMode,
-            }, {
-              panelId,
-              bubbleSource,
-              bufferSize: aggregateBubbleEvents.length,
-              maxBufferSize: MAX_AGGREGATE_BUBBLE_EVENTS,
-              activeChartContractType,
-              activeDataSourceMode,
-              engine,
-              bucketSize,
-            });
-          } else {
-            const latestAggregateEvent = aggregateBubbleEvents[aggregateBubbleEvents.length - 1] ?? null;
-            const restoredAggregateEvents = aggregateBubbleEvents.filter((event) => event.origin === 'restored');
-            const restoredAggregateTimes = restoredAggregateEvents
-              .map((event) => event.time)
-              .filter((time) => Number.isFinite(time));
-            const restoredEventCountBySource = restoredAggregateEvents.reduce((counts, event) => {
-              if (event.contractType === 'spot' || event.contractType === 'futures') {
-                counts[event.contractType] += 1;
-              }
-              return counts;
-            }, { spot: 0, futures: 0 });
-            const totalEventCountBySource = aggregateBubbleEvents.reduce((counts, event) => {
-              if (event.contractType === 'spot' || event.contractType === 'futures') {
-                counts[event.contractType] += 1;
-              }
-              return counts;
-            }, { spot: 0, futures: 0 });
-            recordAggregateBubbleDebug({
-              panelId,
-              bubbleSource,
-              bubbleSizeBy,
-              aggregateBubbleMarketSource,
-              activeChartMarketSource: {
-                contractType: activeChartContractType,
-                dataSourceMode: activeDataSourceMode,
-              },
-              bufferSize: aggregateBubbleEvents.length,
-              maxBufferSize: MAX_AGGREGATE_BUBBLE_EVENTS,
-              restoredEventCount: restoredAggregateEvents.length,
-              liveEventCount: Math.max(0, aggregateBubbleEvents.length - restoredAggregateEvents.length),
-              totalHydratedCount: aggregateBubbleEvents.length,
-              duplicateSkippedCount: 0,
-              restoreQueryRange: null,
-              restoredSpotCount: restoredEventCountBySource.spot,
-              restoredFuturesCount: restoredEventCountBySource.futures,
-              minRestoredEventTime: restoredAggregateTimes.length > 0 ? Math.min(...restoredAggregateTimes) : null,
-              maxRestoredEventTime: restoredAggregateTimes.length > 0 ? Math.max(...restoredAggregateTimes) : null,
-              storageThresholds: null,
-              currentRenderedCountAfterRestore: null,
-              visibleEventCount: 0,
-              renderedCount: 0,
-              totalEventCountBySource,
-              visibleEventCountBySource: {
-                spot: 0,
-                futures: 0,
-              },
-              renderedCountBySource: {
-                spot: 0,
-                futures: 0,
-              },
-              visibleEventCountBySizeMode: {
-                volume: 0,
-                orders: 0,
-              },
-              renderedCountBySizeMode: {
-                volume: 0,
-                orders: 0,
-              },
-              filteredCount: aggregateBubbleEvents.length,
-              filterReasons: aggregateBubbleEvents.length > 0 ? { sourceNotSelected: aggregateBubbleEvents.length } : {},
-              tradeCountFallbackCount: 0,
-              tradeCountFallbackPolicy: bubbleSizeBy === 'orders' ? 'missing-or-invalid-trade-count-treated-as-1' : null,
-              latestEvent: latestAggregateEvent
-                ? {
-                  time: latestAggregateEvent.time,
-                  price: latestAggregateEvent.price,
-                  volume: latestAggregateEvent.volume,
-                  side: latestAggregateEvent.side,
-                  source: latestAggregateEvent.source,
-                  symbol: latestAggregateEvent.symbol,
-                  contractType: latestAggregateEvent.contractType,
-                  tradeCount: typeof latestAggregateEvent.tradeCount === 'number' && Number.isFinite(latestAggregateEvent.tradeCount)
-                    ? latestAggregateEvent.tradeCount
-                    : null,
-                }
-                : null,
-              latestRendered: null,
-              latestFiltered: null,
-              visibleWindow: candles[firstIndex] && candles[lastIndex]
-                ? {
-                  startTime: candleTimeAt(firstIndex, candles) as number,
-                  endTime: candleTimeAt(lastIndex, candles) as number,
-                }
-                : null,
-              settings: {
-                sizeBy: bubbleSizeBy,
-                marketSource: aggregateBubbleMarketSource,
-                resolvedMarketSource: activeDataSourceMode === 'both' ? 'both' : activeDataSourceMode || activeChartContractType,
-                minVolume: bubbleThreshold,
-                minOrders: bubbleMinOrders,
-                thresholdMode: bubbleThresholdMode,
-                side: bubbleSide,
-                scaleMode: bubbleScaleMode,
-                minRadius: bubbleMinRadius,
-                maxRadius: bubbleMaxRadius,
-                actualThreshold: null,
-                actualThresholdMode: null,
-              },
-            });
-            drawBubbles(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, bucketSize, engine, currentBarWidth, {
-              bubbleThreshold,
-              bubbleThresholdMode,
-              bubbleMinRadius,
-              bubbleMaxRadius,
-              bubbleSide,
-              bubbleScaleMode,
-            });
-          }
+          drawAggregateTradeBubbles(liveCtx, aggregateBubbleEvents, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, {
+            bubbleSizeBy,
+            aggregateBubbleMarketSource,
+            activeChartContractType,
+            activeDataSourceMode,
+            bubbleThreshold,
+            bubbleThresholdMode,
+            bubbleMinOrders,
+            bubbleFilterRender,
+            bubbleStdDevVal,
+            bubbleOutStdDevPerc,
+            bubbleSide,
+            bubbleScaleMode,
+            bubbleColorMode,
+            bubbleVolumeColorMode,
+            bubbleDisplayMode,
+            bubbleBidColor,
+            bubbleAskColor,
+            bubbleLineWidth,
+            bubbleOpacity,
+          }, {
+            panelId,
+            bufferSize: aggregateBubbleEvents.length,
+            maxBufferSize: MAX_AGGREGATE_BUBBLE_EVENTS,
+            activeChartContractType,
+            activeDataSourceMode,
+            engine,
+            bucketSize,
+          });
         }
 
         // 5. Absorption markers
@@ -1335,7 +1246,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSource, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleMinRadius, bubbleMaxRadius, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);

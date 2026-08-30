@@ -85,7 +85,7 @@ export interface SettingsPanelSummary {
   chartMode: string;
   contractType: string;
   dataSourceMode: string;
-  bubbleSource: string;
+
   aggregateBubbleMarketSource: string;
   bubbleSizeBy: string;
   bubbleScaleMode: string;
@@ -233,7 +233,7 @@ function summarizeSettingsPanel(panel: PanelState): SettingsPanelSummary {
     chartMode: panel.chartMode,
     contractType: panel.contractType,
     dataSourceMode: panel.dataSourceMode,
-    bubbleSource: panel.bubbleSource,
+
     aggregateBubbleMarketSource: panel.aggregateBubbleMarketSource,
     bubbleSizeBy: panel.bubbleSizeBy,
     bubbleScaleMode: panel.bubbleScaleMode,
@@ -257,7 +257,7 @@ function summarizeSettingsPanel(panel: PanelState): SettingsPanelSummary {
 function getFootprintWorkReasons(panel: PanelState) {
   const reasons: string[] = [];
   if (panel.chartMode === 'footprint') reasons.push('chart-mode-footprint');
-  if (panel.bubblesEnabled && panel.bubbleSource === 'footprintCells') reasons.push('footprint-cell-bubbles');
+
   if (panel.cvdEnabled) reasons.push('cvd');
   if (panel.absorptionEnabled) reasons.push('absorption');
   if (panel.exhaustionEnabled) reasons.push('exhaustion');

@@ -1,4 +1,4 @@
-export type BubbleSource = 'footprintCells' | 'aggregateTrades';
+export type BubbleSource = 'aggregateTrades';
 export type BubbleSizeBy = 'volume' | 'orders';
 export type AggregateBubbleMarketSource = 'active' | 'spot' | 'futures' | 'both';
 export type BubbleEventSide = 'buy' | 'sell';
@@ -23,6 +23,9 @@ import type { AggregationEngine } from '@/lib/aggregation/engine';
 
 export type BubbleSide = 'both' | 'buy' | 'sell';
 export type BubbleScaleMode = 'linear' | 'sqrt' | 'log';
+export type BubbleColorMode = 'askBidSplit' | 'delta' | 'volume';
+export type BubbleVolumeColorMode = 'deltaAbsolute' | 'deltaPercentual';
+export type BubbleDisplayMode = '2d' | '3d';
 
 export interface BubbleSettings {
   bubbleSizeBy?: BubbleSizeBy;
@@ -32,15 +35,22 @@ export interface BubbleSettings {
   bubbleThreshold: number;
   bubbleThresholdMode?: 'absolute' | 'relative';
   bubbleMinOrders?: number;
-  bubbleMinRadius: number;
-  bubbleMaxRadius: number;
+  bubbleFilterRender: number;
+  bubbleStdDevVal: number;
+  bubbleOutStdDevPerc: number;
   bubbleSide: BubbleSide;
   bubbleScaleMode?: BubbleScaleMode;
+  bubbleColorMode?: BubbleColorMode;
+  bubbleVolumeColorMode?: BubbleVolumeColorMode;
+  bubbleDisplayMode?: BubbleDisplayMode;
+  bubbleBidColor?: string;
+  bubbleAskColor?: string;
+  bubbleLineWidth?: number;
+  bubbleOpacity?: number;
 }
 
 export interface AggregateBubbleDebugContext {
   panelId: string;
-  bubbleSource: BubbleSource;
   bufferSize: number;
   maxBufferSize: number;
   activeChartContractType: BubbleEventContractType;
