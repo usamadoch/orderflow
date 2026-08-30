@@ -2,6 +2,7 @@ import { FeedAdapter } from './adapter';
 import { Candle } from '../../types/candle';
 import { Trade } from '../../types/trade';
 import { ConnectionState } from '../../types/feed';
+import { OrderbookSnapshot, DepthUpdate, OrderbookManager } from '../liquidity/orderbook';
 
 export class BinanceFuturesAdapter implements FeedAdapter {
   private ws: WebSocket | null = null;
@@ -16,6 +17,17 @@ export class BinanceFuturesAdapter implements FeedAdapter {
   private stateListeners = new Set<(state: ConnectionState) => void>();
   private restBase = 'https://fapi.binance.com/fapi/v1';
 
+  // Orderbook — separate WebSocket
+  private obWs: WebSocket | null = null;
+  private obCb: ((update: DepthUpdate) => void) | null = null;
+  private obReconnectAttempts: number = 0;
+  private obShouldReconnect: boolean = false;
+  private obReconnectTimer: NodeJS.Timeout | null = null;
+  private obPair: string | null = null;
+  private obState: ConnectionState = 'DISCONNECTED';
+  private obStateListeners = new Set<(state: ConnectionState) => void>();
+  private obManager: OrderbookManager | null = null;
+
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
@@ -23,6 +35,10 @@ export class BinanceFuturesAdapter implements FeedAdapter {
         if (this.shouldReconnect && this.currentPair) {
           this.setState('RESYNCING');
           this.connect();
+        }
+        if (this.obShouldReconnect && this.obPair) {
+          this.setObState('RESYNCING');
+          this.connectOrderbook();
         }
       });
     }
@@ -47,6 +63,29 @@ export class BinanceFuturesAdapter implements FeedAdapter {
         listener(newState);
       } catch (e) {
         console.error('[BinanceFuturesAdapter] State listener error:', e);
+      }
+    }
+  }
+
+  getObConnectionState(): ConnectionState {
+    return this.obState;
+  }
+
+  onObConnectionStateChange(cb: (state: ConnectionState) => void): () => void {
+    this.obStateListeners.add(cb);
+    return () => {
+      this.obStateListeners.delete(cb);
+    };
+  }
+
+  private setObState(newState: ConnectionState) {
+    if (this.obState === newState) return;
+    this.obState = newState;
+    for (const listener of Array.from(this.obStateListeners)) {
+      try {
+        listener(newState);
+      } catch (e) {
+        console.error('[BinanceFuturesAdapter] Orderbook State listener error:', e);
       }
     }
   }
@@ -228,6 +267,138 @@ export class BinanceFuturesAdapter implements FeedAdapter {
     this.currentTimeframe = null;
     this.candleCb = null;
     this.tradeCb = null;
+  }
+
+  async fetchOrderbookSnapshot(pair: string, limit: number = 500): Promise<OrderbookSnapshot> {
+    const symbol = pair.toUpperCase();
+    const url = `${this.restBase}/depth?symbol=${symbol}&limit=${limit}`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      return {
+        lastUpdateId: data.lastUpdateId,
+        bids: data.bids,
+        asks: data.asks,
+      };
+    } catch (e) {
+      console.error(`[BinanceFuturesAdapter] Orderbook snapshot fetch failed:`, e);
+      return { lastUpdateId: 0, bids: [], asks: [] };
+    }
+  }
+
+  subscribeOrderbook(pair: string, cb: (update: DepthUpdate) => void): void {
+    this.obPair = pair.toLowerCase();
+    this.obCb = cb;
+    this.obShouldReconnect = true;
+    this.obReconnectAttempts = 0;
+    this.setObState('CONNECTING');
+    this.connectOrderbook();
+  }
+
+  private connectOrderbook(): void {
+    if (this.obWs) {
+      this.obWs.onopen = null;
+      this.obWs.onmessage = null;
+      this.obWs.onerror = null;
+      this.obWs.onclose = null;
+      this.obWs.close();
+      this.obWs = null;
+    }
+
+    if (!this.obPair || !this.obCb) return;
+
+    this.obManager = new OrderbookManager();
+    this.obManager.onGapDetected = () => {
+      console.warn(`[BinanceFuturesAdapter] Orderbook gap detected, forcing resync...`);
+      if (this.obWs) {
+        this.obWs.close();
+      }
+    };
+
+    const url = `wss://fstream.binance.com/ws/${this.obPair}@depth@100ms`;
+    this.obWs = new WebSocket(url);
+
+    this.obWs.onopen = () => {
+      this.obReconnectAttempts = 0;
+      this.setObState('SYNCING');
+      console.log(`[BinanceFuturesAdapter] Orderbook stream connected: ${this.obPair}@depth@100ms, syncing...`);
+      
+      this.fetchOrderbookSnapshot(this.obPair as string).then((snapshot) => {
+        if (this.obManager) {
+          this.obManager.initFromSnapshot(snapshot);
+          this.setObState('LIVE');
+          console.log(`[BinanceFuturesAdapter] Orderbook LIVE for ${this.obPair}`);
+        }
+      });
+    };
+
+    this.obWs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data) as DepthUpdate;
+        if (this.obManager) {
+          this.obManager.applyUpdate(data);
+          
+          if (this.obState === 'LIVE' && this.obCb) {
+            this.obCb(data);
+          }
+        }
+      } catch (e) {
+        console.error(`[BinanceFuturesAdapter] Error parsing orderbook message:`, e);
+      }
+    };
+
+    this.obWs.onerror = (error) => {
+      if (this.obWs && this.obWs.readyState !== WebSocket.CLOSED) {
+        console.error(`[BinanceFuturesAdapter] Orderbook WS error:`, error);
+      }
+    };
+
+    this.obWs.onclose = (event) => {
+      if (this.obShouldReconnect && event.code !== 1000) {
+        this.setObState('RESYNCING');
+        this.scheduleObReconnect();
+      } else {
+        this.setObState('DISCONNECTED');
+      }
+    };
+  }
+
+  private scheduleObReconnect(): void {
+    if (this.obReconnectAttempts >= 10) {
+      console.error(`[BinanceFuturesAdapter] Max orderbook reconnect attempts reached.`);
+      return;
+    }
+    if (this.obReconnectTimer) clearTimeout(this.obReconnectTimer);
+
+    const baseDelay = Math.min(1000 * Math.pow(2, this.obReconnectAttempts), 30000);
+    const jitter = Math.floor(Math.random() * 1000);
+    const delay = baseDelay + jitter;
+    this.obReconnectAttempts++;
+    console.log(`[BinanceFuturesAdapter] Orderbook reconnecting in ${delay}ms (Attempt ${this.obReconnectAttempts})`);
+
+    this.obReconnectTimer = setTimeout(() => {
+      this.connectOrderbook();
+    }, delay);
+  }
+
+  disconnectOrderbook(): void {
+    this.obShouldReconnect = false;
+    if (this.obReconnectTimer) {
+      clearTimeout(this.obReconnectTimer);
+      this.obReconnectTimer = null;
+    }
+    if (this.obWs) {
+      this.obWs.onopen = null;
+      this.obWs.onmessage = null;
+      this.obWs.onerror = null;
+      this.obWs.onclose = null;
+      this.obWs.close();
+      this.obWs = null;
+    }
+    this.setObState('DISCONNECTED');
+    this.obCb = null;
   }
 
   clone(): BinanceFuturesAdapter {

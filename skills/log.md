@@ -15,7 +15,20 @@
   - Storage adapter automatically mounts TimescaleDB when `MARKET_DB_DRIVER=timescaledb`.
   - Faster ingestion and more flexible time-windowing for analytical endpoints.
 
-## [2026-08-29] - Fix: TimescaleDB Migration Audit Fixes
+## [2026-08-30] - Orderbook Pipeline & MongoDB Cleanup
+
+### Changes Made
+- **Cleanup**: 
+  - Permanently deleted `lib/db/_mongo_quarantine`.
+  - Uninstalled `mongodb` NPM package.
+- **Feeds**: 
+  - Integrated `OrderbookManager` into `BinanceAdapter` (`binance.ts`) and `BinanceFuturesAdapter` (`binanceFutures.ts`).
+  - Adapters now fetch a REST `/depth` snapshot on connect, buffer diffs, and strictly align sequence IDs.
+  - Added gap detection (`U` vs `lastUpdateId` + 1) which automatically triggers a `RESYNCING` transition to repair the local book.
+- **Why it changed**:
+  - Following the `part-1-data-ingestion-pipeline.md` specification to guarantee downstream consumers (frontend and DB collector) receive perfect, gap-free orderbook states.
+
+## [2026-08-29] - Update: TimescaleDB Final Cleanup and Bug Fixes
 
 - **What changed**:
   - Fixed duplicate `let shuttingDown = false` declaration in `btcusdtCollector.mjs` (would have caused SyntaxError at runtime).

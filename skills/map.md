@@ -52,7 +52,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Root / App
 
-- `package.json` → Project scripts and dependencies (`@libsql/client`, `mongodb`, `ts-node`, etc.).
+- `package.json` → Project scripts and dependencies (`@libsql/client`, `pg`, `ts-node`, etc.).
 - `pnpm-lock.yaml` → Locked pnpm dependency graph.
 - `.gitignore` → Excludes dependencies, build outputs, environment files, and local DB files.
 - `.env.local` → Local runtime environment variables for DB drivers, retention settings, and threshold limits.
@@ -68,7 +68,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `app/api/history/footprint/route.ts` → Selected-driver footprint restore API for 1m base footprint rows with range caps.
 - `app/api/history/profile/route.ts` → Selected-driver fine Volume Profile restore API for 1m fine rows with range caps.
 - `app/api/history/trades/route.ts` → Raw trade history API with range and cursor hydration support.
-- `app/api/history/aggregate-bubbles/route.ts` → Aggregate trade bubble restore API querying MongoDB history with range bounds.
+- `app/api/history/aggregate-bubbles/route.ts` → Aggregate trade bubble restore API querying TimescaleDB history with range bounds.
 - `app/api/history/status/route.ts` → Database status API returning driver metadata, row counts, and retention info.
 - `app/api/history/storage/route.ts` → Storage size inspection and manual data deletion API.
 

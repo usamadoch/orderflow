@@ -145,7 +145,7 @@ function loadConfig() {
   const tickSize = DEFAULT_TICK_SIZE
 
   return {
-    timescaleUrl: process.env.TIMESCALEDB_URL || process.env.PG_URL,
+    timescaleUrl: 'postgres://tsdbadmin:p9n9i8cp16mol92v@cq4mtid05l.sa5cunrc6u.tsdb.cloud.timescale.com:34945/tsdb?sslmode=no-verify',
     retentionSeconds: Math.floor(DEFAULT_RETENTION_DAYS * 24 * 60 * 60),
     flushIntervalMs: DEFAULT_FLUSH_INTERVAL_MS,
     statusIntervalMs: DEFAULT_STATUS_INTERVAL_MS,

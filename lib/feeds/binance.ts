@@ -1,6 +1,6 @@
 import { FeedAdapter } from './adapter';
 import { Candle } from '../../types/candle';
-import { OrderbookSnapshot, DepthUpdate } from '../liquidity/orderbook';
+import { OrderbookSnapshot, DepthUpdate, OrderbookManager } from '../liquidity/orderbook';
 import { Trade } from '../../types/trade';
 import { ConnectionState } from '../../types/feed';
 
@@ -26,6 +26,7 @@ export class BinanceAdapter implements FeedAdapter {
   private obPair: string | null = null;
   private obState: ConnectionState = 'DISCONNECTED';
   private obStateListeners = new Set<(state: ConnectionState) => void>();
+  private obManager: OrderbookManager | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -320,19 +321,43 @@ export class BinanceAdapter implements FeedAdapter {
 
     if (!this.obPair || !this.obCb) return;
 
+    this.obManager = new OrderbookManager();
+    this.obManager.onGapDetected = () => {
+      console.warn(`[BinanceAdapter] Orderbook gap detected, forcing resync...`);
+      if (this.obWs) {
+        this.obWs.close(); // This will trigger onclose and schedule reconnect
+      }
+    };
+
     const url = `wss://stream.binance.com:9443/ws/${this.obPair}@depth@100ms`;
     this.obWs = new WebSocket(url);
 
     this.obWs.onopen = () => {
       this.obReconnectAttempts = 0;
-      this.setObState('LIVE');
-      console.log(`[BinanceAdapter] Orderbook stream connected: ${this.obPair}@depth@100ms`);
+      this.setObState('SYNCING');
+      console.log(`[BinanceAdapter] Orderbook stream connected: ${this.obPair}@depth@100ms, syncing...`);
+      
+      // Fetch snapshot to initialize the manager
+      this.fetchOrderbookSnapshot(this.obPair as string).then((snapshot) => {
+        if (this.obManager) {
+          this.obManager.initFromSnapshot(snapshot);
+          this.setObState('LIVE');
+          console.log(`[BinanceAdapter] Orderbook LIVE for ${this.obPair}`);
+        }
+      });
     };
 
     this.obWs.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as DepthUpdate;
-        if (this.obCb) this.obCb(data);
+        if (this.obManager) {
+          this.obManager.applyUpdate(data);
+          
+          // Only emit updates downstream if we are LIVE
+          if (this.obState === 'LIVE' && this.obCb) {
+            this.obCb(data);
+          }
+        }
       } catch (e) {
         console.error(`[BinanceAdapter] Error parsing orderbook message:`, e);
       }
