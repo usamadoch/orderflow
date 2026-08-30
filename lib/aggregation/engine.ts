@@ -141,6 +141,7 @@ export class AggregationEngine {
 
     if (cells.size === 0 && !candle) return null;
 
+   
     return this.getDisplayCandleMetadata(time, volume, delta, cells);
   }
 

@@ -1,5 +1,16 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-30] - Feature: Hollow Candles Support
+
+- **What changed**:
+  - Added `'hollow'` to `ChartMode` in `types/chart.ts`.
+  - Updated `drawCandles.ts` to support rendering hollow bodies (with continuous wicks) for ALL candles when `isHollowMode` is true, keeping standard up/down coloring.
+  - Replaced the inline "C and F" mode toggle buttons in `PanelToolbar.tsx` with a new `ChartModeSelector.tsx` dropdown.
+  - Mapped dropdown options to `Candlestick`, `Hollow`, and `Footprint`, styled identically to the Indicators modal (including a custom thin scrollbar, descriptions, and active state checkmarks).
+- **Why it changed**:
+  - To fulfill user request for a third "Hollow Candles" chart type conforming to conventional charting rules, and to provide a more scalable UI for switching chart modes as the application grows.
+- **Impact summary**:
+  - Users can now select Hollow Candles, improving visualization options without impacting underlying data aggregation or fetching logic. UI is modernized with a dropdown selector.
 ## [2026-08-29] - Feature: TimescaleDB Migration
 
 - **What changed**:

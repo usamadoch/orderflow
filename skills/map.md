@@ -97,7 +97,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/BubblesDocsModal.tsx` → Reference modal explaining Volume Bubbles visualization, sizing, and color indicators.
 - `components/ui/PairSelector.tsx` → Symbol selection modal supporting Spot and Perpetual Futures contracts.
 - `components/ui/TimeframeSelector.tsx` → Panel timeframe switcher control.
-- `components/ui/ChartModeToggle.tsx` → Candle and footprint chart mode selector.
+- `components/ui/ChartModeSelector.tsx` → Chart mode dropdown selector for Candle, Hollow, and Footprint.
+- `components/ui/ChartModeToggle.tsx` → (Legacy) Candle and footprint chart mode selector.
 - `components/ui/BucketSizeInput.tsx` → Footprint bucket size selector input.
 - `components/ui/StorageManager.tsx` → Modal component for viewing daily storage sizes and executing manual data cleanup.
 - `components/debug/DebugPanel.tsx` → Floating dev debug panel (Ctrl+Shift+D) displaying metrics, store summaries, and restore diagnostics.

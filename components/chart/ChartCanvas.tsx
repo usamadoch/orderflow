@@ -78,7 +78,7 @@ import { drawFootprint } from './drawFootprint';
 import { drawDrawingPriceLabels, drawLines } from './drawLines';
 import { drawPriceLine } from './drawPriceLine';
 import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
-import { drawStatsGrid, STATS_GRID_ROW_HEIGHT } from './drawStatsGrid';
+import { drawStatsGrid } from './drawStatsGrid';
 import { drawTradingOverlays, TradingOverlayHitZones } from './drawTradingOverlays';
 import { drawVolumeBars } from './drawVolumeBars';
 import { drawVolumeProfile } from './drawVolumeProfile';
@@ -645,8 +645,8 @@ export function ChartCanvas({
       }
 
       if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
-        if (chartMode === 'candle') {
-          drawCandles(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth);
+        if (chartMode === 'candle' || chartMode === 'hollow') {
+          drawCandles(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, chartMode === 'hollow');
         } else {
           drawFootprint(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, chartHeight, footprintMode);
         }

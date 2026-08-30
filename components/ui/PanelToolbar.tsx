@@ -6,6 +6,7 @@ import { useChartStore, PanelId, type SettingsOpenRequest } from '../../lib/stor
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 import { ChartSettingsDropdown } from './ChartSettingsDropdown';
 import { PairSelector } from './PairSelector';
+import { ChartModeSelector } from './ChartModeSelector';
 import { deleteSharedCandleCache } from '../../lib/feeds/candleCache';
 import { deleteSharedFootprintCache } from '../../lib/aggregation/footprintCache';
 import { deleteSharedVolumeProfileCache } from '../../lib/volumeProfile/profileCache';
@@ -23,7 +24,6 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const panel = useChartStore(s => s.panels[panelId]);
   const tickSize = useChartStore(s => s.tickSize);
   const setTimeframe = useChartStore(s => s.setTimeframe);
-  const setChartMode = useChartStore(s => s.setChartMode);
   const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
   const setMeasureToolActive = useChartRuntimeStore(s => s.setMeasureToolActive);
   const focusMode = useChartStore(s => s.focusMode);
@@ -106,26 +106,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
       </div>
 
       {/* Mode Toggle */}
-      <div className="flex gap-0.5 bg-[#0F0F0F] p-0.5 rounded-md border border-[#1F1F1F]">
-        <button
-          onClick={() => panel.chartMode !== 'candle' && setChartMode(panelId, 'candle')}
-          className={`px-2 py-0.5 text-[10px] font-black rounded tracking-wider transition-all duration-200 ${panel.chartMode === 'candle'
-            ? 'bg-accent text-white shadow-sm shadow-accent/20'
-            : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
-            }`}
-        >
-          C
-        </button>
-        <button
-          onClick={() => panel.chartMode !== 'footprint' && setChartMode(panelId, 'footprint')}
-          className={`px-2 py-0.5 text-[10px] font-black rounded tracking-wider transition-all duration-200 ${panel.chartMode === 'footprint'
-            ? 'bg-accent text-white shadow-sm shadow-accent/20'
-            : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
-            }`}
-        >
-          F
-        </button>
-      </div>
+      <ChartModeSelector panelId={panelId} />
 
       {/* Indicators Button */}
       <div className="relative flex items-center h-full">

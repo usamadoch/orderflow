@@ -28,7 +28,7 @@ import { LiquidityHistoryManager } from '../lib/liquidity/history';
 import { IcebergEngine } from '../lib/iceberg/engine';
 import type { VolumeProfileSource } from './volumeProfile';
 
-export type ChartMode = 'candle' | 'footprint';
+export type ChartMode = 'candle' | 'footprint' | 'hollow';
 export type PanelId = 'left' | 'right';
 export type LayoutMode = 'single' | 'dual';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
