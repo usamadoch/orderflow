@@ -91,6 +91,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/OrdersPanel.tsx` → Bottom pane table displaying open limit orders with real-time status and cancellation controls.
 - `components/ui/DrawingFavoritesToolbar.tsx` → Floating toolbar for quick selection of favorite drawing tools (Profile, Measure, Lines, Boxes).
 - `components/ui/ChartSettingsDropdown.tsx` → The main popup/dropdown for configuring indicator settings and profiles.
+- `components/ui/chart-settings/` → Modularized component files for `ChartSettingsDropdown` (e.g., `GeneralChartSettings.tsx`, `SessionsSettings.tsx`, `CvdSettings.tsx`, `VolumeBarsSettings.tsx`, `BubbleSettings.tsx`, `LiquidityMapSettings.tsx`, `HeatmapSettings.tsx`, `StatsSettings.tsx`, `SignalSettings.tsx`, `FootprintSettings.tsx`, `VolumeProfileSettings.tsx`, `HistoricalSessionProfileSettings.tsx`).
 - `components/ui/IndicatorsModal.tsx` → The popup modal for adding new indicators from the PanelToolbar.
 - `components/ui/GlobalSettingsModal.tsx` → Application-wide settings (e.g., UI preferences, global time format).
 - `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with AM/PM toggle) and 24-hour modes matching global settings.

@@ -1,5 +1,23 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-30] - Refactoring: Component Modularization (`ChartSettingsDropdown.tsx`)
+
+- **What changed**:
+  - Refactored `ChartSettingsDropdown.tsx`, a monolithic 2,476-line file, into modular, isolated sub-components.
+  - Created a new `components/ui/chart-settings/` directory and `index.ts` export barrel.
+  - Extracted UI render functions into independent components: `SessionsSettings`, `CvdSettings`, `VolumeBarsSettings`, `BubbleSettings`, `VolumeProfileSettings`, `HistoricalSessionProfileSettings`, `LiquidityMapSettings`, `HeatmapSettings`, `StatsSettings`, `SignalSettings`, `GeneralChartSettings`, and `FootprintSettings`.
+  - Fixed sidebar tab selection contrast issue where global `.popup-contrast` CSS was applying dark background overrides onto inactive tab buttons instead of the active tab.
+  - Added dedicated `.sidebar-tab-btn` styling to `globals.css` with clean active highlight and transparent default states.
+  - Refined draggable start coordinate calculation to use bounding client rect on mount.
+
+- **Why it changed**:
+  - The original file violated the client code refactoring guidelines (hard limit of 250 lines per component), making it difficult to maintain and scale.
+  - Improved readability, modularity, and encapsulation of state management (`useChartStore`).
+- **Impact summary**:
+  - No functional logic changes were made; strictly a cosmetic and structural refactor.
+  - Greatly improved code maintainability and adherence to the 250-line component size rule.
+
+
 ## [2026-08-30] - Feature: Volume Bubbles Configuration & Cosmetic Upgrades
 
 - **What changed**:
