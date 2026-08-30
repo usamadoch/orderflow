@@ -16,12 +16,12 @@ export async function GET() {
 
 export async function DELETE(request: Request) {
   try {
-    const { dates, targets } = await request.json()
+    const { dates } = await request.json()
     if (!Array.isArray(dates) || dates.length === 0) {
       return NextResponse.json({ error: 'dates array is required' }, { status: 400 })
     }
 
-    const totalDeleted = await deleteStorageDays(dates, targets)
+    const totalDeleted = await deleteStorageDays(dates)
     return NextResponse.json({ success: true, deletedCount: totalDeleted })
   } catch (error: unknown) {
     console.error('Failed to delete storage data:', error)

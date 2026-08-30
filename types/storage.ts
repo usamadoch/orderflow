@@ -1,7 +1,5 @@
 export interface StorageDay {
   date: string;
-  mainMb: number;
-  bubbleMb: number;
   sizeMb: number;
 }
 
@@ -11,6 +9,5 @@ export interface DatabaseInfo {
 }
 
 export interface DatabasesInfo {
-  main: DatabaseInfo;
-  bubbles: DatabaseInfo;
+  timescale: DatabaseInfo;
 }

@@ -70,7 +70,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `app/api/history/trades/route.ts` → Raw trade history API with range and cursor hydration support.
 - `app/api/history/aggregate-bubbles/route.ts` → Aggregate trade bubble restore API querying TimescaleDB history with range bounds.
 - `app/api/history/status/route.ts` → Database status API returning driver metadata, row counts, and retention info.
-- `app/api/history/storage/route.ts` → Storage size inspection and manual data deletion API.
+- `app/api/history/storage/route.ts` → Storage size inspection and manual data deletion API for TimescaleDB.
 
 ### Trading APIs
 
@@ -100,7 +100,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/ChartModeSelector.tsx` → Chart mode dropdown selector for Candle, Hollow, and Footprint.
 - `components/ui/ChartModeToggle.tsx` → (Legacy) Candle and footprint chart mode selector.
 - `components/ui/BucketSizeInput.tsx` → Footprint bucket size selector input.
-- `components/ui/StorageManager.tsx` → Modal component for viewing daily storage sizes and executing manual data cleanup.
+- `components/ui/StorageManager.tsx` → Modal component (rendered via Portal) for viewing TimescaleDB storage usage and executing manual data cleanup.
 - `components/debug/DebugPanel.tsx` → Floating dev debug panel (Ctrl+Shift+D) displaying metrics, store summaries, and restore diagnostics.
 
 ### Feed / Engine Context
@@ -275,7 +275,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Utilities / Types
 
-- `lib/services/storageService.ts` → Storage usage summary aggregation and date-range deletion service.
+- `lib/services/storageService.ts` → TimescaleDB storage usage summary aggregation and date-range deletion service.
 - `lib/validators/orderValidation.ts` → Order request payload reading, parameter normalization, validation, and error response builder.
 - `lib/validators/historyValidation.ts` → History API time parameter normalization, contract type resolution, and query parameter validation.
 - `lib/utils/tradingApiUtils.ts` → Shared symbol/limit normalizers and error snapshot/status builders for trading APIs.

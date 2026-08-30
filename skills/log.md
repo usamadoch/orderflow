@@ -1,5 +1,22 @@
 # OrderFlow Chart - Change Log
 
+## [2026-08-30] - Fix & Refactor: StorageManager TimescaleDB Migration & UI Z-Index Overlay
+
+- **What changed**:
+  - **Storage Service (`lib/services/storageService.ts`)**: Removed separate "Main DB" and "Bubbles DB" aggregation logic, combining storage metrics into a single unified TimescaleDB report that matches the new architecture.
+  - **API Route (`app/api/history/storage/route.ts`)**: Removed redundant `targets` array from the `DELETE` payload.
+  - **Types (`types/storage.ts`)**: Cleaned up `StorageDay` to only hold a unified `sizeMb`, and `DatabasesInfo` to only hold `timescale`.
+  - **Modal UI (`components/ui/StorageManager.tsx`)**: 
+    - Migrated UI layout to reflect a single TimescaleDB connection instead of splitting Main vs Bubbles databases.
+    - Removed obsolete checkboxes for granular deletion targets.
+    - Wrapped the entire modal in a React Portal (`createPortal` to `document.body`) to escape the `Header` (`z-20`) stacking context.
+    - Explicitly called `e.stopPropagation()` on `onPointerDown` and `onWheel` events at the modal container boundary.
+- **Why it changed**:
+  - The Storage Manager was the final remnant of the old dual MongoDB database architecture and failed to reflect the migrated TimescaleDB single-database schema.
+  - Because the modal was mounted inside the `Header` (`z-20`), chart overlays and crosshairs (`z-30`) were intercepting mouse and wheel events, making the modal visually overlap the canvas but behave as if it was underneath it.
+- **Impact summary**:
+  - The Storage Manager accurately represents the single TimescaleDB backend. Deleting data properly truncates footprints, profiles, and bubbles concurrently for chosen dates.
+  - The UI modal now correctly traps all scroll and click events, cleanly isolating interaction away from the chart canvas.
 ## [2026-08-30] - Feature: Hollow Candles Support
 
 - **What changed**:
