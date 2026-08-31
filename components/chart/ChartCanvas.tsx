@@ -41,7 +41,7 @@ import type { ExhaustionResult } from '@/types/exhaustion';
 import type { FootprintMode } from '@/types/footprint';
 import type { IcebergLevel } from '@/types/iceberg';
 import type { HeatmapRow } from '@/types/liquidity';
-import type { Order, BracketDragState, PendingModifyOrder, Position } from '@/types/trading';
+import type { Order, BracketDragState, PendingModifyOrder, Position, BracketOrder, VirtualPosition } from '@/types/trading';
 import type { VolumeProfileSource } from '@/types/volumeProfile';
 
 // 3. Relative component & canvas imports
@@ -384,7 +384,13 @@ export function ChartCanvas({
   const [showModifyBracketConfirm, setShowModifyBracketConfirm] = React.useState(false);
   const [pendingModifyOrder, setPendingModifyOrder] = React.useState<PendingModifyOrder | null>(null);
   const [showModifyConfirm, setShowModifyConfirm] = React.useState(false);
+  const [confirmClosePosition, setConfirmClosePosition] = React.useState<VirtualPosition | null>(null);
+  const [isClosingPosition, setIsClosingPosition] = React.useState(false);
   const [chartOrderMessage, setChartOrderMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const bracketDragConfirmEnabled = useChartStore(s => s.bracketDragConfirmEnabled);
+  const virtualPositions = useChartRuntimeStore(s => s.tradingStatus.virtualPositions);
+  const bracketOrders = useChartRuntimeStore(s => s.tradingStatus.bracketOrders);
+  const bracketDrag = useChartRuntimeStore(s => s.tradingStatus.bracketDrag);
   const currentTradingMode = useChartRuntimeStore(s => s.tradingStatus.currentMode);
   const modeBadge = useChartRuntimeStore(s => s.tradingStatus.modeBadge);
   const orderActionLoading = useChartRuntimeStore(s => s.tradingStatus.orderActionLoading);
@@ -1621,7 +1627,7 @@ export function ChartCanvas({
     if (containerSize.width === 0 || containerSize.height === 0) return [];
 
     const chartWidth = containerSize.width - priceAxisWidth;
-    const chartHeight = containerSize.height - timeAxisHeight;
+    const chartHeight = getBottomLayout(containerSize.height).mainChartHeight;
     if (chartWidth <= 0 || chartHeight <= 0) return [];
 
     const pCenter = priceCenter.current ?? 0;
@@ -1641,7 +1647,78 @@ export function ChartCanvas({
         };
       })
       .filter((item): item is { order: Order; top: number; left: number } => item !== null);
-  }, [containerSize, priceAxisWidth, timeAxisHeight, priceCenter, priceRange]);
+  }, [containerSize, priceAxisWidth, getBottomLayout, priceCenter, priceRange]);
+
+  const tradingOverlayControls = useMemo(() => {
+    if (containerSize.width === 0 || containerSize.height === 0) {
+      return { positions: [], sls: [], tps: [] };
+    }
+
+    const chartWidth = containerSize.width - priceAxisWidth;
+    const chartHeight = getBottomLayout(containerSize.height).mainChartHeight;
+    if (chartWidth <= 0 || chartHeight <= 0) {
+      return { positions: [], sls: [], tps: [] };
+    }
+
+    const pCenter = priceCenter.current ?? 0;
+    const pRange = priceRange.current ?? 100;
+    const priceMin = pCenter - pRange / 2;
+    const priceMax = pCenter + pRange / 2;
+
+    const positions: { vp: VirtualPosition; top: number; left: number }[] = [];
+    const sls: { positionId: string; slPrice: number; top: number; left: number }[] = [];
+    const tps: { positionId: string; tpPrice: number; top: number; left: number }[] = [];
+
+    for (const vp of virtualPositions) {
+      if (vp.status !== 'open' || !Number.isFinite(vp.entryPrice)) continue;
+
+      // Position Entry Close Button
+      const entryY = calcPriceToY(vp.entryPrice, priceMin, priceMax, chartHeight);
+      if (entryY >= -12 && entryY <= chartHeight + 12) {
+        positions.push({
+          vp,
+          top: Math.max(4, Math.min(chartHeight - 22, entryY - 9)),
+          left: Math.max(8, chartWidth - 24),
+        });
+      }
+
+      // Check Bracket
+      const bracket = bracketOrders.find((b) => b.positionId === vp.id);
+      const isDraggingSL = bracketDrag?.positionId === vp.id && bracketDrag.handle === 'sl';
+      const slPrice = isDraggingSL ? bracketDrag.previewPrice : bracket?.stopLossPrice;
+      const isSlActive = (bracket?.stopLossPrice != null && bracket.stopLossStatus === 'active') || isDraggingSL;
+
+      if (isSlActive && slPrice != null) {
+        const slY = calcPriceToY(slPrice, priceMin, priceMax, chartHeight);
+        if (slY >= -12 && slY <= chartHeight + 12) {
+          sls.push({
+            positionId: vp.id,
+            slPrice,
+            top: Math.max(4, Math.min(chartHeight - 22, slY - 9)),
+            left: Math.max(8, chartWidth - 24),
+          });
+        }
+      }
+
+      const isDraggingTP = bracketDrag?.positionId === vp.id && bracketDrag.handle === 'tp';
+      const tpPrice = isDraggingTP ? bracketDrag.previewPrice : bracket?.takeProfitPrice;
+      const isTpActive = (bracket?.takeProfitPrice != null && bracket.takeProfitStatus === 'active') || isDraggingTP;
+
+      if (isTpActive && tpPrice != null) {
+        const tpY = calcPriceToY(tpPrice, priceMin, priceMax, chartHeight);
+        if (tpY >= -12 && tpY <= chartHeight + 12) {
+          tps.push({
+            positionId: vp.id,
+            tpPrice,
+            top: Math.max(4, Math.min(chartHeight - 22, tpY - 9)),
+            left: Math.max(8, chartWidth - 24),
+          });
+        }
+      }
+    }
+
+    return { positions, sls, tps };
+  }, [containerSize, priceAxisWidth, getBottomLayout, priceCenter, priceRange, virtualPositions, bracketOrders, bracketDrag]);
 
   const handleCancelOrder = useCallback(async (order: Order) => {
     if (confirmingCancelOrderId !== order.id) {
@@ -1771,7 +1848,14 @@ export function ChartCanvas({
           const data = await pollRes.json();
           if (data.status) {
             if (data.status.toLowerCase() === 'filled') {
-              setChartOrderMessage({ type: 'success', text: `Market Order filled at ${data.fillPrice}` });
+              const lastCandles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
+              const lastClose = lastCandles.length > 0 ? lastCandles[lastCandles.length - 1].close : null;
+              const resolvedFillPrice = Number(data.fillPrice) > 0 ? Number(data.fillPrice) : (Number(data.openPrice) > 0 ? Number(data.openPrice) : lastClose);
+
+              setChartOrderMessage({
+                type: 'success',
+                text: resolvedFillPrice ? `Market Order filled at ${formatPrice(resolvedFillPrice)}` : 'Market Order filled',
+              });
               const vpId = data.ticket.toString();
               const side = direction === 'buy' ? 'long' : 'short';
               const slVal = data.sl || slPrice;
@@ -1782,7 +1866,7 @@ export function ChartCanvas({
                 symbol: tradingSymbol,
                 side,
                 quantity: data.volume || 1,
-                entryPrice: data.fillPrice,
+                entryPrice: resolvedFillPrice ?? 0,
                 status: 'open',
                 unrealizedPnl: 0,
                 openedAt: Date.now(),
@@ -1814,7 +1898,7 @@ export function ChartCanvas({
       setChartOrderMessage({ type: 'error', text: (err as Error).message || 'Bridge connection error' });
       setTradingStatus({ pendingMarketOrderId: null });
     }
-  }, [tradingSymbol, setTradingStatus]);
+  }, [tradingSymbol, setTradingStatus, panelId]);
 
   const handleConfirmBracketModify = useCallback(async () => {
     if (!pendingModifyBracket) return;
@@ -1882,6 +1966,235 @@ export function ChartCanvas({
       setPendingModifyBracket(null);
     }
   }, [pendingModifyBracket]);
+
+  const executeBracketModifyDirect = useCallback(async ({
+    positionId,
+    sl,
+    tp,
+    originalSl,
+    originalTp,
+  }: {
+    positionId: string;
+    sl: number;
+    tp: number;
+    originalSl?: number;
+    originalTp?: number;
+  }) => {
+    const requestId = crypto.randomUUID();
+    try {
+      const res = await fetch('http://localhost:3001/modify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          ticket: parseInt(positionId, 10),
+          sl,
+          tp,
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to send modify to bridge');
+
+      const maxRetries = 50; // 10 seconds
+      for (let i = 0; i < maxRetries; i++) {
+        const pollRes = await fetch(`http://localhost:3001/modify-result/${requestId}`);
+        if (pollRes.ok) {
+          const data = await pollRes.json();
+          if (data.success !== undefined) {
+            if (data.success) {
+              setChartOrderMessage({ type: 'success', text: `Bracket for #${positionId} modified successfully` });
+              const store = useChartRuntimeStore.getState();
+              const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+              if (existing) {
+                store.upsertBracketOrder({
+                  ...existing,
+                  stopLossPrice: sl > 0 ? sl : undefined,
+                  takeProfitPrice: tp > 0 ? tp : undefined,
+                  stopLossStatus: sl > 0 ? 'active' : 'none',
+                  takeProfitStatus: tp > 0 ? 'active' : 'none',
+                  updatedAt: Date.now(),
+                });
+              }
+            } else {
+              setChartOrderMessage({ type: 'error', text: data.error || 'Modification rejected by EA' });
+              // Revert to original prices on rejection
+              const store = useChartRuntimeStore.getState();
+              const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+              if (existing) {
+                store.upsertBracketOrder({
+                  ...existing,
+                  stopLossPrice: originalSl,
+                  takeProfitPrice: originalTp,
+                  stopLossStatus: originalSl && originalSl > 0 ? 'active' : 'none',
+                  takeProfitStatus: originalTp && originalTp > 0 ? 'active' : 'none',
+                  updatedAt: Date.now(),
+                });
+                redraw();
+              }
+            }
+            return;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      setChartOrderMessage({ type: 'error', text: 'No response from EA' });
+      // Revert on timeout
+      const store = useChartRuntimeStore.getState();
+      const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+      if (existing) {
+        store.upsertBracketOrder({
+          ...existing,
+          stopLossPrice: originalSl,
+          takeProfitPrice: originalTp,
+          stopLossStatus: originalSl && originalSl > 0 ? 'active' : 'none',
+          takeProfitStatus: originalTp && originalTp > 0 ? 'active' : 'none',
+          updatedAt: Date.now(),
+        });
+        redraw();
+      }
+    } catch (err: unknown) {
+      setChartOrderMessage({ type: 'error', text: (err as Error).message || 'Bridge connection error' });
+      // Revert on error
+      const store = useChartRuntimeStore.getState();
+      const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+      if (existing) {
+        store.upsertBracketOrder({
+          ...existing,
+          stopLossPrice: originalSl,
+          takeProfitPrice: originalTp,
+          stopLossStatus: originalSl && originalSl > 0 ? 'active' : 'none',
+          takeProfitStatus: originalTp && originalTp > 0 ? 'active' : 'none',
+          updatedAt: Date.now(),
+        });
+        redraw();
+      }
+    }
+  }, [redraw]);
+
+  const handleRemoveStopLoss = useCallback(async (positionId: string) => {
+    const store = useChartRuntimeStore.getState();
+    const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+    if (!existing) return;
+
+    const originalSl = existing.stopLossPrice;
+    const currentTp = existing.takeProfitPrice || 0;
+
+    // Optimistically remove SL in local store
+    store.upsertBracketOrder({
+      ...existing,
+      stopLossPrice: undefined,
+      stopLossStatus: 'none',
+      updatedAt: Date.now(),
+    });
+    redraw();
+
+    void executeBracketModifyDirect({
+      positionId,
+      sl: 0,
+      tp: currentTp,
+      originalSl,
+      originalTp: currentTp,
+    });
+  }, [executeBracketModifyDirect, redraw]);
+
+  const handleRemoveTakeProfit = useCallback(async (positionId: string) => {
+    const store = useChartRuntimeStore.getState();
+    const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+    if (!existing) return;
+
+    const currentSl = existing.stopLossPrice || 0;
+    const originalTp = existing.takeProfitPrice;
+
+    // Optimistically remove TP in local store
+    store.upsertBracketOrder({
+      ...existing,
+      takeProfitPrice: undefined,
+      takeProfitStatus: 'none',
+      updatedAt: Date.now(),
+    });
+    redraw();
+
+    void executeBracketModifyDirect({
+      positionId,
+      sl: currentSl,
+      tp: 0,
+      originalSl: currentSl,
+      originalTp,
+    });
+  }, [executeBracketModifyDirect, redraw]);
+
+  const handleExecuteClosePosition = useCallback(async () => {
+    if (!confirmClosePosition) return;
+    setIsClosingPosition(true);
+    const positionId = confirmClosePosition.id;
+    const requestId = crypto.randomUUID();
+
+    try {
+      const res = await fetch('http://localhost:3001/close-position', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          ticket: parseInt(positionId, 10),
+        }),
+      });
+
+      if (!res.ok) throw new Error('Failed to send close request to bridge');
+
+      const maxRetries = 50; // 10 seconds
+      for (let i = 0; i < maxRetries; i++) {
+        const pollRes = await fetch(`http://localhost:3001/close-result/${requestId}`);
+        if (pollRes.ok) {
+          const data = await pollRes.json();
+          if (data.success !== undefined) {
+            if (data.success) {
+              setChartOrderMessage({ type: 'success', text: `Position #${positionId} closed` });
+              // Optimistically remove position and bracket from store
+              const store = useChartRuntimeStore.getState();
+              const nextVps = store.tradingStatus.virtualPositions.filter((p) => p.id !== positionId);
+              const nextBrackets = store.tradingStatus.bracketOrders.filter((b) => b.positionId !== positionId);
+              store.setTradingStatus({
+                virtualPositions: nextVps,
+                bracketOrders: nextBrackets,
+              });
+              setConfirmClosePosition(null);
+              redraw();
+            } else {
+              setChartOrderMessage({ type: 'error', text: data.error || 'Close position rejected by EA' });
+              setConfirmClosePosition(null);
+            }
+            setIsClosingPosition(false);
+            return;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      setChartOrderMessage({ type: 'error', text: 'No response from EA' });
+      setConfirmClosePosition(null);
+    } catch (err: unknown) {
+      setChartOrderMessage({ type: 'error', text: (err as Error).message || 'Bridge connection error' });
+      setConfirmClosePosition(null);
+    } finally {
+      setIsClosingPosition(false);
+    }
+  }, [confirmClosePosition, redraw]);
+
+  // Auto-dismiss chart notifications after 3.5s
+  useEffect(() => {
+    if (!chartOrderMessage && !orderActionSuccess && !orderActionError && !modifySuccess && !modifyError) return;
+    const timer = setTimeout(() => {
+      setChartOrderMessage(null);
+      useChartRuntimeStore.getState().setTradingStatus({
+        orderActionSuccess: null,
+        orderActionError: null,
+        modifySuccess: null,
+        modifyError: null,
+      });
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [chartOrderMessage, orderActionSuccess, orderActionError, modifySuccess, modifyError]);
 
   // Drawing Interaction Logic
   useEffect(() => {
@@ -2631,16 +2944,50 @@ export function ChartCanvas({
         const store = useChartRuntimeStore.getState();
         const existing = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
 
-        if (existing && Number.isFinite(previewPrice) && previewPrice > 0) {
-          // Revert the temporary drag visualization
+        if (Number.isFinite(previewPrice) && previewPrice > 0) {
+          const originalSl = existing?.stopLossPrice;
+          const originalTp = existing?.takeProfitPrice;
+          const nextSl = handle === 'sl' ? previewPrice : (existing?.stopLossPrice || 0);
+          const nextTp = handle === 'tp' ? previewPrice : (existing?.takeProfitPrice || 0);
+
+          if (!bracketDragConfirmEnabled) {
+            // OPTIMISTIC LOCAL UPDATE: Update bracket order in runtime store immediately
+            const bracketToUpsert: BracketOrder = {
+              id: existing?.id ?? `bracket-${positionId}`,
+              positionId,
+              symbol: existing?.symbol ?? tradingSymbol,
+              stopLossPrice: nextSl > 0 ? nextSl : undefined,
+              takeProfitPrice: nextTp > 0 ? nextTp : undefined,
+              stopLossStatus: nextSl > 0 ? 'active' : 'none',
+              takeProfitStatus: nextTp > 0 ? 'active' : 'none',
+              updatedAt: Date.now(),
+            };
+            store.upsertBracketOrder(bracketToUpsert);
+
+            // Revert the temporary drag visualization without any snap-back
+            store.setBracketDrag(null);
+
+            // Fire modification to bridge asynchronously in the background
+            void executeBracketModifyDirect({
+              positionId,
+              sl: nextSl,
+              tp: nextTp,
+              originalSl,
+              originalTp,
+            });
+          } else {
+            // Revert the temporary drag visualization for confirmation flow
+            store.setBracketDrag(null);
+            
+            setPendingModifyBracket({
+              positionId,
+              sl: nextSl,
+              tp: nextTp,
+            });
+            setShowModifyBracketConfirm(true);
+          }
+        } else {
           store.setBracketDrag(null);
-          
-          setPendingModifyBracket({
-            positionId,
-            sl: handle === 'sl' ? previewPrice : (existing.stopLossPrice || 0),
-            tp: handle === 'tp' ? previewPrice : (existing.takeProfitPrice || 0)
-          });
-          setShowModifyBracketConfirm(true);
         }
 
         // Reset bracket drag state
@@ -2960,7 +3307,7 @@ export function ChartCanvas({
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({
@@ -3037,15 +3384,80 @@ export function ChartCanvas({
         );
       })}
 
+      {tradingOverlayControls.positions.map(({ vp, top, left }) => (
+        <button
+          key={`pos-close-${vp.id}`}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmClosePosition(vp);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute z-20 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-[#444] bg-[#1F1F1F] text-[#999] shadow-md transition-colors hover:border-[#f23645]/80 hover:bg-[#f23645]/25 hover:text-white"
+          style={{ top: `${top}px`, left: `${left}px` }}
+          title={`Close Position #${vp.id}`}
+          aria-label={`Close Position #${vp.id}`}
+        >
+          <X size={11} strokeWidth={2.5} />
+        </button>
+      ))}
+
+      {tradingOverlayControls.sls.map(({ positionId, top, left }) => (
+        <button
+          key={`sl-remove-${positionId}`}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleRemoveStopLoss(positionId);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute z-20 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-[#f23645]/60 bg-[#1F1F1F] text-[#f23645] shadow-md transition-colors hover:border-[#f23645] hover:bg-[#f23645]/30 hover:text-white"
+          style={{ top: `${top}px`, left: `${left}px` }}
+          title={`Remove Stop Loss for #${positionId}`}
+          aria-label={`Remove Stop Loss for #${positionId}`}
+        >
+          <X size={11} strokeWidth={2.5} />
+        </button>
+      ))}
+
+      {tradingOverlayControls.tps.map(({ positionId, top, left }) => (
+        <button
+          key={`tp-remove-${positionId}`}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleRemoveTakeProfit(positionId);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute z-20 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-[#089981]/60 bg-[#1F1F1F] text-[#089981] shadow-md transition-colors hover:border-[#089981] hover:bg-[#089981]/30 hover:text-white"
+          style={{ top: `${top}px`, left: `${left}px` }}
+          title={`Remove Take Profit for #${positionId}`}
+          aria-label={`Remove Take Profit for #${positionId}`}
+        >
+          <X size={11} strokeWidth={2.5} />
+        </button>
+      ))}
+
       {(chartOrderMessage || orderActionError || orderActionSuccess || modifyError || modifySuccess) && (
         <div
-          className={`pointer-events-none absolute right-[92px] top-2 z-20 max-w-[260px] rounded border bg-[#1F1F1F]/94 px-2 py-1 text-[11px] font-semibold shadow-sm ${
+          onClick={() => {
+            setChartOrderMessage(null);
+            useChartRuntimeStore.getState().setTradingStatus({
+              orderActionSuccess: null,
+              orderActionError: null,
+              modifySuccess: null,
+              modifyError: null,
+            });
+          }}
+          className={`cursor-pointer absolute right-[92px] top-2 z-30 flex items-center gap-2 max-w-[320px] rounded border bg-[#1F1F1F]/95 px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur-sm transition-all hover:opacity-80 ${
             (chartOrderMessage?.type === 'error' || orderActionError || modifyError)
-              ? 'border-[#f23645]/55 text-[#ffd7db]'
-              : 'border-[#089981]/55 text-[#c8fff2]'
+              ? 'border-[#f23645]/60 text-[#ffd7db]'
+              : 'border-[#089981]/60 text-[#c8fff2]'
           }`}
+          title="Click to dismiss"
         >
-          {chartOrderMessage?.text ?? modifyError ?? orderActionError ?? modifySuccess ?? orderActionSuccess}
+          <span className="flex-1">{chartOrderMessage?.text ?? modifyError ?? orderActionError ?? modifySuccess ?? orderActionSuccess}</span>
+          <X size={12} className="opacity-60 hover:opacity-100 flex-shrink-0" />
         </div>
       )}
 
@@ -3163,6 +3575,68 @@ export function ChartCanvas({
                 className="h-8 flex-1 rounded bg-accent text-[11px] font-black uppercase tracking-wider text-white hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-55"
               >
                 {modifyLoading ? 'Modifying' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmClosePosition && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+          <div className="flex w-[310px] flex-col overflow-hidden rounded-md border border-[#3A3A3A] bg-[#1E1E1E] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#303030] bg-[#242424] px-4 py-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#D1D4DC]">Close Position</span>
+              <button
+                type="button"
+                onClick={() => setConfirmClosePosition(null)}
+                disabled={isClosingPosition}
+                className="flex h-6 w-6 items-center justify-center rounded text-[#787B86] hover:text-[#E8E8E8] disabled:opacity-50"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 px-4 py-3.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-[#787B86]">Ticket</span>
+                <span className="font-mono font-bold text-[#E8E8E8]">#{confirmClosePosition.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#787B86]">Side / Size</span>
+                <span className={`font-bold ${confirmClosePosition.side === 'long' ? 'text-chart-bullish' : 'text-chart-bearish'}`}>
+                  {confirmClosePosition.side.toUpperCase()} {confirmClosePosition.quantity}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#787B86]">Entry Price</span>
+                <span className="font-mono text-[#E8E8E8]">{formatPrice(confirmClosePosition.entryPrice)}</span>
+              </div>
+              {Number.isFinite(confirmClosePosition.unrealizedPnl) && (
+                <div className="flex justify-between">
+                  <span className="text-[#787B86]">Floating P&L</span>
+                  <span className={`font-mono font-bold ${confirmClosePosition.unrealizedPnl! >= 0 ? 'text-chart-bullish' : 'text-chart-bearish'}`}>
+                    {confirmClosePosition.unrealizedPnl! >= 0 ? '+' : ''}{confirmClosePosition.unrealizedPnl!.toFixed(2)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 border-t border-[#303030] bg-[#191919] px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setConfirmClosePosition(null)}
+                disabled={isClosingPosition}
+                className="h-8 flex-1 rounded border border-[#333] bg-[#262626] text-[11px] font-bold uppercase text-[#B8B8B8] hover:text-[#E8E8E8] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteClosePosition}
+                disabled={isClosingPosition}
+                className="h-8 flex-1 rounded bg-[#F23645] text-[11px] font-black uppercase tracking-wider text-white hover:bg-[#F23645]/85 disabled:opacity-50"
+              >
+                {isClosingPosition ? 'Closing...' : 'Close Position'}
               </button>
             </div>
           </div>

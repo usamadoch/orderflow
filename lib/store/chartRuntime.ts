@@ -411,15 +411,38 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
         }
 
         const existingBracketIdx = nextBrackets.findIndex((b) => b.positionId === vpId);
+        const existingBracket = existingBracketIdx !== -1 ? nextBrackets[existingBracketIdx] : undefined;
+        const isRecentUserModification = existingBracket?.updatedAt && (Date.now() - existingBracket.updatedAt < 6000);
+
+        let finalSl: number | undefined;
+        let finalSlStatus: BracketOrder['stopLossStatus'] = 'none';
+        if (isRecentUserModification) {
+          finalSl = existingBracket?.stopLossPrice;
+          finalSlStatus = existingBracket?.stopLossStatus ?? 'none';
+        } else {
+          finalSl = pos.sl > 0 ? pos.sl : undefined;
+          finalSlStatus = pos.sl > 0 ? 'active' : 'none';
+        }
+
+        let finalTp: number | undefined;
+        let finalTpStatus: BracketOrder['takeProfitStatus'] = 'none';
+        if (isRecentUserModification) {
+          finalTp = existingBracket?.takeProfitPrice;
+          finalTpStatus = existingBracket?.takeProfitStatus ?? 'none';
+        } else {
+          finalTp = pos.tp > 0 ? pos.tp : undefined;
+          finalTpStatus = pos.tp > 0 ? 'active' : 'none';
+        }
+
         const bracket: BracketOrder = {
           id: `bracket-${vpId}`,
           positionId: vpId,
           symbol,
-          stopLossPrice: pos.sl > 0 ? pos.sl : undefined,
-          takeProfitPrice: pos.tp > 0 ? pos.tp : undefined,
-          stopLossStatus: pos.sl > 0 ? 'active' : 'none',
-          takeProfitStatus: pos.tp > 0 ? 'active' : 'none',
-          updatedAt: Date.now(),
+          stopLossPrice: finalSl,
+          takeProfitPrice: finalTp,
+          stopLossStatus: finalSlStatus,
+          takeProfitStatus: finalTpStatus,
+          updatedAt: existingBracket?.updatedAt ?? Date.now(),
         };
 
         if (existingBracketIdx === -1) {

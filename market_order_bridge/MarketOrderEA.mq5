@@ -36,6 +36,8 @@ int OnInit()
 //+------------------------------------------------------------------+
 //| Expert deinitialization function                                 |
 //+------------------------------------------------------------------+
+void SendAccountUpdate();
+
 void OnDeinit(const int reason)
   {
    EventKillTimer();
@@ -134,6 +136,10 @@ void OnTimer()
    if(g_timerTicks % 2 == 0) // alternate ticks (~400ms)
      {
       CheckForPendingModifications();
+     }
+   else
+     {
+      CheckForPendingCloses();
      }
 
    char postData[];
@@ -238,7 +244,9 @@ void OnTimer()
       if(success)
         {
          ulong ticket = trade.ResultOrder();
+         if(ticket <= 0) ticket = trade.ResultDeal();
          double fillPrice = trade.ResultPrice();
+         if(fillPrice <= 0) fillPrice = currentPrice;
          ReportResult(reqId, "filled", ticket, fillPrice, sl, tp);
         }
       else
@@ -316,6 +324,7 @@ void ExecuteModification(string requestId, ulong ticket, double sl, double tp)
    if(ok)
      {
       SendModifyResult(requestId, true, "OK");
+      SendAccountUpdate();
      }
    else
      {
@@ -337,6 +346,78 @@ void SendModifyResult(string requestId, bool success, string errorMsg)
    char result[];
    string resultHeaders;
    string url = g_bridgeUrl + "/modify-result";
+
+   ResetLastError();
+   string headers = "Content-Type: application/json\r\n";
+   WebRequest("POST", url, headers, 1000, postData, result, resultHeaders);
+  }
+
+//+------------------------------------------------------------------+
+//| Fetch /poll-close. If a close request is waiting, execute it.   |
+//+------------------------------------------------------------------+
+void CheckForPendingCloses()
+  {
+   char postData[];
+   char result[];
+   string resultHeaders;
+   string url = g_bridgeUrl + "/poll-close";
+
+   ResetLastError();
+   int res = WebRequest("GET", url, NULL, 500, postData, result, resultHeaders);
+
+   if(res != 200) return;
+
+   string body = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+   if(body == "" || body == "null") return;
+
+   string requestId = ExtractJsonValue(body, "requestId");
+   string ticketStr = ExtractJsonValue(body, "ticket");
+
+   if(requestId == "" || ticketStr == "") return;
+
+   ulong ticket = (ulong)StringToInteger(ticketStr);
+   if(ticket <= 0) return;
+
+   ExecutePositionClose(requestId, ticket);
+  }
+
+//+------------------------------------------------------------------+
+//| Execute position close and send result back.                    |
+//+------------------------------------------------------------------+
+void ExecutePositionClose(string requestId, ulong ticket)
+  {
+   if(!PositionSelectByTicket(ticket))
+     {
+      SendCloseResult(requestId, false, "Position not found");
+      return;
+     }
+
+   bool ok = trade.PositionClose(ticket);
+   if(ok)
+     {
+      SendCloseResult(requestId, true, "OK");
+      SendAccountUpdate();
+     }
+   else
+     {
+      SendCloseResult(requestId, false, "Close error " + IntegerToString(trade.ResultRetcode()));
+     }
+  }
+
+void SendCloseResult(string requestId, bool success, string errorMsg)
+  {
+   char postData[];
+   string payload = "{\"requestId\":\"" + requestId + "\",\"success\":" + (success ? "true" : "false");
+   if(errorMsg != "") payload += ",\"error\":\"" + errorMsg + "\"";
+   payload += "}";
+
+   StringToCharArray(payload, postData, 0, WHOLE_ARRAY, CP_UTF8);
+   int size = ArraySize(postData);
+   if(size > 0 && postData[size-1] == 0) ArrayResize(postData, size-1);
+
+   char result[];
+   string resultHeaders;
+   string url = g_bridgeUrl + "/close-result";
 
    ResetLastError();
    string headers = "Content-Type: application/json\r\n";

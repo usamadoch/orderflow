@@ -22,6 +22,10 @@ let wasWebConnected = false;
 const pendingModifications = []; // FIFO queue
 const modificationResults = new Map(); // requestId -> result
 
+// Close Position State
+const pendingCloses = []; // FIFO queue
+const closeResults = new Map(); // requestId -> result
+
 const server = http.createServer((req, res) => {
   // CORS & Cache headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -149,7 +153,15 @@ const server = http.createServer((req, res) => {
         return respondJson(400, { error: 'Missing requestId or ticket' });
       }
       pendingModifications.push({ requestId, ticket, sl, tp, timestamp: Date.now() });
-      console.log(`[BRIDGE] Modification requested for ticket ${ticket}`);
+      // Optimistically update in-memory cache so subsequent /status polls return updated positions immediately
+      if (Array.isArray(mt5Account.positions)) {
+        const pos = mt5Account.positions.find(p => p.ticket === ticket || p.ticket === Number(ticket) || String(p.ticket) === String(ticket));
+        if (pos) {
+          if (sl !== undefined) pos.sl = sl;
+          if (tp !== undefined) pos.tp = tp;
+        }
+      }
+      console.log(`[BRIDGE] Modification requested for ticket ${ticket} (SL: ${sl}, TP: ${tp})`);
       return respondJson(200, { success: true });
     }
 
@@ -177,6 +189,55 @@ const server = http.createServer((req, res) => {
     if (req.method === 'GET' && req.url.startsWith('/modify-result/')) {
       const requestId = req.url.split('/')[2];
       const result = modificationResults.get(requestId);
+      if (result) {
+        return respondJson(200, result);
+      }
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Result not found' }));
+      return;
+    }
+
+    // --- POSITION CLOSING ---
+
+    if (req.method === 'POST' && req.url === '/close-position') {
+      const { requestId, ticket } = body;
+      if (!requestId || !ticket) {
+        return respondJson(400, { error: 'Missing requestId or ticket' });
+      }
+      pendingCloses.push({ requestId, ticket, timestamp: Date.now() });
+      // Optimistically remove from in-memory cache so subsequent /status polls reflect closed state immediately
+      if (Array.isArray(mt5Account.positions)) {
+        mt5Account.positions = mt5Account.positions.filter(p => p.ticket !== ticket && p.ticket !== Number(ticket) && String(p.ticket) !== String(ticket));
+        mt5Account.openPositions = mt5Account.positions.length;
+      }
+      console.log(`[BRIDGE] Close position requested for ticket ${ticket}`);
+      return respondJson(200, { success: true });
+    }
+
+    if (req.method === 'GET' && req.url === '/poll-close') {
+      lastMt5Heartbeat = Date.now();
+      const closeItem = pendingCloses.shift();
+      if (closeItem) {
+        console.log(`[BRIDGE] Dispensing close ${closeItem.requestId} to EA`);
+        return respondJson(200, closeItem);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('null');
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/close-result') {
+      lastMt5Heartbeat = Date.now();
+      const { requestId, success, error } = body;
+      if (!requestId) return respondJson(400, { error: 'Missing requestId' });
+      closeResults.set(requestId, { success, error, timestamp: Date.now() });
+      console.log(`[BRIDGE] Close result for ${requestId}: ${success ? 'SUCCESS' : 'FAILED'}`);
+      return respondJson(200, { success: true });
+    }
+
+    if (req.method === 'GET' && req.url.startsWith('/close-result/')) {
+      const requestId = req.url.split('/')[2];
+      const result = closeResults.get(requestId);
       if (result) {
         return respondJson(200, result);
       }

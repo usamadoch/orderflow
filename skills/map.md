@@ -116,7 +116,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots and heights for bottom chart indicators.
 - `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, reordering controls, and quick toggles.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas rendering coordinator, imperatively updated via Zustand subscription to avoid React re-renders.
+- `components/chart/ChartCanvas.tsx` → Main canvas rendering coordinator with direct/optimistic bracket TP/SL drag execution, SL/TP close buttons, and position close confirmation popup.
 - `components/chart/chartCanvasUtils.ts` → Coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
 - `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings, custom profile controls, and order modification dialogs.
@@ -157,8 +157,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Persisted Zustand store for chart preferences, indicator settings, drawings, UI state, and tab-aware storage isolation.
-- `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, trades, signals, trading account data, and active drag state.
+- `lib/store/chart.ts` → Persisted Zustand store for chart preferences, indicator settings, drag confirmation preferences, drawings, UI state, and tab-aware storage isolation.
+- `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, trades, signals, trading account data, active drag state, and optimistic bracket sync.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcut handler for chart tools, modes, and navigation.
 - `types/chart.ts` → TypeScript definitions for chart configurations, panels, and indicator options.
 
@@ -261,8 +261,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Local Market Order Bridge
 
-- `market_order_bridge/server.mjs` → Local Express/HTTP bridge script handling POST requests from Next.js, MT5 account/position snapshot updates, and EA polling.
-- `market_order_bridge/MarketOrderEA.mq5` & `skills/new/trade_placing/MarketOrderBridgeEA.mq5` → MT5 Expert Advisors polling the bridge for market orders, calculating lot size by risk %, executing trades with relative SL/TP distance, and reporting periodic account & position snapshots back.
+- `market_order_bridge/server.mjs` → Local HTTP bridge handling market orders, TP/SL modifications, position closes, MT5 account/position snapshot updates, and EA polling.
+- `market_order_bridge/MarketOrderEA.mq5` & `skills/new/trade_placing/MarketOrderBridgeEA.mq5` → MT5 Expert Advisors polling the bridge for market orders, TP/SL modifications, position closes, calculating lot size by risk %, and reporting periodic account & position snapshots.
 
 ### Cache / Metrics / Config
 

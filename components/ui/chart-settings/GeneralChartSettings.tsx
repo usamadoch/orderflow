@@ -24,6 +24,8 @@ export const GeneralChartSettings = forwardRef<HTMLDivElement, GeneralChartSetti
   const setCrosshairSyncEnabled = useChartStore(s => s.setCrosshairSyncEnabled);
   const drawingsSyncEnabled = useChartStore(s => s.drawingsSyncEnabled);
   const setDrawingsSyncEnabled = useChartStore(s => s.setDrawingsSyncEnabled);
+  const bracketDragConfirmEnabled = useChartStore(s => s.bracketDragConfirmEnabled);
+  const setBracketDragConfirmEnabled = useChartStore(s => s.setBracketDragConfirmEnabled);
 
   // Time update for Global Time display
   const [now, setNow] = useState(Date.now());
@@ -149,6 +151,26 @@ export const GeneralChartSettings = forwardRef<HTMLDivElement, GeneralChartSetti
                 }`}
             >
               <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${drawingsSyncEnabled ? 'left-5' : 'left-1'
+                }`} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+          <div>
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">TP / SL Drag Confirmation</label>
+            <div className="text-[9px] text-text-dim/40 font-medium">Require confirmation popup when dragging TP/SL lines</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
+              {bracketDragConfirmEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+            <button
+              onClick={() => setBracketDragConfirmEnabled(!bracketDragConfirmEnabled)}
+              className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${bracketDragConfirmEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
+                }`}
+            >
+              <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${bracketDragConfirmEnabled ? 'left-5' : 'left-1'
                 }`} />
             </button>
           </div>

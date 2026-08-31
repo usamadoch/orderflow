@@ -137,7 +137,7 @@ function drawBracketHandle(
   chartWidth: number,
   isDragging: boolean,
 ): { x: number; y: number; w: number; h: number } {
-  const W = 42, H = 18, MARGIN = 4;
+  const W = 38, H = 18, MARGIN = 28;
   const x = chartWidth - W - MARGIN;
   const ty = y - H / 2;
 
@@ -153,6 +153,36 @@ function drawBracketHandle(
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(label, x + W / 2, y);
+
+  return { x, y: ty, w: W, h: H };
+}
+
+function drawEntryBracketButton(
+  ctx: CanvasRenderingContext2D,
+  label: 'TP' | 'SL',
+  x: number,
+  y: number,
+  color: string,
+): { x: number; y: number; w: number; h: number } {
+  const W = 32, H = 18;
+  const ty = y - H / 2;
+
+  ctx.save();
+  ctx.fillStyle   = 'rgba(31, 31, 31, 0.95)';
+  ctx.strokeStyle = chartColorToRgba(color, 0.85);
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([2, 2]);
+  drawRoundedRect(ctx, x, ty, W, H, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font         = BADGE_FONT;
+  ctx.fillStyle    = color;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`+${label}`, x + W / 2, y);
+  ctx.restore();
 
   return { x, y: ty, w: W, h: H };
 }
@@ -329,13 +359,35 @@ export function drawTradingOverlays(
     // Solid entry line
     drawTradingLine(ctx, y, chartWidth, color, 0.92, 1.75, []);
 
+    // Check existing bracket
+    const bracket = bracketOrders.find((b) => b.positionId === vp.id);
+    const isDraggingSL = bracketDrag?.positionId === vp.id && bracketDrag.handle === 'sl';
+    const isDraggingTP = bracketDrag?.positionId === vp.id && bracketDrag.handle === 'tp';
+    const hasActiveSl = (bracket?.stopLossPrice != null && bracket.stopLossStatus === 'active') || isDraggingSL;
+    const hasActiveTp = (bracket?.takeProfitPrice != null && bracket.takeProfitStatus === 'active') || isDraggingTP;
+
+    // Render draggable +SL and +TP buttons on entry line when not active
+    let curX = chartWidth - 28;
+    if (!hasActiveSl) {
+      curX -= 34;
+      const box = drawEntryBracketButton(ctx, 'SL', curX, y, SL_COLOR);
+      hitZones.slHandles.set(vp.id, box);
+      curX -= 4;
+    }
+    if (!hasActiveTp) {
+      curX -= 34;
+      const box = drawEntryBracketButton(ctx, 'TP', curX, y, TP_COLOR);
+      hitZones.tpHandles.set(vp.id, box);
+      curX -= 4;
+    }
+
     // PnL text
     const pnlStr = Number.isFinite(vp.unrealizedPnl)
       ? ` ${vp.unrealizedPnl! >= 0 ? '+' : ''}${vp.unrealizedPnl!.toFixed(2)} USDT`
       : '';
     const sideStr  = isLong ? 'LONG' : 'SHORT';
     const entryStr = `${sideStr}  ${formatVol(vp.quantity)} @ ${formatPrice(vp.entryPrice)}${pnlStr}`;
-    drawOrderLabelRight(ctx, entryStr, chartWidth - 8, y, color);
+    drawOrderLabelRight(ctx, entryStr, curX - 4, y, color);
     drawPriceBadge(ctx, vp.entryPrice, y, color, chartWidth);
 
     // Liquidation line (Futures only)
@@ -355,17 +407,17 @@ export function drawTradingOverlays(
     if (vp.status !== 'open') continue;
 
     const bracket   = bracketOrders.find((b) => b.positionId === vp.id);
-    const isLong    = vp.side === 'long';
+    const isDraggingSL = bracketDrag?.positionId === vp.id && bracketDrag.handle === 'sl';
+    const isDraggingTP = bracketDrag?.positionId === vp.id && bracketDrag.handle === 'tp';
 
     // --- Stop Loss ---
-    if (bracket?.stopLossPrice != null && bracket.stopLossStatus === 'active') {
-      const isDraggingSL = bracketDrag?.positionId === vp.id && bracketDrag.handle === 'sl';
-      const slPrice      = isDraggingSL ? bracketDrag!.previewPrice : bracket.stopLossPrice;
-      const y            = Math.round(priceToY(slPrice));
+    if ((bracket?.stopLossPrice != null && bracket.stopLossStatus === 'active') || isDraggingSL) {
+      const slPrice = isDraggingSL ? bracketDrag!.previewPrice : bracket!.stopLossPrice!;
+      const y       = Math.round(priceToY(slPrice));
 
       if (y >= -8 && y <= chartHeight + 8) {
         drawTradingLine(ctx, y, chartWidth, SL_COLOR, isDraggingSL ? 0.95 : 0.75, isDraggingSL ? 1.5 : 1.2, [4, 3]);
-        drawOrderLabelRight(ctx, `SL  ${formatPrice(slPrice)}`, chartWidth - 46 - 6, y, SL_COLOR);
+        drawOrderLabelRight(ctx, `SL  ${formatPrice(slPrice)}`, chartWidth - 68, y, SL_COLOR);
         drawPriceBadge(ctx, slPrice, y, SL_COLOR, chartWidth);
 
         const box = drawBracketHandle(ctx, 'SL', y, SL_COLOR, chartWidth, isDraggingSL);
@@ -374,50 +426,17 @@ export function drawTradingOverlays(
     }
 
     // --- Take Profit ---
-    if (bracket?.takeProfitPrice != null && bracket.takeProfitStatus === 'active') {
-      const isDraggingTP = bracketDrag?.positionId === vp.id && bracketDrag.handle === 'tp';
-      const tpPrice      = isDraggingTP ? bracketDrag!.previewPrice : bracket.takeProfitPrice;
-      const y            = Math.round(priceToY(tpPrice));
+    if ((bracket?.takeProfitPrice != null && bracket.takeProfitStatus === 'active') || isDraggingTP) {
+      const tpPrice = isDraggingTP ? bracketDrag!.previewPrice : bracket!.takeProfitPrice!;
+      const y       = Math.round(priceToY(tpPrice));
 
       if (y >= -8 && y <= chartHeight + 8) {
         drawTradingLine(ctx, y, chartWidth, TP_COLOR, isDraggingTP ? 0.95 : 0.75, isDraggingTP ? 1.5 : 1.2, [4, 3]);
-        drawOrderLabelRight(ctx, `TP  ${formatPrice(tpPrice)}`, chartWidth - 46 - 6, y, TP_COLOR);
+        drawOrderLabelRight(ctx, `TP  ${formatPrice(tpPrice)}`, chartWidth - 68, y, TP_COLOR);
         drawPriceBadge(ctx, tpPrice, y, TP_COLOR, chartWidth);
 
         const box = drawBracketHandle(ctx, 'TP', y, TP_COLOR, chartWidth, isDraggingTP);
         hitZones.tpHandles.set(vp.id, box);
-      }
-    }
-
-    // Placeholder: if no bracket yet, show faint "Set SL / TP" nudge at ±2%
-    if (!bracket) {
-      const nudgeSL = isLong ? vp.entryPrice * 0.98 : vp.entryPrice * 1.02;
-      const nudgeTP = isLong ? vp.entryPrice * 1.02 : vp.entryPrice * 0.98;
-
-      for (const { price, label, color } of [
-        { price: nudgeSL, label: '+ SL', color: SL_COLOR },
-        { price: nudgeTP, label: '+ TP', color: TP_COLOR },
-      ] as const) {
-        const y = Math.round(priceToY(price));
-        if (y < -8 || y > chartHeight + 8) continue;
-
-        ctx.save();
-        ctx.globalAlpha = 0.3;
-        ctx.strokeStyle = color;
-        ctx.lineWidth   = 1;
-        ctx.setLineDash([3, 5]);
-        ctx.beginPath();
-        ctx.moveTo(chartWidth - 60, y);
-        ctx.lineTo(chartWidth, y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.font         = SMALL_FONT;
-        ctx.fillStyle    = color;
-        ctx.textAlign    = 'right';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, chartWidth - 3, y);
-        ctx.restore();
       }
     }
   }

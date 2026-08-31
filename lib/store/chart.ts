@@ -96,6 +96,7 @@ export interface ChartState {
   settingsOpenRequest: SettingsOpenRequest | null;
   crosshairSyncEnabled: boolean;
   drawingsSyncEnabled: boolean;
+  bracketDragConfirmEnabled: boolean;
   globalTimezone: string;
   globalTimeFormat: '12h' | '24h';
 
@@ -248,6 +249,7 @@ export interface ChartState {
   openIndicatorSettings: (panelId: PanelId, section: SettingsFocusSection) => void;
   setCrosshairSyncEnabled: (enabled: boolean) => void;
   setDrawingsSyncEnabled: (enabled: boolean) => void;
+  setBracketDragConfirmEnabled: (enabled: boolean) => void;
 
   // Auth
   isAuthenticated: boolean;
@@ -672,6 +674,7 @@ export const useChartStore = create<ChartState>()(
       settingsOpenRequest: null,
       crosshairSyncEnabled: true,
       drawingsSyncEnabled: true,
+      bracketDragConfirmEnabled: false,
       globalTimezone: 'local',
       globalTimeFormat: '24h',
       isAuthenticated: false,
@@ -1257,6 +1260,7 @@ export const useChartStore = create<ChartState>()(
         })),
       setCrosshairSyncEnabled: (crosshairSyncEnabled) => set({ crosshairSyncEnabled }),
       setDrawingsSyncEnabled: (drawingsSyncEnabled) => set({ drawingsSyncEnabled }),
+      setBracketDragConfirmEnabled: (bracketDragConfirmEnabled) => set({ bracketDragConfirmEnabled }),
 
       // Auth actions
       authenticate: (password) => {
@@ -1775,6 +1779,7 @@ export const useChartStore = create<ChartState>()(
         settingsDropdownHeight: state.settingsDropdownHeight,
         crosshairSyncEnabled: state.crosshairSyncEnabled,
         drawingsSyncEnabled: state.drawingsSyncEnabled,
+        bracketDragConfirmEnabled: state.bracketDragConfirmEnabled,
         globalTimezone: state.globalTimezone,
         globalTimeFormat: state.globalTimeFormat,
         isAuthenticated: state.isAuthenticated,
