@@ -66,6 +66,8 @@ interface ChartRuntimeState {
   setCrosshair: (crosshair: GlobalCrosshair) => void;
   setTradingStatus: (status: Partial<TradingRuntimeStatus>) => void;
   setMT5Status: (connected: boolean, accountName: string, pnl: number) => void;
+  setMT5BridgeStatus: (status: 'connected' | 'disconnected' | 'connecting' | 'paused') => void;
+  syncMT5Bridge: () => Promise<boolean>;
   syncMT5Positions: (positions: MT5PositionPayload[]) => void;
   // ── Virtual Position actions ──────────────────────────────────────────────
   /** Upsert a virtual position derived from fills; updates unrealized PnL if markPrice is supplied. */
@@ -157,6 +159,7 @@ function createDefaultTradingStatus(): TradingRuntimeStatus {
     mt5Connected: false,
     mt5AccountName: '',
     mt5Pnl: 0,
+    mt5BridgeStatus: 'connecting',
   };
 }
 
@@ -367,6 +370,66 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
         mt5Pnl: pnl,
       },
     })),
+
+  setMT5BridgeStatus: (status) =>
+    set((state) => ({
+      tradingStatus: {
+        ...state.tradingStatus,
+        mt5BridgeStatus: status,
+      },
+    })),
+
+  syncMT5Bridge: async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch('http://localhost:3001/status', {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        set((state) => ({
+          tradingStatus: {
+            ...state.tradingStatus,
+            mt5Connected: Boolean(data.connected),
+            mt5AccountName: data.accountName || '',
+            mt5Pnl: typeof data.pnl === 'number' ? data.pnl : 0,
+            mt5BridgeStatus: data.connected ? 'connected' : 'disconnected',
+          },
+        }));
+
+        if (Array.isArray(data.positions)) {
+          get().syncMT5Positions(data.positions);
+        }
+        return true;
+      } else {
+        set((state) => ({
+          tradingStatus: {
+            ...state.tradingStatus,
+            mt5Connected: false,
+            mt5AccountName: '',
+            mt5Pnl: 0,
+            mt5BridgeStatus: 'disconnected',
+          },
+        }));
+        return false;
+      }
+    } catch {
+      set((state) => ({
+        tradingStatus: {
+          ...state.tradingStatus,
+          mt5Connected: false,
+          mt5AccountName: '',
+          mt5Pnl: 0,
+          mt5BridgeStatus: 'disconnected',
+        },
+      }));
+      return false;
+    }
+  },
 
   syncMT5Positions: (positions) =>
     set((state) => {

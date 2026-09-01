@@ -35,7 +35,7 @@ export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type ExhaustionSide = 'both' | 'buyer' | 'seller';
 export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box' | 'long-position' | 'short-position' | 'position' | 'buy' | 'sell';
 export type DrawingStrokeWidth = 1 | 2 | 3 | 4;
-export type SessionId = 'tokyo' | 'london' | 'newYork';
+export type SessionId = 'tokyo' | 'london' | 'newYork' | string;
 export type CvdMode = 'candles' | 'bars' | 'line' | 'histogram';
 export type CvdResetMode = 'none' | 'daily' | 'session';
 export type CvdScaleMode = 'auto' | 'fixed';
@@ -45,6 +45,7 @@ export type VolumeBarsInputData = 'volume' | 'orders' | 'aggregateTrades';
 export type VolumeBarsMarketSource = 'active' | 'spot' | 'futures' | 'both';
 export type VolumeBarsColorMode = 'fixed' | 'priceDirection' | 'delta' | 'volumeSlope';
 export type VolumeBarsFilterMode = 'absolute' | 'relative';
+export type VolumeProfileType = 'volume' | 'delta' | 'deltaVolume' | 'bidAsk';
 export type IndicatorSettingsSection = 'sessions' | 'historicalSessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap' | 'stats';
 export type SettingsFocusSection = IndicatorSettingsSection | 'profiles';
 export type IndicatorId = 'bubbles' | 'cvd' | 'volumeBars' | 'sessions' | 'historicalSessions' | 'profile' | 'heatmap' | 'liquidityMap' | 'stats';
@@ -142,8 +143,10 @@ export interface TimeframeSettings {
   liquidityVacuumShowLabels: boolean;
   liquidityVacuumOpacity: number;
   liquidityVacuumMaxZones: number;
+  profileNodeSensitivity: number;
   profileWidthPct: number;
   defaultProfileEnabled: boolean;
+  defaultProfilePeriod: 'visible' | 'latest' | 'composite';
   profileResolutionTicks: number;
   profileMinRowHeight: number;
   profileOpacity: number;
@@ -153,7 +156,7 @@ export interface TimeframeSettings {
   profileShowVaFill: boolean;
   profileShowPocLine: boolean;
   profileShowVaLines: boolean;
-  profileShowDelta: boolean;
+  profileType: VolumeProfileType;
   deltaProfileWidth: number;
   cvdEnabled: boolean;
   cvdPanelHeightPct: number;
@@ -317,8 +320,12 @@ export interface PanelState {
   liquidityVacuumMaxZones: number;
   indicatorLabelsCollapsed: boolean;
   // Volume Profile Visuals
+  profileNodeSensitivity: number;
   profileWidthPct: number;
   defaultProfileEnabled: boolean;
+  defaultProfilePeriod: 'visible' | 'latest' | 'composite' | 'periodic';
+  profilePeriodValue?: number;
+  profilePeriodUnit?: 'minutes' | 'hours' | 'days';
   profileResolutionTicks: number;
   profileMinRowHeight: number;
   profileOpacity: number;
@@ -328,7 +335,14 @@ export interface PanelState {
   profileShowVaFill: boolean;
   profileShowPocLine: boolean;
   profileShowVaLines: boolean;
-  profileShowDelta: boolean;
+  profileType: VolumeProfileType;
+  profilePocColor: string;
+  profilePocWidth: number;
+  profileHvnColor: string;
+  profileLvnColor: string;
+  profileInputData: VolumeBarsInputData;
+  profileFilterMin?: number;
+  profileFilterMax?: number;
   deltaProfileWidth: number;
   // CVD Panel
   cvdEnabled: boolean;
@@ -360,18 +374,16 @@ export interface PanelState {
   volumeBarsAverageLength: number;
   // Session Visualization
   sessionsEnabled: boolean;
-  sessions: {
-    tokyo: SessionConfig;
-    london: SessionConfig;
-    newYork: SessionConfig;
-  };
+  sessions: Record<string, SessionConfig>;
   // Historical Session Volume Profile
   historicalSessionProfileEnabled: boolean;
   historicalSessionProfileSession: SessionId | 'multiple';
   historicalSessionProfileSessions: SessionId[];
+  historicalSessionProfileCustomSessions: { id: string; start: string; end: string; tz: string }[];
   historicalSessionProfileDisplayMode: 'separate' | 'combined';
   historicalSessionProfileCount: number;
   historicalSessionProfileMinTimeframe: string;
+  mergedProfileRanges: { start: number; end: number }[];
 
   settingsByTimeframe: Record<string, Partial<TimeframeSettings>>;
   // Liquidity Map
@@ -459,6 +471,7 @@ export interface TradingRuntimeStatus {
   mt5Connected: boolean;
   mt5AccountName: string;
   mt5Pnl: number;
+  mt5BridgeStatus: 'connected' | 'disconnected' | 'connecting' | 'paused';
 }
 
 export interface ChartEngineContextValue {

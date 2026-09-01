@@ -19,11 +19,6 @@ import {
 } from '../cache/marketCachePolicy';
 import { normalizePriceToBucket } from '../utils/aggregation';
 
-declare global {
-  interface Window {
-    diagnosticLogs?: string[];
-  }
-}
 
 export const BASE_FOOTPRINT_BUCKET_SIZE = 5;
 export const BASE_FOOTPRINT_TIMEFRAME = '1m';
@@ -230,18 +225,12 @@ export class FootprintBaseCache {
       keys.sort((a, b) => Math.abs(a - this.focalTime!) - Math.abs(b - this.focalTime!));
       const toDelete = keys.slice(maxBaseCandles);
       for (const key of toDelete) {
-        const msg = `[DIAGNOSTIC] trim() evicting: ${key}, focalTime: ${this.focalTime}, maxBaseCandles: ${maxBaseCandles}`;
-        console.log(msg);
-        if (typeof window !== 'undefined') { window.diagnosticLogs = window.diagnosticLogs || []; window.diagnosticLogs.push(msg); }
         this.baseFootprintMap.delete(key);
       }
     } else {
       const keys = Array.from(this.baseFootprintMap.keys()).sort((a, b) => a - b);
       const toDelete = keys.slice(0, keys.length - maxBaseCandles);
       for (const key of toDelete) {
-        const msg = `[DIAGNOSTIC] trim() evicting (no focal): ${key}, maxBaseCandles: ${maxBaseCandles}`;
-        console.log(msg);
-        if (typeof window !== 'undefined') { window.diagnosticLogs = window.diagnosticLogs || []; window.diagnosticLogs.push(msg); }
         this.baseFootprintMap.delete(key);
       }
     }
@@ -373,9 +362,6 @@ export class FootprintBaseCache {
     const candle = this.baseFootprintMap.get(time);
     if (!candle) return 0;
 
-    const msg = `[DIAGNOSTIC] cleanup() evicting base slice: ${time}, focalTime: ${this.focalTime}`;
-    console.log(msg);
-    if (typeof window !== 'undefined') { window.diagnosticLogs = window.diagnosticLogs || []; window.diagnosticLogs.push(msg); }
     const cellCount = candle.cells.size;
     this.baseFootprintMap.delete(time);
     return cellCount;

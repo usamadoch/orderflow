@@ -1,5 +1,78 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-01] - Feature: MT5 Bridge Polling Backoff & Header Manual Connect
+
+- **What changed**:
+  - **State & Runtime Actions (`types/chart.ts`, `lib/store/chartRuntime.ts`)**:
+    - Added `mt5BridgeStatus: 'connected' | 'disconnected' | 'connecting' | 'paused'` to `TradingRuntimeStatus`.
+    - Added `setMT5BridgeStatus` and `syncMT5Bridge()` actions in `useChartRuntimeStore` with timeout protection and position sync.
+  - **Polling Backoff & Pause (`hooks/useTradingSync.ts`)**:
+    - Replaced unthrottled 2-second polling with a failure-aware sync loop.
+    - After 3 consecutive failed attempts (e.g. when the bridge server `http://localhost:3001` is not running), `mt5BridgeStatus` transitions to `'paused'` and stops the polling interval, eliminating `net::ERR_CONNECTION_REFUSED` console error noise.
+  - **Header UI & Manual Connect (`components/ui/ConnectionStatus.tsx`)**:
+    - Added reactive connection states: pulsing green for `MT5 LIVE`, amber with spinner for `CONNECTING...`, and red with `MT5 OFFLINE`.
+    - Added a sleek "Connect" button next to `MT5 OFFLINE` in the header, allowing one-click reconnection and polling resumption whenever the user starts the bridge.
+- **Why it changed**:
+  - Continuous 2-second background polling to `http://localhost:3001/status` when the bridge was offline flooded the browser developer console with `GET http://localhost:3001/status net::ERR_CONNECTION_REFUSED` errors.
+- **Impact summary**:
+  - Browser console remains clean when the MT5 bridge is offline.
+  - Traders can connect and reconnect with a single click in the header at any time.
+  - Codebase compiles cleanly with 0 TypeScript errors.
+
+
+## [2026-09-01] - Bug Fix: Web Worker ReferenceError (`window is not defined`) in Footprint Cache
+
+- **What changed**:
+  - **Footprint Base Cache (`lib/aggregation/footprintCache.ts`)**:
+    - Removed `declare global { interface Window { diagnosticLogs?: string[]; } }`.
+    - Removed diagnostic `window.diagnosticLogs` assignments and `console.log` statements from `trim()` and `deleteBaseSlice()`.
+- **Why it changed**:
+  - `footprintCache.ts` is imported and executed within `aggregationWorker.ts` (a dedicated Web Worker context). Because `window` is not defined in Web Workers, referencing `window.diagnosticLogs` threw `ReferenceError: window is not defined` whenever `trim()` or `deleteBaseSlice()` was called during base candle hydration.
+  - This exception interrupted worker message processing, aborting footprint hydration and preventing live footprint charts and candle data from rendering on the screen.
+- **Impact summary**:
+  - Web Worker executes cleanly with zero runtime exceptions.
+  - Footprint candle hydration and aggregation pipeline updates resume normal operation.
+  - Code passes TypeScript type check with 0 errors.
+
+
+## [2026-09-01] - Feature: Complete Volume Profile Engine (Tiers 1-8 Upgrades)
+
+- **What changed**:
+  - **Tier 6 — Developing POC Trail (`lib/volumeProfile/profileEngine.ts`, `components/chart/drawVolumeProfile.ts`, `components/chart/drawSelectionRect.ts`)**:
+    - Implemented a single-pass O(N) incremental POC tracker in `profileEngine.ts` that snapshots the running Point of Control across time-sorted candles into a `developingPoc` coordinate array.
+    - Added canvas rendering in `drawVolumeProfile.ts` and `drawSelectionRect.ts` tracing the developing POC path across the chart timeline with rounded joins and configurable styles.
+  - **Tier 7 — Flexibility, Periodic Anchoring & Canvas Merge/Split (`components/chart/ChartCanvas.tsx`, `components/chart/chartCanvasHitTest.ts`, `lib/utils/historicalSessions.ts`, `types/chart.ts`, `lib/store/chart.ts`)**:
+    - Added support for rigid calendar-anchored "Periodic" volume profiles (e.g., Every 4 Hours, Daily) anchored to calendar intervals rather than rolling viewport edges.
+    - Updated `HistoricalSessionProfileSettings.tsx` and `drawSessions.ts` to dynamically render custom user-defined sessions from `panel.sessions`.
+    - Added `getHistoricalSessionProfileHitZone` in `chartCanvasHitTest.ts` to detect clicks on historical session profile bounding boxes.
+    - Implemented a right-click Context Menu on the chart canvas allowing traders to dynamically "Merge With Next Session" or "Split Session" in real time, persisting merged session ranges in `useChartStore`.
+  - **Tier 8 — Cosmetic Settings & Styling Overrides (`components/ui/chart-settings/VolumeProfileSettings.tsx`, `types/chart.ts`, `lib/store/chart.ts`, `components/chart/drawVolumeProfile.ts`, `components/chart/drawSelectionRect.ts`)**:
+    - Added customizable color pickers and width selectors for POC (`profilePocColor`, `profilePocWidth`), HVN (`profileHvnColor`), and LVN (`profileLvnColor`) in `VolumeProfileSettings.tsx`.
+    - Wired cosmetic settings into the drawing pipeline, replacing hardcoded amber/pink/cyan values.
+  - **Type Safety & Repository Cleanups (`components/chart/ChartCanvas.tsx`, `lib/db/timescale/repositories/profileRepository.ts`, `lib/db/timescale/repositories/footprintRepository.ts`, `types/volumeProfile.ts`)**:
+    - Replaced `any[]` query parameter types in TimescaleDB repositories with `QueryParam[]`.
+    - Resolved variable scoping for `heatmapRows` and aligned `drawCustomProfile` argument order in `ChartCanvas.tsx`.
+- **Why it changed**:
+  - To complete the full Volume Profile specification according to the roadmap (Tiers 1 through 8), delivering institutional-grade volume distribution analysis, session flexibility, developing POC dynamics, and user customization.
+- **Impact summary**:
+  - Traders have full control over volume profile inputs, periods, developing POC trails, custom session merging/splitting via right-click, and visual cosmetics.
+  - Codebase compiles cleanly with 0 TypeScript or linting errors.
+
+## [2026-09-01] - Bug Fix: Volume Profile Order Count and Aggregate Trades Input Data
+
+- **What changed**:
+  - **TimescaleDB Repository (`lib/db/timescale/repositories/profileRepository.ts`)**:
+    - Added `order_count: row.order_count` to the row mapping in `getFineProfileRows`.
+  - **libSQL Repository (`lib/db/repositories/profileRepository.ts`)**:
+    - Updated `FineProfileRow` interface to explicitly include `order_count?: number` to accurately reflect the database response.
+- **Why it changed**:
+  - The historical database query for Volume Profile rows was fetching `order_count` from the table but failing to map it into the returned JavaScript object. Because `order_count` was `undefined` coming from the DB, the frontend caching engine (`lib/volumeProfile/profileCache.ts`) fell back to using `tradeCount`. 
+  - As a result, both "Order Count" and "Agg Trades" input settings were silently using identical `tradeCount` data under the hood. Furthermore, since `tradeCount` correlates strongly with `volume` and the profile scaling is relative to max volume, the visual shape appeared effectively identical across all three settings.
+- **Impact summary**:
+  - The "Order Count" input setting now correctly utilizes actual order counts from the database instead of defaulting to trade counts.
+  - The "Agg Trades" setting still utilizes trade counts.
+  - The UI accurately triggers changes between Volume, Order Count, and Agg Trades based on the correct underlying data streams.
+
 ## [2026-08-31] - Feature: Real-Time Cancel Icon Dragging & Entry-Line Draggable TP/SL Handles
 
 - **What changed**:
@@ -175,13 +248,10 @@
   - Storage adapter automatically mounts TimescaleDB when `MARKET_DB_DRIVER=timescaledb`.
   - Faster ingestion and more flexible time-windowing for analytical endpoints.
 
-## [2026-08-30] - Orderbook Pipeline & MongoDB Cleanup
+## [2026-08-30] - Orderbook Pipeline Updates
 
 ### Changes Made
 
-- **Cleanup**:
-  - Permanently deleted `lib/db/_mongo_quarantine`.
-  - Uninstalled `mongodb` NPM package.
 - **Feeds**:
   - Integrated `OrderbookManager` into `BinanceAdapter` (`binance.ts`) and `BinanceFuturesAdapter` (`binanceFutures.ts`).
   - Adapters now fetch a REST `/depth` snapshot on connect, buffer diffs, and strictly align sequence IDs.
