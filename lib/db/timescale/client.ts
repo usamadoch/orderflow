@@ -1,10 +1,12 @@
 import { Pool } from 'pg'
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg'
 
-let pool: Pool | null = null
+// Cache the pool globally to prevent exhaustion during serverless cold starts
+// as each hot function should reuse the same pool.
+const globalPool = globalThis as unknown as { _timescalePool?: Pool }
 
 export function getTimescalePool(): Pool {
-  if (!pool) {
+  if (!globalPool._timescalePool) {
     const connectionString = process.env.TIMESCALEDB_URL || process.env.PG_URL
     if (!connectionString) {
       throw new Error('TIMESCALEDB_URL or PG_URL is required for the TimescaleDB driver')
@@ -12,20 +14,21 @@ export function getTimescalePool(): Pool {
 
     const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
     
-    pool = new Pool({
+    globalPool._timescalePool = new Pool({
       connectionString,
-      max: 20,
+      // Keep max low in serverless so concurrent lambdas don't overwhelm DB limits
+      max: 5,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      connectionTimeoutMillis: 5000,
       ssl: isLocalhost ? false : { rejectUnauthorized: false },
     })
 
-    pool.on('error', (err) => {
+    globalPool._timescalePool.on('error', (err) => {
       console.error('[DB:Timescale] Unexpected error on idle client', err)
     })
   }
 
-  return pool
+  return globalPool._timescalePool
 }
 
 export type QueryParam = string | number | boolean | Date | null | Buffer | QueryParam[]

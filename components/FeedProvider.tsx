@@ -1728,8 +1728,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const chunks = getFineProfileRestoreChunks(ranges);
       const hydratedCandleTimes = new Set<number>();
 
-      // Concurrency limit for API requests
-      const CONCURRENCY = 4;
+      // Concurrency limit for API requests (keep very low to prevent Vercel 500 connection timeouts)
+      const CONCURRENCY = 1;
 
       for (let i = 0; i < chunks.length; i += CONCURRENCY) {
         if (!active) break;

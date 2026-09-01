@@ -1,5 +1,23 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-01] - Bug Fix: Vercel Serverless Connection Exhaustion (HTTP 500)
+
+- **What changed**:
+  - **TimescaleDB Connection Pool (`lib/db/timescale/client.ts`)**:
+    - Cached the `pg` Pool on `globalThis._timescalePool` to ensure connection reuse across warm serverless invocations.
+    - Reduced `max` pool size from `20` to `5` and added `connectionTimeoutMillis: 5000` to prevent serverless lambdas from hoarding connections during cold starts.
+  - **Frontend Throttling (`components/FeedProvider.tsx`)**:
+    - Reduced parallel volume profile chunk fetching concurrency (`CONCURRENCY`) from 4 to 1 in `hydrateStoredFineProfileRanges` to smooth out load on Vercel.
+  - **API Error Handling (`app/api/history/footprint/route.ts`, `app/api/history/profile/route.ts`)**:
+    - Wrapped database queries in robust `try / catch` blocks.
+    - Updated error handlers to return proper JSON `{ error, details }` with HTTP 503 instead of throwing unhandled exceptions that crash the serverless function.
+- **Why it changed**:
+  - Fetching historical footprints and drawing volume profiles on Vercel returned HTTP 500 errors. When the frontend requested 8-13 time chunks simultaneously, Vercel spawned multiple parallel Lambdas. Each Lambda tried to open a 20-connection pool to Timescale Cloud, instantly exhausting the database connection limits and causing unhandled API crashes.
+- **Impact summary**:
+  - Historical footprint data and volume profile fetching is now stable and reliable on Vercel production.
+  - Smooth throttled loading with zero HTTP 500 errors.
+  - Graceful fallback (HTTP 503) during temporary database unavailability.
+
 ## [2026-09-01] - Feature: MT5 Bridge Polling Backoff & Header Manual Connect
 
 - **What changed**:

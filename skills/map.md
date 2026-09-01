@@ -65,8 +65,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 ### History APIs
 
 - `app/api/history/candles/route.ts` → Selected-driver candle history API returning source-scoped candles.
-- `app/api/history/footprint/route.ts` → Selected-driver footprint restore API for 1m base footprint rows with range caps.
-- `app/api/history/profile/route.ts` → Selected-driver fine Volume Profile restore API for 1m fine rows with range caps.
+- `app/api/history/footprint/route.ts` → Selected-driver footprint restore API with range caps and safe 503 fallback.
+- `app/api/history/profile/route.ts` → Selected-driver fine Volume Profile restore API with range caps and safe 503 fallback.
 - `app/api/history/trades/route.ts` → Raw trade history API with range and cursor hydration support.
 - `app/api/history/aggregate-bubbles/route.ts` → Aggregate trade bubble restore API querying TimescaleDB history with range bounds.
 - `app/api/history/status/route.ts` → Database status API returning driver metadata, row counts, and retention info.
@@ -106,7 +106,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Feed / Engine Context
 
-- `components/FeedProvider.tsx` → Panel feed orchestrator managing WebSocket streaming, history hydration (candles, footprint, profile, bubbles), depth synchronization, and store writes.
+- `components/FeedProvider.tsx` → Panel feed orchestrator managing WebSocket streaming, throttled history hydration (candles, footprint, profile, bubbles), depth synchronization, and store writes.
 - `components/ChartEngineContext.tsx` → React context providing panel aggregation engine, footprint/profile caches, orderbook heatmap, and redraw triggers.
 
 ### Chart Rendering

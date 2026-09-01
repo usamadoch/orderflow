@@ -50,8 +50,31 @@ export async function GET(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const rows = await getMarketStorageAdapter().getFootprintCellsForRange(
-      symbol, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, start, end, BASE_FOOTPRINT_BUCKET_SIZE,
+    try {
+      const rows = await getMarketStorageAdapter().getFootprintCellsForRange(
+        symbol, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, start, end, BASE_FOOTPRINT_BUCKET_SIZE,
+      )
+      return NextResponse.json(rows.map((row) => ({
+        candleTime: row.candle_time,
+        bucketPrice: row.bucket_price,
+        bidVol: row.bid_vol,
+        askVol: row.ask_vol,
+        delta: row.delta,
+      })))
+    } catch (error: unknown) {
+      console.error('[API:Footprint] Error fetching footprint cells for range:', error)
+      const message = error instanceof Error ? error.message : 'Unknown database error'
+      return NextResponse.json({ error: 'Database unavailable or timed out', details: message }, { status: 503 })
+    }
+  }
+
+  if (!Number.isFinite(candleTime) || !Number.isFinite(requestedBucketSize) || requestedBucketSize < BASE_FOOTPRINT_BUCKET_SIZE) {
+    return NextResponse.json({ error: 'Invalid candleTime or bucketSize' }, { status: 400 })
+  }
+
+  try {
+    const rows = await getMarketStorageAdapter().getFootprintCells(
+      symbol, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, candleTime, BASE_FOOTPRINT_BUCKET_SIZE,
     )
     return NextResponse.json(rows.map((row) => ({
       candleTime: row.candle_time,
@@ -60,20 +83,9 @@ export async function GET(request: NextRequest) {
       askVol: row.ask_vol,
       delta: row.delta,
     })))
+  } catch (error: unknown) {
+    console.error('[API:Footprint] Error fetching footprint cells:', error)
+    const message = error instanceof Error ? error.message : 'Unknown database error'
+    return NextResponse.json({ error: 'Database unavailable or timed out', details: message }, { status: 503 })
   }
-
-  if (!Number.isFinite(candleTime) || !Number.isFinite(requestedBucketSize) || requestedBucketSize < BASE_FOOTPRINT_BUCKET_SIZE) {
-    return NextResponse.json({ error: 'Invalid candleTime or bucketSize' }, { status: 400 })
-  }
-
-  const rows = await getMarketStorageAdapter().getFootprintCells(
-    symbol, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, candleTime, BASE_FOOTPRINT_BUCKET_SIZE,
-  )
-  return NextResponse.json(rows.map((row) => ({
-    candleTime: row.candle_time,
-    bucketPrice: row.bucket_price,
-    bidVol: row.bid_vol,
-    askVol: row.ask_vol,
-    delta: row.delta,
-  })))
 }
