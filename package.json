@@ -8,12 +8,10 @@
     "start": "next start",
     "collector:btc": "node --env-file=.env.local scripts/collector/btcusdtCollector.mjs",
     "test:collector": "node --test --env-file=.env.local scripts/collector/btcusdtCollector.test.mjs",
-    "db:indexes": "ts-node scripts/ensureIndexes.ts",
     "db:migrate": "ts-node lib/db/timescale/migrations.ts",
     "lint": "next lint"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.3",
     "lightweight-charts": "^5.2.0",
     "lucide-react": "^0.471.0",
     "next": "14.2.35",

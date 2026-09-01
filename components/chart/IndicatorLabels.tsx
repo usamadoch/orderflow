@@ -5,7 +5,7 @@ import React from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, Settings, X, ArrowUp, ArrowDown } from 'lucide-react';
 
 // 2. Internal packages & stores
-import { useChartStore, type DataSourceMode, type PanelId, type IndicatorId } from '@/lib/store/chart';
+import { useChartStore, type DataSourceMode, type PanelId, type IndicatorId, type IndicatorSettingsSection } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { ChartSettingsDropdown } from '@/components/ui/ChartSettingsDropdown';
 
@@ -208,7 +208,7 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
       {openSection && (
         <ChartSettingsDropdown
           panelId={panelId}
-          indicatorSection={openSection as any}
+          indicatorSection={openSection as IndicatorSettingsSection}
           indicatorTitle={getIndicatorConfig(openSection as IndicatorId)?.label}
           onClose={() => setOpenSection(null)}
         />

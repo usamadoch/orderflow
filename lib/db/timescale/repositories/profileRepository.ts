@@ -1,19 +1,20 @@
 import { query } from '../client'
-import type { FineProfileRow } from '../../database'
+import type { QueryParam } from '../client'
+import type { FineProfileRow } from '../../storageAdapter'
 import type { StoreFineProfileRowsInput } from '../../storageAdapter'
 
 export async function storeFineProfileRows(inputs: StoreFineProfileRowsInput[]): Promise<number> {
   const validInputs = inputs.filter((input) => input.rows.length > 0)
   if (validInputs.length === 0) return 0
 
-  const values: any[] = []
+  const values: QueryParam[] = []
   const placeholders: string[] = []
   let paramIndex = 1
 
   for (const input of validInputs) {
     for (const row of input.rows) {
       const time = new Date(row.candleTime * 1000)
-      placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`)
+      placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`)
       
       values.push(
         time,
@@ -27,7 +28,8 @@ export async function storeFineProfileRows(inputs: StoreFineProfileRowsInput[]):
         row.bidVol || 0,
         row.askVol || 0,
         row.totalVol || 0,
-        row.tradeCount || 0
+        row.tradeCount || 0,
+        row.orderCount || 0
       )
     }
   }
@@ -37,7 +39,7 @@ export async function storeFineProfileRows(inputs: StoreFineProfileRowsInput[]):
   const sql = `
     INSERT INTO profile_rows (
       time, symbol, contract_type, data_source_mode, timeframe, 
-      candle_time_sec, base_bucket_size, bucket_price, bid_vol, ask_vol, total_vol, trade_count
+      candle_time_sec, base_bucket_size, bucket_price, bid_vol, ask_vol, total_vol, trade_count, order_count
     ) VALUES ${placeholders.join(', ')}
     ON CONFLICT (symbol, contract_type, data_source_mode, timeframe, base_bucket_size, time, bucket_price) DO NOTHING
   `
@@ -90,6 +92,7 @@ export async function getFineProfileRows(
     ask_vol: row.ask_vol,
     total_vol: row.total_vol,
     trade_count: row.trade_count,
+    order_count: row.order_count,
     stored_at: Math.floor((row.stored_at ?? row.time).getTime() / 1000),
   }))
 }

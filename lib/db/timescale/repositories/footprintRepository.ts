@@ -1,12 +1,13 @@
 import { query } from '../client'
-import type { FootprintCellRow } from '../../database'
+import type { QueryParam } from '../client'
+import type { FootprintCellRow } from '../../storageAdapter'
 import type { StoreBaseFootprintInput } from '../../storageAdapter'
 
 export async function storeFootprints(inputs: StoreBaseFootprintInput[]): Promise<number> {
   const validInputs = inputs.filter((input) => input.cells.length > 0)
   if (validInputs.length === 0) return 0
 
-  const values: any[] = []
+  const values: QueryParam[] = []
   const placeholders: string[] = []
   let paramIndex = 1
 

@@ -1,11 +1,92 @@
 import type { Candle } from '../../types/candle'
 import type { Trade } from '../../types/trade'
-import type { CandleRow, FineProfileRow, FineProfileRowWriteInput, FootprintCellRow, RawTradeQueryOptions, RawTradeRow } from './database'
-import type { SerializedFootprintCell } from './marketStorage'
 import { createTimescaleMarketStorageAdapter } from './timescale/timescaleStorageAdapter'
-import { libsqlMarketStorageAdapter } from './repositories/libsqlStorageAdapter'
 
-export type MarketDbDriver = 'libsql' | 'mongodb' | 'timescaledb'
+export type MarketDbDriver = 'timescaledb'
+
+export interface SerializedFootprintCell {
+  bucketPrice: number
+  bidVol: number
+  askVol: number
+}
+
+export interface CandleRow {
+  id: number
+  symbol: string
+  timeframe: string
+  open_time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  trade_count: number
+  close_time: number
+  stored_at: number
+}
+
+export interface FineProfileRow {
+  id: number
+  symbol: string
+  contract_type: string
+  data_source_mode: string
+  timeframe: string
+  candle_time: number
+  base_bucket_size: number
+  bucket_price: number
+  bid_vol: number
+  ask_vol: number
+  total_vol: number
+  trade_count: number
+  order_count?: number
+}
+
+export interface FineProfileRowWriteInput {
+  candleTime: number
+  baseBucketSize: number
+  bucketPrice: number
+  bidVol: number
+  askVol: number
+  totalVol: number
+  tradeCount: number
+  orderCount?: number
+}
+
+export interface FootprintCellRow {
+  id: number
+  symbol: string
+  contract_type: string
+  data_source_mode: string
+  timeframe: string
+  candle_time: number
+  bucket_price: number
+  bucket_size: number
+  bid_vol: number
+  ask_vol: number
+  total_vol?: number
+  delta?: number
+  stored_at?: number
+}
+
+export type RawTradeOrder = 'ASC' | 'DESC'
+
+export interface RawTradeQueryOptions {
+  limit?: number
+  order?: RawTradeOrder
+  cursorTimeMs?: number
+  cursorTradeId?: number
+}
+
+export interface RawTradeRow {
+  id: number
+  symbol: string
+  aggregate_trade_id: number
+  trade_time: number
+  price: number
+  quantity: number
+  is_buyer_maker: number
+  stored_at: number
+}
 
 export interface StoreClosedCandleInput {
   symbol: string
@@ -103,21 +184,11 @@ export interface MarketStorageAdapter {
 }
 
 export function getMarketDbDriver(): MarketDbDriver {
-  const driver = process.env.MARKET_DB_DRIVER
-  if (driver === 'mongodb') return 'mongodb'
-  if (driver === 'timescaledb') return 'timescaledb'
-  return 'libsql'
+  return 'timescaledb'
 }
 
 export function getMarketStorageAdapter(): MarketStorageAdapter {
-  const driver = getMarketDbDriver()
-  switch (driver) {
-    case 'mongodb':
-      throw new Error('MongoDB is quarantined. Please use timescaledb or libsql.')
-    case 'timescaledb':
-      return createTimescaleMarketStorageAdapter()
-  }
-  return libsqlMarketStorageAdapter
+  return createTimescaleMarketStorageAdapter()
 }
 
 export async function getStoredCandles(input: GetStoredCandlesInput): Promise<CandleRow[]> {

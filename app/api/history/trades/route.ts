@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getRawTrades } from '../../../../lib/db/database'
+import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
 import { isAllowedSymbol } from '../../../../lib/config/markets'
 
 export const dynamic = 'force-dynamic'
@@ -38,9 +38,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid cursorTime or cursorId' }, { status: 400 })
   }
 
-  const rows = await getRawTrades(symbol, start, end, {
+  const adapter = getMarketStorageAdapter()
+  const rows = await adapter.getRawTrades(symbol, start, end, {
     limit,
-    order: orderParam,
+    order: orderParam.toUpperCase() as 'ASC' | 'DESC',
     cursorTimeMs: cursorTime,
     cursorTradeId,
   })

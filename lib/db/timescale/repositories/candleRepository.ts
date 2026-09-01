@@ -1,12 +1,13 @@
 import { query } from '../client'
-import type { CandleRow } from '../../database'
+import type { QueryParam } from '../client'
+import type { CandleRow } from '../../storageAdapter'
 import type { StoreClosedCandleInput } from '../../storageAdapter'
 
 export async function storeCandles(inputs: StoreClosedCandleInput[]): Promise<number> {
   const validInputs = inputs.filter((input) => input.candle.isClosed !== false)
   if (validInputs.length === 0) return 0
 
-  const values: any[] = []
+  const values: QueryParam[] = []
   const placeholders: string[] = []
   let paramIndex = 1
 
@@ -49,7 +50,7 @@ export async function getCandles(
   limit = 1000
 ): Promise<CandleRow[]> {
   const conditions: string[] = ['symbol = $1', 'contract_type = $2', 'timeframe = $3']
-  const params: any[] = [symbol, contractType, timeframe]
+  const params: QueryParam[] = [symbol, contractType, timeframe]
   let paramIndex = 4
 
   if (sinceUnixSeconds > 0) {
