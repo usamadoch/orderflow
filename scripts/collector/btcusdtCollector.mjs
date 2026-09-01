@@ -487,6 +487,7 @@ function aggregateProfile(runtime, baseTime, price, trade) {
     askVol: 0,
     totalVol: 0,
     tradeCount: 0,
+    orderCount: 0,
   }
 
   if (trade.isBuyerMaker) {
@@ -497,6 +498,7 @@ function aggregateProfile(runtime, baseTime, price, trade) {
 
   row.totalVol += trade.quantity
   row.tradeCount += 1
+  row.orderCount += getAggregateTradeCount(trade) ?? 1
   candleRows.set(bucketPrice, row)
   runtime.profileSlices.set(baseTime, candleRows)
 }
@@ -773,6 +775,7 @@ function toProfileDocuments(runtime, sliceTime, rows) {
       askVol: toStoredNumber(row.askVol),
       totalVol: toStoredNumber(row.totalVol),
       tradeCount: Math.max(0, Math.floor(row.tradeCount)),
+      orderCount: Math.max(0, Math.floor(row.orderCount || row.tradeCount)),
       storedAt,
     }))
 }
@@ -824,7 +827,7 @@ async function insertMissingProfileDocuments(documents) {
   let paramIndex = 1
 
   for (const doc of documents) {
-    placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`)
+    placeholders.push(`($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`)
     
     values.push(
       doc.time,
@@ -838,14 +841,15 @@ async function insertMissingProfileDocuments(documents) {
       Number(doc.bidVol),
       Number(doc.askVol),
       Number(doc.totalVol),
-      doc.tradeCount
+      doc.tradeCount,
+      doc.orderCount
     )
   }
 
   const sql = `
     INSERT INTO profile_rows (
       time, symbol, contract_type, data_source_mode, timeframe, 
-      candle_time_sec, base_bucket_size, bucket_price, bid_vol, ask_vol, total_vol, trade_count
+      candle_time_sec, base_bucket_size, bucket_price, bid_vol, ask_vol, total_vol, trade_count, order_count
     ) VALUES ${placeholders.join(', ')}
     ON CONFLICT (symbol, contract_type, data_source_mode, timeframe, base_bucket_size, time, bucket_price) DO NOTHING
   `

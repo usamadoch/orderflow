@@ -111,5 +111,47 @@ export function getHistoricalSessionRanges(
     currentDate = prevDayNaive.getDate();
   }
   
+  if (panel.mergedProfileRanges && panel.mergedProfileRanges.length > 0) {
+    const mergedRanges: HistoricalSessionRange[] = [];
+    let currentMerge: HistoricalSessionRange | null = null;
+    let currentMergeEnd = 0;
+
+    for (const range of ranges) {
+      const rangeStart = range.segments[0].startTimeMs / 1000;
+      
+      let insideMergeRange = false;
+      for (const m of panel.mergedProfileRanges) {
+        if (rangeStart >= m.start && rangeStart < m.end) {
+          insideMergeRange = true;
+          currentMergeEnd = Math.max(currentMergeEnd, m.end);
+          break;
+        }
+      }
+
+      if (currentMerge) {
+        if (rangeStart < currentMergeEnd) {
+          currentMerge.segments.push(...range.segments);
+          currentMerge.id += `_merged_${range.id}`;
+        } else {
+          mergedRanges.push(currentMerge);
+          currentMerge = null;
+          if (insideMergeRange) {
+            currentMerge = { ...range, segments: [...range.segments] };
+          } else {
+            mergedRanges.push(range);
+          }
+        }
+      } else {
+        if (insideMergeRange) {
+          currentMerge = { ...range, segments: [...range.segments] };
+        } else {
+          mergedRanges.push(range);
+        }
+      }
+    }
+    if (currentMerge) mergedRanges.push(currentMerge);
+    return mergedRanges;
+  }
+
   return ranges;
 }

@@ -35,8 +35,7 @@ import { initCanvas } from '@/lib/utils/canvas';
 import { formatPrice, formatVol } from '@/lib/utils/format';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
 import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleDisplayMode } from '@/types/bubble';
-import type { DrawingHitZone } from '@/types/chart';
-import type { IndicatorId } from '@/types/chart';
+import type { DrawingHitZone, IndicatorId, VolumeBarsInputData, VolumeProfileType } from '@/types/chart';
 import type { ExhaustionResult } from '@/types/exhaustion';
 import type { FootprintMode } from '@/types/footprint';
 import type { IcebergLevel } from '@/types/iceberg';
@@ -171,6 +170,9 @@ interface ChartCanvasProps {
   liquidityVacuumOpacity: number;
   profileWidthPct: number;
   defaultProfileEnabled: boolean;
+  defaultProfilePeriod: 'visible' | 'latest' | 'composite' | 'periodic';
+  profilePeriodValue?: number;
+  profilePeriodUnit?: 'minutes' | 'hours' | 'days';
   profileResolutionTicks: number;
   profileMinRowHeight: number;
   profileOpacity: number;
@@ -180,8 +182,16 @@ interface ChartCanvasProps {
   profileShowVaFill: boolean;
   profileShowPocLine: boolean;
   profileShowVaLines: boolean;
-  profileShowDelta: boolean;
+  profileType: VolumeProfileType;
+  profileInputData: VolumeBarsInputData;
+  profilePocColor?: string;
+  profileHvnColor?: string;
+  profileLvnColor?: string;
+  profilePocWidth?: number;
+  profileFilterMin?: number;
+  profileFilterMax?: number;
   historicalSessionProfileEnabled: boolean;
+  profileNodeSensitivity: number;
   deltaProfileWidth: number;
   sessionsEnabled: boolean;
   sessions: PanelState['sessions'];
@@ -283,6 +293,9 @@ export function ChartCanvas({
   liquidityVacuumOpacity,
   profileWidthPct,
   defaultProfileEnabled,
+  defaultProfilePeriod,
+  profilePeriodValue,
+  profilePeriodUnit,
   profileResolutionTicks,
   profileMinRowHeight,
   profileOpacity,
@@ -292,8 +305,16 @@ export function ChartCanvas({
   profileShowVaFill,
   profileShowPocLine,
   profileShowVaLines,
-  profileShowDelta,
+  profileType,
+  profileInputData,
+  profilePocColor,
+  profileHvnColor,
+  profileLvnColor,
+  profilePocWidth,
+  profileFilterMin,
+  profileFilterMax,
   historicalSessionProfileEnabled,
+  profileNodeSensitivity,
   deltaProfileWidth,
   sessionsEnabled,
   sessions,
@@ -368,8 +389,10 @@ export function ChartCanvas({
   const coordsRef = useRef<CoordinateSystem | null>(null);
   const widthRef = useRef(0);
   const heightRef = useRef(0);
+  const drawnSessionRangesRef = useRef<{ id: string; startX: number | null; endX: number | null; range: { start: number; end: number } }[]>([]);
 
   const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 });
+  const [sessionContextMenu, setSessionContextMenu] = React.useState<{ x: number, y: number, sessionId: string, start: number, end: number } | null>(null);
 
 
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
@@ -792,6 +815,14 @@ export function ChartCanvas({
         }
       }
 
+      const lastCandle = candles[candles.length - 1];
+      const isScrolled = candles.length > 0 && (candles.length - lastIndex) > 50;
+
+      let heatmapRows: HeatmapRow[] | undefined = undefined;
+      if (liquidityHeatmapEnabled && liquidityHistory) {
+        heatmapRows = buildHeatmapRows(liquidityHistory, priceMin, priceMax, liquidityBucketSize, lastCandle?.close || 0);
+      }
+
       if (drawAll || layersToDraw.has('overlay')) {
         // 6. Custom Profile (on top of candles and other overlays)
         if (resolvedCustomProfileRange) {
@@ -817,6 +848,10 @@ export function ChartCanvas({
             profileBucketSize: customProfileBucketSize,
             priceHigh: resolvedCustomProfileRange.priceHigh,
             priceLow: resolvedCustomProfileRange.priceLow,
+            nodeSensitivity: profileNodeSensitivity,
+            inputData: profileInputData,
+            filterMin: profileFilterMin,
+            filterMax: profileFilterMax,
             debugContext: {
               label: 'selected-custom-profile-render',
               panelId,
@@ -844,10 +879,18 @@ export function ChartCanvas({
             profileShowPocHighlight,
             profileShowVaFill,
             profileShowPocLine,
-            profileShowVaLines
+            profileShowVaLines,
+            profileType,
+            liquidityHeatmapProfileSync ? heatmapRows : undefined,
+            customCandles,
+            indexToX,
+            profilePocColor,
+            profileHvnColor,
+            profileLvnColor,
+            profilePocWidth
           );
 
-          if (profileShowDelta && customProfile) {
+          if ((profileType === 'delta' || profileType === 'deltaVolume') && customProfile) {
             const customX1 = indexToX(resolvedCustomProfileRange.firstIndex) - currentBarWidth / 2;
             const customX2 = indexToX(resolvedCustomProfileRange.lastIndex) + currentBarWidth / 2;
             const customRectX = Math.min(customX1, customX2);
@@ -868,21 +911,62 @@ export function ChartCanvas({
         }
       }
 
-      const lastCandle = candles[candles.length - 1];
-      const isScrolled = candles.length > 0 && (candles.length - lastIndex) > 50;
-
-      let heatmapRows: HeatmapRow[] | undefined = undefined;
-      if (liquidityHeatmapEnabled && liquidityHistory) {
-        heatmapRows = buildHeatmapRows(liquidityHistory, priceMin, priceMax, liquidityBucketSize, lastCandle?.close || 0);
-      }
-
       // Volume Profile & Historical Session Volume Profiles (Full live canvas only, not live-dirty)
       if (drawAll || layersToDraw.has('live')) {
         if (defaultProfileEnabled) {
-          const visibleCandles = candles.slice(firstIndex, lastIndex + 1);
+          let profileCandles: typeof candles = [];
+
+          if (defaultProfilePeriod === 'latest' && candles.length > 0) {
+            const targetTz = globalTimezone === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone : globalTimezone;
+            const formatter = new Intl.DateTimeFormat('en-US', { timeZone: targetTz, year: 'numeric', month: 'numeric', day: 'numeric' });
+            
+            // Find the calendar day of the most recent candle
+            const lastCandleTime = candles[candles.length - 1].time;
+            const lastCandleDateStr = formatter.format(new Date(lastCandleTime * 1000));
+            
+            // Walk backwards to find the first candle of this same calendar day
+            let firstIdxOfLatestDay = candles.length - 1;
+            while (firstIdxOfLatestDay > 0) {
+              const prevCandleTime = candles[firstIdxOfLatestDay - 1].time;
+              if (formatter.format(new Date(prevCandleTime * 1000)) !== lastCandleDateStr) {
+                break;
+              }
+              firstIdxOfLatestDay--;
+            }
+            
+            profileCandles = candles.slice(firstIdxOfLatestDay);
+          } else if (defaultProfilePeriod === 'periodic' && candles.length > 0) {
+            const val = profilePeriodValue || 4;
+            const unit = profilePeriodUnit || 'hours';
+            let secondsStr = 3600;
+            if (unit === 'minutes') secondsStr = 60;
+            if (unit === 'days') secondsStr = 86400;
+            const periodSeconds = val * secondsStr;
+
+            const lastCandleTime = candles[candles.length - 1].time;
+            const boundaryTime = Math.floor(lastCandleTime / periodSeconds) * periodSeconds;
+            
+            let lo = 0, hi = candles.length;
+            while (lo < hi) {
+              const mid = (lo + hi) >>> 1;
+              if (candles[mid].time < boundaryTime) lo = mid + 1;
+              else hi = mid;
+            }
+            profileCandles = candles.slice(lo);
+          } else if (defaultProfilePeriod === 'composite') {
+            profileCandles = candles;
+          } else {
+            // 'visible' (default)
+            profileCandles = candles.slice(Math.max(0, firstIndex), Math.min(candles.length, lastIndex + 1));
+          }
+          
           const profile = volumeProfileEngine.buildProfile({
-            candles: visibleCandles,
+            candles: profileCandles,
             profileBucketSize: defaultProfileBucketSize,
+            nodeSensitivity: profileNodeSensitivity,
+            inputData: profileInputData,
+            filterMin: profileFilterMin,
+            filterMax: profileFilterMax,
           });
 
           if (profile) {
@@ -905,13 +989,21 @@ export function ChartCanvas({
               profileShowVaFill,
               profileShowPocLine,
               profileShowVaLines,
-              liquidityHeatmapProfileSync ? heatmapRows : undefined
+              profileType,
+              liquidityHeatmapProfileSync ? heatmapRows : undefined,
+              profileCandles,
+              indexToX,
+              profilePocColor,
+              profileHvnColor,
+              profileLvnColor,
+              profilePocWidth
             );
           }
         }
 
         // Historical Session Volume Profiles
         if (historicalSessionProfileEnabled && historicalSessionRanges.length > 0) {
+          drawnSessionRangesRef.current = [];
           for (const sessionRange of historicalSessionRanges) {
             const sessionCandles: typeof candles = [];
             let sHigh = -Infinity;
@@ -958,6 +1050,13 @@ export function ChartCanvas({
               priceLow: sLow,
             };
             
+            drawnSessionRangesRef.current.push({
+              id: sessionRange.id,
+              startX: indexToX(minFirstIndex),
+              endX: indexToX(maxLastIndex),
+              range: { start: sessionCandles[0].time, end: sessionCandles[sessionCandles.length - 1].time }
+            });
+
             const sessionProfileHeightPx = Math.abs(priceToY(sLow) - priceToY(sHigh));
             const sessionProfileBucketSize = resolveProfileBucketSize(
               sHigh,
@@ -973,6 +1072,10 @@ export function ChartCanvas({
               profileBucketSize: sessionProfileBucketSize,
               priceHigh: sHigh,
               priceLow: sLow,
+              nodeSensitivity: profileNodeSensitivity,
+              inputData: profileInputData,
+              filterMin: profileFilterMin,
+              filterMax: profileFilterMax,
               debugContext: {
                 label: 'historical-session-profile-render',
                 panelId,
@@ -1001,10 +1104,11 @@ export function ChartCanvas({
               profileShowPocHighlight,
               profileShowVaFill,
               profileShowPocLine,
-              profileShowVaLines
+              profileShowVaLines,
+              profileType
             );
 
-            if (profileShowDelta && sessionProfile) {
+            if ((profileType === 'delta' || profileType === 'deltaVolume') && sessionProfile) {
               const sessionX1 = indexToX(sessionProfileRange.firstIndex) - currentBarWidth / 2;
               const sessionX2 = indexToX(sessionProfileRange.lastIndex) + currentBarWidth / 2;
               const sessionRectX = Math.min(sessionX1, sessionX2);
@@ -1252,7 +1356,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileShowDelta, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -3296,18 +3400,48 @@ export function ChartCanvas({
       }
     };
 
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      import('./chartCanvasHitTest').then(({ getHistoricalSessionProfileHitZone }) => {
+        const sessionId = getHistoricalSessionProfileHitZone(
+          x, y,
+          getCandlesLength(),
+          scrollOffset.current,
+          barWidth.current,
+          rect.width,
+          profileWidth,
+          drawnSessionRangesRef.current
+        );
+
+        if (sessionId) {
+          const session = drawnSessionRangesRef.current.find(s => s.id === sessionId);
+          if (session) {
+            setSessionContextMenu({ x: e.clientX, y: e.clientY, sessionId, start: session.range.start, end: session.range.end });
+          }
+        } else {
+          setSessionContextMenu(null);
+        }
+      });
+    };
+
     canvas.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect, getCandlesLength]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({
@@ -3350,6 +3484,50 @@ export function ChartCanvas({
           x={hoveredIceberg.x}
           y={hoveredIceberg.y}
         />
+      )}
+
+      {sessionContextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setSessionContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setSessionContextMenu(null); }} />
+          <div 
+            className="fixed z-50 bg-[#1F1F1F] border border-[#333] shadow-lg rounded py-1 w-48 text-[11px] font-bold text-main"
+            style={{ left: sessionContextMenu.x, top: sessionContextMenu.y }}
+          >
+            <button 
+              className="w-full text-left px-3 py-1.5 hover:bg-accent/10 hover:text-accent transition-colors"
+              onClick={() => {
+                const state = useChartStore.getState();
+                const panel = state.panels[panelId];
+                if (panel) {
+                  // Merge with next session - requires expanding the end boundary
+                  const ranges = [...(panel.mergedProfileRanges || [])];
+                  // If there is an existing merge range starting here, extend it, else add new
+                  // We'll just push a new range that starts at this session's start
+                  ranges.push({ start: sessionContextMenu.start, end: sessionContextMenu.end + 86400 * 3 }); // Arbitrary large end to merge next
+                  state.setMergedProfileRanges(panelId, ranges);
+                }
+                setSessionContextMenu(null);
+              }}
+            >
+              Merge With Next Session
+            </button>
+            <button 
+              className="w-full text-left px-3 py-1.5 hover:bg-accent/10 hover:text-accent transition-colors"
+              onClick={() => {
+                const state = useChartStore.getState();
+                const panel = state.panels[panelId];
+                if (panel) {
+                  // Clear merges involving this session
+                  const ranges = (panel.mergedProfileRanges || []).filter(r => !(r.start <= sessionContextMenu.start && r.end >= sessionContextMenu.end));
+                  state.setMergedProfileRanges(panelId, ranges);
+                }
+                setSessionContextMenu(null);
+              }}
+            >
+              Split Session
+            </button>
+          </div>
+        </>
       )}
 
       <MeasurementPanel 

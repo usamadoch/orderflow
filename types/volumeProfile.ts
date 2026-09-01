@@ -13,6 +13,10 @@ export interface VolumeProfileBuildRequest {
   profileBucketSize: number;
   priceHigh?: number;
   priceLow?: number;
+  nodeSensitivity?: number;
+  inputData?: 'volume' | 'orders' | 'aggregateTrades';
+  filterMin?: number;
+  filterMax?: number;
   debugContext?: {
     label: string;
     panelId?: string;
@@ -29,6 +33,7 @@ export interface FineProfileRow {
   askVol: number;
   totalVol: number;
   tradeCount: number;
+  orderCount?: number;
 }
 
 export interface FineProfileRowSnapshot {
@@ -52,9 +57,11 @@ export interface VolumeProfile {
   vaHigh:   number;         // top of 70% value area
   vaLow:    number;         // bottom of 70% value area
   lvns:     number[];       // local low-volume node bucket prices
+  hvns:     number[];       // local high-volume node bucket prices
   maxVol:   number;         // highest single row volume (for bar width scaling)
   maxAbsDelta: number;      // highest absolute delta (for delta bar scaling)
   totalVol: number;         // sum of all row volumes
+  developingPoc?: { time: number; price: number }[]; // historical trail of POC
 }
 
 export interface VolumeProfileSource {

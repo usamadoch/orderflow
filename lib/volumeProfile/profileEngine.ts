@@ -1,6 +1,7 @@
 import { Trade } from '@/types/trade';
-import { findPOC, findValueArea, findLowVolumeNodes } from '@/lib/utils/volumeProfile';
+import { findPOC, findValueArea, findLowVolumeNodes, findHighVolumeNodes } from '@/lib/utils/volumeProfile';
 import { normalizePriceToBucket } from '@/lib/utils/aggregation';
+import { getAggregateTradeCount } from '@/lib/utils/feedUtils';
 import { Candle } from '@/types/candle';
 import {
   BASE_PROFILE_TIMEFRAME_SECONDS,
@@ -85,7 +86,19 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
     }
   }
 
-  buildProfile({ candles, profileBucketSize, priceHigh, priceLow, debugContext }: VolumeProfileBuildRequest) {
+  buildProfile(request: VolumeProfileBuildRequest) {
+    const {
+      candles,
+      profileBucketSize,
+      priceHigh,
+      priceLow,
+      nodeSensitivity,
+      inputData = 'volume',
+      filterMin,
+      filterMax,
+      debugContext
+    } = request;
+
     if (candles.length === 0 || profileBucketSize <= 0) return null;
 
     const { startMs, endMs } = getCandleTimeWindow(candles);
@@ -97,13 +110,29 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
       profileBucketSize,
       priceHigh ?? '',
       priceLow ?? '',
+      nodeSensitivity ?? 0.5,
+      inputData,
+      filterMin ?? '',
+      filterMax ?? ''
     ].join(':');
 
     if (this.profileCache.has(cacheKey)) {
       return this.profileCache.get(cacheKey)!;
     }
 
-    const profile = this.buildProfileFromRowsAndTrades(candles, startMs, endMs, profileBucketSize, priceHigh, priceLow, debugContext);
+    const profile = this.buildProfileFromRowsAndTrades(
+      candles, 
+      startMs, 
+      endMs, 
+      profileBucketSize, 
+      priceHigh, 
+      priceLow, 
+      debugContext, 
+      nodeSensitivity ?? 0.5, 
+      inputData,
+      filterMin,
+      filterMax
+    );
 
     // Evict oldest entries if cache is full
     if (this.profileCache.size >= RawTradeVolumeProfileEngine.MAX_PROFILE_CACHE_SIZE) {
@@ -169,6 +198,10 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
     priceHigh?: number,
     priceLow?: number,
     debugContext?: VolumeProfileBuildRequest['debugContext'],
+    nodeSensitivity: number = 0.5,
+    inputData: 'volume' | 'orders' | 'aggregateTrades' = 'volume',
+    filterMin?: number,
+    filterMax?: number
   ) {
     const map = new Map<number, ProfileRow>();
     const candleTimes = new Set(candles.map((candle) => candle.time));
@@ -185,28 +218,79 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
       fineCandleTimes: new Set<number>(),
       liveTradeCandleTimes: new Set<number>(),
     };
+    const isFiltering = (filterMin !== undefined && filterMin > 0) || (filterMax !== undefined && filterMax < Infinity);
 
-    for (const { row, origin } of this.baseCache.getFineRowsInRange(startSeconds, endSeconds)) {
-      if (!isCompatibleProfileBucket(row.baseBucketSize, profileBucketSize)) continue;
-      fineCoveredBaseTimes.add(row.candleTime);
-      debugStats.fineRowsUsed += 1;
-      debugStats.fineCandleTimes.add(row.candleTime);
-      if (origin === 'restore') {
-        debugStats.restoredRowsUsed += 1;
-      } else if (origin === 'closed-1m' || origin === 'live') {
-        debugStats.liveClosedRowsUsed += 1;
-      } else {
-        debugStats.unknownFineRowsUsed += 1;
+    const developingPoc: { time: number; price: number }[] = [];
+    let currentMaxVol = -1;
+    let currentPocPrice = 0;
+    
+    // Determine the snapshot interval based on chart resolution
+    const timeframeSeconds = candles.length >= 2 
+      ? Math.max(1, candles[candles.length - 1].time - candles[candles.length - 2].time) 
+      : 60;
+    let nextSnapshotTime = Math.floor(startSeconds / timeframeSeconds) * timeframeSeconds + timeframeSeconds;
+
+    const maybeSnapshot = (timeSeconds: number) => {
+      while (timeSeconds >= nextSnapshotTime) {
+        if (currentMaxVol > 0) {
+          // If we had a gap, push the last known POC up to the current boundary
+          const lastTime = developingPoc.length > 0 ? developingPoc[developingPoc.length - 1].time : startMs;
+          if (lastTime < (nextSnapshotTime - timeframeSeconds) * 1000) {
+             developingPoc.push({ time: (nextSnapshotTime - timeframeSeconds) * 1000, price: currentPocPrice });
+          }
+          developingPoc.push({ time: nextSnapshotTime * 1000, price: currentPocPrice });
+        }
+        nextSnapshotTime += timeframeSeconds;
       }
+    };
 
-      const price = normalizePriceToBucket(row.bucketPrice, profileBucketSize);
-      if (priceHigh !== undefined && price > priceHigh) continue;
-      if (priceLow !== undefined && price < priceLow) continue;
+    if (!isFiltering) {
+      let lastRowTime = startSeconds;
+      for (const { row, origin } of this.baseCache.getFineRowsInRange(startSeconds, endSeconds)) {
+        if (!isCompatibleProfileBucket(row.baseBucketSize, profileBucketSize)) continue;
+        fineCoveredBaseTimes.add(row.candleTime);
+        debugStats.fineRowsUsed += 1;
+        debugStats.fineCandleTimes.add(row.candleTime);
+        if (origin === 'restore') {
+          debugStats.restoredRowsUsed += 1;
+        } else if (origin === 'closed-1m' || origin === 'live') {
+          debugStats.liveClosedRowsUsed += 1;
+        } else {
+          debugStats.unknownFineRowsUsed += 1;
+        }
 
-      const profileRow = getOrCreateProfileRow(map, price);
-      profileRow.bidVol += row.bidVol;
-      profileRow.askVol += row.askVol;
-      profileRow.totalVol += row.totalVol;
+        if (row.candleTime > lastRowTime) {
+          maybeSnapshot(row.candleTime);
+          lastRowTime = row.candleTime;
+        }
+
+        const price = normalizePriceToBucket(row.bucketPrice, profileBucketSize);
+        if (priceHigh !== undefined && price > priceHigh) continue;
+        if (priceLow !== undefined && price < priceLow) continue;
+
+        const profileRow = getOrCreateProfileRow(map, price);
+
+        let metricTotal = row.totalVol;
+        let metricBid = row.bidVol;
+        let metricAsk = row.askVol;
+
+        if (inputData === 'orders' || inputData === 'aggregateTrades') {
+          metricTotal = inputData === 'orders' ? (row.orderCount ?? row.tradeCount) : row.tradeCount;
+          const bidRatio = row.totalVol > 0 ? row.bidVol / row.totalVol : 0.5;
+          metricBid = metricTotal * bidRatio;
+          metricAsk = metricTotal - metricBid;
+        }
+
+        profileRow.bidVol += metricBid;
+        profileRow.askVol += metricAsk;
+        profileRow.totalVol += metricTotal;
+
+        if (profileRow.totalVol > currentMaxVol) {
+          currentMaxVol = profileRow.totalVol;
+          currentPocPrice = profileRow.price;
+        }
+      }
+      maybeSnapshot(lastRowTime + BASE_PROFILE_TIMEFRAME_SECONDS); // Flush end
     }
 
     for (const trade of this.baseCache.getTradesInRange(startMs, endMs)) {
@@ -219,20 +303,40 @@ export class RawTradeVolumeProfileEngine implements VolumeProfileSource {
       debugStats.liveTradesUsed += 1;
       debugStats.liveTradeCandleTimes.add(getBaseCandleTimeForTradeMs(trade.time));
 
+      const tradeTimeSeconds = Math.floor(trade.time / 1000);
+      maybeSnapshot(tradeTimeSeconds);
+
       const price = normalizePriceToBucket(trade.price, profileBucketSize);
       if (priceHigh !== undefined && price > priceHigh) continue;
       if (priceLow !== undefined && price < priceLow) continue;
 
       const row = getOrCreateProfileRow(map, price);
-      if (trade.isBuyerMaker) {
-        row.bidVol += trade.quantity;
-      } else {
-        row.askVol += trade.quantity;
+      
+      let tradeTotal = trade.quantity;
+      if (inputData === 'orders') {
+        tradeTotal = getAggregateTradeCount(trade) ?? 1;
+      } else if (inputData === 'aggregateTrades') {
+        tradeTotal = 1;
       }
-      row.totalVol += trade.quantity;
-    }
 
-    const profile = buildVolumeProfileFromRowMap(map);
+      if (filterMin !== undefined && tradeTotal < filterMin) continue;
+      if (filterMax !== undefined && tradeTotal > filterMax) continue;
+
+      if (trade.isBuyerMaker) {
+        row.bidVol += tradeTotal;
+      } else {
+        row.askVol += tradeTotal;
+      }
+      row.totalVol += tradeTotal;
+
+      if (row.totalVol > currentMaxVol) {
+        currentMaxVol = row.totalVol;
+        currentPocPrice = row.price;
+      }
+    }
+    maybeSnapshot(endSeconds); // Final flush
+
+    const profile = buildVolumeProfileFromRowMap(map, nodeSensitivity, developingPoc);
     if (debugContext) {
       console.debug('[VPROFILE_DEBUG] Render selected profile build', {
         ...debugContext,
@@ -267,6 +371,7 @@ export function buildVolumeProfileFromTrades(
   profileBucketSize: number,
   priceHigh?: number,
   priceLow?: number,
+  nodeSensitivity: number = 0.5
 ): VolumeProfile | null {
   if (trades.length === 0 || profileBucketSize <= 0) return null;
 
@@ -288,10 +393,14 @@ export function buildVolumeProfileFromTrades(
     row.totalVol += trade.quantity;
   }
 
-  return buildVolumeProfileFromRowMap(map);
+  return buildVolumeProfileFromRowMap(map, nodeSensitivity, []);
 }
 
-function buildVolumeProfileFromRowMap(map: Map<number, ProfileRow>): VolumeProfile | null {
+function buildVolumeProfileFromRowMap(
+  map: Map<number, ProfileRow>, 
+  nodeSensitivity: number = 0.5,
+  developingPoc: { time: number; price: number }[] = []
+): VolumeProfile | null {
   if (map.size === 0) return null;
 
   const rows = Array.from(map.values()).sort((a, b) => a.price - b.price);
@@ -300,7 +409,8 @@ function buildVolumeProfileFromRowMap(map: Map<number, ProfileRow>): VolumeProfi
   const maxAbsDelta = rows.reduce((max, row) => Math.max(max, Math.abs(row.askVol - row.bidVol)), 0);
   const poc = findPOC(rows);
   const { vaHigh, vaLow } = findValueArea(rows, totalVol);
-  const lvns = findLowVolumeNodes(rows);
+  const lvns = findLowVolumeNodes(rows, 5, nodeSensitivity);
+  const hvns = findHighVolumeNodes(rows, 5, nodeSensitivity);
 
   return {
     rows,
@@ -311,6 +421,8 @@ function buildVolumeProfileFromRowMap(map: Map<number, ProfileRow>): VolumeProfi
     vaHigh,
     vaLow,
     lvns,
+    hvns,
+    developingPoc,
   };
 }
 

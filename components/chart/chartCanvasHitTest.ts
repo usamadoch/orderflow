@@ -327,3 +327,36 @@ export function getCustomProfileHitZone(
 
   return 'move';
 }
+
+export function getHistoricalSessionProfileHitZone(
+  x: number,
+  y: number,
+  candlesLength: number,
+  scrollOffset: number,
+  barWidth: number,
+  chartWidth: number,
+  profileWidth: number,
+  drawnSessionRanges: {
+    id: string;
+    startX: number | null;
+    endX: number | null;
+    range: { start: number; end: number }; // Time range in seconds
+  }[]
+): string | null {
+  if (candlesLength === 0) return null;
+  
+  // y is mostly irrelevant because profiles usually span the vertical space or we just check if it's within the chart.
+  // Actually, if we just check x, we can find which profile it's on.
+  
+  for (const session of drawnSessionRanges) {
+    if (session.startX !== null && session.endX !== null) {
+      const minX = Math.min(session.startX, session.endX) - barWidth / 2;
+      const maxX = Math.max(session.startX, session.endX) + barWidth / 2;
+      if (x >= minX && x <= maxX) {
+        return session.id;
+      }
+    }
+  }
+
+  return null;
+}

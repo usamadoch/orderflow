@@ -14,20 +14,15 @@ export function drawSessions(
   barWidth: number,
   canvasHeight: number,
   timeAxisHeight: number,
-  sessions: { tokyo: SessionConfig; london: SessionConfig; newYork: SessionConfig },
+  sessions: Record<string, SessionConfig>,
   sessionsEnabled: boolean,
   timezone: string = 'local'
 ) {
-  if (!sessionsEnabled) return;
+  if (!sessionsEnabled || !sessions) return;
 
-  const sessionConfigs = [
-    { config: sessions.tokyo, label: 'TYO' },
-    { config: sessions.london, label: 'LON' },
-    { config: sessions.newYork, label: 'NYC' },
-  ];
-
-  for (const { config, label } of sessionConfigs) {
-    if (!config.enabled) continue;
+  for (const [key, config] of Object.entries(sessions)) {
+    if (!config || !config.enabled) continue;
+    const label = key === 'tokyo' ? 'TYO' : key === 'london' ? 'LON' : key === 'newYork' ? 'NYC' : key.slice(0, 3).toUpperCase();
 
     const occurrences = getSessionOccurrences(config, candles, visibleRange, timezone);
 

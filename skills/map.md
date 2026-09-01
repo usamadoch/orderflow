@@ -130,8 +130,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters, delta, or delta-volume profiles per price level.
 - `components/chart/drawBubbles.ts` → Volume bubble renderer visualizing trade volume, order clusters, and color modes with percentile scaling and 3D effects.
 - `components/chart/drawVolumeBars.ts` → Bottom histogram renderer for volume and trade counts with moving average overlay.
-- `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC, Value Area, and HVN/LVN levels.
-- `components/chart/drawSelectionRect.ts` → Interactive selection rectangle and custom Volume Profile renderer.
+- `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC line, developing POC trail, Value Area, and HVN/LVN levels with configurable cosmetics.
+- `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer.
 - `components/chart/drawLines.ts` → Canvas renderer for horizontal lines, trendlines, rays, boxes, and Risk/Reward position tools.
 - `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer.
 - `components/chart/drawPriceLine.ts` → Current market price line, badge, and timer renderer.
@@ -198,10 +198,11 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Volume Profile
 
-- `lib/volumeProfile/profileCache.ts` → In-memory cache for 1m fine Volume Profile rows.
-- `lib/volumeProfile/profileEngine.ts` → Profile engine building viewable Volume Profiles over cached fine rows.
+- `lib/volumeProfile/profileCache.ts` → In-memory cache for 1m fine Volume Profile rows supporting volume, order count, and aggregate trade metrics.
+- `lib/volumeProfile/profileEngine.ts` → Profile engine building viewable Volume Profiles over cached fine rows with O(N) developing POC trail computation.
 - `lib/utils/volumeProfile.ts` → Volume Profile math for POC, Value Area (VA), High/Low Volume Nodes (HVN/LVN).
-- `types/volumeProfile.ts` → Types for volume distributions, nodes, and profile settings.
+- `lib/utils/historicalSessions.ts` → Historical session calculation and multi-session boundary range resolution with dynamic merge/split support.
+- `types/volumeProfile.ts` → Types for volume distributions, nodes, developing POC trails, and profile settings.
 
 ### Signals / Analysis
 
@@ -230,7 +231,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Database / Storage
 
-- `lib/db/storageAdapter.ts` → Unified storage facade supporting libSQL and MongoDB drivers.
+- `lib/db/storageAdapter.ts` → Unified storage facade supporting libSQL and TimescaleDB drivers.
 - `lib/db/database.ts` → libSQL database facade delegating connection setup, migrations, and table queries to domain repositories.
 - `lib/db/repositories/dbSetup.ts` → Database connection setup, table schema migrations, write retry helpers, and database size metadata.
 - `lib/db/repositories/candleRepository.ts` → Candle table queries, time range selects, and candle snapshot persistence.
@@ -247,7 +248,6 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/db/timescale/repositories/timescaleFootprintRepository.ts` → TimescaleDB footprint batch insertion and range queries.
 - `lib/db/timescale/repositories/timescaleProfileRepository.ts` → TimescaleDB profile batch insertion and range queries.
 - `lib/db/timescale/repositories/timescaleBubbleRepository.ts` → TimescaleDB bubble candidate storage and deduplication logic.
-- `lib/db/_mongo_quarantine/` → Quarantined MongoDB code (slated for deletion).
 - `lib/actions/storageActions.ts` → Server Actions bridging frontend persistence requests to DB storage adapters.
 - `data/market.db` → Local SQLite/libSQL database file for offline/dev storage.
 - `scripts/testDb.ts` → Verification script testing database connection and operations.
@@ -298,8 +298,6 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 - `artifacts/timeframe_behavior_report.md` → Analysis report on settings behavior across timeframes.
 - `artifacts/pi_deployment.md` → Deployment and PM2 configuration guide for Raspberry Pi.
-- `artifacts/storage_migration_audit.md` → Audit of storage migration from libSQL to MongoDB.
-- `artifacts/mongodb_storage_design.md` → Architecture document for MongoDB time-series storage.
 - `artifacts/volume_profile_system_audit.md` → Technical audit of Volume Profile calculation and storage architecture.
 - `artifacts/current_system_state.md` → System audit of footprint data pipeline and state flow.
 - `artifacts/rendering_performance_audit.md` → Performance audit of canvas rendering and optimization recommendations.

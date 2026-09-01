@@ -246,6 +246,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             liquidityVacuumOpacity={panel.liquidityVacuumOpacity}
             profileWidthPct={panel.profileWidthPct}
             defaultProfileEnabled={panel.defaultProfileEnabled}
+            defaultProfilePeriod={panel.defaultProfilePeriod}
             profileResolutionTicks={panel.profileResolutionTicks}
             profileMinRowHeight={panel.profileMinRowHeight}
             profileOpacity={panel.profileOpacity}
@@ -255,7 +256,11 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
             profileShowVaFill={panel.profileShowVaFill}
             profileShowPocLine={panel.profileShowPocLine}
             profileShowVaLines={panel.profileShowVaLines}
-            profileShowDelta={panel.profileShowDelta}
+            profileType={panel.profileType}
+            profileInputData={panel.profileInputData}
+            profileFilterMin={panel.profileFilterMin}
+            profileFilterMax={panel.profileFilterMax}
+            profileNodeSensitivity={panel.profileNodeSensitivity}
             historicalSessionProfileEnabled={panel.historicalSessionProfileEnabled}
             deltaProfileWidth={panel.deltaProfileWidth}
             sessionsEnabled={panel.sessionsEnabled}

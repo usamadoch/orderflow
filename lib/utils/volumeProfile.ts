@@ -16,7 +16,8 @@ export function buildProfile(
   bucketSize: number,
   profileBucketSize: number = bucketSize,
   priceHigh?: number,
-  priceLow?: number
+  priceLow?: number,
+  nodeSensitivity: number = 0.5
 ): VolumeProfile | null {
   if (visibleCandles.length === 0 || bucketSize <= 0) return null;
 
@@ -100,7 +101,8 @@ export function buildProfile(
 
   const poc = findPOC(rows);
   const { vaHigh, vaLow } = findValueArea(rows, totalVol);
-  const lvns = findLowVolumeNodes(rows);
+  const lvns = findLowVolumeNodes(rows, 5, nodeSensitivity);
+  const hvns = findHighVolumeNodes(rows, 5, nodeSensitivity);
 
   const maxAbsDelta = rows.reduce((max, r) => {
     const delta = Math.abs(r.askVol - r.bidVol);
@@ -116,6 +118,7 @@ export function buildProfile(
     vaHigh,
     vaLow,
     lvns,
+    hvns,
   };
 }
 
@@ -185,11 +188,14 @@ export function findValueArea(
  * Find local low-volume nodes: materially quiet buckets between stronger
  * neighbors. The cap keeps LVN marks useful instead of turning into chart dust.
  */
-export function findLowVolumeNodes(rows: ProfileRow[], maxNodes: number = 5): number[] {
+export function findLowVolumeNodes(rows: ProfileRow[], maxNodes: number = 5, sensitivity: number = 0.5): number[] {
   if (rows.length < 3) return [];
 
   const avgVol = rows.reduce((sum, row) => sum + row.totalVol, 0) / rows.length;
   const candidates: { price: number; score: number }[] = [];
+
+  const localMultiplier = sensitivity + 0.15; // 0.5 -> 0.65
+  const globalMultiplier = sensitivity + 0.35; // 0.5 -> 0.85
 
   for (let i = 1; i < rows.length - 1; i++) {
     const prev = rows[i - 1].totalVol;
@@ -198,10 +204,45 @@ export function findLowVolumeNodes(rows: ProfileRow[], maxNodes: number = 5): nu
     const neighborMin = Math.min(prev, next);
     const neighborAvg = (prev + next) / 2;
 
-    if (current <= neighborMin * 0.65 && current <= avgVol * 0.85) {
+    if (current <= neighborMin * localMultiplier && current <= avgVol * globalMultiplier) {
       candidates.push({
         price: rows[i].price,
         score: neighborAvg - current,
+      });
+    }
+  }
+
+  return candidates
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxNodes)
+    .map(candidate => candidate.price)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Find local high-volume nodes (peaks): materially stronger buckets compared to
+ * neighbors.
+ */
+export function findHighVolumeNodes(rows: ProfileRow[], maxNodes: number = 5, sensitivity: number = 0.5): number[] {
+  if (rows.length < 3) return [];
+
+  const avgVol = rows.reduce((sum, row) => sum + row.totalVol, 0) / rows.length;
+  const candidates: { price: number; score: number }[] = [];
+
+  const localMultiplier = 1.0 + (1 - sensitivity); // 0.5 -> 1.5
+  const globalMultiplier = 1.0 + (1 - sensitivity); // 0.5 -> 1.5
+
+  for (let i = 1; i < rows.length - 1; i++) {
+    const prev = rows[i - 1].totalVol;
+    const current = rows[i].totalVol;
+    const next = rows[i + 1].totalVol;
+    const neighborMax = Math.max(prev, next);
+    const neighborAvg = (prev + next) / 2;
+
+    if (current >= neighborMax * localMultiplier && current >= avgVol * globalMultiplier) {
+      candidates.push({
+        price: rows[i].price,
+        score: current - neighborAvg,
       });
     }
   }

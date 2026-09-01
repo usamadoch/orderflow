@@ -1,5 +1,7 @@
 import { VolumeProfile } from '@/lib/utils/volumeProfile';
 import { HeatmapRow } from '@/types/liquidity';
+import { VolumeProfileType } from '@/types/chart';
+import { CHART_BEARISH_RGB, CHART_BULLISH_RGB, chartColorToRgba } from '@/lib/config/chartColors';
 
 const MIN_PROFILE_ROW_OPACITY = 0.15;
 
@@ -25,7 +27,14 @@ export function drawVolumeProfile(
   showVaFill: boolean = true,
   showPocLine: boolean = true,
   showVaLines: boolean = true,
-  heatmapRows?: HeatmapRow[]
+  profileType: VolumeProfileType = 'volume',
+  heatmapRows?: HeatmapRow[],
+  candles?: { time: number }[],
+  indexToX?: (index: number) => number,
+  pocColor: string = '#F0B90B',
+  hvnColor: string = '#F43F5E',
+  lvnColor: string = '#22D3EE',
+  pocWidth: number = 1
 ) {
   const chartRight = canvasWidth - priceAxisWidth;
   const effectiveWidth = Math.max(0, profileWidth * (profileWidthPct / 100));
@@ -72,9 +81,33 @@ export function drawVolumeProfile(
     const barX = chartRight - calculatedBarWidth;
     const rowOpacity = getProfileRowOpacity(row.totalVol, profile.maxVol);
 
-    // Unified muted amber/orange color for institutional look
-    ctx.fillStyle = `rgba(217, 119, 6, ${rowOpacity})`;
-    ctx.fillRect(barX, yTop, calculatedBarWidth, rowHeight);
+    if (profileType === 'bidAsk') {
+      // Split the bar horizontally into Ask (buy/bullish) and Bid (sell/bearish)
+      const askVol = row.askVol || 0;
+      const bidVol = row.bidVol || 0;
+      const totalVol = Math.max(1, askVol + bidVol);
+      const askRatio = askVol / totalVol;
+      const bidRatio = bidVol / totalVol;
+
+      const askWidth = calculatedBarWidth * askRatio;
+      const bidWidth = calculatedBarWidth * bidRatio;
+
+      // Draw Bid (sellers - Bearish)
+      if (bidWidth > 0) {
+        ctx.fillStyle = chartColorToRgba(CHART_BEARISH_RGB, rowOpacity);
+        ctx.fillRect(barX, yTop, bidWidth, rowHeight);
+      }
+      
+      // Draw Ask (buyers - Bullish) right after Bid
+      if (askWidth > 0) {
+        ctx.fillStyle = chartColorToRgba(CHART_BULLISH_RGB, rowOpacity);
+        ctx.fillRect(barX + bidWidth, yTop, askWidth, rowHeight);
+      }
+    } else if (profileType !== 'delta') {
+      // Unified muted amber/orange color for institutional look
+      ctx.fillStyle = `rgba(217, 119, 6, ${rowOpacity})`;
+      ctx.fillRect(barX, yTop, calculatedBarWidth, rowHeight);
+    }
   }
 
   // ── Step 1.5: POC Row Highlight ──
@@ -99,14 +132,14 @@ export function drawVolumeProfile(
           ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
           ctx.fillRect(barX, yTop, barW, rowHeight);
 
-          // Amber outline
-          ctx.strokeStyle = '#F0B90B';
-          ctx.lineWidth = 1;
+          // POC outline
+          ctx.strokeStyle = pocColor;
+          ctx.lineWidth = pocWidth;
           ctx.strokeRect(barX, yTop, barW, rowHeight);
 
           // Internal POC label
           if (rowHeight >= 10 && barW >= 20) {
-            ctx.fillStyle = '#F0B90B';
+            ctx.fillStyle = pocColor;
             ctx.font = '8px "JetBrains Mono"';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
@@ -119,9 +152,9 @@ export function drawVolumeProfile(
               hr => hr.price >= pocRow.price && hr.price < pocRow.price + profileBucketSize
             );
             if (matchingHeatmapRow && matchingHeatmapRow.intensity >= 0.9) {
-              ctx.shadowColor = '#F0B90B';
+              ctx.shadowColor = pocColor;
               ctx.shadowBlur = 10;
-              ctx.fillStyle = '#F0B90B';
+              ctx.fillStyle = pocColor;
               ctx.fillRect(barX, yTop, 2, rowHeight);
               ctx.shadowBlur = 0; // reset
             }
@@ -137,8 +170,8 @@ export function drawVolumeProfile(
 
     ctx.save();
     ctx.globalAlpha = lineOpacity;
-    ctx.strokeStyle = '#F0B90B';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = pocColor;
+    ctx.lineWidth = Math.max(1.5, pocWidth);
     ctx.setLineDash([6, 3]);
     ctx.beginPath();
     ctx.moveTo(0, Math.round(pocY) + 0.5);
@@ -146,7 +179,7 @@ export function drawVolumeProfile(
     ctx.stroke();
 
     // POC label on left
-    ctx.fillStyle = '#F0B90B';
+    ctx.fillStyle = pocColor;
     ctx.font = 'bold 9px "JetBrains Mono"';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
@@ -195,10 +228,10 @@ export function drawVolumeProfile(
   if (profile.lvns.length > 0) {
     ctx.save();
     ctx.globalAlpha = lineOpacity;
-    ctx.strokeStyle = '#22D3EE';
+    ctx.strokeStyle = lvnColor;
     ctx.lineWidth = 1;
     ctx.setLineDash([2, 4]);
-    ctx.fillStyle = '#22D3EE';
+    ctx.fillStyle = lvnColor;
     ctx.font = 'bold 9px "JetBrains Mono"';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
@@ -211,6 +244,65 @@ export function drawVolumeProfile(
       ctx.stroke();
       ctx.fillText('LVN', profileStartX + 3, lvnY - 2);
     }
+    ctx.restore();
+  }
+
+  // ── Step 5: HVN Lines ──
+  if (profile.hvns && profile.hvns.length > 0) {
+    ctx.save();
+    ctx.globalAlpha = lineOpacity;
+    ctx.strokeStyle = hvnColor;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([2, 4]);
+    ctx.fillStyle = hvnColor;
+    ctx.font = 'bold 9px "JetBrains Mono"';
+    ctx.textAlign = 'right'; // align right for HVN to distinguish from LVN
+    ctx.textBaseline = 'bottom';
+
+    for (const hvn of profile.hvns) {
+      const hvnY = priceToY(hvn + profileBucketSize / 2);
+      ctx.beginPath();
+      ctx.moveTo(profileStartX, Math.round(hvnY) + 0.5);
+      ctx.lineTo(chartRight, Math.round(hvnY) + 0.5);
+      ctx.stroke();
+      ctx.fillText('HVN', chartRight - 4, hvnY - 2);
+    }
+    ctx.restore();
+  }
+
+  // ── Step 6: Developing POC Trail ──
+  if (showPocLine && profile.developingPoc && profile.developingPoc.length > 0 && candles && indexToX) {
+    ctx.save();
+    ctx.globalAlpha = lineOpacity;
+    ctx.strokeStyle = pocColor;
+    ctx.lineWidth = Math.max(2, pocWidth + 1);
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+
+    let started = false;
+    for (const point of profile.developingPoc) {
+      // Find candle index for this time (point.time is in ms, candle.time is in s)
+      const timeSeconds = Math.floor(point.time / 1000);
+      
+      let lo = 0, hi = candles.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (candles[mid].time < timeSeconds) lo = mid + 1;
+        else hi = mid;
+      }
+      const index = Math.min(lo, candles.length - 1);
+      
+      const x = indexToX(index);
+      const y = priceToY(point.price + profileBucketSize / 2);
+
+      if (!started) {
+        ctx.moveTo(x, Math.round(y) + 0.5);
+        started = true;
+      } else {
+        ctx.lineTo(x, Math.round(y) + 0.5);
+      }
+    }
+    ctx.stroke();
     ctx.restore();
   }
 }

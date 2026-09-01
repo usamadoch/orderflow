@@ -18,6 +18,7 @@ import {
 } from '@/lib/cache/marketCachePolicy';
 import { normalizePriceToBucket } from '@/lib/utils/aggregation';
 import type { FineProfileRow, VolumeProfileCacheKeyParts, FineProfileRowSnapshot, FineRowInsertResult } from '@/types/volumeProfile';
+import { getAggregateTradeCount } from '@/lib/utils/feedUtils';
 
 export const BASE_PROFILE_TIMEFRAME_SECONDS = 60;
 
@@ -186,6 +187,7 @@ export class VolumeProfileBaseCache {
         askVol: 0,
         totalVol: 0,
         tradeCount: 0,
+        orderCount: 0,
       };
       candleRows.set(rowKey, row);
       this.fineRowsByCandle.set(candleTime, candleRows);
@@ -199,6 +201,7 @@ export class VolumeProfileBaseCache {
 
     row.totalVol += trade.quantity;
     row.tradeCount += 1;
+    row.orderCount = (row.orderCount || 0) + (getAggregateTradeCount(trade) ?? 1);
     this.fineRowOrigins.set(getFineRowStorageKey(row), origin);
     this.versionValue += 1;
     updateCacheMetric('volumeProfile', this.key, this.getMetricDetails());
@@ -587,16 +590,36 @@ export class VolumeProfileBaseCache {
   }
 
   private setFineRow(row: FineProfileRow, origin: string): FineRowInsertResult {
-    if (row.baseBucketSize <= 0 || Math.abs(row.baseBucketSize - this.baseBucketSize) > 1e-9) {
+    // Handle possible snake_case from DB restoration
+    const rawRow = row as unknown as Record<string, unknown>;
+    const cTime = Number.isFinite(row.candleTime) ? row.candleTime : Number(rawRow.candle_time);
+    const bBucketSize = Number.isFinite(row.baseBucketSize) ? row.baseBucketSize : Number(rawRow.base_bucket_size);
+    const bPrice = Number.isFinite(row.bucketPrice) ? row.bucketPrice : Number(rawRow.bucket_price);
+    const bidV = Number.isFinite(row.bidVol) ? row.bidVol : Number(rawRow.bid_vol);
+    const askV = Number.isFinite(row.askVol) ? row.askVol : Number(rawRow.ask_vol);
+    const totalV = Number.isFinite(row.totalVol) ? row.totalVol : Number(rawRow.total_vol);
+    const tCountRaw = Number.isFinite(row.tradeCount) ? row.tradeCount : Number(rawRow.trade_count);
+    const oCountRaw = Number.isFinite(row.orderCount) ? row.orderCount : (rawRow.order_count !== undefined ? Number(rawRow.order_count) : undefined);
+    
+    const tCount = Number.isFinite(tCountRaw) && !Number.isNaN(tCountRaw) ? tCountRaw : 1;
+    const oCount = oCountRaw;
+
+    if (bBucketSize <= 0 || Math.abs(bBucketSize - this.baseBucketSize) > 1e-9) {
       return 'invalid-base-bucket';
     }
-    if (!Number.isFinite(row.bucketPrice)) return 'invalid-price';
-    if (row.totalVol <= 0) return 'non-positive-volume';
+    if (!Number.isFinite(bPrice)) return 'invalid-price';
+    if (totalV <= 0) return 'non-positive-volume';
 
-    const candleTime = normalizeProfileBaseCandleTime(row.candleTime);
-    const normalizedRow = {
-      ...row,
+    const candleTime = normalizeProfileBaseCandleTime(cTime);
+    const normalizedRow: FineProfileRow = {
       candleTime,
+      baseBucketSize: bBucketSize,
+      bucketPrice: bPrice,
+      bidVol: bidV,
+      askVol: askV,
+      totalVol: totalV,
+      tradeCount: tCount,
+      orderCount: oCount ?? tCount,
     };
     const candleRows = this.fineRowsByCandle.get(candleTime) ?? new Map<string, FineProfileRow>();
     const fineRowKey = getFineRowKey(normalizedRow);

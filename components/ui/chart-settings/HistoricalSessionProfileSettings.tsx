@@ -44,9 +44,11 @@ export const HistoricalSessionProfileSettings = forwardRef<HTMLDivElement, Histo
               onChange={(e) => setHistoricalSessionProfileSession(panelId, e.target.value as SessionId | 'multiple')}
               className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1.5 text-[12px] font-bold text-main appearance-none cursor-pointer"
             >
-              <option value="tokyo">Tokyo</option>
-              <option value="london">London</option>
-              <option value="newYork">New York</option>
+              {Object.keys(panel.sessions).map(sid => (
+                <option key={sid} value={sid}>
+                  {sid === 'newYork' ? 'New York' : sid.charAt(0).toUpperCase() + sid.slice(1)}
+                </option>
+              ))}
               <option value="multiple">Multiple</option>
             </select>
           </div>
@@ -56,7 +58,7 @@ export const HistoricalSessionProfileSettings = forwardRef<HTMLDivElement, Histo
               <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
                 <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sessions</label>
                 <div className="flex flex-col gap-2">
-                  {(['tokyo', 'london', 'newYork'] as const).map(sid => (
+                  {Object.keys(panel.sessions).map(sid => (
                     <label key={sid} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"

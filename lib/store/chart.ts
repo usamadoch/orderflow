@@ -21,6 +21,7 @@ import type {
   VolumeBarsMarketSource,
   VolumeBarsColorMode,
   VolumeBarsFilterMode,
+  VolumeProfileType,
   IndicatorSettingsSection,
   IndicatorId,
   SettingsFocusSection,
@@ -56,6 +57,7 @@ export type {
   VolumeBarsMarketSource,
   VolumeBarsColorMode,
   VolumeBarsFilterMode,
+  VolumeProfileType,
   IndicatorSettingsSection,
   IndicatorId,
   SettingsFocusSection,
@@ -161,8 +163,12 @@ export interface ChartState {
   setLiquidityVacuumShowLabels: (panelId: PanelId, show: boolean) => void;
   setLiquidityVacuumOpacity: (panelId: PanelId, opacity: number) => void;
   setLiquidityVacuumMaxZones: (panelId: PanelId, maxZones: number) => void;
+  setProfileNodeSensitivity: (panelId: PanelId, sensitivity: number) => void;
   setProfileWidthPct: (panelId: PanelId, pct: number) => void;
   setDefaultProfileEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setDefaultProfilePeriod: (panelId: PanelId, period: 'visible' | 'latest' | 'composite' | 'periodic') => void;
+  setProfilePeriodValue: (panelId: PanelId, value: number) => void;
+  setProfilePeriodUnit: (panelId: PanelId, unit: 'minutes' | 'hours' | 'days') => void;
   setProfileResolutionTicks: (panelId: PanelId, ticks: number) => void;
   setProfileMinRowHeight: (panelId: PanelId, height: number) => void;
   setProfileOpacity: (panelId: PanelId, opacity: number) => void;
@@ -172,7 +178,14 @@ export interface ChartState {
   setProfileShowVaFill: (panelId: PanelId, show: boolean) => void;
   setProfileShowPocLine: (panelId: PanelId, show: boolean) => void;
   setProfileShowVaLines: (panelId: PanelId, show: boolean) => void;
-  setProfileShowDelta: (panelId: PanelId, show: boolean) => void;
+  setProfileType: (panelId: PanelId, type: VolumeProfileType) => void;
+  setProfilePocColor: (panelId: PanelId, color: string) => void;
+  setProfilePocWidth: (panelId: PanelId, width: number) => void;
+  setProfileHvnColor: (panelId: PanelId, color: string) => void;
+  setProfileLvnColor: (panelId: PanelId, color: string) => void;
+  setProfileInputData: (panelId: PanelId, inputData: VolumeBarsInputData) => void;
+  setProfileFilterMin: (panelId: PanelId, val: number | undefined) => void;
+  setProfileFilterMax: (panelId: PanelId, val: number | undefined) => void;
   setDeltaProfileWidth: (panelId: PanelId, width: number) => void;
   setCvdEnabled: (panelId: PanelId, enabled: boolean) => void;
   setCvdPanelHeightPct: (panelId: PanelId, pct: number) => void;
@@ -211,6 +224,8 @@ export interface ChartState {
   setHistoricalSessionProfileDisplayMode: (panelId: PanelId, mode: 'separate' | 'combined') => void;
   setHistoricalSessionProfileCount: (panelId: PanelId, count: number) => void;
   setHistoricalSessionProfileMinTimeframe: (panelId: PanelId, minTimeframe: string) => void;
+  setHistoricalSessionProfileCustomSessions: (panelId: PanelId, customSessions: { id: string; start: string; end: string; tz: string }[]) => void;
+  setMergedProfileRanges: (panelId: PanelId, mergedProfileRanges: { start: number; end: number }[]) => void;
 
   // Liquidity
   setLiquidityEnabled: (panelId: PanelId, enabled: boolean) => void;
@@ -316,8 +331,10 @@ function createDefaultPanel(id: PanelId): PanelState {
     liquidityVacuumOpacity: 0.18,
     liquidityVacuumMaxZones: 6,
     indicatorLabelsCollapsed: false,
+    profileNodeSensitivity: 0.5,
     profileWidthPct: 45,
     defaultProfileEnabled: false,
+    defaultProfilePeriod: 'visible',
     profileResolutionTicks: 0,
     profileMinRowHeight: 1,
     profileOpacity: 0.6,
@@ -327,7 +344,12 @@ function createDefaultPanel(id: PanelId): PanelState {
     profileShowVaFill: true,
     profileShowPocLine: true,
     profileShowVaLines: true,
-    profileShowDelta: true,
+    profileType: 'volume',
+    profilePocColor: '#F0B90B',
+    profilePocWidth: 1,
+    profileHvnColor: '#F43F5E',
+    profileLvnColor: '#22D3EE',
+    profileInputData: 'volume',
     deltaProfileWidth: 80,
     cvdEnabled: false,
     cvdPanelHeightPct: 24,
@@ -382,6 +404,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     historicalSessionProfileDisplayMode: 'separate',
     historicalSessionProfileCount: 1,
     historicalSessionProfileMinTimeframe: '15m',
+    historicalSessionProfileCustomSessions: [],
+    mergedProfileRanges: [],
     settingsByTimeframe: {},
     // Liquidity Map
     liquidityEnabled: false,
@@ -562,10 +586,10 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
     'icebergShowLabels', 'icebergShowTint', 'liquidityVacuumMinScore',
     'liquidityVacuumShowLabels', 'liquidityVacuumOpacity', 'liquidityVacuumMaxZones',
-    'profileWidthPct', 'defaultProfileEnabled', 'profileResolutionTicks', 'profileMinRowHeight',
+    'profileNodeSensitivity', 'profileWidthPct', 'defaultProfileEnabled', 'defaultProfilePeriod', 'profileResolutionTicks', 'profileMinRowHeight',
     'profileOpacity', 'profileMinRowWidth', 'profileScaleMode',
     'profileShowPocHighlight', 'profileShowVaFill', 'profileShowPocLine',
-    'profileShowVaLines', 'profileShowDelta', 'deltaProfileWidth',
+    'profileShowVaLines', 'profileType', 'deltaProfileWidth',
     'cvdEnabled', 'cvdPanelHeightPct', 'cvdMode', 'cvdSmoothing',
     'cvdResetMode', 'cvdPositiveColor', 'cvdNegativeColor',
     'cvdScaleMode', 'cvdFixedRange', 'cvdShowDivergence',
@@ -973,11 +997,23 @@ export const useChartStore = create<ChartState>()(
       setLiquidityVacuumMaxZones: (panelId, liquidityVacuumMaxZones) =>
         set((state) => updatePanel(state, panelId, { liquidityVacuumMaxZones: Math.max(1, Math.min(20, Math.round(liquidityVacuumMaxZones))) })),
 
+      setProfileNodeSensitivity: (panelId, profileNodeSensitivity) =>
+        set((state) => updatePanel(state, panelId, { profileNodeSensitivity: Math.max(0, Math.min(1, profileNodeSensitivity)) })),
+
       setProfileWidthPct: (panelId, profileWidthPct) =>
         set((state) => updatePanel(state, panelId, { profileWidthPct: Math.max(10, Math.min(100, profileWidthPct)) })),
 
       setDefaultProfileEnabled: (panelId, defaultProfileEnabled) =>
         set((state) => updatePanel(state, panelId, { defaultProfileEnabled })),
+
+      setDefaultProfilePeriod: (panelId, defaultProfilePeriod) =>
+        set((state) => updatePanel(state, panelId, { defaultProfilePeriod })),
+
+      setProfilePeriodValue: (panelId, profilePeriodValue) =>
+        set((state) => updatePanel(state, panelId, { profilePeriodValue })),
+
+      setProfilePeriodUnit: (panelId, profilePeriodUnit) =>
+        set((state) => updatePanel(state, panelId, { profilePeriodUnit })),
 
       setProfileResolutionTicks: (panelId, profileResolutionTicks) =>
         set((state) => updatePanel(state, panelId, { profileResolutionTicks: clampProfileResolutionTicks(profileResolutionTicks, state.tickSize) })),
@@ -1006,8 +1042,29 @@ export const useChartStore = create<ChartState>()(
       setProfileShowVaLines: (panelId, profileShowVaLines) =>
         set((state) => updatePanel(state, panelId, { profileShowVaLines })),
 
-      setProfileShowDelta: (panelId, profileShowDelta) =>
-        set((state) => updatePanel(state, panelId, { profileShowDelta })),
+      setProfileType: (panelId, profileType) =>
+        set((state) => updatePanel(state, panelId, { profileType })),
+
+      setProfilePocColor: (panelId, profilePocColor) =>
+        set((state) => updatePanel(state, panelId, { profilePocColor })),
+
+      setProfilePocWidth: (panelId, profilePocWidth) =>
+        set((state) => updatePanel(state, panelId, { profilePocWidth })),
+
+      setProfileHvnColor: (panelId, profileHvnColor) =>
+        set((state) => updatePanel(state, panelId, { profileHvnColor })),
+
+      setProfileLvnColor: (panelId, profileLvnColor) =>
+        set((state) => updatePanel(state, panelId, { profileLvnColor })),
+
+      setProfileInputData: (panelId, profileInputData) =>
+        set((state) => updatePanel(state, panelId, { profileInputData })),
+
+      setProfileFilterMin: (panelId, profileFilterMin) =>
+        set((state) => updatePanel(state, panelId, { profileFilterMin })),
+        
+      setProfileFilterMax: (panelId, profileFilterMax) =>
+        set((state) => updatePanel(state, panelId, { profileFilterMax })),
 
       setDeltaProfileWidth: (panelId, deltaProfileWidth) =>
         set((state) => updatePanel(state, panelId, { deltaProfileWidth })),
@@ -1220,6 +1277,12 @@ export const useChartStore = create<ChartState>()(
       setHistoricalSessionProfileMinTimeframe: (panelId, historicalSessionProfileMinTimeframe) =>
         set((state) => updatePanel(state, panelId, { historicalSessionProfileMinTimeframe })),
 
+      setHistoricalSessionProfileCustomSessions: (panelId, historicalSessionProfileCustomSessions) =>
+        set((state) => updatePanel(state, panelId, { historicalSessionProfileCustomSessions })),
+
+      setMergedProfileRanges: (panelId, mergedProfileRanges) =>
+        set((state) => updatePanel(state, panelId, { mergedProfileRanges })),
+
 
 
       // Global actions
@@ -1355,9 +1418,10 @@ export const useChartStore = create<ChartState>()(
             liquidityVacuumOpacity: Math.max(0.05, Math.min(0.5, p.liquidityVacuumOpacity ?? 0.18)),
             liquidityVacuumMaxZones: Math.max(1, Math.min(20, p.liquidityVacuumMaxZones ?? 6)),
             indicatorLabelsCollapsed: p.indicatorLabelsCollapsed ?? persisted.indicatorLabelsCollapsed ?? false,
-            profileWidthPct: p.profileWidthPct ?? 45,
+            profileNodeSensitivity: p.profileNodeSensitivity ?? 0.5,
             defaultProfileEnabled: p.defaultProfileEnabled ?? false,
-            profileResolutionTicks: clampProfileResolutionTicks(p.profileResolutionTicks, tickSize),
+            defaultProfilePeriod: p.defaultProfilePeriod ?? 'visible',
+            profileResolutionTicks: p.profileResolutionTicks ?? 0,
             profileMinRowHeight: p.profileMinRowHeight ?? 1,
             profileOpacity: p.profileOpacity ?? 0.6,
             profileMinRowWidth: p.profileMinRowWidth ?? 2,
@@ -1366,6 +1430,12 @@ export const useChartStore = create<ChartState>()(
             profileShowVaFill: p.profileShowVaFill ?? true,
             profileShowPocLine: p.profileShowPocLine ?? true,
             profileShowVaLines: p.profileShowVaLines ?? true,
+            profilePocColor: p.profilePocColor ?? '#F0B90B',
+            profilePocWidth: p.profilePocWidth ?? 1,
+            profileHvnColor: p.profileHvnColor ?? '#F43F5E',
+            profileLvnColor: p.profileLvnColor ?? '#22D3EE',
+            profilePeriodValue: p.profilePeriodValue,
+            profilePeriodUnit: p.profilePeriodUnit,
             profileShowDelta: p.profileShowDelta ?? true,
             deltaProfileWidth: p.deltaProfileWidth ?? 80,
             cvdEnabled: p.cvdEnabled ?? false,
@@ -1406,6 +1476,8 @@ export const useChartStore = create<ChartState>()(
             historicalSessionProfileDisplayMode: p.historicalSessionProfileDisplayMode ?? 'separate',
             historicalSessionProfileCount: p.historicalSessionProfileCount ?? 1,
             historicalSessionProfileMinTimeframe: p.historicalSessionProfileMinTimeframe ?? '15m',
+            historicalSessionProfileCustomSessions: p.historicalSessionProfileCustomSessions ?? [],
+            mergedProfileRanges: p.mergedProfileRanges ?? [],
             historicalSessionProfileResolutionTicks: clampProfileResolutionTicks(p.historicalSessionProfileResolutionTicks ?? 0, tickSize),
             historicalSessionProfileMinRowHeight: p.historicalSessionProfileMinRowHeight ?? 1,
             historicalSessionProfileOpacity: p.historicalSessionProfileOpacity ?? 0.3,
@@ -1598,7 +1670,7 @@ export const useChartStore = create<ChartState>()(
             profileShowVaFill: state.panels.left.profileShowVaFill,
             profileShowPocLine: state.panels.left.profileShowPocLine,
             profileShowVaLines: state.panels.left.profileShowVaLines,
-            profileShowDelta: state.panels.left.profileShowDelta,
+            profileType: state.panels.left.profileType,
             deltaProfileWidth: state.panels.left.deltaProfileWidth,
             cvdEnabled: state.panels.left.cvdEnabled,
             cvdPanelHeightPct: state.panels.left.cvdPanelHeightPct,
@@ -1715,7 +1787,7 @@ export const useChartStore = create<ChartState>()(
             profileShowVaFill: state.panels.right.profileShowVaFill,
             profileShowPocLine: state.panels.right.profileShowPocLine,
             profileShowVaLines: state.panels.right.profileShowVaLines,
-            profileShowDelta: state.panels.right.profileShowDelta,
+            profileType: state.panels.right.profileType,
             deltaProfileWidth: state.panels.right.deltaProfileWidth,
             cvdEnabled: state.panels.right.cvdEnabled,
             cvdPanelHeightPct: state.panels.right.cvdPanelHeightPct,

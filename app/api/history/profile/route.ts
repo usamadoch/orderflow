@@ -54,13 +54,17 @@ export async function GET(request: NextRequest) {
     maxCandleTime: candleTimes.length > 0 ? Math.max(...candleTimes) : null,
   })
 
-  return NextResponse.json(rows.map((row) => ({
-    candleTime: row.candle_time,
-    baseBucketSize: row.base_bucket_size,
-    bucketPrice: row.bucket_price,
-    bidVol: row.bid_vol,
-    askVol: row.ask_vol,
-    totalVol: row.total_vol,
-    tradeCount: row.trade_count,
-  })))
+  return NextResponse.json(rows.map((row) => {
+    const r = row as unknown as Record<string, unknown>;
+    return {
+      candleTime: r.candle_time,
+      baseBucketSize: r.base_bucket_size,
+      bucketPrice: r.bucket_price,
+      bidVol: r.bid_vol,
+      askVol: r.ask_vol,
+      totalVol: r.total_vol,
+      tradeCount: r.trade_count,
+      orderCount: r.order_count,
+    };
+  }))
 }

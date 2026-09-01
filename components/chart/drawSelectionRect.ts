@@ -1,4 +1,7 @@
 import { VolumeProfile } from '@/lib/utils/volumeProfile';
+import type { VolumeProfileType } from '@/types/chart';
+import type { HeatmapRow } from '@/types/liquidity';
+import { CHART_BEARISH_RGB, CHART_BULLISH_RGB, chartColorToRgba } from '@/lib/config/chartColors';
 
 const MIN_PROFILE_ROW_OPACITY = 0.15;
 
@@ -83,7 +86,15 @@ export function drawCustomProfile(
   showPocHighlight: boolean = true,
   showVaFill: boolean = true,
   showPocLine: boolean = true,
-  showVaLines: boolean = true
+  profileShowVaLines: boolean = true,
+  profileType: VolumeProfileType = 'volume',
+  heatmapRows?: HeatmapRow[],
+  candles?: { time: number }[],
+  indexToXGlobal?: (index: number) => number,
+  pocColor: string = '#F0B90B',
+  hvnColor: string = '#F43F5E',
+  lvnColor: string = '#22D3EE',
+  pocWidth: number = 1
 ) {
   if (!customProfileRange) return;
 
@@ -150,9 +161,28 @@ export function drawCustomProfile(
 
       const rowOpacity = getProfileRowOpacity(row.totalVol, profile.maxVol);
 
-      // Unified muted amber/orange color
-      ctx.fillStyle = `rgba(217, 119, 6, ${rowOpacity})`;
-      ctx.fillRect(barAnchorX, drawTopY, barWidthPx, drawHeight);
+      if (profileType === 'bidAsk') {
+        const askVol = row.askVol || 0;
+        const bidVol = row.bidVol || 0;
+        const totalVol = Math.max(1, askVol + bidVol);
+        const askRatio = askVol / totalVol;
+        const bidRatio = bidVol / totalVol;
+
+        const askWidth = barWidthPx * askRatio;
+        const bidWidth = barWidthPx * bidRatio;
+
+        if (bidWidth > 0) {
+          ctx.fillStyle = chartColorToRgba(CHART_BEARISH_RGB, rowOpacity);
+          ctx.fillRect(barAnchorX, drawTopY, bidWidth, drawHeight);
+        }
+        if (askWidth > 0) {
+          ctx.fillStyle = chartColorToRgba(CHART_BULLISH_RGB, rowOpacity);
+          ctx.fillRect(barAnchorX + bidWidth, drawTopY, askWidth, drawHeight);
+        }
+      } else if (profileType !== 'delta') {
+        ctx.fillStyle = `rgba(217, 119, 6, ${rowOpacity})`;
+        ctx.fillRect(barAnchorX, drawTopY, barWidthPx, drawHeight);
+      }
     }
 
     // POC Highlight
@@ -174,12 +204,12 @@ export function drawCustomProfile(
             ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
             ctx.fillRect(barAnchorX, drawTopY, barW, drawHeight);
 
-            ctx.strokeStyle = '#F0B90B';
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = pocColor;
+            ctx.lineWidth = pocWidth;
             ctx.strokeRect(barAnchorX, drawTopY, barW, drawHeight);
 
             if (drawHeight >= 10 && barW >= 20) {
-              ctx.fillStyle = '#F0B90B';
+              ctx.fillStyle = pocColor;
               ctx.font = '8px "JetBrains Mono"';
               ctx.textAlign = 'left';
               ctx.textBaseline = 'middle';
@@ -194,18 +224,56 @@ export function drawCustomProfile(
     if (showPocLine) {
       const pocY = priceToY(profile.poc + profileBucketSize / 2);
       if (pocY >= rectY && pocY <= rectY + rectHeight) {
-        ctx.strokeStyle = '#F0B90B';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = pocColor;
+        ctx.lineWidth = Math.max(1.5, pocWidth);
         ctx.setLineDash([6, 3]);
         ctx.beginPath();
         ctx.moveTo(rectX, Math.round(pocY) + 0.5);
         ctx.lineTo(rectX + rectWidth, Math.round(pocY) + 0.5);
         ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Developing POC trail for custom profile
+      if (profile.developingPoc && profile.developingPoc.length > 0 && candles && indexToXGlobal) {
+        ctx.save();
+        ctx.strokeStyle = pocColor;
+        ctx.lineWidth = Math.max(2, pocWidth + 1);
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        
+        let started = false;
+        for (const point of profile.developingPoc) {
+          const timeSeconds = Math.floor(point.time / 1000);
+          let lo = 0, hi = candles.length;
+          while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (candles[mid].time < timeSeconds) lo = mid + 1;
+            else hi = mid;
+          }
+          const index = Math.min(lo, candles.length - 1);
+          const x = indexToXGlobal(index);
+          const y = priceToY(point.price + profileBucketSize / 2);
+
+          if (x >= rectX && x <= rectX + rectWidth && y >= rectY && y <= rectY + rectHeight) {
+            if (!started) {
+              ctx.moveTo(x, Math.round(y) + 0.5);
+              started = true;
+            } else {
+              ctx.lineTo(x, Math.round(y) + 0.5);
+            }
+          } else {
+             // If point moves out of bounds, break the line
+             started = false;
+          }
+        }
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
     // 4. VA Lines
-    if (showVaLines) {
+    if (profileShowVaLines) {
       const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
       const vaLowY = priceToY(profile.vaLow);
 
@@ -229,11 +297,12 @@ export function drawCustomProfile(
 
     // 5. LVN Lines
     if (profile.lvns.length > 0) {
-      ctx.strokeStyle = '#22D3EE';
+      ctx.save();
+      ctx.strokeStyle = lvnColor;
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 4]);
-      ctx.fillStyle = '#22D3EE';
-      ctx.font = '8px "JetBrains Mono"';
+      ctx.fillStyle = lvnColor;
+      ctx.font = 'bold 9px "JetBrains Mono"';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
 
@@ -247,6 +316,28 @@ export function drawCustomProfile(
         ctx.stroke();
         ctx.fillText('LVN', rectX + 3, lvnY - 2);
       }
+      ctx.restore();
+    }
+
+    if (profile.hvns && profile.hvns.length > 0) {
+      ctx.save();
+      ctx.strokeStyle = hvnColor;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([2, 4]);
+      ctx.fillStyle = hvnColor;
+      ctx.font = 'bold 9px "JetBrains Mono"';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+
+      for (const hvn of profile.hvns) {
+        const hvnY = priceToY(hvn + profileBucketSize / 2);
+        ctx.beginPath();
+        ctx.moveTo(rectX, Math.round(hvnY) + 0.5);
+        ctx.lineTo(rectX + rectWidth, Math.round(hvnY) + 0.5);
+        ctx.stroke();
+        ctx.fillText('HVN', rectX + rectWidth - 4, hvnY - 2);
+      }
+      ctx.restore();
     }
   }
 

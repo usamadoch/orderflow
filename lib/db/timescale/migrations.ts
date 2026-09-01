@@ -81,11 +81,12 @@ export async function runTimescaleMigrations() {
         timeframe         TEXT NOT NULL,
         candle_time_sec   BIGINT NOT NULL,
         base_bucket_size  DOUBLE PRECISION NOT NULL,
-        bucket_price      DOUBLE PRECISION NOT NULL,
-        bid_vol           DOUBLE PRECISION DEFAULT 0,
-        ask_vol           DOUBLE PRECISION DEFAULT 0,
-        total_vol         DOUBLE PRECISION DEFAULT 0,
-        trade_count       INTEGER DEFAULT 0,
+        bucket_price NUMERIC NOT NULL,
+        bid_vol NUMERIC NOT NULL DEFAULT 0,
+        ask_vol NUMERIC NOT NULL DEFAULT 0,
+        total_vol NUMERIC NOT NULL DEFAULT 0,
+        trade_count NUMERIC NOT NULL DEFAULT 0,
+        order_count NUMERIC NOT NULL DEFAULT 0,
         stored_at         TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (symbol, contract_type, data_source_mode, timeframe, base_bucket_size, time, bucket_price)
       );
@@ -152,6 +153,12 @@ export async function runTimescaleMigrations() {
         SELECT add_compression_policy('${table}', ${compressionInterval}, if_not_exists => TRUE);
       `).catch(() => {}) // Ignore if already set or not supported
     }
+
+    // Schema updates for existing installations
+    await client.query(`
+      ALTER TABLE profile_rows 
+      ADD COLUMN IF NOT EXISTS order_count NUMERIC NOT NULL DEFAULT 0;
+    `).catch(() => {})
 
     await client.query('COMMIT')
     console.log('[DB:Timescale] Migrations and schema verification complete.')
