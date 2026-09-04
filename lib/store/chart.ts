@@ -219,7 +219,8 @@ export interface ChartState {
   setSessionsEnabled: (panelId: PanelId, enabled: boolean) => void;
   setSessionEnabled: (panelId: PanelId, sessionId: SessionId, enabled: boolean) => void;
   setSessionTime: (panelId: PanelId, sessionId: SessionId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) => void;
-  setSessionColor: (panelId: PanelId, sessionId: SessionId, color: string) => void;
+  setSessionColor: (panelId: PanelId, sessionId: SessionId, color: string, opacity?: number) => void;
+  setSessionOpacity: (panelId: PanelId, sessionId: SessionId, opacity: number) => void;
 
   setHistoricalSessionProfileEnabled: (panelId: PanelId, enabled: boolean) => void;
   setHistoricalSessionProfileSession: (panelId: PanelId, session: SessionId | 'multiple') => void;
@@ -1264,7 +1265,7 @@ export const useChartStore = create<ChartState>()(
       setVwapSettings: (panelId: PanelId, settings: Partial<TimeframeSettings>) =>
         set((state) => updatePanel(state, panelId, settings)),
 
-      setSessionEnabled: (panelId, sessionId, enabled) =>
+      setSessionEnabled: (panelId: PanelId, sessionId: SessionId, enabled: boolean) =>
         set((state) => {
           const panel = state.panels[panelId];
           return updatePanel(state, panelId, {
@@ -1275,7 +1276,7 @@ export const useChartStore = create<ChartState>()(
           });
         }),
 
-      setSessionTime: (panelId, sessionId, field, value) =>
+      setSessionTime: (panelId: PanelId, sessionId: SessionId, field: 'startHour' | 'startMin' | 'endHour' | 'endMin', value: number) =>
         set((state) => {
           const panel = state.panels[panelId];
           const session = panel.sessions[sessionId];
@@ -1289,13 +1290,28 @@ export const useChartStore = create<ChartState>()(
           });
         }),
 
-      setSessionColor: (panelId, sessionId, color) =>
+      setSessionColor: (panelId, sessionId, color, opacity) =>
         set((state) => {
           const panel = state.panels[panelId];
           return updatePanel(state, panelId, {
             sessions: {
               ...panel.sessions,
-              [sessionId]: { ...panel.sessions[sessionId], color }
+              [sessionId]: {
+                ...panel.sessions[sessionId],
+                color,
+                ...(opacity !== undefined ? { opacity } : {})
+              }
+            }
+          });
+        }),
+
+      setSessionOpacity: (panelId, sessionId, opacity) =>
+        set((state) => {
+          const panel = state.panels[panelId];
+          return updatePanel(state, panelId, {
+            sessions: {
+              ...panel.sessions,
+              [sessionId]: { ...panel.sessions[sessionId], opacity }
             }
           });
         }),

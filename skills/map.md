@@ -94,7 +94,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/ChartSettingsDropdown.tsx` → The main popup/dropdown for configuring indicator settings and profiles.
 - `components/ui/chart-settings/` → Modularized component files for `ChartSettingsDropdown` (e.g., `GeneralChartSettings.tsx`, `SessionsSettings.tsx`, `CvdSettings.tsx`, `VolumeBarsSettings.tsx`, `BubbleSettings.tsx`, `LiquidityMapSettings.tsx`, `HeatmapSettings.tsx`, `StatsSettings.tsx`, `SignalSettings.tsx`, `FootprintSettings.tsx`, `VolumeProfileSettings.tsx`, `HistoricalSessionProfileSettings.tsx`).
 - `components/ui/IndicatorsModal.tsx` → The popup modal for adding new indicators from the PanelToolbar.
-- `components/ui/GlobalSettingsModal.tsx` → Application-wide settings (e.g., UI preferences, global time format).
+- `components/ui/ColorPickerPopover.tsx` → Shared TradingView-style color picker popover (80-swatch matrix, custom color '+' button, 3/6/8-digit hex parser, native eyedropper, and opacity slider) used by drawing tools and indicator settings.
 - `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with AM/PM toggle) and 24-hour modes matching global settings.
 - `components/ui/BubblesDocsModal.tsx` → Reference modal explaining Volume Bubbles visualization, sizing, and color indicators.
 - `components/ui/PairSelector.tsx` → Symbol selection modal supporting Spot and Perpetual Futures contracts.

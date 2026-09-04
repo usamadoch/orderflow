@@ -1,6 +1,23 @@
 # OrderFlow Chart - Change Log
 
-## [2026-09-05] - Feature: Horizontal Line Price Axis Badge & Vertical Line Time Axis Badge
+## [2026-09-05] - Feature: TradingView Color Picker Integration in Session Indicator
+
+- **What changed**:
+  - **Shared ColorPickerPopover (`components/ui/ColorPickerPopover.tsx`)**:
+    - Extracted the TradingView-style color picker popover into a reusable component in `components/ui/ColorPickerPopover.tsx`.
+    - Features 80 swatches (10 grayscale shades + 70 hue/tint variations), selected ring indicator, custom color `+` button with 3/6/8-digit hex parsing, native eyedropper, and optional opacity slider with gradient track.
+    - Added smart placement detection: auto-flips upward (`placement='top'`) if near the bottom of scrollable dialogs/viewport to prevent clipping.
+    - Updated `CanvasDrawingToolbar.tsx` to re-export `ColorPickerPopover`, `COLOR_PALETTE_ROWS`, and `parseHexColor` from `@/components/ui/ColorPickerPopover` to preserve backwards compatibility.
+  - **Session Settings Integration (`components/ui/chart-settings/SessionsSettings.tsx`)**:
+    - Replaced raw native `<input type="color">` with a custom Color button featuring a styled rounded rectangle swatch (`session.color`).
+    - Clicking the button opens `ColorPickerPopover` scoped to that session (`tokyo`, `london`, `newYork`).
+    - Allows direct selection of colors and opacity adjustments.
+  - **Session Opacity Support (`types/chart.ts`, `lib/store/chart.ts`, `lib/draw/drawSessions.ts`)**:
+    - Added `opacity?: number` to `SessionConfig` (defaults to 0.07 if not specified).
+    - Added `setSessionOpacity(panelId, sessionId, opacity)` action and updated `setSessionColor` to accept optional opacity.
+    - Updated `drawSessions.ts` to render background tint using `config.opacity ?? 0.07`.
+  - **Verification & Testing (`scratch/test_session_color_picker.ts`)**:
+    - Verified store mutations (`setSessionColor`, `setSessionOpacity`), `drawSessions` custom opacity rendering, fallback behavior, and `ColorPickerPopover` hex parsing. All passed.
 
 - **What changed**:
   - **TradingView-Style Date-Time Formatter (`lib/utils/format.ts`)**:

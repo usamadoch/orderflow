@@ -38,7 +38,8 @@ export function drawSessions(
       const height = y2 - y1;
 
       // Draw background fill
-      ctx.fillStyle = hexToRgba(config.color, 0.07);
+      const sessionOpacity = config.opacity ?? 0.07;
+      ctx.fillStyle = hexToRgba(config.color, sessionOpacity);
       ctx.fillRect(x1, y1, width, height);
 
       // Draw label if wide enough

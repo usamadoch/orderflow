@@ -108,6 +108,7 @@ export interface SessionConfig {
   endHour: number;
   endMin: number;
   color: string; // hex color
+  opacity?: number; // 0–1, defaults to 0.07 if not specified
 }
 
 export interface GlobalCrosshair {
