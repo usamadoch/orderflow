@@ -228,6 +228,50 @@ export function formatDateTime(timestamp: number, timezone: string = 'local', fo
 }
 
 /**
+ * Formats a timestamp (in seconds or milliseconds) into TradingView-style date-time badge string:
+ * e.g., "Sat 05 Sep '26  12:05 AM" (12h) or "Sat 05 Sep '26  00:05" (24h).
+ * Uses cached Intl.DateTimeFormat instances to ensure 60fps rendering without garbage collection stutters.
+ */
+export function formatTradingViewDateTime(
+  timestamp: number,
+  timezone: string = 'local',
+  format: '12h' | '24h' = '24h'
+): string {
+  const ms = timestamp > 100_000_000_000 ? timestamp : timestamp * 1000;
+  const key = `tv_datetime_${timezone}_${format}`;
+  let dtFormat = dateTimeFormatCache.get(key);
+  if (!dtFormat) {
+    try {
+      dtFormat = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone === 'local' ? undefined : timezone,
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: format === '12h',
+      });
+    } catch {
+      dtFormat = new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        day: '2-digit',
+        month: 'short',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: format === '12h',
+      });
+    }
+    dateTimeFormatCache.set(key, dtFormat);
+  }
+
+  const parts = Object.fromEntries(dtFormat.formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+  const timeStr = parts.dayPeriod ? `${parts.hour}:${parts.minute} ${parts.dayPeriod}` : `${parts.hour}:${parts.minute}`;
+  return `${parts.weekday ?? ''} ${parts.day ?? ''} ${parts.month ?? ''} '${parts.year ?? ''}  ${timeStr}`;
+}
+
+/**
  * Converts a 24-hour hour (0..23) into 12-hour components (1..12 and 'AM' | 'PM').
  */
 export function to12Hour(hour24: number): { hour12: number; period: 'AM' | 'PM' } {

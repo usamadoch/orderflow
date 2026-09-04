@@ -81,6 +81,9 @@ import { drawStatsGrid } from './drawStatsGrid';
 import { drawTradingOverlays, TradingOverlayHitZones } from './drawTradingOverlays';
 import { drawVolumeBars } from './drawVolumeBars';
 import { drawVolumeProfile } from './drawVolumeProfile';
+import { drawVwap } from './drawVwap';
+import { useVwapHydration } from './hooks/useVwapHydration';
+import { calculateVwapSeries } from '@/lib/utils/vwap';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
 import { computeHistoricalSessionRanges } from './chartPanelUtils';
 import { IcebergTooltip } from './IcebergTooltip';
@@ -433,6 +436,57 @@ export function ChartCanvas({
   const activeMeasurement = useChartRuntimeStore(s => s.panels[panelId]?.activeMeasurement ?? null);
 
   const getCandlesLength = useCallback(() => useChartRuntimeStore.getState().panels[panelId]?.candles?.length ?? 0, [panelId]);
+  const displayCandles = useChartRuntimeStore(s => s.panels[panelId]?.candles ?? []);
+  
+  const tfSeconds = useMemo(() => {
+    const match = timeframe.match(/(\d+)([mhd])/);
+    if (!match) return 60;
+    const num = parseInt(match[1]);
+    const unit = match[2];
+    if (unit === 'm') return num * 60;
+    if (unit === 'h') return num * 3600;
+    if (unit === 'd') return num * 86400;
+    return 60;
+  }, [timeframe]);
+
+  const { base1mCandles: vwap1mCandles, isHydrating: vwapIsHydrating } = useVwapHydration(panelId);
+  const panel = useChartStore(s => s.panels[panelId]);
+
+  const vwapSeries = useMemo(() => {
+    if (!panel.vwapEnabled) return { status: 'success' as const, series: [] };
+    const vwapOptions = {
+      periodMode: panel.vwapPeriodMode,
+      sessionAnchor: panel.vwapSessionAnchor,
+      rollingDays: panel.vwapRollingDays,
+      priceSource: panel.vwapPriceSource,
+      envelopeMode: panel.vwapEnvelopeMode,
+      band1Enabled: panel.vwapBand1Enabled,
+      band1Value: panel.vwapBand1Value,
+      band2Enabled: panel.vwapBand2Enabled,
+      band2Value: panel.vwapBand2Value,
+      band3Enabled: panel.vwapBand3Enabled,
+      band3Value: panel.vwapBand3Value,
+    };
+    return calculateVwapSeries(displayCandles, vwap1mCandles, tfSeconds, vwapOptions, vwapIsHydrating);
+  }, [
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    displayCandles,
+    vwap1mCandles,
+    vwapIsHydrating,
+    tfSeconds,
+    panel.vwapEnabled,
+    panel.vwapPeriodMode,
+    panel.vwapSessionAnchor,
+    panel.vwapRollingDays,
+    panel.vwapPriceSource,
+    panel.vwapEnvelopeMode,
+    panel.vwapBand1Enabled,
+    panel.vwapBand1Value,
+    panel.vwapBand2Enabled,
+    panel.vwapBand2Value,
+    panel.vwapBand3Enabled,
+    panel.vwapBand3Value,
+  ]);
 
   const priceAxisWidth = 85;
   const timeAxisHeight = showTimeAxis ? 24 : 0;
@@ -548,7 +602,8 @@ export function ChartCanvas({
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
       const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
-      const resolvedDrawnLines = drawnLines
+      const liveDrawnLines = storeState.panels[panelId]?.drawnLines ?? drawnLines;
+      const resolvedDrawnLines = liveDrawnLines
         .map((line) => resolveLineForRender(line, candles))
         .filter((line): line is DrawnLine => line !== null);
       const resolvedPositionLines = resolvedDrawnLines.filter(isPositionDrawing);
@@ -808,6 +863,20 @@ export function ChartCanvas({
               onDebug: recordVolumeBarsDebug,
             },
           );
+        }
+
+        // 5e. VWAP (rendered over candles, under volume profile)
+        if (panelState.vwapEnabled) {
+          drawVwap(liveCtx, {
+            panel: panelState,
+            series: vwapSeries,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            priceToY,
+            chartWidth,
+            chartHeight
+          });
         }
 
         if (liveCtxClipped) {
@@ -1190,7 +1259,7 @@ export function ChartCanvas({
       }
 
       if (drawAll || layersToDraw.has('overlay')) {
-        drawDrawingPriceLabels(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth);
+        drawDrawingPriceLabels(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, candles, globalTimezone, globalTimeFormat);
       }
 
       if (drawAll || layersToDraw.has('live')) {
@@ -1356,7 +1425,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, vwapSeries]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1718,7 +1787,7 @@ export function ChartCanvas({
     const anchor = getDrawingToolbarAnchor(resolvedDrawing, indexToX, priceToY, chartWidth, chartHeight, barWidth.current);
     if (!anchor) return null;
 
-    const overlayWidth = 232;
+    const overlayWidth = resolvedDrawing.type === 'box' ? 234 : (isPositionDrawing(resolvedDrawing) ? 232 : 170);
     const overlayOffset = isPositionDrawing(resolvedDrawing) ? 78 : 44;
     return {
       top: Math.max(4, Math.min(chartHeight - 44, anchor.y - overlayOffset)),
@@ -3826,6 +3895,10 @@ export function ChartCanvas({
           panelId={panelId}
           selectedDrawing={selectedDrawing}
           selectedDrawingControls={selectedDrawingControls}
+          chartBounds={{
+            width: containerSize.width - priceAxisWidth,
+            height: containerSize.height - timeAxisHeight,
+          }}
           onDelete={() => setSelectedDrawingId(null)}
           onRedraw={redraw}
         />

@@ -253,6 +253,9 @@ export interface ChartState {
   setStatsIndicatorCount: (panelId: PanelId, count: number) => void;
   setStatsIndicatorItems: (panelId: PanelId, items: StatsIndicatorItem[]) => void;
 
+  // VWAP
+  setVwapSettings: (panelId: PanelId, settings: Partial<TimeframeSettings>) => void;
+
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
   setSplitDirection: (direction: SplitDirection) => void;
@@ -432,6 +435,25 @@ function createDefaultPanel(id: PanelId): PanelState {
     statsIndicatorEnabled: true,
     statsIndicatorCount: 2,
     statsIndicatorItems: ['volume', 'delta'],
+    vwapEnabled: false,
+    vwapPeriodMode: 'Session',
+    vwapSessionAnchor: 'Day',
+    vwapRollingDays: 7,
+    vwapPriceSource: 'HLC3',
+    vwapEnvelopeMode: 'Standard Deviation',
+    vwapBand1Enabled: true,
+    vwapBand1Value: 1.0,
+    vwapBand2Enabled: true,
+    vwapBand2Value: 2.0,
+    vwapBand3Enabled: true,
+    vwapBand3Value: 3.0,
+    vwapLineColor: '#F59E0B',
+    vwapBand1Color: '#34D399',
+    vwapBand2Color: '#60A5FA',
+    vwapBand3Color: '#F472B6',
+    vwapBandFillOpacity: 0.1,
+    vwapLineWidth: 2,
+    vwapBandWidth: 1,
   };
 }
 
@@ -602,7 +624,12 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
     'volumeBarsFilterMode', 'volumeBarsMovingAverageLength',
     'volumeBarsFilterMin', 'volumeBarsFilterMax', 'volumeBarsColorMode',
     'volumeBarsOpacity', 'volumeBarsHeightPct', 'volumeBarsShowValueText',
-    'volumeBarsTextSize', 'volumeBarsAverageLineEnabled', 'volumeBarsAverageLength'
+    'volumeBarsTextSize', 'volumeBarsAverageLineEnabled', 'volumeBarsAverageLength',
+    'vwapEnabled', 'vwapPeriodMode', 'vwapSessionAnchor', 'vwapRollingDays',
+    'vwapPriceSource', 'vwapEnvelopeMode', 'vwapBand1Enabled', 'vwapBand1Value',
+    'vwapBand2Enabled', 'vwapBand2Value', 'vwapBand3Enabled', 'vwapBand3Value',
+    'vwapLineColor', 'vwapBand1Color', 'vwapBand2Color', 'vwapBand3Color',
+    'vwapBandFillOpacity', 'vwapLineWidth', 'vwapBandWidth'
   ];
   
   let settingsChanged = false;
@@ -724,6 +751,7 @@ export const useChartStore = create<ChartState>()(
           if (indicatorId === 'heatmap') updates.liquidityHeatmapEnabled = true;
           if (indicatorId === 'liquidityMap') updates.liquidityEnabled = true;
           if (indicatorId === 'stats') updates.statsIndicatorEnabled = true;
+          if (indicatorId === 'vwap') updates.vwapEnabled = true;
           
           return updatePanel(state, panelId, updates);
         }),
@@ -743,6 +771,7 @@ export const useChartStore = create<ChartState>()(
           if (indicatorId === 'heatmap') updates.liquidityHeatmapEnabled = false;
           if (indicatorId === 'liquidityMap') updates.liquidityEnabled = false;
           if (indicatorId === 'stats') updates.statsIndicatorEnabled = false;
+          if (indicatorId === 'vwap') updates.vwapEnabled = false;
           
           return updatePanel(state, panelId, updates);
         }),
@@ -1225,8 +1254,15 @@ export const useChartStore = create<ChartState>()(
       setStatsIndicatorCount: (panelId, statsIndicatorCount) =>
         set((state) => updatePanel(state, panelId, { statsIndicatorCount: Math.max(1, Math.min(4, Math.round(statsIndicatorCount))) })),
 
-      setStatsIndicatorItems: (panelId, statsIndicatorItems) =>
-        set((state) => updatePanel(state, panelId, { statsIndicatorItems })),
+      setStatsIndicatorItems: (panelId, items) =>
+        set((state) => updatePanel(state, panelId, { statsIndicatorItems: items })),
+
+      // VWAP
+      setVwapEnabled: (panelId: PanelId, vwapEnabled: boolean) =>
+        set((state) => updatePanel(state, panelId, { vwapEnabled })),
+
+      setVwapSettings: (panelId: PanelId, settings: Partial<TimeframeSettings>) =>
+        set((state) => updatePanel(state, panelId, settings)),
 
       setSessionEnabled: (panelId, sessionId, enabled) =>
         set((state) => {
@@ -1732,6 +1768,25 @@ export const useChartStore = create<ChartState>()(
             statsIndicatorEnabled: state.panels.left.statsIndicatorEnabled,
             statsIndicatorCount: state.panels.left.statsIndicatorCount,
             statsIndicatorItems: state.panels.left.statsIndicatorItems,
+            vwapEnabled: state.panels.left.vwapEnabled,
+            vwapPeriodMode: state.panels.left.vwapPeriodMode,
+            vwapSessionAnchor: state.panels.left.vwapSessionAnchor,
+            vwapRollingDays: state.panels.left.vwapRollingDays,
+            vwapPriceSource: state.panels.left.vwapPriceSource,
+            vwapEnvelopeMode: state.panels.left.vwapEnvelopeMode,
+            vwapBand1Enabled: state.panels.left.vwapBand1Enabled,
+            vwapBand1Value: state.panels.left.vwapBand1Value,
+            vwapBand2Enabled: state.panels.left.vwapBand2Enabled,
+            vwapBand2Value: state.panels.left.vwapBand2Value,
+            vwapBand3Enabled: state.panels.left.vwapBand3Enabled,
+            vwapBand3Value: state.panels.left.vwapBand3Value,
+            vwapLineColor: state.panels.left.vwapLineColor,
+            vwapBand1Color: state.panels.left.vwapBand1Color,
+            vwapBand2Color: state.panels.left.vwapBand2Color,
+            vwapBand3Color: state.panels.left.vwapBand3Color,
+            vwapBandFillOpacity: state.panels.left.vwapBandFillOpacity,
+            vwapLineWidth: state.panels.left.vwapLineWidth,
+            vwapBandWidth: state.panels.left.vwapBandWidth,
             activeIndicators: state.panels.left.activeIndicators,
             settingsByTimeframe: state.panels.left.settingsByTimeframe,
           },
@@ -1849,6 +1904,25 @@ export const useChartStore = create<ChartState>()(
             statsIndicatorEnabled: state.panels.right.statsIndicatorEnabled,
             statsIndicatorCount: state.panels.right.statsIndicatorCount,
             statsIndicatorItems: state.panels.right.statsIndicatorItems,
+            vwapEnabled: state.panels.right.vwapEnabled,
+            vwapPeriodMode: state.panels.right.vwapPeriodMode,
+            vwapSessionAnchor: state.panels.right.vwapSessionAnchor,
+            vwapRollingDays: state.panels.right.vwapRollingDays,
+            vwapPriceSource: state.panels.right.vwapPriceSource,
+            vwapEnvelopeMode: state.panels.right.vwapEnvelopeMode,
+            vwapBand1Enabled: state.panels.right.vwapBand1Enabled,
+            vwapBand1Value: state.panels.right.vwapBand1Value,
+            vwapBand2Enabled: state.panels.right.vwapBand2Enabled,
+            vwapBand2Value: state.panels.right.vwapBand2Value,
+            vwapBand3Enabled: state.panels.right.vwapBand3Enabled,
+            vwapBand3Value: state.panels.right.vwapBand3Value,
+            vwapLineColor: state.panels.right.vwapLineColor,
+            vwapBand1Color: state.panels.right.vwapBand1Color,
+            vwapBand2Color: state.panels.right.vwapBand2Color,
+            vwapBand3Color: state.panels.right.vwapBand3Color,
+            vwapBandFillOpacity: state.panels.right.vwapBandFillOpacity,
+            vwapLineWidth: state.panels.right.vwapLineWidth,
+            vwapBandWidth: state.panels.right.vwapBandWidth,
             activeIndicators: state.panels.right.activeIndicators,
             settingsByTimeframe: state.panels.right.settingsByTimeframe,
           },

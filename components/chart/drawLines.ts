@@ -3,7 +3,8 @@
 import { DrawnLine } from "@/lib/store/chart";
 import type { Candle } from "@/types/candle";
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, chartColorToRgba } from "@/lib/config/chartColors";
-import { formatPrice } from "@/lib/utils/format";
+import { formatPrice, formatTime, formatTradingViewDateTime } from "@/lib/utils/format";
+import { candleTimeAt } from "./chartCanvasUtils";
 
 const DEFAULT_DRAWING_COLOR = '#787B86';
 const DEFAULT_DRAWING_STROKE_WIDTH = 2;
@@ -28,14 +29,20 @@ export function drawLines(
   const drawableWidth = canvasWidth - priceAxisWidth;
   const drawableHeight = canvasHeight - timeAxisHeight;
 
+function alignCoord(coord: number, strokeWidth: number): number {
+  return strokeWidth % 2 === 1 ? Math.floor(coord) + 0.5 : Math.round(coord);
+}
+
   drawnLines.forEach((line) => {
     const isHovered = line.id === hoveredLineId;
     const isSelected = line.id === selectedLineId;
     const isActive = isHovered || isSelected;
+    const strokeWidth = line.strokeWidth ?? DEFAULT_DRAWING_STROKE_WIDTH;
     ctx.save();
-    ctx.lineWidth = line.strokeWidth ?? DEFAULT_DRAWING_STROKE_WIDTH;
+    ctx.lineWidth = strokeWidth;
     ctx.setLineDash([]);
     ctx.strokeStyle = line.color ?? DEFAULT_DRAWING_COLOR;
+    const lineOpacity = line.opacity ?? 1;
 
     if (line.type === 'horizontal') {
       const y = priceToY(line.value);
@@ -43,17 +50,20 @@ export function drawLines(
         ctx.restore();
         return;
       }
+      const alignedY = alignCoord(y, strokeWidth);
 
       // Draw Line
+      ctx.globalAlpha = lineOpacity;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(drawableWidth, y);
+      ctx.moveTo(0, alignedY);
+      ctx.lineTo(drawableWidth, alignedY);
       ctx.stroke();
 
-      // Draw Delete Dot if hovered
+      // Draw Delete Dot if hovered (reset alpha to 1 for UI handles)
       if (isActive) {
+        ctx.globalAlpha = 1;
         const dotX = drawableWidth - 6;
-        const dotY = y;
+        const dotY = alignedY;
         drawDeleteDot(ctx, dotX, dotY, isHoveringDeleteDot);
       }
     } else if (line.type === 'vertical') {
@@ -62,16 +72,19 @@ export function drawLines(
         ctx.restore();
         return;
       }
+      const alignedX = alignCoord(x, strokeWidth);
 
       // Draw Line
+      ctx.globalAlpha = lineOpacity;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, drawableHeight);
+      ctx.moveTo(alignedX, 0);
+      ctx.lineTo(alignedX, drawableHeight);
       ctx.stroke();
 
       // Draw Delete Dot if hovered
       if (isActive) {
-        const dotX = x;
+        ctx.globalAlpha = 1;
+        const dotX = alignedX;
         const dotY = 10;
         drawDeleteDot(ctx, dotX, dotY, isHoveringDeleteDot);
       }
@@ -85,14 +98,17 @@ export function drawLines(
       }
 
       const startX = Math.max(0, x);
+      const alignedY = alignCoord(y, strokeWidth);
+      ctx.globalAlpha = lineOpacity;
       ctx.beginPath();
-      ctx.moveTo(startX, y);
-      ctx.lineTo(drawableWidth, y);
+      ctx.moveTo(startX, alignedY);
+      ctx.lineTo(drawableWidth, alignedY);
       ctx.stroke();
 
       if (isActive) {
-        drawHandle(ctx, startX, y);
-        drawDeleteDot(ctx, drawableWidth - 6, y, isHoveringDeleteDot);
+        ctx.globalAlpha = 1;
+        drawHandle(ctx, startX, alignedY);
+        drawDeleteDot(ctx, drawableWidth - 6, alignedY, isHoveringDeleteDot);
       }
     } else if (line.type === 'box') {
       if (
@@ -123,12 +139,36 @@ export function drawLines(
 
       const rectTop = Math.max(0, Math.min(top, bottom));
       const rectBottom = Math.min(drawableHeight, Math.max(top, bottom));
+      const rectW = Math.max(1, right - left);
+      const rectH = Math.max(1, rectBottom - rectTop);
 
-      ctx.fillStyle = isActive ? 'rgba(61, 126, 255, 0.10)' : 'rgba(120, 123, 134, 0.08)';
-      ctx.fillRect(left, rectTop, Math.max(1, right - left), Math.max(1, rectBottom - rectTop));
-      ctx.strokeRect(left, rectTop, Math.max(1, right - left), Math.max(1, rectBottom - rectTop));
+      // Fill: only render if showFill !== false (legacy drawings default to true)
+      // Independent fillOpacity: uses line.fillOpacity if set, falling back to lineOpacity
+      if (line.showFill !== false) {
+        ctx.save();
+        const fillAlpha = line.fillOpacity ?? lineOpacity;
+        ctx.globalAlpha = fillAlpha;
+        if (line.fillColor) {
+          ctx.fillStyle = line.fillColor;
+        } else {
+          ctx.fillStyle = isActive ? 'rgba(61, 126, 255, 0.10)' : 'rgba(120, 123, 134, 0.08)';
+        }
+        ctx.fillRect(Math.round(left), Math.round(rectTop), Math.round(rectW), Math.round(rectH));
+        ctx.restore();
+      }
+
+      // Border: uses lineOpacity (line.opacity ?? 1) independently
+      ctx.save();
+      ctx.globalAlpha = lineOpacity;
+      if (strokeWidth % 2 === 1) {
+        ctx.strokeRect(Math.floor(left) + 0.5, Math.floor(rectTop) + 0.5, Math.round(rectW), Math.round(rectH));
+      } else {
+        ctx.strokeRect(Math.round(left), Math.round(rectTop), Math.round(rectW), Math.round(rectH));
+      }
+      ctx.restore();
 
       if (isActive) {
+        ctx.globalAlpha = 1;
         drawHandle(ctx, left, rectTop);
         drawHandle(ctx, right, rectTop);
         drawHandle(ctx, left, rectBottom);
@@ -226,17 +266,57 @@ export function drawDrawingPriceLabels(
   canvasHeight: number,
   timeAxisHeight: number,
   priceAxisWidth: number,
-  barWidth: number
+  barWidth: number,
+  candles?: Candle[],
+  timezone: string = 'local',
+  timeFormat: '12h' | '24h' = '24h'
 ) {
   const chartWidth = canvasWidth - priceAxisWidth;
   const chartHeight = canvasHeight - timeAxisHeight;
 
   drawnLines.forEach((line) => {
-    if (line.type === 'horizontal-ray') {
-      const startX = indexToX(line.startIndex ?? 0);
-      if (startX === null) return;
+    const accent = line.color ?? DEFAULT_DRAWING_COLOR;
 
-      drawAnchoredPriceLabel(ctx, Math.max(0, startX), priceToY(line.value) - 6, line.value, chartWidth, chartHeight, 'above');
+    if (line.type === 'horizontal') {
+      const y = priceToY(line.value);
+      if (y >= 0 && y <= chartHeight) {
+        drawPriceAxisBadge(ctx, y, line.value, chartWidth, priceAxisWidth, canvasHeight, accent);
+      }
+    } else if (line.type === 'vertical') {
+      const x = indexToX(line.value);
+      if (x !== null && x >= 0 && x <= chartWidth && timeAxisHeight > 0) {
+        let time = line.time;
+        if (time === undefined && line.value !== undefined && candles && candles.length > 0) {
+          time = candleTimeAt(line.value, candles);
+        }
+        if (time !== undefined) {
+          const timeText = formatTradingViewDateTime(time, timezone, timeFormat);
+          drawTimeAxisBadge(ctx, x, chartHeight, timeAxisHeight, timeText, chartWidth, accent);
+        }
+      }
+    } else if (line.type === 'horizontal-ray') {
+      const startX = indexToX(line.startIndex ?? 0);
+      const y = priceToY(line.value);
+
+      if (startX !== null) {
+        // Price badge above the ray anchor point
+        drawAnchoredPriceLabel(ctx, Math.max(0, startX), y - 4, line.value, chartWidth, chartHeight, 'above', accent);
+
+        // Time badge below the ray anchor point (symmetrically offset, no visual collision)
+        let time = line.startTime;
+        if (time === undefined && line.startIndex !== undefined && candles && candles.length > 0) {
+          time = candleTimeAt(line.startIndex, candles);
+        }
+        if (time !== undefined) {
+          const timeText = formatTime(time, timezone, timeFormat);
+          drawAnchoredBadge(ctx, Math.max(0, startX), y + 4, timeText, chartWidth, chartHeight, 'below', accent);
+        }
+      }
+
+      // Price badge on the right price axis
+      if (y >= 0 && y <= chartHeight) {
+        drawPriceAxisBadge(ctx, y, line.value, chartWidth, priceAxisWidth, canvasHeight, accent);
+      }
     } else if (
       line.type === 'box' &&
       line.firstIndex !== undefined &&
@@ -249,11 +329,86 @@ export function drawDrawingPriceLabels(
       if (x1 === null || x2 === null) return;
 
       const left = Math.max(0, Math.min(x1, x2) - barWidth / 2);
-      drawAnchoredPriceLabel(ctx, left, priceToY(line.priceHigh) - 6, line.priceHigh, chartWidth, chartHeight, 'above');
-      drawAnchoredPriceLabel(ctx, left, priceToY(line.priceLow) + 6, line.priceLow, chartWidth, chartHeight, 'below');
+      drawAnchoredPriceLabel(ctx, left, priceToY(line.priceHigh) - 6, line.priceHigh, chartWidth, chartHeight, 'above', accent);
+      drawAnchoredPriceLabel(ctx, left, priceToY(line.priceLow) + 6, line.priceLow, chartWidth, chartHeight, 'below', accent);
     }
   });
 }
+
+function drawPriceAxisBadge(
+  ctx: CanvasRenderingContext2D,
+  y: number,
+  price: number,
+  chartWidth: number,
+  priceAxisWidth: number,
+  canvasHeight: number,
+  accentColor: string
+) {
+  const badgeHeight = 20;
+  const badgeWidth = Math.max(30, priceAxisWidth - 4);
+  const badgeX = chartWidth + 2;
+  const badgeY = Math.max(1, Math.min(canvasHeight - badgeHeight - 1, Math.round(y - badgeHeight / 2)));
+
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = accentColor;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 3);
+  } else {
+    drawRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 3);
+  }
+  ctx.fill();
+
+  const priceLabel = formatPrice(price);
+  ctx.font = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
+  if (ctx.measureText(priceLabel).width > badgeWidth - 4) {
+    ctx.font = 'bold 11px "Inter", -apple-system, system-ui, sans-serif';
+  }
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(priceLabel, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
+  ctx.restore();
+}
+
+function drawTimeAxisBadge(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  chartHeight: number,
+  timeAxisHeight: number,
+  timeText: string,
+  chartWidth: number,
+  accentColor: string
+) {
+  const badgeHeight = Math.min(22, Math.max(18, timeAxisHeight - 2));
+  const badgeY = chartHeight + 1;
+
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.font = 'bold 11px "Inter", -apple-system, system-ui, sans-serif';
+  const paddingX = 8;
+  const textWidth = ctx.measureText(timeText).width;
+  const badgeWidth = textWidth + paddingX * 2;
+  const rawX = Math.round(x - badgeWidth / 2);
+  const badgeX = Math.max(2, Math.min(chartWidth - badgeWidth - 2, rawX));
+
+  ctx.fillStyle = accentColor;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 3);
+  } else {
+    drawRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 3);
+  }
+  ctx.fill();
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(timeText, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
+  ctx.restore();
+}
+
 
 function drawDeleteDot(ctx: CanvasRenderingContext2D, x: number, y: number, isHovered: boolean) {
   const radius = 5;
@@ -505,11 +660,11 @@ function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, wi
   ctx.closePath();
 }
 
-function drawAnchoredPriceLabel(
+function drawAnchoredBadge(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  price: number,
+  text: string,
   chartWidth: number,
   chartHeight: number,
   placement: 'above' | 'below',
@@ -518,8 +673,7 @@ function drawAnchoredPriceLabel(
   ctx.save();
   ctx.font = '600 11px "Inter", -apple-system, system-ui, sans-serif';
 
-  const label = formatPrice(price);
-  const width = Math.max(52, ctx.measureText(label).width + 12);
+  const width = Math.max(48, ctx.measureText(text).width + 12);
   const height = 17;
   const labelX = Math.max(2, Math.min(chartWidth - width - 2, x));
   const labelY = placement === 'above' ? y - height : y;
@@ -533,6 +687,19 @@ function drawAnchoredPriceLabel(
   ctx.fillStyle = '#E8E8E8';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, labelX + 6, top + height / 2);
+  ctx.fillText(text, labelX + 6, top + height / 2);
   ctx.restore();
+}
+
+function drawAnchoredPriceLabel(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  price: number,
+  chartWidth: number,
+  chartHeight: number,
+  placement: 'above' | 'below',
+  accentColor = '#3D7EFF'
+) {
+  drawAnchoredBadge(ctx, x, y, formatPrice(price), chartWidth, chartHeight, placement, accentColor);
 }

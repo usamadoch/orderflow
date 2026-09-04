@@ -47,10 +47,15 @@ export type VolumeBarsMarketSource = 'active' | 'spot' | 'futures' | 'both';
 export type VolumeBarsColorMode = 'fixed' | 'priceDirection' | 'delta' | 'volumeSlope';
 export type VolumeBarsFilterMode = 'absolute' | 'relative';
 export type VolumeProfileType = 'volume' | 'delta' | 'deltaVolume' | 'bidAsk';
-export type IndicatorSettingsSection = 'sessions' | 'historicalSessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap' | 'stats';
+export type IndicatorSettingsSection = 'sessions' | 'historicalSessions' | 'cvd' | 'bubbles' | 'volumeBars' | 'heatmap' | 'liquidityMap' | 'stats' | 'vwap';
 export type SettingsFocusSection = IndicatorSettingsSection | 'profiles';
-export type IndicatorId = 'bubbles' | 'cvd' | 'volumeBars' | 'sessions' | 'historicalSessions' | 'profile' | 'heatmap' | 'liquidityMap' | 'stats';
+export type IndicatorId = 'bubbles' | 'cvd' | 'volumeBars' | 'sessions' | 'historicalSessions' | 'profile' | 'heatmap' | 'liquidityMap' | 'stats' | 'vwap';
 export type StatsIndicatorItem = 'volume' | 'delta' | 'cvd';
+
+export type VwapPeriodMode = 'Session' | 'Rolling';
+export type VwapSessionAnchor = 'Day' | 'Week' | 'Month';
+export type VwapPriceSource = 'HLC3' | 'HL2' | 'OHLC4' | 'Close';
+export type VwapEnvelopeMode = 'Standard Deviation' | 'Percentage';
 export type HistoryRestoreStage = 'idle' | 'connecting' | 'candles' | 'volumeProfile' | 'rawTrades' | 'footprint' | 'complete' | 'error';
 export type BubbleThresholdMode = 'absolute' | 'relative';
 
@@ -185,6 +190,26 @@ export interface TimeframeSettings {
   volumeBarsTextSize: number;
   volumeBarsAverageLineEnabled: boolean;
   volumeBarsAverageLength: number;
+  // VWAP
+  vwapEnabled: boolean;
+  vwapPeriodMode: VwapPeriodMode;
+  vwapSessionAnchor: VwapSessionAnchor;
+  vwapRollingDays: number;
+  vwapPriceSource: VwapPriceSource;
+  vwapEnvelopeMode: VwapEnvelopeMode;
+  vwapBand1Enabled: boolean;
+  vwapBand1Value: number;
+  vwapBand2Enabled: boolean;
+  vwapBand2Value: number;
+  vwapBand3Enabled: boolean;
+  vwapBand3Value: number;
+  vwapLineColor: string;
+  vwapBand1Color: string;
+  vwapBand2Color: string;
+  vwapBand3Color: string;
+  vwapBandFillOpacity: number;
+  vwapLineWidth: number;
+  vwapBandWidth: number;
 }
 
 export interface Measurement {
@@ -241,6 +266,10 @@ export interface DrawnLine {
   color?: string;
   strokeWidth?: DrawingStrokeWidth;
   locked?: boolean;
+  opacity?: number;
+  fillColor?: string;
+  fillOpacity?: number;
+  showFill?: boolean;
   time?: number;
   startTime?: number;
   startIndex?: number;
@@ -373,6 +402,26 @@ export interface PanelState {
   volumeBarsTextSize: number;
   volumeBarsAverageLineEnabled: boolean;
   volumeBarsAverageLength: number;
+  // VWAP
+  vwapEnabled: boolean;
+  vwapPeriodMode: VwapPeriodMode;
+  vwapSessionAnchor: VwapSessionAnchor;
+  vwapRollingDays: number;
+  vwapPriceSource: VwapPriceSource;
+  vwapEnvelopeMode: VwapEnvelopeMode;
+  vwapBand1Enabled: boolean;
+  vwapBand1Value: number;
+  vwapBand2Enabled: boolean;
+  vwapBand2Value: number;
+  vwapBand3Enabled: boolean;
+  vwapBand3Value: number;
+  vwapLineColor: string;
+  vwapBand1Color: string;
+  vwapBand2Color: string;
+  vwapBand3Color: string;
+  vwapBandFillOpacity: number;
+  vwapLineWidth: number;
+  vwapBandWidth: number;
   // Session Visualization
   sessionsEnabled: boolean;
   sessions: Record<string, SessionConfig>;

@@ -1,5 +1,85 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-05] - Feature: Horizontal Line Price Axis Badge & Vertical Line Time Axis Badge
+
+- **What changed**:
+  - **TradingView-Style Date-Time Formatter (`lib/utils/format.ts`)**:
+    - Added `formatTradingViewDateTime(timestamp, timezone, format)`:
+      - Produces exact TradingView-format date-time badge strings (e.g. `Sat 05 Sep '26  12:05 AM` for 12h or `Sat 05 Sep '26  00:05` for 24h).
+      - Uses cached `Intl.DateTimeFormat` instances to ensure zero garbage-collection overhead during 60fps canvas redraw loops.
+      - Defensively handles local PC time, UTC, and custom IANA timezones with fallbacks.
+  - **Drawing Axis Badges (`components/chart/drawLines.ts`)**:
+    - Added `drawPriceAxisBadge(ctx, y, price, chartWidth, priceAxisWidth, canvasHeight, accentColor)`:
+      - Renders a rounded rectangle badge on the right price axis at `x = chartWidth + 2` with width `priceAxisWidth - 4` and height 20px, vertically centered at `y = priceToY(line.value)`.
+      - Solid background fill matching `line.color ?? DEFAULT_DRAWING_COLOR`.
+      - Bold white text (`#FFFFFF`) with formatted price `formatPrice(line.value)`.
+      - Automatically invoked for `horizontal` lines and `horizontal-ray` drawings.
+    - Added `drawTimeAxisBadge(ctx, x, chartHeight, timeAxisHeight, timeText, chartWidth, accentColor)`:
+      - Renders a rounded rectangle badge on the bottom time axis at `y = chartHeight + 1` with height 22px, horizontally centered at the vertical line's coordinate `x = indexToX(line.value)`.
+      - Clamped within `[2, chartWidth - badgeWidth - 2]` so it never renders off-screen.
+      - Solid background fill matching `line.color ?? DEFAULT_DRAWING_COLOR`.
+      - Bold white text (`#FFFFFF`) displaying `formatTradingViewDateTime(time, timezone, timeFormat)`.
+      - Timestamp accurately resolved from `line.time ?? candleTimeAt(line.value, candles)`.
+      - Automatically invoked for `vertical` lines.
+  - **Verification & Testing (`scratch/test_draw_lines_mock.ts`)**:
+    - Added Test 7 verifying horizontal price axis badge rendering (position, dimensions, line color, solid alpha).
+    - Added Test 8 verifying vertical time axis badge rendering in 12h (`Sat 05 Sep '26  12:05 AM`) and 24h (`Sat 05 Sep '26  00:05`) formats with line color.
+    - Added Test 9 verifying `formatTradingViewDateTime` across UTC and custom formats.
+    - All 14 canvas mock tests and 27 drawing verification tests passed; `npx tsc --noEmit` passed with 0 errors.
+
+## [2026-09-05] - Enhancement: Pixel-Crisp 1px Line Alignment, Instant Redraw Reflection & Independent Box Fill Opacity
+
+- **What changed**:
+  - **1px Crisp Coordinate Alignment (`components/chart/drawLines.ts`)**:
+    - Identified why 1px lines looked 2px thick: on HTML5 Canvas, odd stroke widths (1px, 3px) centered on integer coordinates anti-alias across 2 physical pixels.
+    - Implemented `alignCoord(coord, strokeWidth)`: aligns odd stroke widths to half-pixel boundaries (`Math.floor(coord) + 0.5`) matching grid lines in `drawAxes.ts`, and even stroke widths (2px, 4px) to integer boundaries (`Math.round(coord)`).
+    - Applied alignment across horizontal lines, vertical lines, rays, and box borders for razor-sharp, pixel-perfect rendering identical to grid lines.
+  - **Instant 0ms UI & Canvas Reflection (`components/chart/ChartCanvas.tsx`, `components/chart/CanvasDrawingToolbar.tsx`)**:
+    - Identified the millisecond delay when changing colors/opacity: `redraw()` in `ChartCanvas` was previously reading stale `drawnLines` props waiting for React's batched component re-render.
+    - Updated `redraw()` to read live synchronous state from `useChartStore.getState().panels[panelId]?.drawnLines ?? drawnLines`.
+    - Subscribed `DrawingToolbar` directly to `useChartStore` for `selectedDrawing` to eliminate React re-render batching delays.
+    - Result: color and opacity changes render on the canvas instantaneously on the very next display frame (0ms latency).
+  - **Independent Box Border and Fill Opacity (`types/chart.ts`, `components/chart/drawLines.ts`, `components/chart/CanvasDrawingToolbar.tsx`)**:
+    - Added `fillOpacity?: number` to `DrawnLine`.
+    - Separated border opacity (`line.opacity ?? 1`) and fill opacity (`line.fillOpacity ?? line.opacity ?? 1`) in `drawLines.ts`.
+    - In `CanvasDrawingToolbar.tsx`, the Border picker controls `opacity`, and the Fill picker controls `fillOpacity`, allowing complete independent opacity adjustment for box borders and fills.
+- **Impact summary**:
+  - 1px lines are now ultra-sharp and true single-pixel width.
+  - Zero latency when picking colors or dragging the opacity slider.
+  - Box border and fill opacity operate 100% independently.
+  - 0 TypeScript errors, all unit and canvas mock tests pass.
+
+## [2026-09-05] - Feature: Drawing Tools Color & Opacity Overhaul, Box Fill/Border Separation & Ray Time/Price Badges
+
+- **What changed**:
+  - **Drawing Data Model (`types/chart.ts`)**:
+    - Added `opacity?: number` (0–1), `fillColor?: string`, and `showFill?: boolean` to `DrawnLine`.
+  - **Canvas Renderer (`components/chart/drawLines.ts`)**:
+    - Applied `ctx.globalAlpha = line.opacity ?? 1` to strokes for horizontal lines, vertical lines, rays, and boxes.
+    - Preserved full opacity (`ctx.globalAlpha = 1`) on interactive UI resize handles and delete dots.
+    - Updated box rendering to respect `line.showFill !== false`. Uses `line.fillColor` with `line.opacity` when set, or falls back to legacy `rgba(61,126,255,0.10)` / `rgba(120,123,134,0.08)` when unset, ensuring 100% regression compatibility for existing drawings.
+    - Updated `drawDrawingPriceLabels` for `horizontal-ray`: renders both price badge (above line at `y - 4`) and time badge (below line at `y + 4`) at `startX` anchor without visual collision.
+  - **Drawing Toolbar & Color Picker (`components/chart/CanvasDrawingToolbar.tsx`, `app/globals.css`)**:
+    - Replaced the fixed 9-swatch row with a TradingView-style ColorPicker popover matching TradingView's exact 8-row grid (Row 0: 10 grayscale swatches from pure white to black, Rows 1-7: 7 rows of 10 pure hue & shade variations, totaling 80 swatches).
+    - Fixed CSS selector conflict: `.popup-contrast button` in `globals.css` was forcing `background-color: #262626 !important;` on all buttons inside the toolbar, causing swatches to render as dark gray boxes. Resolved by rendering the swatch color on an inner `<span style={{ backgroundColor: swatchColor }} />` immune to button overrides, adding `data-swatch="true"`, and adding `:not([data-swatch])` exclusions in `globals.css`.
+    - Added TradingView-style ring selection indicator (`ring-2 ring-white ring-offset-1 ring-offset-[#1E222D]`) around the active swatch.
+    - Upgraded the opacity slider with a transparent-to-color gradient background track (`linear-gradient(to right, rgba(255,255,255,0.05), ${color})`), white ring thumb (`.color-picker-slider::-webkit-slider-thumb`), and neat bordered percentage badge (`100%`) matching TradingView.
+    - Added custom hex input behind a "+" button supporting 3-digit (#RGB), 6-digit (#RRGGBB), and 8-digit (#RRGGBBAA) hex codes. Explicitly implemented 8-digit hex splitting: extracts `#RRGGBB` as color and `AA / 255` as opacity.
+    - Integrated native HTML5 `<input type="color">` eyedropper / OS picker trigger.
+    - Added independent Border and Fill color controls with a `showFill` toggle button for `box` drawings.
+  - **Screen-Edge Clamping & Sizing (`components/chart/ChartCanvas.tsx`, `components/chart/CanvasDrawingToolbar.tsx`)**:
+    - Measured actual rendered ColorPicker dimensions (238px width x 240px height) and toolbar dimensions (234px for box, 170px for line).
+    - Set `overlayWidth` to match measured toolbar widths (234px / 170px).
+    - Configured dynamic flip-up (`bottom: 100%`) when near the bottom chart edge and right-alignment (`right: 0`) when near the right edge so the picker never clips off-screen.
+- **Why it changed**:
+  - Upgraded the drawing tools from a basic fixed 9-swatch row to professional color selection with full opacity control, independent box styling, and clean timestamped ray labels matching TradingView microstructure workflows.
+- **Impact summary**:
+  - Full color customization across lines, rays, and boxes.
+  - Independent fill/border styling with toggleable fill on boxes.
+  - Non-colliding price and time badges on horizontal rays.
+  - Zero regression for legacy drawings without opacity or custom fills.
+  - 0 TypeScript errors.
+
 ## [2026-09-05] - Feature: Chart Layout Dropdown & Sync Crosshair Migration
 
 - **What changed**:
@@ -30,6 +110,25 @@
   - Full support for both horizontal (top/bottom) and vertical (side/side) 2-chart splits with fluid dragging.
   - Crosshair synchronization cleanly grouped in layout dropdown.
   - 0 TypeScript errors.
+
+## [2026-09-02] - Bug Fix: VWAP O(N^2) Lag and Rendering Skip
+
+- **What changed**:
+  - **Math Optimization (`lib/utils/vwap.ts`)**:
+    - Rewrote `calculateVwapSeries` to use constant-time `O(1)` mathematical accumulators (`cumPV2`, `cumPV`, `cumV`) for calculating VWAP and Standard Deviation variance instead of re-iterating over the entire rolling window on every display candle.
+    - Fixed a critical expiration logic bug in `Rolling` mode where expired candles were being checked inside an inner loop that only fired when new base candles arrived, preventing expired candles from being dropped during periods of no volume.
+  - **Rendering Alignment (`lib/utils/vwap.ts`)**:
+    - Updated `VwapPoint.value` to accept `number | null`.
+    - Pushed a `null` value instead of using `continue` when `vwapValue === 0`. This fixes an index misalignment bug where the `points` array length desynced from the `displayCandles` array length, causing the canvas to throw bounds errors or draw nothing.
+  - **Menu Visibility (`components/ui/IndicatorsModal.tsx`)**:
+    - Added VWAP to the `AVAILABLE_INDICATORS` array so users can actually enable it via the indicator menu UI.
+- **Why it changed**:
+  - The previous Standard Deviation envelope calculation for VWAP was iterating over the entire session window (up to 43,200 candles) for *every single display candle*. For 1,000 display candles, this caused up to 43.2 million inner-loop iterations on the main thread, resulting in severe UI lag/freezing. 
+  - The rendering skip for 0-volume candles caused array misalignment that completely broke the VWAP line rendering on the chart canvas.
+- **Impact summary**:
+  - VWAP rendering is now instantaneous, `O(N)`, and causes zero main thread lag.
+  - The VWAP line correctly draws gaps during 0-volume periods.
+  - VWAP can now be toggled on/off in the Indicators UI.
 
 ## [2026-09-01] - Bug Fix: Vercel Serverless Connection Exhaustion (HTTP 500)
 

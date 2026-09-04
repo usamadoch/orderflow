@@ -117,14 +117,15 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots and heights for bottom chart indicators.
 - `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, reordering controls, and quick toggles.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas rendering coordinator with direct/optimistic bracket TP/SL drag execution, SL/TP close buttons, and position close confirmation popup.
+- `components/chart/ChartCanvas.tsx` → Main canvas rendering coordinator with drawing anchor edge clamping, direct/optimistic bracket TP/SL drag execution, SL/TP close buttons, and position close confirmation popup.
 - `components/chart/chartCanvasUtils.ts` → Coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
-- `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings, custom profile controls, and order modification dialogs.
+- `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (10x6 color palette with shade variations, 0-100% opacity slider, 8-digit hex parser, box border/fill separation with fill toggle), custom profile controls, and order modification dialogs.
 - `components/chart/CvdPanel.tsx` → Canvas panel rendering Cumulative Volume Delta imperatively synced with main chart viewport via Zustand.
 - `components/chart/cvdPanelUtils.ts` → CVD panel scale calculations and viewport mapping.
 - `components/chart/drawStatsGrid.ts` → Canvas overlay rendering volume, delta, and CVD summary statistics grid.
 - `components/chart/useCoordinates.ts` → Hook calculating price/time coordinate bounds and visible range mappings.
+- `components/chart/hooks/useVwapHydration.ts` → Hook explicitly fetching and subscribing to historical 1m base candles to hydrate accurate VWAP state independent of active timeframe.
 - `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, crosshair interaction, and multi-canvas synchronization.
 - `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry using shared chart colors.
 - `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with divergence markers.
@@ -133,7 +134,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawVolumeBars.ts` → Bottom histogram renderer for volume and trade counts with moving average overlay.
 - `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC line, developing POC trail, Value Area, and HVN/LVN levels with configurable cosmetics.
 - `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer.
-- `components/chart/drawLines.ts` → Canvas renderer for horizontal lines, trendlines, rays, boxes, and Risk/Reward position tools.
+- `components/chart/drawLines.ts` → Canvas renderer for horizontal lines, vertical lines, rays, boxes, and Risk/Reward position tools with globalAlpha opacity, box fillColor/showFill separation, horizontal price axis badges, vertical time axis badges, and non-colliding ray anchor badges.
+- `lib/utils/format.ts` → Formatting helpers for price precision, time countdowns, elapsed duration, volume/delta abbreviations, and TradingView-style date-time badges (e.g. `Sat 05 Sep '26  12:05 AM`).
+- `components/chart/drawVwap.ts` → Canvas renderer for VWAP line, rolling window, and envelope bands.
 - `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer.
 - `components/chart/drawPriceLine.ts` → Current market price line, badge, and timer renderer.
 - `components/chart/drawTradingOverlays.ts` → Canvas overlay renderer for limit orders, SL/TP brackets, virtual positions, and fill markers.
@@ -207,6 +210,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Signals / Analysis
 
+- `lib/utils/vwap.ts` → Math utilities and state logic for Volume Weighted Average Price (VWAP).
 - `lib/absorption/engine.ts` → Signal engine orchestrating order flow absorption candidate detection.
 - `lib/absorption/absorptionScorer.ts` → Pure scoring algorithms for single-candle absorption (delta extremity, volume extremity, progression, imbalance).
 - `lib/exhaustion/engine.ts` → Signal engine orchestrating order flow exhaustion signal detection.
