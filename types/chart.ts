@@ -31,6 +31,7 @@ import type { VolumeProfileSource } from './volumeProfile';
 export type ChartMode = 'candle' | 'footprint' | 'hollow';
 export type PanelId = 'left' | 'right';
 export type LayoutMode = 'single' | 'dual';
+export type SplitDirection = 'vertical' | 'horizontal';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type ExhaustionSide = 'both' | 'buyer' | 'seller';
 export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box' | 'long-position' | 'short-position' | 'position' | 'buy' | 'sell';

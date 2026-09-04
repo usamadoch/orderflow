@@ -14,6 +14,7 @@ import { useTradingSync } from '../hooks/useTradingSync';
 
 export default function Home() {
   const layoutMode = useChartStore(s => s.layoutMode);
+  const splitDirection = useChartStore(s => s.splitDirection);
   const splitRatio = useChartStore(s => s.splitRatio);
   const focusMode = useChartStore(s => s.focusMode);
   const setSplitRatio = useChartStore(s => s.setSplitRatio);
@@ -22,19 +23,25 @@ export default function Home() {
   useKeyboardShortcuts();
   useTradingSync();
 
-  const containerRef = useRef<HTMLElement>(null);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
+
+  const isDual = layoutMode === 'dual';
+  const isHorizontal = isDual && splitDirection === 'horizontal';
 
   const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
-    document.body.style.cursor = 'col-resize';
+    const isHorizontalSplit = splitDirection === 'horizontal';
+    document.body.style.cursor = isHorizontalSplit ? 'row-resize' : 'col-resize';
     document.body.style.userSelect = 'none';
 
     const onMouseMove = (ev: MouseEvent) => {
-      if (!isDragging.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const ratio = (ev.clientX - rect.left) / rect.width;
+      if (!isDragging.current || !splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const ratio = isHorizontalSplit
+        ? (ev.clientY - rect.top) / rect.height
+        : (ev.clientX - rect.left) / rect.width;
       setSplitRatio(ratio);
     };
 
@@ -48,10 +55,17 @@ export default function Home() {
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-  }, [setSplitRatio]);
+  }, [setSplitRatio, splitDirection]);
 
-  const leftPercent = layoutMode === 'dual' ? `${splitRatio * 100}%` : '100%';
-  const rightPercent = layoutMode === 'dual' ? `${(1 - splitRatio) * 100}%` : '0%';
+  const panel1Style: React.CSSProperties = !isDual
+    ? { width: '100%', height: '100%' }
+    : isHorizontal
+    ? { width: '100%', height: `${splitRatio * 100}%` }
+    : { width: `${splitRatio * 100}%`, height: '100%' };
+
+  const panel2Style: React.CSSProperties = isHorizontal
+    ? { width: '100%', height: `${(1 - splitRatio) * 100}%` }
+    : { width: `${(1 - splitRatio) * 100}%`, height: '100%' };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden text-main bg-background font-sans selection:bg-accent/30">
@@ -60,31 +74,50 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         {!focusMode && <Sidebar />}
 
-        <main ref={containerRef} className="flex-1 relative flex flex-col bg-[#0F0F0F] min-w-0">
-          <div className="flex-1 relative flex min-h-0">
-            {/* Left Panel — always visible */}
-            <div style={{ width: leftPercent }} className="h-full flex min-w-0">
+        <main className="flex-1 relative flex flex-col bg-[#0F0F0F] min-w-0">
+          <div
+            ref={splitContainerRef}
+            className={`flex-1 relative flex min-h-0 min-w-0 ${isHorizontal ? 'flex-col' : 'flex-row'}`}
+          >
+            {/* Panel 1 (Left / Top) — always visible */}
+            <div style={panel1Style} className="flex min-w-0 min-h-0 overflow-hidden">
               <PanelFeedProvider panelId="left" key={`left-refresh-${leftRefreshKey}`}>
                 <ChartPanel panelId="left" />
               </PanelFeedProvider>
             </div>
 
             {/* Draggable Divider */}
-            {layoutMode === 'dual' && (
+            {isDual && (
               <div
-                className="w-[5px] shrink-0 relative cursor-col-resize group z-10"
+                className={
+                  isHorizontal
+                    ? 'h-[5px] w-full shrink-0 relative cursor-row-resize group z-10'
+                    : 'w-[5px] h-full shrink-0 relative cursor-col-resize group z-10'
+                }
                 onMouseDown={onDividerMouseDown}
               >
                 {/* Visible thin line */}
-                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-[#1F1F1F] group-hover:bg-accent/50 transition-colors duration-150" />
+                <div
+                  className={
+                    isHorizontal
+                      ? 'absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-[#1F1F1F] group-hover:bg-accent/50 transition-colors duration-150'
+                      : 'absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-[#1F1F1F] group-hover:bg-accent/50 transition-colors duration-150'
+                  }
+                />
                 {/* Wider hit area on hover glow */}
-                <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[3px] bg-transparent group-hover:bg-accent/10 transition-colors duration-150 rounded-full" />
+                <div
+                  className={
+                    isHorizontal
+                      ? 'absolute inset-x-0 top-1/2 -translate-y-1/2 h-[3px] bg-transparent group-hover:bg-accent/10 transition-colors duration-150 rounded-full'
+                      : 'absolute inset-y-0 left-1/2 -translate-x-1/2 w-[3px] bg-transparent group-hover:bg-accent/10 transition-colors duration-150 rounded-full'
+                  }
+                />
               </div>
             )}
 
-            {/* Right Panel — only in dual mode */}
-            {layoutMode === 'dual' && (
-              <div style={{ width: rightPercent }} className="h-full flex min-w-0">
+            {/* Panel 2 (Right / Bottom) — only in dual mode */}
+            {isDual && (
+              <div style={panel2Style} className="flex min-w-0 min-h-0 overflow-hidden">
                 <PanelFeedProvider panelId="right" key={`right-refresh-${rightRefreshKey}`}>
                   <ChartPanel panelId="right" />
                 </PanelFeedProvider>

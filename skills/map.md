@@ -84,6 +84,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 - `components/layout/Header.tsx` → Top toolbar with layout controls, connection status indicator, and symbol/settings access.
 - `components/layout/Sidebar.tsx` → Thin icon-rail sidebar for active chart tools and status tooltips.
+- `components/ui/ChartLayoutDropdown.tsx` → Layout selector dropdown for Single Chart and Two Charts (vertical/horizontal split) with Sync Crosshair toggle.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection status indicator.
 - `components/ui/PanelToolbar.tsx` → Per-panel controls for symbol, timeframe, chart mode, position & BUY/SELL trade tools, refresh, and settings.
 - `components/ui/OrderTicket.tsx` → Draggable floating order ticket modal with quantity presets, risk checks, and validation.

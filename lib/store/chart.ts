@@ -7,6 +7,7 @@ import type {
   ChartMode,
   PanelId,
   LayoutMode,
+  SplitDirection,
   AbsorptionSide,
   ExhaustionSide,
   LineDrawMode,
@@ -43,6 +44,7 @@ export type {
   ChartMode,
   PanelId,
   LayoutMode,
+  SplitDirection,
   AbsorptionSide,
   ExhaustionSide,
   LineDrawMode,
@@ -87,6 +89,7 @@ export interface ChartState {
     right: PanelState;
   };
   layoutMode: LayoutMode;
+  splitDirection: SplitDirection;
   activePanel: PanelId;
   splitRatio: number;
 
@@ -252,6 +255,7 @@ export interface ChartState {
 
   // Global actions
   setLayoutMode: (mode: LayoutMode) => void;
+  setSplitDirection: (direction: SplitDirection) => void;
   setActivePanel: (panelId: PanelId) => void;
   setSplitRatio: (ratio: number) => void;
   setTickSize: (size: number) => void;
@@ -655,7 +659,7 @@ const tabAwareStorage: StateStorage = {
     const data = JSON.parse(value);
     const state = data.state || {};
 
-    const tabKeys = ['panels', 'layoutMode', 'activePanel', 'splitRatio'];
+    const tabKeys = ['panels', 'layoutMode', 'splitDirection', 'activePanel', 'splitRatio'];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sessionState: any = {};
@@ -689,6 +693,7 @@ export const useChartStore = create<ChartState>()(
         right: createDefaultPanel('right'),
       },
       layoutMode: 'single',
+      splitDirection: 'vertical',
       activePanel: 'left',
       splitRatio: 0.5,
       tickSize: 0.5,
@@ -1287,6 +1292,7 @@ export const useChartStore = create<ChartState>()(
 
       // Global actions
       setLayoutMode: (layoutMode) => set({ layoutMode }),
+      setSplitDirection: (splitDirection) => set({ splitDirection }),
       setActivePanel: (activePanel) => set({ activePanel }),
       setSplitRatio: (splitRatio) => set({ splitRatio: Math.max(0.15, Math.min(0.85, splitRatio)) }),
       setTickSize: (tickSize) => set((state) => ({
@@ -1609,6 +1615,7 @@ export const useChartStore = create<ChartState>()(
       },
       partialize: (state) => ({
         layoutMode: state.layoutMode,
+        splitDirection: state.splitDirection,
         splitRatio: state.splitRatio,
         panels: {
           left: {

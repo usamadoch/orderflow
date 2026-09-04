@@ -6,7 +6,12 @@ import { useChartStore } from '../../lib/store/chart';
 export function Sidebar() {
   const activePanel = useChartStore(s => s.activePanel);
   const layoutMode = useChartStore(s => s.layoutMode);
+  const splitDirection = useChartStore(s => s.splitDirection);
   const panel = useChartStore(s => s.panels[s.activePanel]);
+
+  const isHorizontal = layoutMode === 'dual' && splitDirection === 'horizontal';
+  const panelLabel = activePanel === 'left' ? (isHorizontal ? 'Top' : 'Left') : (isHorizontal ? 'Bottom' : 'Right');
+  const panelShortLabel = activePanel === 'left' ? (isHorizontal ? 'T' : 'L') : (isHorizontal ? 'B' : 'R');
 
   const tools = [
     { icon: BarChart3, label: `${panel.pair} ${panel.timeframe}` },
@@ -20,9 +25,9 @@ export function Sidebar() {
       {layoutMode === 'dual' && (
         <div
           className="mb-3 flex h-6 w-6 items-center justify-center rounded border border-accent/30 bg-accent/10 text-[10px] font-black text-accent"
-          title={`${activePanel === 'left' ? 'Left' : 'Right'} panel active`}
+          title={`${panelLabel} panel active`}
         >
-          {activePanel === 'left' ? 'L' : 'R'}
+          {panelShortLabel}
         </div>
       )}
 

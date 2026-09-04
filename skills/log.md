@@ -1,5 +1,36 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-05] - Feature: Chart Layout Dropdown & Sync Crosshair Migration
+
+- **What changed**:
+  - **Layout Dropdown Component (`components/ui/ChartLayoutDropdown.tsx`)**:
+    - Created a compact TradingView-style dropdown containing:
+      - Row 1: Single chart layout with custom square icon.
+      - Row 2: Two charts with Vertical split (side by side) and Horizontal split (top and bottom) custom icons.
+      - Divider and "SYNC IN LAYOUT" section with an integrated "Crosshair" toggle switch.
+  - **Header Integration (`components/layout/Header.tsx`)**:
+    - Replaced the two legacy hardcoded layout buttons with the new `<ChartLayoutDropdown />`.
+  - **Types & State (`types/chart.ts`, `lib/store/chart.ts`)**:
+    - Added `SplitDirection = 'vertical' | 'horizontal'` type.
+    - Added `splitDirection` state (default `'vertical'`) and `setSplitDirection` action to `ChartState`.
+    - Added `splitDirection` to tab-aware session persistence (`tabKeys`, `partialize`).
+  - **Page Chart Scaffold (`app/page.tsx`)**:
+    - Implemented dynamic layout orientation: supports both vertical split (side by side) and horizontal split (top/bottom).
+    - Draggable divider adapts dynamically: col-resize for vertical split and row-resize for horizontal split with accurate splitRatio calculations.
+  - **Global Settings Cleanup (`components/ui/chart-settings/GeneralChartSettings.tsx`)**:
+    - Removed the redundant "Sync Crosshairs" toggle from global chart settings; crosshair sync is now exclusively controlled via the Layout dropdown.
+  - **Header & Dropdown Z-Index Stacking (`components/layout/Header.tsx`, `components/ui/ChartLayoutDropdown.tsx`)**:
+    - Increased `<header>` z-index from `z-20` to `z-[60]` and added dynamic `z-50` to dropdown container so the Layout dropdown renders above fixed floating elements (such as `DrawingFavoritesToolbar` with `z-40`).
+  - **Sidebar Active Indicator (`components/layout/Sidebar.tsx`)**:
+    - Active panel indicator dynamically displays 'T'/'B' (Top/Bottom) when in horizontal split mode or 'L'/'R' (Left/Right) in vertical split mode.
+- **Why it changed**:
+  - Replaced the top-left layout buttons with a clean TradingView-style Layout dropdown with Single Chart, 2-Chart Vertical and Horizontal split modes, and moved the Sync Crosshair control out of global settings directly into the Layout dropdown.
+- **Impact summary**:
+  - Compact, modern chart layout switcher with clear active layout indicator.
+  - Full support for both horizontal (top/bottom) and vertical (side/side) 2-chart splits with fluid dragging.
+  - Crosshair synchronization cleanly grouped in layout dropdown.
+  - 0 TypeScript errors.
+
 ## [2026-09-01] - Bug Fix: Vercel Serverless Connection Exhaustion (HTTP 500)
 
 - **What changed**:
