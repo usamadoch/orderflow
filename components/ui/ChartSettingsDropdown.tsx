@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { BarChart2, Layers, Zap, X } from 'lucide-react';
+import { Sliders, Layers, Zap, X, Layout, Bell } from 'lucide-react';
 import { useChartStore, PanelId, IndicatorSettingsSection, SettingsFocusSection } from '../../lib/store/chart';
 import { BubblesDocsModal } from './BubblesDocsModal';
 
@@ -18,6 +18,9 @@ import {
   HeatmapSettings,
   StatsSettings,
   SignalSettings,
+  VwapSettings,
+  CanvasSettings,
+  AlertsSettings,
 } from './chart-settings';
 
 const SETTINGS_WIDTH = 544;
@@ -94,7 +97,7 @@ export function ChartSettingsDropdown({
   const setSettingsDropdownHeight = useChartStore(s => s.setSettingsDropdownHeight);
 
   const [showBubblesDocs, setShowBubblesDocs] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chart' | 'profiles' | 'signals'>('chart');
+  const [activeTab, setActiveTab] = useState<'general' | 'canvas' | 'alerts' | 'profiles' | 'signals'>('general');
   
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +110,7 @@ export function ChartSettingsDropdown({
     heatmap: 'Heatmap',
     liquidityMap: 'Liquidity Map',
     stats: 'Stats Indicator',
+    vwap: 'VWAP',
   };
 
   // --- Draggable Logic ---
@@ -232,7 +236,9 @@ export function ChartSettingsDropdown({
   };
 
   const tabs = [
-    { id: 'chart', label: 'Chart', icon: BarChart2 },
+    { id: 'general', label: 'General', icon: Sliders },
+    { id: 'canvas', label: 'Canvas', icon: Layout },
+    { id: 'alerts', label: 'Alerts', icon: Bell },
     { id: 'profiles', label: 'Profiles', icon: Layers },
     { id: 'signals', label: 'Signals', icon: Zap },
   ] as const;
@@ -255,6 +261,8 @@ export function ChartSettingsDropdown({
         return <LiquidityMapSettings panelId={panelId} />;
       case 'stats':
         return <StatsSettings panelId={panelId} />;
+      case 'vwap':
+        return <VwapSettings panelId={panelId} />;
       default:
         return null;
     }
@@ -374,9 +382,19 @@ export function ChartSettingsDropdown({
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
           <div className="flex flex-col gap-8">
-            {/* Tab: Chart */}
-            {activeTab === 'chart' && (
+            {/* Tab: General */}
+            {activeTab === 'general' && (
               <GeneralChartSettings panelId={panelId} />
+            )}
+
+            {/* Tab: Canvas */}
+            {activeTab === 'canvas' && (
+              <CanvasSettings />
+            )}
+
+            {/* Tab: Alerts */}
+            {activeTab === 'alerts' && (
+              <AlertsSettings />
             )}
 
             {/* Tab: Profiles */}

@@ -69,6 +69,7 @@ import {
 } from './chartCanvasHitTest';
 import { drawAbsorption } from './drawAbsorption';
 import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
+import { chartColorToRgba } from '@/lib/config/chartColors';
 import { drawAggregateTradeBubbles } from './drawBubbles';
 import { drawCandles } from './drawCandles';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
@@ -414,6 +415,33 @@ export function ChartCanvas({
   const [isClosingPosition, setIsClosingPosition] = React.useState(false);
   const [chartOrderMessage, setChartOrderMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const bracketDragConfirmEnabled = useChartStore(s => s.bracketDragConfirmEnabled);
+  const candleUpColor = useChartStore(s => s.candleUpColor);
+  const candleUpOpacity = useChartStore(s => s.candleUpOpacity);
+  const candleDownColor = useChartStore(s => s.candleDownColor);
+  const candleDownOpacity = useChartStore(s => s.candleDownOpacity);
+  const candleUpWickColor = useChartStore(s => s.candleUpWickColor);
+  const candleUpWickOpacity = useChartStore(s => s.candleUpWickOpacity);
+  const candleDownWickColor = useChartStore(s => s.candleDownWickColor);
+  const candleDownWickOpacity = useChartStore(s => s.candleDownWickOpacity);
+  const chartBackgroundType = useChartStore(s => s.chartBackgroundType);
+  const chartBackgroundColor = useChartStore(s => s.chartBackgroundColor);
+  const chartBackgroundOpacity = useChartStore(s => s.chartBackgroundOpacity);
+  const chartBackgroundGradientTop = useChartStore(s => s.chartBackgroundGradientTop);
+  const chartBackgroundGradientTopOpacity = useChartStore(s => s.chartBackgroundGradientTopOpacity);
+  const chartBackgroundGradientBottom = useChartStore(s => s.chartBackgroundGradientBottom);
+  const chartBackgroundGradientBottomOpacity = useChartStore(s => s.chartBackgroundGradientBottomOpacity);
+  const showVerticalGridLines = useChartStore(s => s.showVerticalGridLines);
+  const verticalGridLineColor = useChartStore(s => s.verticalGridLineColor);
+  const verticalGridLineOpacity = useChartStore(s => s.verticalGridLineOpacity);
+  const verticalGridLineStyle = useChartStore(s => s.verticalGridLineStyle);
+  const showHorizontalGridLines = useChartStore(s => s.showHorizontalGridLines);
+  const horizontalGridLineColor = useChartStore(s => s.horizontalGridLineColor);
+  const horizontalGridLineOpacity = useChartStore(s => s.horizontalGridLineOpacity);
+  const horizontalGridLineStyle = useChartStore(s => s.horizontalGridLineStyle);
+  const crosshairColor = useChartStore(s => s.crosshairColor);
+  const crosshairOpacity = useChartStore(s => s.crosshairOpacity);
+  const crosshairThickness = useChartStore(s => s.crosshairThickness);
+  const crosshairStyle = useChartStore(s => s.crosshairStyle);
   const virtualPositions = useChartRuntimeStore(s => s.tradingStatus.virtualPositions);
   const bracketOrders = useChartRuntimeStore(s => s.tradingStatus.bracketOrders);
   const bracketDrag = useChartRuntimeStore(s => s.tradingStatus.bracketDrag);
@@ -550,7 +578,14 @@ export function ChartCanvas({
 
       if (drawAll || layersToDraw.has('background')) {
         bgCtx.clearRect(0, 0, logicalWidth, logicalHeight);
-        bgCtx.fillStyle = '#0F0F0F';
+        if (chartBackgroundType === 'gradient') {
+          const grad = bgCtx.createLinearGradient(0, 0, 0, logicalHeight);
+          grad.addColorStop(0, chartColorToRgba(chartBackgroundGradientTop || '#131722', chartBackgroundGradientTopOpacity ?? 1));
+          grad.addColorStop(1, chartColorToRgba(chartBackgroundGradientBottom || '#0A0A0A', chartBackgroundGradientBottomOpacity ?? 1));
+          bgCtx.fillStyle = grad;
+        } else {
+          bgCtx.fillStyle = chartColorToRgba(chartBackgroundColor || '#0F0F0F', chartBackgroundOpacity ?? 1);
+        }
         bgCtx.fillRect(0, 0, logicalWidth, logicalHeight);
       }
       if (drawAll || layersToDraw.has('overlay')) {
@@ -649,7 +684,30 @@ export function ChartCanvas({
       }
 
       if (drawAll || layersToDraw.has('background')) {
-        drawGrid(bgCtx, priceMin, priceMax, priceToY, indexToX, rawFirstIndex, rawLastIndex, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, currentBarWidth);
+        drawGrid(
+          bgCtx,
+          priceMin,
+          priceMax,
+          priceToY,
+          indexToX,
+          rawFirstIndex,
+          rawLastIndex,
+          logicalWidth,
+          logicalHeight,
+          priceAxisWidth,
+          timeAxisHeight,
+          currentBarWidth,
+          {
+            showHorizontal: showHorizontalGridLines,
+            horizontalColor: horizontalGridLineColor,
+            horizontalOpacity: horizontalGridLineOpacity,
+            horizontalStyle: horizontalGridLineStyle,
+            showVertical: showVerticalGridLines,
+            verticalColor: verticalGridLineColor,
+            verticalOpacity: verticalGridLineOpacity,
+            verticalStyle: verticalGridLineStyle,
+          }
+        );
 
         // Session boxes - drawn behind everything
         drawSessions(
@@ -744,7 +802,26 @@ export function ChartCanvas({
 
       if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
         if (chartMode === 'candle' || chartMode === 'hollow') {
-          drawCandles(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, chartMode === 'hollow');
+          drawCandles(
+            liveCtx,
+            candles,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            priceToY,
+            currentBarWidth,
+            chartMode === 'hollow',
+            {
+              upColor: candleUpColor,
+              upOpacity: candleUpOpacity,
+              downColor: candleDownColor,
+              downOpacity: candleDownOpacity,
+              upWickColor: candleUpWickColor,
+              upWickOpacity: candleUpWickOpacity,
+              downWickColor: candleDownWickColor,
+              downWickOpacity: candleDownWickOpacity,
+            }
+          );
         } else {
           drawFootprint(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, chartHeight, footprintMode);
         }
@@ -1395,7 +1472,12 @@ export function ChartCanvas({
         }
 
         if (mx !== null || my !== null) {
-          drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
+          drawCrosshair(ctx, mx, my, chartWidth, chartHeight, {
+            color: crosshairColor,
+            opacity: crosshairOpacity,
+            thickness: crosshairThickness,
+            style: crosshairStyle,
+          });
 
           // Price Label
           if (my !== null && my >= 0 && my <= chartHeight) {
@@ -1425,7 +1507,7 @@ export function ChartCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, vwapSeries]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, vwapSeries, candleUpColor, candleUpOpacity, candleDownColor, candleDownOpacity, candleUpWickColor, candleUpWickOpacity, candleDownWickColor, candleDownWickOpacity, chartBackgroundType, chartBackgroundColor, chartBackgroundOpacity, chartBackgroundGradientTop, chartBackgroundGradientTopOpacity, chartBackgroundGradientBottom, chartBackgroundGradientBottomOpacity, showVerticalGridLines, verticalGridLineColor, verticalGridLineOpacity, verticalGridLineStyle, showHorizontalGridLines, horizontalGridLineColor, horizontalGridLineOpacity, horizontalGridLineStyle, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1718,6 +1800,33 @@ export function ChartCanvas({
     volumeBarsTextSize,
     volumeBarsAverageLineEnabled,
     volumeBarsAverageLength,
+    candleUpColor,
+    candleUpOpacity,
+    candleDownColor,
+    candleDownOpacity,
+    candleUpWickColor,
+    candleUpWickOpacity,
+    candleDownWickColor,
+    candleDownWickOpacity,
+    chartBackgroundType,
+    chartBackgroundColor,
+    chartBackgroundOpacity,
+    chartBackgroundGradientTop,
+    chartBackgroundGradientTopOpacity,
+    chartBackgroundGradientBottom,
+    chartBackgroundGradientBottomOpacity,
+    showVerticalGridLines,
+    verticalGridLineColor,
+    verticalGridLineOpacity,
+    verticalGridLineStyle,
+    showHorizontalGridLines,
+    horizontalGridLineColor,
+    horizontalGridLineOpacity,
+    horizontalGridLineStyle,
+    crosshairColor,
+    crosshairOpacity,
+    crosshairThickness,
+    crosshairStyle,
   ]);
 
   useEffect(() => {

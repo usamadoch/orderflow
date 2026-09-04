@@ -1,5 +1,96 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-05] - Feature: Grid Line Styles, Checkbox Toggles, Canvas Candles & General Tab Rename
+
+- **What changed**:
+  - **Grid Line Styles (`lib/store/chart.ts`, `components/chart/drawAxes.ts`, `components/chart/ChartCanvas.tsx`, `components/ui/chart-settings/CanvasSettings.tsx`)**:
+    - Added `verticalGridLineStyle` and `horizontalGridLineStyle` (`'solid' | 'dashed' | 'dotted'`) with actions and persistence in `useChartStore`.
+    - Updated `drawGrid` in `drawAxes.ts` to apply custom line styles (`solid`, `dashed [4, 4]`, `dotted [2, 2]`) using `ctx.setLineDash`.
+    - Wired grid line styles through `ChartCanvas.tsx` subscriptions and redraw dependency arrays.
+    - Updated `CanvasSettings.tsx` to include `showLineStyle={true}`, `lineStyle`, and `onLineStyleChange` in the color picker popup for both Vertical and Horizontal grid lines, matching Crosshair styling.
+    - Added line appearance preview buttons for grid lines displaying color swatch, opacity, and line style glyph (`—`, `---`, `...`).
+  - **Grid Lines Checkbox Toggles (`components/ui/chart-settings/CanvasSettings.tsx`)**:
+    - Replaced pill toggle switches with check/uncheck checkbox buttons (`role="checkbox"`) with Lucide `Check` icons.
+  - **Background Color Opacity Removal (`components/ui/chart-settings/CanvasSettings.tsx`)**:
+    - Set `showOpacity={false}` on Solid Background, Gradient Top, and Gradient Bottom color pickers so the opacity slider is not shown on background selections.
+  - **Candles Settings Moved to Canvas (`components/ui/chart-settings/CanvasSettings.tsx`, `components/ui/chart-settings/GeneralChartSettings.tsx`)**:
+    - Moved the full "Candles" section (Buy/Up body & wick, Sell/Down body & wick with color and opacity) into `CanvasSettings.tsx`.
+    - Removed Candles section from `GeneralChartSettings.tsx`, keeping `GeneralChartSettings.tsx` focused purely on Aggregation (Tick Size, Bucket Size), Global Time (Timezone, Time Format), and Interaction settings.
+  - **Symbol Tab Renamed to General Tab (`components/ui/ChartSettingsDropdown.tsx`)**:
+    - Renamed `'symbol'` tab ID and label to `'general'` / `'General'` with Lucide `Sliders` icon.
+    - Updated default tab state to `'general'`.
+- **Why it changed**:
+  - User requested grid line popups to match crosshair line styling options, grid lines to use checkboxes instead of toggles, background colors to omit the opacity slider, and candle settings to be housed in the Canvas tab while renaming Symbol to General.
+- **Impact summary**:
+  - Clean separation of visual/canvas appearance (Candles, Background, Grid Lines, Crosshair) in the Canvas tab.
+  - General tab focuses on aggregation, time, and interaction controls.
+  - Grid lines can now be styled as solid, dashed, or dotted, and toggled via standard checkboxes.
+  - Passes all unit tests and `npx tsc --noEmit` with 0 errors.
+
+## [2026-09-05] - Fix: ColorPicker Popover Portal Positioning & Global Settings Opacity Integration
+
+- **What changed**:
+  - **Shared Color Picker Positioning & Portal (`components/ui/ColorPickerPopover.tsx`)**:
+    - Portaled the popover to `document.body` via `createPortal` with `fixed z-[99999]` when not in toolbar mode (`!chartBounds`).
+    - Anchors to the trigger button using an invisible marker ref fallback to previous/parent sibling.
+    - Implemented viewport-aware positioning: flips upward when space below is insufficient, shifts left/right to prevent viewport clipping, and clamps strictly within viewport bounds (`[8px, window.innerHeight - popoverHeight - 8px]` and `[8px, window.innerWidth - popoverWidth - 8px]`).
+    - Added `ResizeObserver` on the popover container to dynamically adjust coordinates when custom hex input is toggled.
+    - Added window/modal scroll listeners with `{ capture: true }` to keep the popover aligned during scrolling.
+    - Preserved in-place absolute rendering for canvas drawing toolbars (`chartBounds`).
+  - **Opacity Support across Global Settings (`lib/store/chart.ts`, `components/ui/chart-settings/GeneralChartSettings.tsx`, `components/ui/chart-settings/CanvasSettings.tsx`)**:
+    - Added opacity store properties and setters: `candleUpOpacity`, `candleDownOpacity`, `candleUpWickOpacity`, `candleDownWickOpacity`, `chartBackgroundOpacity`, `chartBackgroundGradientTopOpacity`, `chartBackgroundGradientBottomOpacity`, `verticalGridLineOpacity`, and `horizontalGridLineOpacity`.
+    - Added all opacity fields to Zustand `partialize` persistence.
+    - Enabled `showOpacity={true}`, `opacity`, and `onOpacityChange` in `ColorPickerPopover` for all candle bodies/wicks in `GeneralChartSettings.tsx`, and solid/gradient background and vertical/horizontal grid lines in `CanvasSettings.tsx`.
+    - Updated preview swatches across `GeneralChartSettings.tsx`, `CanvasSettings.tsx`, and `SessionsSettings.tsx` to reflect active opacity values.
+  - **Canvas Rendering Engine Integration (`components/chart/ChartCanvas.tsx`, `components/chart/drawAxes.ts`, `components/chart/drawCandles.ts`, `lib/config/chartColors.ts`)**:
+    - Connected vertical and horizontal grid line opacity to `drawGrid` using `chartColorToRgba`.
+    - Connected candle body and wick opacities to `drawCandles` using `chartColorToRgba`.
+    - Subscribed `ChartCanvas.tsx` to all new opacity state values and added them to `redraw` dependency arrays.
+- **Why it changed**:
+  - Resolves popover clipping where popovers were cut off on the left by modal sidebars (`overflow-y: auto`) and on the top by modal headers when flipping upward.
+  - Reused the existing `ColorPickerPopover` component everywhere across Global Settings, Session Settings, and Drawing Tools, providing uniform opacity controls and fixing grid lines opacity.
+- **Impact summary**:
+  - Color pickers no longer clip on any side in Global Settings or Session Settings.
+  - All candle body, candle wick, background, grid line, and crosshair colors now feature working opacity controls that immediately render on the chart canvas and persist across browser reloads.
+  - Passes all unit tests and `npx tsc --noEmit` with 0 errors.
+
+## [2026-09-05] - Fix: Global Chart Settings Canvas Wiring & Persistence Integration
+
+- **What changed**:
+  - **Canvas Rendering Engine (`components/chart/drawCandles.ts`, `components/chart/drawAxes.ts`, `components/chart/drawCrosshair.ts`)**:
+    - `drawCandles.ts`: Added `CandleColorOptions` parameter to render custom bullish/bearish candle body colors and wick colors with clean fallbacks.
+    - `drawAxes.ts`: Extended `drawGrid` with `GridOptions` supporting independent `showHorizontal`/`showVertical` toggles and custom colors.
+    - `drawCrosshair.ts`: Extended `drawCrosshair` with `CrosshairOptions` supporting custom color, opacity, thickness (1-4px), and line styles (`solid`, `dashed`, `dotted`) with crisp subpixel coordinate alignment.
+  - **Canvas Coordinator (`components/chart/ChartCanvas.tsx`)**:
+    - Subscribed to all global settings from `useChartStore` (`candleUpColor`, `candleDownColor`, `candleUpWickColor`, `candleDownWickColor`, `chartBackgroundType`, `chartBackgroundColor`, `chartBackgroundGradientTop`, `chartBackgroundGradientBottom`, `showVerticalGridLines`, `verticalGridLineColor`, `showHorizontalGridLines`, `horizontalGridLineColor`, `crosshairColor`, `crosshairOpacity`, `crosshairThickness`, `crosshairStyle`).
+    - Implemented dynamic background rendering for solid and linear gradients (`bgCtx.createLinearGradient`).
+    - Connected custom candle colors to `drawCandles`, custom grid options to `drawGrid`, and custom crosshair settings to `drawCrosshair`.
+    - Added all global settings to the `redraw('all')` dependency array so changes immediately update the live chart without requiring page refresh.
+  - **Store Persistence (`lib/store/chart.ts`)**:
+    - Added all 16 new global settings to `partialize`, ensuring candle colors, background styles, grid visibility, and crosshair preferences persist across page reloads.
+  - **UI Design & Aesthetics (`components/ui/ColorPickerPopover.tsx`, `components/ui/chart-settings/CanvasSettings.tsx`, `components/ui/chart-settings/GeneralChartSettings.tsx`)**:
+    - Updated thickness and line style segmented controls in `ColorPickerPopover.tsx` to match the TradingView reference design (white active tab button with dark line glyph; dark inactive button with white glyph).
+    - Updated Crosshair trigger button in `CanvasSettings.tsx` to display both the color swatch and the line style preview side-by-side with active blue outline when open.
+    - Cleaned up popover wrappers in `GeneralChartSettings.tsx`.
+- **Why it changed**:
+  - The initial implementation only created the store fields and UI tabs, but did not wire them into the chart's canvas rendering loop or include them in Zustand's persistence layer, causing user settings changes to have no visual effect on the chart and reset on refresh.
+- **Impact summary**:
+  - All candle colors, background types/colors, grid line options, and crosshair appearances now immediately render on the chart canvas and persist across browser sessions.
+  - `npx tsc --noEmit` validates with 0 errors.
+
+## [2026-09-05] - Feature: Global Chart Settings Implementation (Symbol, Canvas, Alerts)
+
+- **What changed**:
+  - **Chart Store (`lib/store/chart.ts`)**: Added global state for candle colors (body/wick up/down), chart background (solid/gradient type, color, gradients), grid lines (horizontal/vertical toggle and color), and crosshair settings (color, opacity, thickness, style).
+  - **Color Picker (`components/ui/ColorPickerPopover.tsx`)**: Upgraded to support optional thickness and line style (solid/dashed/dotted) controls underneath the color grid and opacity slider.
+  - **Chart Settings UI (`components/ui/ChartSettingsDropdown.tsx`)**: Reorganized global settings tabs. Renamed "Chart" tab to "Symbol". Added "Canvas" and "Alerts" tabs.
+  - **New Setting Tabs (`components/ui/chart-settings/CanvasSettings.tsx` & `AlertsSettings.tsx`)**: Implemented Canvas tab mapping to the new global background, grid lines, and crosshair store values. Created a placeholder for Alerts.
+  - **General Settings (`components/ui/chart-settings/GeneralChartSettings.tsx`)**: Appended candle color pickers to act as the primary content for the "Symbol" tab alongside existing time format settings.
+- **Why it changed**:
+  - Provides a centralized "Global Settings" UI matching the application's design language, breaking settings down into logical tabs (Symbol, Canvas, Alerts) without duplicating existing configs.
+- **Impact summary**:
+  - The UI now features dedicated sections for theming and visual appearance (Canvas/Symbol) utilizing the shared color picker. This aligns the app closely with standard chart settings interfaces and persists configurations correctly through the existing Zustand engine.
+
 ## [2026-09-05] - Feature: TradingView Color Picker Integration in Session Indicator
 
 - **What changed**:

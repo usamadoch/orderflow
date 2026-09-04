@@ -105,6 +105,40 @@ export interface ChartState {
   globalTimezone: string;
   globalTimeFormat: '12h' | '24h';
 
+  // Global Chart Colors & Styles
+  candleUpColor: string;
+  candleUpOpacity: number;
+  candleDownColor: string;
+  candleDownOpacity: number;
+  candleUpWickColor: string;
+  candleUpWickOpacity: number;
+  candleDownWickColor: string;
+  candleDownWickOpacity: number;
+
+  chartBackgroundType: 'solid' | 'gradient';
+  chartBackgroundColor: string;
+  chartBackgroundOpacity: number;
+  chartBackgroundGradientTop: string;
+  chartBackgroundGradientTopOpacity: number;
+  chartBackgroundGradientBottom: string;
+  chartBackgroundGradientBottomOpacity: number;
+
+  showVerticalGridLines: boolean;
+  verticalGridLineColor: string;
+  verticalGridLineOpacity: number;
+  verticalGridLineStyle: 'solid' | 'dashed' | 'dotted';
+
+  showHorizontalGridLines: boolean;
+  horizontalGridLineColor: string;
+  horizontalGridLineOpacity: number;
+  horizontalGridLineStyle: 'solid' | 'dashed' | 'dotted';
+
+  crosshairColor: string;
+  crosshairOpacity: number;
+  crosshairThickness: number;
+  crosshairStyle: 'solid' | 'dashed' | 'dotted';
+
+
   addIndicator: (panelId: PanelId, indicatorId: IndicatorId) => void;
   removeIndicator: (panelId: PanelId, indicatorId: IndicatorId) => void;
   reorderIndicators: (panelId: PanelId, activeIndicators: IndicatorId[]) => void;
@@ -273,6 +307,39 @@ export interface ChartState {
   setCrosshairSyncEnabled: (enabled: boolean) => void;
   setDrawingsSyncEnabled: (enabled: boolean) => void;
   setBracketDragConfirmEnabled: (enabled: boolean) => void;
+
+  setCandleUpColor: (color: string) => void;
+  setCandleUpOpacity: (opacity: number) => void;
+  setCandleDownColor: (color: string) => void;
+  setCandleDownOpacity: (opacity: number) => void;
+  setCandleUpWickColor: (color: string) => void;
+  setCandleUpWickOpacity: (opacity: number) => void;
+  setCandleDownWickColor: (color: string) => void;
+  setCandleDownWickOpacity: (opacity: number) => void;
+
+  setChartBackgroundType: (type: 'solid' | 'gradient') => void;
+  setChartBackgroundColor: (color: string) => void;
+  setChartBackgroundOpacity: (opacity: number) => void;
+  setChartBackgroundGradientTop: (color: string) => void;
+  setChartBackgroundGradientTopOpacity: (opacity: number) => void;
+  setChartBackgroundGradientBottom: (color: string) => void;
+  setChartBackgroundGradientBottomOpacity: (opacity: number) => void;
+
+  setShowVerticalGridLines: (show: boolean) => void;
+  setVerticalGridLineColor: (color: string) => void;
+  setVerticalGridLineOpacity: (opacity: number) => void;
+  setVerticalGridLineStyle: (style: 'solid' | 'dashed' | 'dotted') => void;
+
+  setShowHorizontalGridLines: (show: boolean) => void;
+  setHorizontalGridLineColor: (color: string) => void;
+  setHorizontalGridLineOpacity: (opacity: number) => void;
+  setHorizontalGridLineStyle: (style: 'solid' | 'dashed' | 'dotted') => void;
+
+  setCrosshairColor: (color: string) => void;
+  setCrosshairOpacity: (opacity: number) => void;
+  setCrosshairThickness: (thickness: number) => void;
+  setCrosshairStyle: (style: 'solid' | 'dashed' | 'dotted') => void;
+
 
   // Auth
   isAuthenticated: boolean;
@@ -734,6 +801,33 @@ export const useChartStore = create<ChartState>()(
       bracketDragConfirmEnabled: false,
       globalTimezone: 'local',
       globalTimeFormat: '24h',
+      candleUpColor: '#089981',
+      candleUpOpacity: 1,
+      candleDownColor: '#F23645',
+      candleDownOpacity: 1,
+      candleUpWickColor: '#089981',
+      candleUpWickOpacity: 1,
+      candleDownWickColor: '#F23645',
+      candleDownWickOpacity: 1,
+      chartBackgroundType: 'solid',
+      chartBackgroundColor: '#0F0F0F',
+      chartBackgroundOpacity: 1,
+      chartBackgroundGradientTop: '#131722',
+      chartBackgroundGradientTopOpacity: 1,
+      chartBackgroundGradientBottom: '#0A0A0A',
+      chartBackgroundGradientBottomOpacity: 1,
+      showVerticalGridLines: true,
+      verticalGridLineColor: '#1F1F1F',
+      verticalGridLineOpacity: 1,
+      verticalGridLineStyle: 'solid',
+      showHorizontalGridLines: true,
+      horizontalGridLineColor: '#1F1F1F',
+      horizontalGridLineOpacity: 1,
+      horizontalGridLineStyle: 'solid',
+      crosshairColor: '#8A8A8A',
+      crosshairOpacity: 1,
+      crosshairThickness: 1,
+      crosshairStyle: 'dashed',
       isAuthenticated: false,
 
       // Per-panel actions
@@ -1383,6 +1477,38 @@ export const useChartStore = create<ChartState>()(
       setDrawingsSyncEnabled: (drawingsSyncEnabled) => set({ drawingsSyncEnabled }),
       setBracketDragConfirmEnabled: (bracketDragConfirmEnabled) => set({ bracketDragConfirmEnabled }),
 
+      setCandleUpColor: (candleUpColor) => set({ candleUpColor }),
+      setCandleUpOpacity: (candleUpOpacity) => set({ candleUpOpacity }),
+      setCandleDownColor: (candleDownColor) => set({ candleDownColor }),
+      setCandleDownOpacity: (candleDownOpacity) => set({ candleDownOpacity }),
+      setCandleUpWickColor: (candleUpWickColor) => set({ candleUpWickColor }),
+      setCandleUpWickOpacity: (candleUpWickOpacity) => set({ candleUpWickOpacity }),
+      setCandleDownWickColor: (candleDownWickColor) => set({ candleDownWickColor }),
+      setCandleDownWickOpacity: (candleDownWickOpacity) => set({ candleDownWickOpacity }),
+
+      setChartBackgroundType: (chartBackgroundType) => set({ chartBackgroundType }),
+      setChartBackgroundColor: (chartBackgroundColor) => set({ chartBackgroundColor }),
+      setChartBackgroundOpacity: (chartBackgroundOpacity) => set({ chartBackgroundOpacity }),
+      setChartBackgroundGradientTop: (chartBackgroundGradientTop) => set({ chartBackgroundGradientTop }),
+      setChartBackgroundGradientTopOpacity: (chartBackgroundGradientTopOpacity) => set({ chartBackgroundGradientTopOpacity }),
+      setChartBackgroundGradientBottom: (chartBackgroundGradientBottom) => set({ chartBackgroundGradientBottom }),
+      setChartBackgroundGradientBottomOpacity: (chartBackgroundGradientBottomOpacity) => set({ chartBackgroundGradientBottomOpacity }),
+
+       setShowVerticalGridLines: (showVerticalGridLines) => set({ showVerticalGridLines }),
+      setVerticalGridLineColor: (verticalGridLineColor) => set({ verticalGridLineColor }),
+      setVerticalGridLineOpacity: (verticalGridLineOpacity) => set({ verticalGridLineOpacity }),
+      setVerticalGridLineStyle: (verticalGridLineStyle) => set({ verticalGridLineStyle }),
+
+      setShowHorizontalGridLines: (showHorizontalGridLines) => set({ showHorizontalGridLines }),
+      setHorizontalGridLineColor: (horizontalGridLineColor) => set({ horizontalGridLineColor }),
+      setHorizontalGridLineOpacity: (horizontalGridLineOpacity) => set({ horizontalGridLineOpacity }),
+      setHorizontalGridLineStyle: (horizontalGridLineStyle) => set({ horizontalGridLineStyle }),
+
+      setCrosshairColor: (crosshairColor) => set({ crosshairColor }),
+      setCrosshairOpacity: (crosshairOpacity) => set({ crosshairOpacity }),
+      setCrosshairThickness: (crosshairThickness) => set({ crosshairThickness }),
+      setCrosshairStyle: (crosshairStyle) => set({ crosshairStyle }),
+
       // Auth actions
       authenticate: (password) => {
         if (password === 'alpha') {
@@ -1951,6 +2077,33 @@ export const useChartStore = create<ChartState>()(
         bracketDragConfirmEnabled: state.bracketDragConfirmEnabled,
         globalTimezone: state.globalTimezone,
         globalTimeFormat: state.globalTimeFormat,
+        candleUpColor: state.candleUpColor,
+        candleUpOpacity: state.candleUpOpacity ?? 1,
+        candleDownColor: state.candleDownColor,
+        candleDownOpacity: state.candleDownOpacity ?? 1,
+        candleUpWickColor: state.candleUpWickColor,
+        candleUpWickOpacity: state.candleUpWickOpacity ?? 1,
+        candleDownWickColor: state.candleDownWickColor,
+        candleDownWickOpacity: state.candleDownWickOpacity ?? 1,
+        chartBackgroundType: state.chartBackgroundType,
+        chartBackgroundColor: state.chartBackgroundColor,
+        chartBackgroundOpacity: state.chartBackgroundOpacity ?? 1,
+        chartBackgroundGradientTop: state.chartBackgroundGradientTop,
+        chartBackgroundGradientTopOpacity: state.chartBackgroundGradientTopOpacity ?? 1,
+        chartBackgroundGradientBottom: state.chartBackgroundGradientBottom,
+        chartBackgroundGradientBottomOpacity: state.chartBackgroundGradientBottomOpacity ?? 1,
+        showVerticalGridLines: state.showVerticalGridLines,
+        verticalGridLineColor: state.verticalGridLineColor,
+        verticalGridLineOpacity: state.verticalGridLineOpacity ?? 1,
+        verticalGridLineStyle: state.verticalGridLineStyle ?? 'solid',
+        showHorizontalGridLines: state.showHorizontalGridLines,
+        horizontalGridLineColor: state.horizontalGridLineColor,
+        horizontalGridLineOpacity: state.horizontalGridLineOpacity ?? 1,
+        horizontalGridLineStyle: state.horizontalGridLineStyle ?? 'solid',
+        crosshairColor: state.crosshairColor,
+        crosshairOpacity: state.crosshairOpacity,
+        crosshairThickness: state.crosshairThickness,
+        crosshairStyle: state.crosshairStyle,
         isAuthenticated: state.isAuthenticated,
       }),
     }

@@ -1,5 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Plus } from 'lucide-react';
+
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 export const DEFAULT_DRAWING_STROKE_WIDTH = 2;
 export const DEFAULT_DRAWING_COLOR = '#787B86';
@@ -62,6 +65,12 @@ export interface ColorPickerPopoverProps {
   opacity?: number;
   onColorChange: (color: string) => void;
   onOpacityChange?: (opacity: number) => void;
+  thickness?: number;
+  onThicknessChange?: (thickness: number) => void;
+  showThickness?: boolean;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
+  onLineStyleChange?: (style: 'solid' | 'dashed' | 'dotted') => void;
+  showLineStyle?: boolean;
   onClose: () => void;
   showOpacity?: boolean;
   chartBounds?: { width: number; height: number };
@@ -69,6 +78,7 @@ export interface ColorPickerPopoverProps {
   controlsLeft?: number;
   className?: string;
   style?: React.CSSProperties;
+  triggerRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function ColorPickerPopover({
@@ -76,6 +86,12 @@ export function ColorPickerPopover({
   opacity,
   onColorChange,
   onOpacityChange,
+  thickness = 1,
+  onThicknessChange,
+  showThickness = false,
+  lineStyle = 'solid',
+  onLineStyleChange,
+  showLineStyle = false,
   onClose,
   showOpacity = true,
   chartBounds,
@@ -83,20 +99,130 @@ export function ColorPickerPopover({
   controlsLeft,
   className = '',
   style,
+  triggerRef,
 }: ColorPickerPopoverProps) {
+  const markerRef = useRef<HTMLSpanElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const [showCustomHex, setShowCustomHex] = useState(false);
   const [hexInput, setHexInput] = useState(color);
   const [hexError, setHexError] = useState(false);
-  const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const getAnchor = useCallback((): HTMLElement | null => {
+    if (triggerRef?.current) return triggerRef.current;
+    if (!markerRef.current) return null;
+    const prev = markerRef.current.previousElementSibling;
+    if (prev instanceof HTMLElement) return prev;
+    return markerRef.current.parentElement;
+  }, [triggerRef]);
+
+  const updatePosition = useCallback(() => {
+    if (chartBounds) return;
+    const anchor = getAnchor();
+    if (!anchor) return;
+
+    const anchorRect = anchor.getBoundingClientRect();
+    if (anchorRect.width === 0 && anchorRect.height === 0 && anchorRect.top === 0 && anchorRect.bottom === 0) {
+      return;
+    }
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 8;
+    const gap = 6;
+
+    const popoverEl = popoverRef.current;
+    const popoverWidth = popoverEl?.offsetWidth || 236;
+    const popoverHeight = popoverEl?.offsetHeight || 380;
+
+    // Vertical placement
+    const spaceBelow = viewportHeight - anchorRect.bottom - margin;
+    const spaceAbove = anchorRect.top - margin;
+
+    let top: number;
+    if (spaceBelow >= popoverHeight + gap) {
+      top = anchorRect.bottom + gap;
+    } else if (spaceAbove >= popoverHeight + gap) {
+      top = anchorRect.top - popoverHeight - gap;
+    } else {
+      if (spaceBelow >= spaceAbove) {
+        top = anchorRect.bottom + gap;
+      } else {
+        top = anchorRect.top - popoverHeight - gap;
+      }
+      top = Math.max(margin, Math.min(top, viewportHeight - popoverHeight - margin));
+    }
+
+    // Horizontal placement
+    // Default: align right edge of popover with right edge of anchor button
+    let left = anchorRect.right - popoverWidth;
+
+    // If aligning to the right of the button pushes it off the left edge of the screen,
+    // align to the left edge of the button instead
+    if (left < margin) {
+      left = anchorRect.left;
+    }
+
+    // Always clamp within viewport margins so it's never clipped on left or right
+    left = Math.max(margin, Math.min(left, viewportWidth - popoverWidth - margin));
+
+    setCoords({ top, left });
+  }, [chartBounds, getAnchor]);
+
+  useIsomorphicLayoutEffect(() => {
+    updatePosition();
+  }, [updatePosition]);
+
+  // Track scroll and resize across any container
+  useEffect(() => {
+    if (chartBounds) return;
+    updatePosition();
+
+    const handleScroll = () => {
+      updatePosition();
+    };
+    const handleWindowResize = () => {
+      updatePosition();
+    };
+
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleWindowResize);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleWindowResize);
+    };
+  }, [chartBounds, updatePosition]);
+
+  // Observe popover size changes (e.g. toggling custom hex)
+  useEffect(() => {
+    if (chartBounds || !popoverRef.current) return;
+    updatePosition();
+    const ro = new ResizeObserver(() => {
+      updatePosition();
+    });
+    ro.observe(popoverRef.current);
+    return () => ro.disconnect();
+  }, [chartBounds, updatePosition, showCustomHex, showOpacity, showThickness, showLineStyle]);
 
   // Close on escape or outside click
   useEffect(() => {
     const handleMouseDown = (event: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
-        onClose();
+      const target = event.target as Node;
+      if (popoverRef.current && popoverRef.current.contains(target)) {
+        return;
       }
+      const anchor = getAnchor();
+      if (anchor && anchor.contains(target)) {
+        return;
+      }
+      onClose();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -109,19 +235,7 @@ export function ColorPickerPopover({
       document.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
-
-  // Check if popover should flip upward in standard DOM context
-  useEffect(() => {
-    if (!chartBounds && popoverRef.current) {
-      const rect = popoverRef.current.getBoundingClientRect();
-      const scrollParent = popoverRef.current.closest('.overflow-y-auto') || document.documentElement;
-      const parentBottom = scrollParent.getBoundingClientRect().bottom;
-      if (rect.bottom > parentBottom - 10 || rect.bottom > window.innerHeight - 20) {
-        setPlacement('top');
-      }
-    }
-  }, [chartBounds]);
+  }, [getAnchor, onClose]);
 
   const currentOpacity = opacity ?? 1;
   const opacityPercent = Math.round(currentOpacity * 100);
@@ -139,33 +253,35 @@ export function ColorPickerPopover({
     }
   };
 
-  // Popover positioning logic
-  const popoverStyle: React.CSSProperties = { ...style };
+  // Popover styles
+  const toolbarStyle: React.CSSProperties = { ...style };
   if (chartBounds && controlsTop !== undefined && controlsLeft !== undefined) {
     if (controlsTop + 36 + 285 > chartBounds.height && controlsTop > 285) {
-      popoverStyle.bottom = '100%';
-      popoverStyle.marginBottom = '8px';
+      toolbarStyle.bottom = '100%';
+      toolbarStyle.marginBottom = '8px';
     } else {
-      popoverStyle.top = '100%';
-      popoverStyle.marginTop = '8px';
+      toolbarStyle.top = '100%';
+      toolbarStyle.marginTop = '8px';
     }
 
     if (controlsLeft + 234 > chartBounds.width) {
-      popoverStyle.right = 0;
+      toolbarStyle.right = 0;
     } else {
-      popoverStyle.left = 0;
+      toolbarStyle.left = 0;
     }
-  } else {
-    // Standard relative container placement
-    if (placement === 'top') {
-      popoverStyle.bottom = '100%';
-      popoverStyle.marginBottom = '6px';
-    } else {
-      popoverStyle.top = '100%';
-      popoverStyle.marginTop = '6px';
-    }
-    popoverStyle.right = 0;
   }
+
+  const portalStyle: React.CSSProperties = {
+    position: 'fixed',
+    top: coords ? `${coords.top}px` : '-9999px',
+    left: coords ? `${coords.left}px` : '-9999px',
+    maxHeight: 'calc(100vh - 16px)',
+    overflowY: 'auto',
+    opacity: coords ? 1 : 0,
+    pointerEvents: coords ? 'auto' : 'none',
+    transition: 'opacity 0.08s ease-out',
+    ...style,
+  };
 
   const renderSwatch = (swatchColor: string, idx: number) => {
     const isSelected = color.toUpperCase() === swatchColor.toUpperCase();
@@ -193,11 +309,15 @@ export function ColorPickerPopover({
     );
   };
 
-  return (
+  const popoverContent = (
     <div
       ref={popoverRef}
-      className={`absolute z-[1100] w-[236px] rounded-lg border border-[#333333] bg-[#1E222D] p-3 shadow-2xl backdrop-blur-md select-none text-white ${className}`}
-      style={popoverStyle}
+      className={
+        chartBounds
+          ? `absolute z-[1100] w-[236px] rounded-lg border border-[#333333] bg-[#1E222D] p-3 shadow-2xl backdrop-blur-md select-none text-white ${className}`
+          : `fixed z-[99999] w-[236px] rounded-lg border border-[#333333] bg-[#1E222D] p-3 shadow-2xl backdrop-blur-md select-none text-white custom-scrollbar ${className}`
+      }
+      style={chartBounds ? toolbarStyle : portalStyle}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -324,6 +444,101 @@ export function ColorPickerPopover({
           />
         </div>
       )}
+
+      {/* Thickness Controls */}
+      {showThickness && onThicknessChange && (
+        <div className="space-y-1.5 pt-2">
+          <span className="text-[12px] font-normal text-[#848E9C]">Thickness</span>
+          <div className="flex rounded-[4px] border border-[#363A45] overflow-hidden divide-x divide-[#363A45] bg-[#1E222D]">
+            {[1, 2, 3, 4].map((t) => {
+              const isSelected = thickness === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => onThicknessChange(t)}
+                  className={`flex-1 h-7 flex items-center justify-center transition-colors cursor-pointer ${
+                    isSelected ? 'bg-white' : 'bg-transparent hover:bg-[#2A2E39]'
+                  }`}
+                  aria-label={`Thickness ${t}`}
+                >
+                  <div
+                    className={`w-4 rounded-full ${isSelected ? 'bg-[#131722]' : 'bg-white'}`}
+                    style={{ height: `${t}px` }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Line Style Controls */}
+      {showLineStyle && onLineStyleChange && (
+        <div className="space-y-1.5 pt-2">
+          <span className="text-[12px] font-normal text-[#848E9C]">Line style</span>
+          <div className="flex rounded-[4px] border border-[#363A45] overflow-hidden divide-x divide-[#363A45] bg-[#1E222D]">
+            {[
+              {
+                id: 'solid',
+                label: 'Solid',
+                render: (isSelected: boolean) => (
+                  <div className={`w-5 h-px ${isSelected ? 'bg-[#131722]' : 'bg-white'}`} />
+                ),
+              },
+              {
+                id: 'dashed',
+                label: 'Dashed',
+                render: (isSelected: boolean) => (
+                  <div className="w-5 flex justify-between">
+                    <div className={`w-1 h-px ${isSelected ? 'bg-[#131722]' : 'bg-white'}`} />
+                    <div className={`w-1 h-px ${isSelected ? 'bg-[#131722]' : 'bg-white'}`} />
+                    <div className={`w-1 h-px ${isSelected ? 'bg-[#131722]' : 'bg-white'}`} />
+                  </div>
+                ),
+              },
+              {
+                id: 'dotted',
+                label: 'Dotted',
+                render: (isSelected: boolean) => (
+                  <div className="w-5 flex justify-between">
+                    <div className={`w-0.5 h-0.5 rounded-full ${isSelected ? 'bg-[#131722]' : 'bg-white'}`} />
+                    <div className={`w-0.5 h-0.5 rounded-full ${isSelected ? 'bg-[#131722]' : 'bg-white'}`} />
+                    <div className={`w-0.5 h-0.5 rounded-full ${isSelected ? 'bg-[#131722]' : 'bg-white'}`} />
+                    <div className={`w-0.5 h-0.5 rounded-full ${isSelected ? 'bg-[#131722]' : 'bg-white'}`} />
+                  </div>
+                ),
+              },
+            ].map((styleOption) => {
+              const isSelected = lineStyle === styleOption.id;
+              return (
+                <button
+                  key={styleOption.id}
+                  type="button"
+                  onClick={() => onLineStyleChange(styleOption.id as 'solid' | 'dashed' | 'dotted')}
+                  className={`flex-1 h-7 flex items-center justify-center transition-colors cursor-pointer ${
+                    isSelected ? 'bg-white' : 'bg-transparent hover:bg-[#2A2E39]'
+                  }`}
+                  aria-label={styleOption.label}
+                >
+                  {styleOption.render(isSelected)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
+  );
+
+  if (chartBounds) {
+    return popoverContent;
+  }
+
+  return (
+    <>
+      <span ref={markerRef} style={{ display: 'none' }} aria-hidden="true" />
+      {mounted && typeof document !== 'undefined' ? createPortal(popoverContent, document.body) : null}
+    </>
   );
 }

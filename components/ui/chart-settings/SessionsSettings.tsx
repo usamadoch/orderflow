@@ -77,7 +77,7 @@ export const SessionsSettings = forwardRef<HTMLDivElement, SessionsSettingsProps
                     <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Color</span>
                     <div
                       className="w-6 h-3 rounded-[3px] border border-white/20 shadow-sm transition-transform hover:scale-105"
-                      style={{ backgroundColor: session.color }}
+                      style={{ backgroundColor: session.color, opacity: session.opacity ?? 0.07 }}
                     />
                   </button>
 

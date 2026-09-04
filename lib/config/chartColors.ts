@@ -11,7 +11,18 @@ export function chartColorToRgba(
   color: string | { r: number; g: number; b: number },
   alpha: number,
 ) {
-  const rgb = typeof color === 'string' ? hexToRgb(color) : color;
+  if (!color) return `rgba(255, 255, 255, ${alpha})`;
+  if (typeof color !== 'string') {
+    return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+  }
+  const clean = color.trim();
+  if (clean.startsWith('rgba')) {
+    return clean.replace(/,[\s\d.]+\)$/, `, ${alpha})`);
+  }
+  if (clean.startsWith('rgb')) {
+    return clean.replace('rgb', 'rgba').replace(')', `, ${alpha})`);
+  }
+  const rgb = hexToRgb(clean);
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
 
@@ -24,8 +35,16 @@ export function normalizeChartSemanticColor(color: string | undefined, fallback:
 }
 
 function hexToRgb(hex: string) {
-  const normalized = hex.replace('#', '');
+  let normalized = hex.replace('#', '').trim();
+  if (normalized.length === 3) {
+    normalized = normalized[0] + normalized[0] + normalized[1] + normalized[1] + normalized[2] + normalized[2];
+  } else if (normalized.length > 6) {
+    normalized = normalized.slice(0, 6);
+  }
   const value = parseInt(normalized, 16);
+  if (Number.isNaN(value)) {
+    return { r: 255, g: 255, b: 255 };
+  }
   return {
     r: (value >> 16) & 0xff,
     g: (value >> 8) & 0xff,

@@ -1,5 +1,16 @@
 import { Candle } from "@/types/candle";
-import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, chartColorToRgba } from "@/lib/config/chartColors";
+
+export interface CandleColorOptions {
+  upColor?: string;
+  upOpacity?: number;
+  downColor?: string;
+  downOpacity?: number;
+  upWickColor?: string;
+  upWickOpacity?: number;
+  downWickColor?: string;
+  downWickOpacity?: number;
+}
 
 export function drawCandles(
   ctx: CanvasRenderingContext2D,
@@ -9,8 +20,18 @@ export function drawCandles(
   indexToX: (i: number) => number,
   priceToY: (price: number) => number,
   barWidth: number,
-  isHollowMode: boolean = false
+  isHollowMode: boolean = false,
+  candleColors?: CandleColorOptions
 ) {
+  const upBody = candleColors?.upColor || CHART_BULLISH_COLOR;
+  const upBodyOpacity = typeof candleColors?.upOpacity === 'number' ? candleColors.upOpacity : 1;
+  const downBody = candleColors?.downColor || CHART_BEARISH_COLOR;
+  const downBodyOpacity = typeof candleColors?.downOpacity === 'number' ? candleColors.downOpacity : 1;
+  const upWick = candleColors?.upWickColor || upBody;
+  const upWickOpacity = typeof candleColors?.upWickOpacity === 'number' ? candleColors.upWickOpacity : upBodyOpacity;
+  const downWick = candleColors?.downWickColor || downBody;
+  const downWickOpacity = typeof candleColors?.downWickOpacity === 'number' ? candleColors.downWickOpacity : downBodyOpacity;
+
   const bodyWidth = Math.max(1, Math.floor(barWidth * 0.82));
 
   for (let i = firstIndex; i <= lastIndex; i++) {
@@ -24,13 +45,13 @@ export function drawCandles(
     const lowY = priceToY(c.low);
 
     const isBullish = c.close >= c.open;
-    // The user requested: "red candles must be hollow too", which means in Hollow mode, 
-    // ALL candles should be rendered as hollow, preserving their normal up/down colors.
-    const isHollow = isHollowMode;
-    const color = isBullish ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
+    const bodyColor = isBullish ? upBody : downBody;
+    const bodyOpacity = isBullish ? upBodyOpacity : downBodyOpacity;
+    const wickColor = isBullish ? upWick : downWick;
+    const wickOpacity = isBullish ? upWickOpacity : downWickOpacity;
 
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
+    const bodyRgba = chartColorToRgba(bodyColor, bodyOpacity);
+    const wickRgba = chartColorToRgba(wickColor, wickOpacity);
 
     const topY = Math.round(Math.min(openY, closeY));
     const bottomY = Math.round(Math.max(openY, closeY));
@@ -38,6 +59,7 @@ export function drawCandles(
     const leftX = Math.round(x - bodyWidth / 2);
 
     // Draw Wick (draw in two parts: high to top of body, bottom of body to low)
+    ctx.strokeStyle = wickRgba;
     ctx.beginPath();
     ctx.moveTo(Math.round(x), Math.round(highY));
     ctx.lineTo(Math.round(x), topY);
@@ -46,7 +68,9 @@ export function drawCandles(
     ctx.stroke();
 
     // Draw Body
-    if (isHollow) {
+    ctx.strokeStyle = bodyRgba;
+    ctx.fillStyle = bodyRgba;
+    if (isHollowMode) {
       ctx.strokeRect(leftX, topY, bodyWidth, bodyHeight);
     } else {
       ctx.fillRect(leftX, topY, bodyWidth, bodyHeight);

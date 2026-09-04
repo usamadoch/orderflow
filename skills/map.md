@@ -91,8 +91,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/AccountBalanceWidget.tsx` → Header widget displaying available asset balances from live account snapshots.
 - `components/ui/OrdersPanel.tsx` → Bottom pane table displaying open limit orders with real-time status and cancellation controls.
 - `components/ui/DrawingFavoritesToolbar.tsx` → Floating toolbar for quick selection of favorite drawing tools (Profile, Measure, Lines, Boxes).
-- `components/ui/ChartSettingsDropdown.tsx` → The main popup/dropdown for configuring indicator settings and profiles.
-- `components/ui/chart-settings/` → Modularized component files for `ChartSettingsDropdown` (e.g., `GeneralChartSettings.tsx`, `SessionsSettings.tsx`, `CvdSettings.tsx`, `VolumeBarsSettings.tsx`, `BubbleSettings.tsx`, `LiquidityMapSettings.tsx`, `HeatmapSettings.tsx`, `StatsSettings.tsx`, `SignalSettings.tsx`, `FootprintSettings.tsx`, `VolumeProfileSettings.tsx`, `HistoricalSessionProfileSettings.tsx`).
+- `components/ui/ChartSettingsDropdown.tsx` → The main popup/dropdown for configuring global settings, indicator settings, and profiles.
+- `components/ui/chart-settings/` → Modularized component files for `ChartSettingsDropdown` (e.g., `GeneralChartSettings.tsx`, `CanvasSettings.tsx`, `AlertsSettings.tsx`, `SessionsSettings.tsx`, `CvdSettings.tsx`, `VolumeBarsSettings.tsx`, `BubbleSettings.tsx`, `LiquidityMapSettings.tsx`, `HeatmapSettings.tsx`, `StatsSettings.tsx`, `SignalSettings.tsx`, `FootprintSettings.tsx`, `VolumeProfileSettings.tsx`, `HistoricalSessionProfileSettings.tsx`).
 - `components/ui/IndicatorsModal.tsx` → The popup modal for adding new indicators from the PanelToolbar.
 - `components/ui/ColorPickerPopover.tsx` → Shared TradingView-style color picker popover (80-swatch matrix, custom color '+' button, 3/6/8-digit hex parser, native eyedropper, and opacity slider) used by drawing tools and indicator settings.
 - `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with AM/PM toggle) and 24-hour modes matching global settings.
@@ -127,7 +127,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/useCoordinates.ts` → Hook calculating price/time coordinate bounds and visible range mappings.
 - `components/chart/hooks/useVwapHydration.ts` → Hook explicitly fetching and subscribing to historical 1m base candles to hydrate accurate VWAP state independent of active timeframe.
 - `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, crosshair interaction, and multi-canvas synchronization.
-- `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry using shared chart colors.
+- `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry using configurable body and wick colors.
 - `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with divergence markers.
 - `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters, delta, or delta-volume profiles per price level.
 - `components/chart/drawBubbles.ts` → Volume bubble renderer visualizing trade volume, order clusters, and color modes with percentile scaling and 3D effects.
@@ -137,10 +137,10 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawLines.ts` → Canvas renderer for horizontal lines, vertical lines, rays, boxes, and Risk/Reward position tools with globalAlpha opacity, box fillColor/showFill separation, horizontal price axis badges, vertical time axis badges, and non-colliding ray anchor badges.
 - `lib/utils/format.ts` → Formatting helpers for price precision, time countdowns, elapsed duration, volume/delta abbreviations, and TradingView-style date-time badges (e.g. `Sat 05 Sep '26  12:05 AM`).
 - `components/chart/drawVwap.ts` → Canvas renderer for VWAP line, rolling window, and envelope bands.
-- `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer.
+- `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer supporting configurable horizontal and vertical grid line toggles and colors.
 - `components/chart/drawPriceLine.ts` → Current market price line, badge, and timer renderer.
 - `components/chart/drawTradingOverlays.ts` → Canvas overlay renderer for limit orders, SL/TP brackets, virtual positions, and fill markers.
-- `components/chart/drawCrosshair.ts` → Crosshair overlay and axis price/time label renderer.
+- `components/chart/drawCrosshair.ts` → Crosshair overlay and axis price/time label renderer with customizable color, opacity, thickness, and line styles (solid/dashed/dotted) with crisp subpixel coordinate alignment.
 - `components/chart/drawAbsorption.ts` → Marker renderer for absorption signals.
 - `components/chart/drawExhaustion.ts` → Marker renderer for exhaustion signals.
 - `components/chart/AbsorptionTooltip.tsx` → Hover tooltip displaying absorption signal details.
