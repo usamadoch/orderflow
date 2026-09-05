@@ -30,6 +30,7 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
   const contractLabel = panel.contractType === 'futures' ? 'Futures' : 'Spot';
 
   const removeIndicator = useChartStore(s => s.removeIndicator);
+  const addIndicator = useChartStore(s => s.addIndicator);
   const moveIndicator = useChartStore(s => s.moveIndicator);
   const openIndicatorSettings = useChartStore(s => s.openIndicatorSettings);
   
@@ -54,6 +55,7 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
     ...(panel.liquidityHeatmapEnabled ? ['heatmap'] : []),
     ...(panel.liquidityEnabled ? ['liquidityMap'] : []),
     ...(panel.statsIndicatorEnabled ? ['stats'] : []),
+    ...(panel.vwapEnabled ? ['vwap'] : []),
   ]));
 
   const getIndicatorConfig = (id: IndicatorId) => {
@@ -67,6 +69,7 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
       case 'heatmap': return { label: 'Heatmap', enabled: panel.liquidityHeatmapEnabled, toggle: () => setLiquidityHeatmapEnabled(panelId, !panel.liquidityHeatmapEnabled) };
       case 'liquidityMap': return { label: 'Liquidity', enabled: panel.liquidityEnabled, toggle: () => setLiquidityEnabled(panelId, !panel.liquidityEnabled) };
       case 'stats': return { label: 'Stats', enabled: panel.statsIndicatorEnabled, toggle: () => setStatsIndicatorEnabled(panelId, !panel.statsIndicatorEnabled) };
+      case 'vwap': return { label: 'VWAP', enabled: panel.vwapEnabled, toggle: () => panel.vwapEnabled ? removeIndicator(panelId, 'vwap') : addIndicator(panelId, 'vwap') };
       default: return null;
     }
   };

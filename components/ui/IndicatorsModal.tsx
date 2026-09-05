@@ -19,6 +19,7 @@ const AVAILABLE_INDICATORS: { id: IndicatorId; label: string; desc: string }[] =
   { id: 'heatmap', label: 'Heatmap', desc: 'Orderbook liquidity heatmap' },
   { id: 'liquidityMap', label: 'Liquidity', desc: 'Orderbook liquidity map' },
   { id: 'stats', label: 'Stats', desc: 'Candle statistics grid' },
+  { id: 'vwap', label: 'VWAP', desc: 'Volume Weighted Average Price' },
 ];
 
 export function IndicatorsModal({ panelId, onClose }: IndicatorsModalProps) {
@@ -36,6 +37,7 @@ export function IndicatorsModal({ panelId, onClose }: IndicatorsModalProps) {
     ...(panel.liquidityHeatmapEnabled ? ['heatmap'] : []),
     ...(panel.liquidityEnabled ? ['liquidityMap'] : []),
     ...(panel.statsIndicatorEnabled ? ['stats'] : []),
+    ...(panel.vwapEnabled ? ['vwap'] : []),
   ]));
 
   const modalRef = React.useRef<HTMLDivElement>(null);

@@ -19,7 +19,7 @@ export function getTimescalePool(): Pool {
       // Keep max low in serverless so concurrent lambdas don't overwhelm DB limits
       max: 5,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 15000,
       ssl: isLocalhost ? false : { rejectUnauthorized: false },
     })
 

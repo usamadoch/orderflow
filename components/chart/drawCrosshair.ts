@@ -6,31 +6,56 @@ const CROSSHAIR_BG = '#1F1F1F';
 const CROSSHAIR_BORDER = '#8A8A8A';
 const CROSSHAIR_TEXT = '#FFFFFF';
 
+export interface CrosshairOptions {
+  color?: string;
+  opacity?: number;
+  thickness?: number;
+  style?: 'solid' | 'dashed' | 'dotted';
+}
+
 export function drawCrosshair(
   ctx: CanvasRenderingContext2D,
   mouseX: number | null,
   mouseY: number | null,
   chartWidth: number,
-  chartHeight: number
+  chartHeight: number,
+  options?: CrosshairOptions
 ) {
+  const color = options?.color || '#8A8A8A';
+  const opacity = typeof options?.opacity === 'number' ? options.opacity : 1;
+  const thickness = options?.thickness || 1;
+  const style = options?.style || 'dashed';
+
   ctx.save();
-  ctx.setLineDash([4, 4]);
-  ctx.strokeStyle = '#8A8A8A';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = thickness;
+  ctx.globalAlpha = opacity;
+  ctx.strokeStyle = color;
+
+  if (style === 'solid') {
+    ctx.setLineDash([]);
+  } else if (style === 'dashed') {
+    ctx.setLineDash([4 * thickness, 4 * thickness]);
+  } else if (style === 'dotted') {
+    ctx.setLineDash([2 * thickness, 2 * thickness]);
+  }
+
+  const alignCoord = (coord: number) => (thickness % 2 === 1 ? Math.floor(coord) + 0.5 : Math.round(coord));
 
   // Horizontal line
   if (mouseY !== null && mouseY >= 0 && mouseY <= chartHeight) {
+    const y = alignCoord(mouseY);
     ctx.beginPath();
-    ctx.moveTo(0, Math.round(mouseY) + 0.5);
-    ctx.lineTo(chartWidth, Math.round(mouseY) + 0.5);
+    ctx.moveTo(0, y);
+    ctx.lineTo(chartWidth, y);
     ctx.stroke();
   }
 
   // Vertical line
   if (mouseX !== null && mouseX >= 0 && mouseX <= chartWidth) {
+    const x = alignCoord(mouseX);
     ctx.beginPath();
-    ctx.moveTo(Math.round(mouseX) + 0.5, 0);
-    ctx.lineTo(Math.round(mouseX) + 0.5, chartHeight);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, chartHeight);
     ctx.stroke();
   }
 

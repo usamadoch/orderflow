@@ -1,5 +1,7 @@
 export * from './constants';
 export * from './GeneralChartSettings';
+export * from './CanvasSettings';
+export * from './AlertsSettings';
 export * from './FootprintSettings';
 export * from './VolumeProfileSettings';
 export * from './HistoricalSessionProfileSettings';
@@ -7,6 +9,7 @@ export * from './SessionsSettings';
 export * from './CvdSettings';
 export * from './VolumeBarsSettings';
 export * from './BubbleSettings';
+export * from './VwapSettings';
 export * from './LiquidityMapSettings';
 export * from './HeatmapSettings';
 export * from './StatsSettings';
