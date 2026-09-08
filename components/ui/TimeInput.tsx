@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { FigButton } from './fig';
 import { to12Hour, to24Hour } from '@/lib/utils/format';
 
 export interface TimeInputProps {
@@ -86,30 +87,34 @@ export function TimeInput({
         {/* 12h AM/PM toggle */}
         {is12h && (
           <div className="flex items-center gap-0.5 bg-[#141414] p-0.5 rounded border border-[#2a2a2a] shrink-0">
-            <button
-              type="button"
+            <FigButton
+              variant="ghost"
+              size="compact"
               disabled={disabled}
+              selected={period === 'AM'}
               onClick={() => handlePeriodToggle('AM')}
-              className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase transition-all duration-150 ${
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                 period === 'AM'
-                  ? 'bg-accent text-white shadow-[0_0_8px_rgba(61,126,255,0.4)]'
-                  : 'text-text-dim/60 hover:text-main'
+                  ? 'bg-[#2A2A2A] text-white border border-[#383838] shadow-sm'
+                  : 'text-text-dim/60 hover:text-main hover:bg-[#1A1A1A]'
               }`}
             >
               AM
-            </button>
-            <button
-              type="button"
+            </FigButton>
+            <FigButton
+              variant="ghost"
+              size="compact"
               disabled={disabled}
+              selected={period === 'PM'}
               onClick={() => handlePeriodToggle('PM')}
-              className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase transition-all duration-150 ${
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                 period === 'PM'
-                  ? 'bg-accent text-white shadow-[0_0_8px_rgba(61,126,255,0.4)]'
-                  : 'text-text-dim/60 hover:text-main'
+                  ? 'bg-[#2A2A2A] text-white border border-[#383838] shadow-sm'
+                  : 'text-text-dim/60 hover:text-main hover:bg-[#1A1A1A]'
               }`}
             >
               PM
-            </button>
+            </FigButton>
           </div>
         )}
       </div>

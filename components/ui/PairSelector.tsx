@@ -2,66 +2,149 @@
 
 import React from 'react';
 import { ChevronDown, X } from 'lucide-react';
-import { ALLOWED_SYMBOLS } from '../../lib/config/markets';
+import { FigButton, FigSegmentedControl, FigPopup } from './fig';
+import { ALLOWED_SYMBOLS, type AllowedSymbol } from '../../lib/config/markets';
 import { useChartStore, PanelId, type ContractType } from '../../lib/store/chart';
 
-const CONTRACT_OPTIONS: Array<{ label: string; value: ContractType }> = [
-  { label: 'Spot', value: 'spot' },
-  { label: 'Perpetual Futures', value: 'futures' },
-];
+interface PairSelectorProps {
+  panelId?: PanelId;
+  position?: 'bottom left' | 'bottom right' | 'bottom center';
+}
 
-export function PairSelector({ panelId = 'left' }: { panelId?: PanelId }) {
-  const panel = useChartStore(s => s.panels[panelId]);
-  const setPair = useChartStore(s => s.setPair);
-  const setContractType = useChartStore(s => s.setContractType);
-  const setDataSourceMode = useChartStore(s => s.setDataSourceMode);
-  const setActivePanel = useChartStore(s => s.setActivePanel);
+type FilterTab = 'all' | 'futures' | 'spot';
+
+const SYMBOL_METADATA: Record<
+  AllowedSymbol,
+  { name: string; iconBg: string; iconColor: string; symbolChar: string }
+> = {
+  BTCUSDT: { name: 'Bitcoin', iconBg: '#F7931A', iconColor: '#FFFFFF', symbolChar: '₿' },
+  ETHUSDT: { name: 'Ethereum', iconBg: '#627EEA', iconColor: '#FFFFFF', symbolChar: 'Ξ' },
+  SOLUSDT: {
+    name: 'Solana',
+    iconBg: 'linear-gradient(135deg, #9945FF 0%, #14F195 100%)',
+    iconColor: '#FFFFFF',
+    symbolChar: 'S',
+  },
+  BNBUSDT: { name: 'BNB', iconBg: '#F3BA2F', iconColor: '#1E1E1E', symbolChar: '◆' },
+  XRPUSDT: { name: 'XRP', iconBg: '#23292F', iconColor: '#FFFFFF', symbolChar: '✕' },
+  ADAUSDT: { name: 'Cardano', iconBg: '#0033AD', iconColor: '#FFFFFF', symbolChar: '₳' },
+  DOGEUSDT: { name: 'Dogecoin', iconBg: '#C2A633', iconColor: '#FFFFFF', symbolChar: 'Ð' },
+  AVAXUSDT: { name: 'Avalanche', iconBg: '#E84142', iconColor: '#FFFFFF', symbolChar: '▲' },
+  LINKUSDT: { name: 'Chainlink', iconBg: '#375BD2', iconColor: '#FFFFFF', symbolChar: '⬡' },
+  LTCUSDT: { name: 'Litecoin', iconBg: '#345D9D', iconColor: '#FFFFFF', symbolChar: 'Ł' },
+};
+
+function BinanceLogo() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="shrink-0" aria-label="Binance">
+      <path d="M12 2L6 8L8.12 10.12L12 6.24L15.88 10.12L18 8L12 2Z" fill="#F3BA2F" />
+      <path d="M2 12L4.12 9.88L8 13.76L5.88 15.88L2 12Z" fill="#F3BA2F" />
+      <path d="M12 10.24L9.88 12.36L12 14.48L14.12 12.36L12 10.24Z" fill="#F3BA2F" />
+      <path d="M22 12L18.12 15.88L16 13.76L19.88 9.88L22 12Z" fill="#F3BA2F" />
+      <path d="M12 22L18 16L15.88 13.88L12 17.76L8.12 13.88L6 16L12 22Z" fill="#F3BA2F" />
+    </svg>
+  );
+}
+
+interface InstrumentItem {
+  id: string;
+  symbol: AllowedSymbol;
+  contractType: ContractType;
+  ticker: string;
+  description: string;
+  tags: string;
+  name: string;
+  iconBg: string;
+  iconColor: string;
+  symbolChar: string;
+}
+
+export function PairSelector({ 
+  panelId = 'left',
+  position = 'bottom left',
+}: PairSelectorProps) {
+  const panel = useChartStore((s) => s.panels[panelId]);
+  const setPair = useChartStore((s) => s.setPair);
+  const setContractType = useChartStore((s) => s.setContractType);
+  const setDataSourceMode = useChartStore((s) => s.setDataSourceMode);
+  const setActivePanel = useChartStore((s) => s.setActivePanel);
+
   const [isOpen, setIsOpen] = React.useState(false);
-  const [expandedSymbol, setExpandedSymbol] = React.useState<string | null>(panel.pair);
+  const [activeFilter, setActiveFilter] = React.useState<FilterTab>('all');
+
+  const selectInstrument = React.useCallback(
+    (symbol: string, contractType: ContractType) => {
+      setActivePanel(panelId);
+      setPair(panelId, symbol);
+      setContractType(panelId, contractType);
+      setDataSourceMode(panelId, contractType);
+      setIsOpen(false);
+    },
+    [panelId, setActivePanel, setContractType, setDataSourceMode, setPair]
+  );
 
   const displaySymbol = panel.contractType === 'futures' ? `${panel.pair}.P` : panel.pair;
+  const triggerId = `pair-selector-trigger-${panelId}`;
 
-  React.useEffect(() => {
-    if (!isOpen) return;
+  const instruments = React.useMemo<InstrumentItem[]>(() => {
+    const list: InstrumentItem[] = [];
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
+    ALLOWED_SYMBOLS.forEach((sym) => {
+      const meta = SYMBOL_METADATA[sym] || {
+        name: sym,
+        iconBg: '#3A3A3A',
+        iconColor: '#FFFFFF',
+        symbolChar: sym[0],
+      };
+
+      if (activeFilter === 'all' || activeFilter === 'futures') {
+        list.push({
+          id: `${sym}-futures`,
+          symbol: sym,
+          contractType: 'futures',
+          ticker: `${sym}.P`,
+          description: `${meta.name} / TetherUS PERPETUAL CONTRACT`,
+          tags: 'swap crypto defi',
+          name: meta.name,
+          iconBg: meta.iconBg,
+          iconColor: meta.iconColor,
+          symbolChar: meta.symbolChar,
+        });
       }
-    };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+      if (activeFilter === 'all' || activeFilter === 'spot') {
+        list.push({
+          id: `${sym}-spot`,
+          symbol: sym,
+          contractType: 'spot',
+          ticker: sym,
+          description: `${meta.name} / TetherUS Spot`,
+          tags: 'spot crypto',
+          name: meta.name,
+          iconBg: meta.iconBg,
+          iconColor: meta.iconColor,
+          symbolChar: meta.symbolChar,
+        });
+      }
+    });
 
-  React.useEffect(() => {
-    if (isOpen) setExpandedSymbol(panel.pair);
-  }, [isOpen, panel.pair]);
-
-  const selectInstrument = React.useCallback((symbol: string, contractType: ContractType) => {
-    setActivePanel(panelId);
-    setPair(panelId, symbol);
-    setContractType(panelId, contractType);
-    setDataSourceMode(panelId, contractType);
-    setIsOpen(false);
-  }, [panelId, setActivePanel, setContractType, setDataSourceMode, setPair]);
+    return list;
+  }, [activeFilter]);
 
   return (
     <div className="relative">
-      <button
-        type="button"
+      <FigButton
+        id={triggerId}
+        variant="ghost"
+        size="small"
+        selected={isOpen}
         onClick={() => {
           setActivePanel(panelId);
-          setIsOpen(open => !open);
+          setIsOpen((open) => !open);
         }}
-        className={`h-6 min-w-[88px] flex items-center justify-between gap-1.5 rounded-md border px-2 text-[11px] font-bold tracking-tight transition-all duration-150 ${
-          isOpen
-            ? 'border-accent bg-accent/10 text-accent shadow-sm shadow-accent/10'
-            : 'border-[#1F1F1F] bg-[#1F1F1F] text-[#E8E8E8] hover:border-accent/60 hover:text-white'
-        }`}
+        className="h-6 min-w-[88px] gap-1.5 px-2 text-[11px] font-bold tracking-tight"
         title={`${panelId === 'left' ? 'Left' : 'Right'} panel symbol`}
         aria-expanded={isOpen}
-        aria-haspopup="dialog"
       >
         <span>{displaySymbol}</span>
         <ChevronDown
@@ -69,101 +152,112 @@ export function PairSelector({ panelId = 'left' }: { panelId?: PanelId }) {
           strokeWidth={2.5}
           className={`shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
         />
-      </button>
+      </FigButton>
 
-      {isOpen && (
-        <div
-          className="pointer-events-auto fixed inset-0 z-[1000] flex items-center justify-center bg-black/20 px-3 py-6"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${panelId === 'left' ? 'Left' : 'Right'} panel crypto symbol selector`}
-          onPointerDown={(event) => {
-            event.stopPropagation();
-            if (event.target === event.currentTarget) {
-              setIsOpen(false);
-            }
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div className="popup-contrast flex max-h-[min(640px,calc(100vh-48px))] w-full max-w-[420px] flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#1F1F1F] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#1F1F1F] bg-[#1F1F1F]/50 p-4">
-              <div className="flex flex-col">
-                <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-accent">Symbol</h3>
-                <span className="text-[9px] font-bold uppercase tracking-tighter text-text-dim/60">
-                  {panelId} Panel
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="p-1 text-text-dim transition-colors hover:text-main"
-                title="Close"
-                aria-label="Close symbol selector"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="border-b border-[#1F1F1F] px-4 py-2 text-[10px] font-black uppercase tracking-wide text-[#787B86]">
-              Binance USDT
-            </div>
-            <div className="custom-scrollbar overflow-y-auto p-2">
-              {ALLOWED_SYMBOLS.map((symbol) => {
-                const expanded = expandedSymbol === symbol;
-                const selectedSymbol = panel.pair === symbol;
-
-                return (
-                  <div key={symbol} className="border-b border-[#111] last:border-b-0">
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSymbol(expanded ? null : symbol)}
-                      className={`flex h-9 w-full items-center justify-between rounded-md px-3 text-left text-[11px] font-bold transition-colors ${
-                        selectedSymbol
-                          ? 'bg-[#1F1F1F] text-[#E8E8E8]'
-                          : 'text-[#A5A7AD] hover:bg-[#1F1F1F] hover:text-white'
-                      }`}
-                      aria-expanded={expanded}
-                    >
-                      <span>{symbol}</span>
-                      <ChevronDown
-                        size={12}
-                        strokeWidth={2.5}
-                        className={`transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
-                      />
-                    </button>
-
-                    {expanded && (
-                      <div className="bg-[#1F1F1F] px-2 pb-2">
-                        {CONTRACT_OPTIONS.map((option) => {
-                          const selected = selectedSymbol && panel.contractType === option.value;
-                          const label = option.value === 'futures' ? `${symbol}.P` : symbol;
-
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => selectInstrument(symbol, option.value)}
-                              className={`mt-1 flex h-8 w-full items-center justify-between rounded-md border px-2.5 text-[11px] font-semibold transition-all ${
-                                selected
-                                  ? 'border-accent bg-accent text-white shadow-sm shadow-accent/20'
-                                  : 'border-[#1F1F1F] bg-[#1F1F1F] text-[#A5A7AD] hover:border-accent/60 hover:text-white'
-                              }`}
-                            >
-                              <span>{option.label}</span>
-                              <span className="text-[10px] opacity-70">{label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      <FigPopup
+        open={isOpen}
+        anchor={`#${triggerId}`}
+        position={position}
+        offset="0 4"
+        dropdown
+        onClose={() => setIsOpen(false)}
+        className="z-50 w-[420px] rounded-xl border border-[#282828] bg-[#181818] p-1.5 shadow-2xl select-none"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-2 pt-1 pb-1">
+          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-[#787B86]">
+            Binance USDT
+          </span>
+          <FigButton
+            variant="ghost"
+            icon
+            size="compact"
+            onClick={() => setIsOpen(false)}
+            title="Close"
+            aria-label="Close"
+            className="h-5 w-5 text-[#787B86] hover:text-white"
+          >
+            <X size={12} strokeWidth={2.5} />
+          </FigButton>
         </div>
-      )}
+
+        {/* Filter Tabs using FigSegmentedControl */}
+        <div className="px-1 pb-1.5 pt-0.5">
+          <FigSegmentedControl
+            full
+            size="small"
+            value={activeFilter}
+            onChange={(val: string) => setActiveFilter(val as FilterTab)}
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'futures', label: 'Perpetual Futures' },
+              { value: 'spot', label: 'Spot' },
+            ]}
+          />
+        </div>
+
+        {/* Instruments List */}
+        <div className="flex max-h-[360px] flex-col gap-0.5 overflow-y-auto custom-scrollbar px-1 pt-0.5">
+          {instruments.map((item) => {
+            const isSelected =
+              panel.pair === item.symbol && panel.contractType === item.contractType;
+
+            return (
+              <FigButton
+                key={item.id}
+                variant="ghost"
+                size="medium"
+                selected={isSelected}
+                onClick={() => selectInstrument(item.symbol, item.contractType)}
+                className={`group flex items-center justify-between rounded-lg px-2 py-1.5 text-left w-full transition-all ${
+                  isSelected
+                    ? 'bg-[#282828] border border-[#383838] text-white'
+                    : 'border border-transparent text-[#E0E0E0] hover:bg-[#242424] hover:text-white'
+                }`}
+                title={`${item.ticker} - ${item.description}`}
+                aria-label={`${item.ticker} - ${item.description}`}
+              >
+                {/* Left: Coin Icon + Ticker + Description */}
+                <div className="flex items-center gap-2 min-w-0 pr-2">
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 select-none shadow-sm"
+                    style={{
+                      background: item.iconBg,
+                      color: item.iconColor,
+                    }}
+                  >
+                    {item.symbolChar}
+                  </div>
+
+                  <span className="font-bold text-[12px] text-[#2962FF] tracking-wide shrink-0 min-w-[78px]">
+                    {item.ticker}
+                  </span>
+
+                  <span className="text-[10px] text-[#787B86] group-hover:text-[#A0A0A0] truncate max-w-[140px] transition-colors">
+                    {item.description}
+                  </span>
+                </div>
+
+                {/* Right: Tag + Binance Badge */}
+                <div className="flex items-center gap-2.5 shrink-0 pl-1">
+                  <span className="text-[9px] text-[#787B86] hidden sm:inline">
+                    {item.tags}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-semibold text-[#D1D4DC]">Binance</span>
+                    <BinanceLogo />
+                  </div>
+                </div>
+              </FigButton>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-1 pt-1.5 pb-0.5 border-t border-[#242424] text-center text-[10px] text-[#555555]">
+          Binance Spot & USDT-Margined Perpetual Futures
+        </div>
+      </FigPopup>
     </div>
   );
 }
