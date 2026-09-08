@@ -6,10 +6,93 @@ import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, chartColorToRgba } from "@/li
 import { formatPrice, formatTime, formatTradingViewDateTime } from "@/lib/utils/format";
 import { candleTimeAt } from "./chartCanvasUtils";
 
-const DEFAULT_DRAWING_COLOR = '#787B86';
-const DEFAULT_DRAWING_STROKE_WIDTH = 2;
+const DEFAULT_DRAWING_COLOR = '#FFFFFF';
+const DEFAULT_DRAWING_STROKE_WIDTH = 1;
 const POSITION_RISK_COLOR = CHART_BEARISH_COLOR;
 const POSITION_REWARD_COLOR = CHART_BULLISH_COLOR;
+
+export interface PositionEvaluation {
+  status: 'open' | 'sl' | 'tp';
+  evalIndex: number;
+  evalPrice: number;
+}
+
+export function evaluatePositionOutcome(
+  line: DrawnLine,
+  candles: Candle[]
+): PositionEvaluation {
+  const entry = line.value;
+  const stop = line.stopPrice ?? entry;
+  const hasTarget = line.targetPrice !== undefined;
+  const target = hasTarget ? line.targetPrice! : entry;
+
+  const startIndex = Math.max(0, Math.min(Math.round(line.firstIndex ?? 0), Math.round(line.lastIndex ?? 0)));
+  const endIndex = Math.max(0, Math.max(Math.round(line.firstIndex ?? 0), Math.round(line.lastIndex ?? 0)));
+
+  if (candles.length === 0 || startIndex >= candles.length) {
+    return { status: 'open', evalIndex: startIndex, evalPrice: entry };
+  }
+
+  const lastCandleIdx = candles.length - 1;
+  const maxCheckIdx = Math.min(lastCandleIdx, endIndex);
+  const isLong = line.type === 'long-position';
+
+  let evalIndex = startIndex;
+  let evalPrice = candles[startIndex]?.close ?? entry;
+  let status: 'open' | 'sl' | 'tp' = 'open';
+
+  for (let i = startIndex; i <= maxCheckIdx; i++) {
+    const c = candles[i];
+    if (!c) continue;
+
+    evalIndex = i;
+    evalPrice = c.close;
+
+    if (isLong) {
+      const hitSl = c.low <= stop;
+      const hitTp = hasTarget && target > entry && c.high >= target;
+      if (hitSl && hitTp) {
+        const slFirst = Math.abs(c.open - stop) <= Math.abs(c.open - target);
+        status = slFirst ? 'sl' : 'tp';
+        evalPrice = slFirst ? stop : target;
+        evalIndex = i;
+        break;
+      } else if (hitSl) {
+        status = 'sl';
+        evalPrice = stop;
+        evalIndex = i;
+        break;
+      } else if (hitTp) {
+        status = 'tp';
+        evalPrice = target;
+        evalIndex = i;
+        break;
+      }
+    } else {
+      const hitSl = c.high >= stop;
+      const hitTp = hasTarget && target < entry && c.low <= target;
+      if (hitSl && hitTp) {
+        const slFirst = Math.abs(c.open - stop) <= Math.abs(c.open - target);
+        status = slFirst ? 'sl' : 'tp';
+        evalPrice = slFirst ? stop : target;
+        evalIndex = i;
+        break;
+      } else if (hitSl) {
+        status = 'sl';
+        evalPrice = stop;
+        evalIndex = i;
+        break;
+      } else if (hitTp) {
+        status = 'tp';
+        evalPrice = target;
+        evalIndex = i;
+        break;
+      }
+    }
+  }
+
+  return { status, evalIndex, evalPrice };
+}
 
 export function drawLines(
   ctx: CanvasRenderingContext2D,
@@ -201,44 +284,51 @@ function alignCoord(coord: number, strokeWidth: number): number {
         return;
       }
 
-      const riskTop = Math.max(0, Math.min(entryY, stopY));
-      const riskBottom = Math.min(drawableHeight, Math.max(entryY, stopY));
-      const width = Math.max(1, right - left);
-      const rewardTop = hasTarget ? Math.max(0, Math.min(entryY, targetY)) : entryY;
-      const rewardBottom = hasTarget ? Math.min(drawableHeight, Math.max(entryY, targetY)) : entryY;
+      const stopColor = line.stopColor ?? CHART_BEARISH_COLOR;
+      const profitColor = line.profitColor ?? CHART_BULLISH_COLOR;
 
-      ctx.fillStyle = isActive ? chartColorToRgba(CHART_BEARISH_COLOR, 0.28) : chartColorToRgba(CHART_BEARISH_COLOR, 0.18);
-      ctx.fillRect(left, riskTop, width, Math.max(1, riskBottom - riskTop));
-      if (hasTarget) {
-        ctx.fillStyle = isActive ? chartColorToRgba(CHART_BULLISH_COLOR, 0.28) : chartColorToRgba(CHART_BULLISH_COLOR, 0.18);
-        ctx.fillRect(left, rewardTop, width, Math.max(1, rewardBottom - rewardTop));
+      // Trajectory excursion line from entry to position outcome / current price
+      const startIndex = Math.max(0, Math.min(Math.round(line.firstIndex), Math.round(line.lastIndex)));
+      const evalOutcome = evaluatePositionOutcome(line, candles);
+
+      if (candles.length > 0 && startIndex <= evalOutcome.evalIndex) {
+        const startX = indexToX(startIndex);
+        const endX = indexToX(evalOutcome.evalIndex);
+        const startY = priceToY(line.value);
+        const endY = priceToY(evalOutcome.evalPrice);
+
+        if (startX !== null && endX !== null && (Math.abs(endX - startX) > 2 || Math.abs(endY - startY) > 2)) {
+          const arrowEndX = Math.min(right, Math.max(left, endX));
+          const arrowEndY = Math.min(maxY, Math.max(minY, endY));
+          drawTrajectoryArrow(ctx, startX, startY, arrowEndX, arrowEndY);
+        }
       }
 
-      drawPositionCandleOverlap(
-        ctx,
-        line,
-        candles,
-        indexToX,
-        priceToY,
-        left,
-        right,
-        barWidth,
-        drawableHeight
-      );
-
-      ctx.lineWidth = 1;
+      ctx.lineWidth = strokeWidth;
       ctx.strokeStyle = '#D1D4DC';
       drawLevelLine(ctx, left, right, entryY, []);
-      ctx.strokeStyle = POSITION_RISK_COLOR;
+      ctx.strokeStyle = stopColor;
       drawLevelLine(ctx, left, right, stopY, [4, 3]);
       if (hasTarget) {
-        ctx.strokeStyle = POSITION_REWARD_COLOR;
+        ctx.strokeStyle = profitColor;
         drawLevelLine(ctx, left, right, targetY, [4, 3]);
       }
       ctx.setLineDash([]);
 
       if (isActive && hasTarget) {
-        drawPositionLabels(ctx, line, left, right, entryY, stopY, targetY, drawableWidth, drawableHeight);
+        drawPositionLabels(
+          ctx,
+          line,
+          left,
+          right,
+          entryY,
+          stopY,
+          targetY,
+          drawableWidth,
+          drawableHeight,
+          stopColor,
+          profitColor
+        );
       }
 
       if (isActive) {
@@ -269,7 +359,8 @@ export function drawDrawingPriceLabels(
   barWidth: number,
   candles?: Candle[],
   timezone: string = 'local',
-  timeFormat: '12h' | '24h' = '24h'
+  timeFormat: '12h' | '24h' = '24h',
+  selectedLineId: string | null = null
 ) {
   const chartWidth = canvasWidth - priceAxisWidth;
   const chartHeight = canvasHeight - timeAxisHeight;
@@ -324,15 +415,48 @@ export function drawDrawingPriceLabels(
       line.priceHigh !== undefined &&
       line.priceLow !== undefined
     ) {
-      const x1 = indexToX(line.firstIndex);
-      const x2 = indexToX(line.lastIndex);
-      if (x1 === null || x2 === null) return;
+      // Anchored price labels for box only appear when the box is selected (matching TradingView)
+      if (selectedLineId && line.id === selectedLineId) {
+        const x1 = indexToX(line.firstIndex);
+        const x2 = indexToX(line.lastIndex);
+        if (x1 === null || x2 === null) return;
 
-      const left = Math.max(0, Math.min(x1, x2) - barWidth / 2);
-      drawAnchoredPriceLabel(ctx, left, priceToY(line.priceHigh) - 6, line.priceHigh, chartWidth, chartHeight, 'above', accent);
-      drawAnchoredPriceLabel(ctx, left, priceToY(line.priceLow) + 6, line.priceLow, chartWidth, chartHeight, 'below', accent);
+        const left = Math.max(0, Math.min(x1, x2) - barWidth / 2);
+        drawAnchoredPriceLabel(ctx, left, priceToY(line.priceHigh) - 6, line.priceHigh, chartWidth, chartHeight, 'above', accent);
+        drawAnchoredPriceLabel(ctx, left, priceToY(line.priceLow) + 6, line.priceLow, chartWidth, chartHeight, 'below', accent);
+      }
     }
   });
+}
+
+function getContrastTextColor(color: string): string {
+  if (!color) return '#FFFFFF';
+
+  let hex = color.trim().replace(/^#/, '');
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  }
+
+  if (hex.length >= 6) {
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance > 0.6 ? '#0F0F0F' : '#FFFFFF';
+    }
+  }
+
+  const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (rgbMatch) {
+    const r = parseInt(rgbMatch[1], 10);
+    const g = parseInt(rgbMatch[2], 10);
+    const b = parseInt(rgbMatch[3], 10);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.6 ? '#0F0F0F' : '#FFFFFF';
+  }
+
+  return '#FFFFFF';
 }
 
 function drawPriceAxisBadge(
@@ -361,11 +485,11 @@ function drawPriceAxisBadge(
   ctx.fill();
 
   const priceLabel = formatPrice(price);
-  ctx.font = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
+  ctx.font = 'bold 12px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
   if (ctx.measureText(priceLabel).width > badgeWidth - 4) {
-    ctx.font = 'bold 11px "Inter", -apple-system, system-ui, sans-serif';
+    ctx.font = 'bold 11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
   }
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = getContrastTextColor(accentColor);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(priceLabel, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
@@ -386,7 +510,7 @@ function drawTimeAxisBadge(
 
   ctx.save();
   ctx.globalAlpha = 1;
-  ctx.font = 'bold 11px "Inter", -apple-system, system-ui, sans-serif';
+  ctx.font = 'bold 11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
   const paddingX = 8;
   const textWidth = ctx.measureText(timeText).width;
   const badgeWidth = textWidth + paddingX * 2;
@@ -402,7 +526,7 @@ function drawTimeAxisBadge(
   }
   ctx.fill();
 
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = getContrastTextColor(accentColor);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(timeText, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
@@ -454,72 +578,346 @@ function drawLevelLine(ctx: CanvasRenderingContext2D, left: number, right: numbe
   ctx.stroke();
 }
 
-function drawPositionCandleOverlap(
+function drawTrajectoryArrow(
   ctx: CanvasRenderingContext2D,
-  line: DrawnLine,
-  candles: Candle[],
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number
+) {
+  ctx.save();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.stroke();
+
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  const headLen = 6;
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(
+    toX - headLen * Math.cos(angle - Math.PI / 6),
+    toY - headLen * Math.sin(angle - Math.PI / 6)
+  );
+  ctx.lineTo(
+    toX - headLen * Math.cos(angle + Math.PI / 6),
+    toY - headLen * Math.sin(angle + Math.PI / 6)
+  );
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+export function drawPositionBackgrounds(
+  ctx: CanvasRenderingContext2D,
+  drawnLines: DrawnLine[],
   indexToX: (index: number) => number | null,
   priceToY: (price: number) => number,
-  left: number,
-  right: number,
   barWidth: number,
-  chartHeight: number
+  drawableWidth: number,
+  drawableHeight: number,
+  hoveredLineId: string | null,
+  selectedLineId: string | null,
+  candles: Candle[] = []
 ) {
-  if (
-    candles.length === 0 ||
-    line.firstIndex === undefined ||
-    line.lastIndex === undefined ||
-    line.stopPrice === undefined
-  ) {
-    return;
-  }
+  drawnLines.forEach((line) => {
+    if (
+      (line.type !== 'long-position' && line.type !== 'short-position') ||
+      line.firstIndex === undefined ||
+      line.lastIndex === undefined ||
+      line.stopPrice === undefined
+    ) {
+      return;
+    }
 
-  const startIndex = Math.max(0, Math.min(line.firstIndex, line.lastIndex));
-  const endIndex = Math.min(candles.length - 1, Math.max(line.firstIndex, line.lastIndex));
-  const zones = [
-    {
-      low: Math.min(line.value, line.stopPrice),
-      high: Math.max(line.value, line.stopPrice),
-      color: chartColorToRgba(CHART_BEARISH_COLOR, 0.22),
-    },
-    ...(line.targetPrice === undefined
-      ? []
-      : [{
-          low: Math.min(line.value, line.targetPrice),
-          high: Math.max(line.value, line.targetPrice),
-          color: chartColorToRgba(CHART_BULLISH_COLOR, 0.2),
-        }]),
-  ];
+    const x1 = indexToX(line.firstIndex);
+    const x2 = indexToX(line.lastIndex);
+    if (x1 === null || x2 === null) return;
 
-  ctx.save();
-  const maxIndex = Math.min(endIndex, candles.length - 1);
-  for (let index = startIndex; index <= maxIndex; index += 1) {
-    const candle = candles[index];
-    const x = indexToX(index);
-    if (!candle || x === null) continue;
+    const left = Math.max(0, Math.min(x1, x2) - barWidth / 2);
+    const right = Math.min(drawableWidth, Math.max(x1, x2) + barWidth / 2);
+    const width = Math.max(1, right - left);
+    if (right < 0 || left > drawableWidth) return;
 
-    const candleLeft = Math.max(left, x - Math.max(2, barWidth * 0.42));
-    const candleRight = Math.min(right, x + Math.max(2, barWidth * 0.42));
-    if (candleRight <= candleLeft) continue;
+    const entry = line.value;
+    const stop = line.stopPrice;
+    const hasTarget = line.targetPrice !== undefined;
+    const target = hasTarget ? line.targetPrice! : entry;
 
-    const candleLow = Math.min(candle.low, candle.high);
-    const candleHigh = Math.max(candle.low, candle.high);
-    zones.forEach((zone) => {
-      const overlapLow = Math.max(candleLow, zone.low);
-      const overlapHigh = Math.min(candleHigh, zone.high);
-      if (overlapHigh <= overlapLow) return;
+    const entryY = priceToY(entry);
+    const stopY = priceToY(stop);
+    const targetY = priceToY(target);
 
-      const yHigh = priceToY(overlapHigh);
-      const yLow = priceToY(overlapLow);
-      const top = Math.max(0, Math.min(chartHeight, Math.min(yHigh, yLow)));
-      const bottom = Math.max(0, Math.min(chartHeight, Math.max(yHigh, yLow)));
-      if (bottom <= top) return;
+    const isLong = line.type === 'long-position';
+    const isHovered = line.id === hoveredLineId;
+    const isSelected = line.id === selectedLineId;
+    const isActive = isHovered || isSelected;
 
-      ctx.fillStyle = zone.color;
-      ctx.fillRect(candleLeft, top, Math.max(1, candleRight - candleLeft), Math.max(1, bottom - top));
-    });
-  }
-  ctx.restore();
+    const stopColor = line.stopColor ?? CHART_BEARISH_COLOR;
+    const profitColor = line.profitColor ?? CHART_BULLISH_COLOR;
+
+    const baseProfitOpacity = line.profitOpacity ?? (isActive ? 0.24 : 0.18);
+    const baseStopOpacity = line.stopOpacity ?? (isActive ? 0.24 : 0.18);
+    const darkerProfitAlpha = Math.min(0.60, Math.max(baseProfitOpacity + 0.12, baseProfitOpacity * 1.6));
+    const darkerStopAlpha = Math.min(0.60, Math.max(baseStopOpacity + 0.12, baseStopOpacity * 1.6));
+
+    const evalOutcome = evaluatePositionOutcome(line, candles);
+    const evalXRaw = indexToX(evalOutcome.evalIndex);
+    const evalRight = evalXRaw !== null
+      ? Math.min(right, Math.max(left, evalXRaw + barWidth / 2))
+      : right;
+
+    const activeWidth = Math.max(0, evalRight - left);
+    const remainingWidth = Math.max(0, right - evalRight);
+
+    ctx.save();
+
+    if (isLong) {
+      if (evalOutcome.status === 'tp') {
+        // Long reached TP: active band is darker green across full target height
+        if (hasTarget && target > entry) {
+          const top = Math.max(0, Math.min(entryY, targetY));
+          const bot = Math.min(drawableHeight, Math.max(entryY, targetY));
+          if (bot > top && activeWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(profitColor, darkerProfitAlpha);
+            ctx.fillRect(left, top, activeWidth, bot - top);
+          }
+          if (bot > top && remainingWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+            ctx.fillRect(evalRight, top, remainingWidth, bot - top);
+          }
+        }
+
+        // SL Box: 100% base lighter red across full width
+        const stopTop = Math.max(0, Math.min(entryY, stopY));
+        const stopBot = Math.min(drawableHeight, Math.max(entryY, stopY));
+        if (stopBot > stopTop) {
+          ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+          ctx.fillRect(left, stopTop, width, stopBot - stopTop);
+        }
+      } else if (evalOutcome.status === 'sl') {
+        // Long reached SL: active band is darker red across full stop height
+        const stopTop = Math.max(0, Math.min(entryY, stopY));
+        const stopBot = Math.min(drawableHeight, Math.max(entryY, stopY));
+        if (stopBot > stopTop && activeWidth > 0) {
+          ctx.fillStyle = chartColorToRgba(stopColor, darkerStopAlpha);
+          ctx.fillRect(left, stopTop, activeWidth, stopBot - stopTop);
+        }
+        if (stopBot > stopTop && remainingWidth > 0) {
+          ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+          ctx.fillRect(evalRight, stopTop, remainingWidth, stopBot - stopTop);
+        }
+
+        // TP Box: 100% base lighter green across full width
+        if (hasTarget && target > entry) {
+          const targetTop = Math.max(0, Math.min(entryY, targetY));
+          const targetBot = Math.min(drawableHeight, Math.max(entryY, targetY));
+          if (targetBot > targetTop) {
+            ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+            ctx.fillRect(left, targetTop, width, targetBot - targetTop);
+          }
+        }
+      } else {
+        // Open Long position
+        const inProfit = evalOutcome.evalPrice > entry;
+        const inLoss = evalOutcome.evalPrice < entry;
+
+        if (hasTarget && target > entry) {
+          if (inProfit) {
+            const progressPrice = Math.min(target, evalOutcome.evalPrice);
+            const progressY = priceToY(progressPrice);
+
+            const completedTop = Math.max(0, Math.min(entryY, progressY));
+            const completedBottom = Math.min(drawableHeight, Math.max(entryY, progressY));
+            if (completedBottom > completedTop && activeWidth > 0) {
+              ctx.fillStyle = chartColorToRgba(profitColor, darkerProfitAlpha);
+              ctx.fillRect(left, completedTop, activeWidth, completedBottom - completedTop);
+            }
+
+            const remainingTop = Math.max(0, Math.min(progressY, targetY));
+            const remainingBottom = Math.min(drawableHeight, Math.max(progressY, targetY));
+            if (remainingBottom > remainingTop && activeWidth > 0) {
+              ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+              ctx.fillRect(left, remainingTop, activeWidth, remainingBottom - remainingTop);
+            }
+
+            const targetTop = Math.max(0, Math.min(entryY, targetY));
+            const targetBottom = Math.min(drawableHeight, Math.max(entryY, targetY));
+            if (targetBottom > targetTop && remainingWidth > 0) {
+              ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+              ctx.fillRect(evalRight, targetTop, remainingWidth, targetBottom - targetTop);
+            }
+          } else {
+            const targetTop = Math.max(0, Math.min(entryY, targetY));
+            const targetBottom = Math.min(drawableHeight, Math.max(entryY, targetY));
+            if (targetBottom > targetTop) {
+              ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+              ctx.fillRect(left, targetTop, width, targetBottom - targetTop);
+            }
+          }
+        }
+
+        if (inLoss) {
+          const adversePrice = Math.max(stop, evalOutcome.evalPrice);
+          const adverseY = priceToY(adversePrice);
+
+          const incurredTop = Math.max(0, Math.min(entryY, adverseY));
+          const incurredBottom = Math.min(drawableHeight, Math.max(entryY, adverseY));
+          if (incurredBottom > incurredTop && activeWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(stopColor, darkerStopAlpha);
+            ctx.fillRect(left, incurredTop, activeWidth, incurredBottom - incurredTop);
+          }
+
+          const remainingRiskTop = Math.max(0, Math.min(adverseY, stopY));
+          const remainingRiskBottom = Math.min(drawableHeight, Math.max(adverseY, stopY));
+          if (remainingRiskBottom > remainingRiskTop && activeWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+            ctx.fillRect(left, remainingRiskTop, activeWidth, remainingRiskBottom - remainingRiskTop);
+          }
+
+          const stopTop = Math.max(0, Math.min(entryY, stopY));
+          const stopBottom = Math.min(drawableHeight, Math.max(entryY, stopY));
+          if (stopBottom > stopTop && remainingWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+            ctx.fillRect(evalRight, stopTop, remainingWidth, stopBottom - stopTop);
+          }
+        } else {
+          const stopTop = Math.max(0, Math.min(entryY, stopY));
+          const stopBottom = Math.min(drawableHeight, Math.max(entryY, stopY));
+          if (stopBottom > stopTop) {
+            ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+            ctx.fillRect(left, stopTop, width, stopBottom - stopTop);
+          }
+        }
+      }
+    } else {
+      // Short position
+      if (evalOutcome.status === 'tp') {
+        // Short reached TP: active band is darker green across full target height
+        if (hasTarget && target < entry) {
+          const top = Math.max(0, Math.min(entryY, targetY));
+          const bot = Math.min(drawableHeight, Math.max(entryY, targetY));
+          if (bot > top && activeWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(profitColor, darkerProfitAlpha);
+            ctx.fillRect(left, top, activeWidth, bot - top);
+          }
+          if (bot > top && remainingWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+            ctx.fillRect(evalRight, top, remainingWidth, bot - top);
+          }
+        }
+
+        // SL Box: 100% base lighter red across full width
+        const stopTop = Math.max(0, Math.min(entryY, stopY));
+        const stopBot = Math.min(drawableHeight, Math.max(entryY, stopY));
+        if (stopBot > stopTop) {
+          ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+          ctx.fillRect(left, stopTop, width, stopBot - stopTop);
+        }
+      } else if (evalOutcome.status === 'sl') {
+        // Short reached SL: active band is darker red across full stop height
+        const stopTop = Math.max(0, Math.min(entryY, stopY));
+        const stopBot = Math.min(drawableHeight, Math.max(entryY, stopY));
+        if (stopBot > stopTop && activeWidth > 0) {
+          ctx.fillStyle = chartColorToRgba(stopColor, darkerStopAlpha);
+          ctx.fillRect(left, stopTop, activeWidth, stopBot - stopTop);
+        }
+        if (stopBot > stopTop && remainingWidth > 0) {
+          ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+          ctx.fillRect(evalRight, stopTop, remainingWidth, stopBot - stopTop);
+        }
+
+        // TP Box: 100% base lighter green across full width
+        if (hasTarget && target < entry) {
+          const targetTop = Math.max(0, Math.min(entryY, targetY));
+          const targetBot = Math.min(drawableHeight, Math.max(entryY, targetY));
+          if (targetBot > targetTop) {
+            ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+            ctx.fillRect(left, targetTop, width, targetBot - targetTop);
+          }
+        }
+      } else {
+        // Open Short position
+        const inProfit = evalOutcome.evalPrice < entry;
+        const inLoss = evalOutcome.evalPrice > entry;
+
+        if (hasTarget && target < entry) {
+          if (inProfit) {
+            const progressPrice = Math.max(target, evalOutcome.evalPrice);
+            const progressY = priceToY(progressPrice);
+
+            const completedTop = Math.max(0, Math.min(entryY, progressY));
+            const completedBottom = Math.min(drawableHeight, Math.max(entryY, progressY));
+            if (completedBottom > completedTop && activeWidth > 0) {
+              ctx.fillStyle = chartColorToRgba(profitColor, darkerProfitAlpha);
+              ctx.fillRect(left, completedTop, activeWidth, completedBottom - completedTop);
+            }
+
+            const remainingTop = Math.max(0, Math.min(progressY, targetY));
+            const remainingBottom = Math.min(drawableHeight, Math.max(progressY, targetY));
+            if (remainingBottom > remainingTop && activeWidth > 0) {
+              ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+              ctx.fillRect(left, remainingTop, activeWidth, remainingBottom - remainingTop);
+            }
+
+            const targetTop = Math.max(0, Math.min(entryY, targetY));
+            const targetBottom = Math.min(drawableHeight, Math.max(entryY, targetY));
+            if (targetBottom > targetTop && remainingWidth > 0) {
+              ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+              ctx.fillRect(evalRight, targetTop, remainingWidth, targetBottom - targetTop);
+            }
+          } else {
+            const targetTop = Math.max(0, Math.min(entryY, targetY));
+            const targetBottom = Math.min(drawableHeight, Math.max(entryY, targetY));
+            if (targetBottom > targetTop) {
+              ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+              ctx.fillRect(left, targetTop, width, targetBottom - targetTop);
+            }
+          }
+        }
+
+        if (inLoss) {
+          const adversePrice = Math.min(stop, evalOutcome.evalPrice);
+          const adverseY = priceToY(adversePrice);
+
+          const incurredTop = Math.max(0, Math.min(entryY, adverseY));
+          const incurredBottom = Math.min(drawableHeight, Math.max(entryY, adverseY));
+          if (incurredBottom > incurredTop && activeWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(stopColor, darkerStopAlpha);
+            ctx.fillRect(left, incurredTop, activeWidth, incurredBottom - incurredTop);
+          }
+
+          const remainingRiskTop = Math.max(0, Math.min(adverseY, stopY));
+          const remainingRiskBottom = Math.min(drawableHeight, Math.max(adverseY, stopY));
+          if (remainingRiskBottom > remainingRiskTop && activeWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+            ctx.fillRect(left, remainingRiskTop, activeWidth, remainingRiskBottom - remainingRiskTop);
+          }
+
+          const stopTop = Math.max(0, Math.min(entryY, stopY));
+          const stopBottom = Math.min(drawableHeight, Math.max(entryY, stopY));
+          if (stopBottom > stopTop && remainingWidth > 0) {
+            ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+            ctx.fillRect(evalRight, stopTop, remainingWidth, stopBottom - stopTop);
+          }
+        } else {
+          const stopTop = Math.max(0, Math.min(entryY, stopY));
+          const stopBottom = Math.min(drawableHeight, Math.max(entryY, stopY));
+          if (stopBottom > stopTop) {
+            ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+            ctx.fillRect(left, stopTop, width, stopBottom - stopTop);
+          }
+        }
+      }
+    }
+
+    ctx.restore();
+  });
 }
 
 function drawPositionLabels(
@@ -531,7 +929,9 @@ function drawPositionLabels(
   stopY: number,
   targetY: number,
   chartWidth: number,
-  chartHeight: number
+  chartHeight: number,
+  stopColor: string = line.stopColor ?? POSITION_RISK_COLOR,
+  profitColor: string = line.profitColor ?? POSITION_REWARD_COLOR
 ) {
   const entry = line.value;
   const stop = line.stopPrice ?? entry;
@@ -550,7 +950,7 @@ function drawPositionLabels(
     `Target: ${formatPrice(target)} (${rewardPct.toFixed(3)}%) ${formatMove(reward)}`,
     centerX,
     Math.max(4, topY - 22),
-    POSITION_REWARD_COLOR,
+    profitColor,
     chartWidth,
     'center'
   );
@@ -559,7 +959,7 @@ function drawPositionLabels(
     `Stop: ${formatPrice(stop)} (${riskPct.toFixed(3)}%) ${formatMove(risk)}`,
     centerX,
     Math.min(chartHeight - 23, bottomY + 6),
-    POSITION_RISK_COLOR,
+    stopColor,
     chartWidth,
     'center'
   );
@@ -571,7 +971,7 @@ function drawPositionLabels(
     ],
     centerX,
     Math.max(4, Math.min(chartHeight - 42, entryY - 40)),
-    POSITION_RISK_COLOR,
+    stopColor,
     chartWidth
   );
 }
@@ -594,7 +994,7 @@ function drawPillLabel(
   align: 'left' | 'center'
 ) {
   ctx.save();
-  ctx.font = '700 11px "Inter", -apple-system, system-ui, sans-serif';
+  ctx.font = '700 11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
   const paddingX = 7;
   const height = 20;
   const width = Math.min(chartWidth - 8, ctx.measureText(text).width + paddingX * 2);
@@ -608,7 +1008,7 @@ function drawPillLabel(
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = getContrastTextColor(fill);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, labelX + paddingX, labelY + height / 2);
@@ -624,7 +1024,7 @@ function drawStackedPillLabel(
   chartWidth: number
 ) {
   ctx.save();
-  ctx.font = '700 11px "Inter", -apple-system, system-ui, sans-serif';
+  ctx.font = '700 11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
   const paddingX = 7;
   const height = 34;
   const width = Math.min(chartWidth - 8, Math.max(...lines.map((line) => ctx.measureText(line).width)) + paddingX * 2);
@@ -637,7 +1037,7 @@ function drawStackedPillLabel(
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = getContrastTextColor(fill);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(lines[0], labelX + width / 2, labelY + 12);
@@ -671,7 +1071,7 @@ function drawAnchoredBadge(
   accentColor = '#3D7EFF'
 ) {
   ctx.save();
-  ctx.font = '600 11px "Inter", -apple-system, system-ui, sans-serif';
+  ctx.font = '600 11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
 
   const width = Math.max(48, ctx.measureText(text).width + 12);
   const height = 17;

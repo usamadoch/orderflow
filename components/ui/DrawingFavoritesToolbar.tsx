@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { ChevronLeft, ChevronRight, GripVertical, Minus, MoveRight, Ruler, Square, AlignLeft } from 'lucide-react';
+import { FigTooltip } from './fig';
 import { LineDrawMode, PanelId, useChartStore } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 
@@ -13,22 +14,26 @@ const FAVORITE_TOOLS: Array<{
   {
     mode: 'horizontal',
     title: 'Horizontal Line',
-    icon: <Minus size={15} strokeWidth={2.7} />,
+    icon: <Minus size={16} strokeWidth={1.5} />,
   },
   {
     mode: 'vertical',
     title: 'Vertical Line',
-    icon: <span className="text-[16px] leading-none">|</span>,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <line x1="12" y1="4" x2="12" y2="20" strokeLinecap="round" />
+      </svg>
+    ),
   },
   {
     mode: 'horizontal-ray',
     title: 'Line',
-    icon: <MoveRight size={15} strokeWidth={2.5} />,
+    icon: <MoveRight size={16} strokeWidth={1.5} />,
   },
   {
     mode: 'box',
     title: 'Box',
-    icon: <Square size={14} strokeWidth={2.3} />,
+    icon: <Square size={16} strokeWidth={1.5} />,
   },
 ];
 
@@ -73,8 +78,16 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   }, [panelId]);
 
   React.useEffect(() => {
-    setPosition(clampPosition(panel.drawingToolbarPosition));
-  }, [clampPosition, panel.drawingToolbarPosition]);
+    setPosition(panel.drawingToolbarPosition);
+  }, [panel.drawingToolbarPosition]);
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      setPosition(prev => clampPosition(prev));
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [clampPosition]);
 
   const selectTool = (mode: Exclude<LineDrawMode, 'none'>) => {
     setMeasureToolActive(panelId, false);
@@ -89,13 +102,6 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   const selectMeasure = () => {
     setMeasureToolActive(panelId, !measureToolActive);
   };
-
-  const buttonClass = (active: boolean) =>
-    `flex h-7 w-7 items-center justify-center rounded-md transition-all duration-150 ${
-      active
-        ? 'border border-[#3D7EFF] bg-[#1F1F1F] text-[#E8E8E8] shadow-sm shadow-[#3D7EFF]/20'
-        : 'border border-transparent text-[#787B86] hover:bg-[#1F1F1F] hover:text-[#E8E8E8]'
-    }`;
 
   const startDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
@@ -131,95 +137,101 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
     window.addEventListener('pointerup', handlePointerUp);
   };
 
+  const getButtonClass = (active: boolean) =>
+    `flex h-8 w-8 items-center justify-center p-1.5 rounded-md transition-colors m-0 border ${
+      active
+        ? 'border-[#3D7EFF] bg-[#262626] text-white shadow-sm shadow-[#3D7EFF]/20'
+        : 'border-transparent text-[#909090] hover:bg-white/10 hover:text-white'
+    }`;
+
   return (
     <div
       ref={toolbarRef}
-      className={`popup-contrast fixed z-40 flex items-center gap-0.5 border border-[#252525] bg-[#1F1F1F]/95 p-0.5 shadow-2xl shadow-black/40 backdrop-blur-sm ${
+      className={`fixed z-[70] flex items-center p-0.5 border border-[#282828] bg-[#181818] shadow-2xl shadow-black/60 select-none ${
         collapsed ? 'rounded-full' : 'rounded-lg'
       }`}
       style={{ left: position.x, top: position.y }}
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      <button
-        type="button"
-        onPointerDown={startDrag}
-        className="flex h-7 w-6 items-center justify-center rounded-md text-[#4A4A4A] transition-colors hover:bg-[#1F1F1F] hover:text-[#A5A5A5] cursor-move"
-        title="Drag drawing toolbar"
-        aria-label="Drag drawing toolbar"
-      >
-        <GripVertical size={15} strokeWidth={2.4} />
-      </button>
+      <FigTooltip text="Drag toolbar">
+        <button
+          type="button"
+          onPointerDown={startDrag}
+          className="flex h-8 w-6 items-center justify-center p-1 rounded-md text-[#666666] transition-colors hover:bg-white/10 hover:text-white cursor-move m-0 border border-transparent"
+          aria-label="Drag drawing toolbar"
+        >
+          <GripVertical size={16} strokeWidth={1.5} />
+        </button>
+      </FigTooltip>
 
       {collapsed ? (
         <>
-          <div className="h-3.5 w-5 rounded-full bg-[#2A2A2A]" />
-          <button
-            type="button"
-            onClick={() => setCollapsed(false)}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-[#787B86] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
-            title="Expand drawing toolbar"
-            aria-label="Expand drawing toolbar"
-          >
-            <ChevronRight size={14} strokeWidth={2.5} />
-          </button>
+          <div className="h-3.5 w-5 rounded-full bg-[#2A2A2A] mx-1" />
+          <FigTooltip text="Expand toolbar">
+            <button
+              type="button"
+              onClick={() => setCollapsed(false)}
+              aria-label="Expand drawing toolbar"
+              className="flex h-8 w-8 items-center justify-center p-1.5 rounded-full text-[#909090] hover:bg-white/10 hover:text-white transition-colors m-0 border border-transparent"
+            >
+              <ChevronRight size={16} strokeWidth={1.5} />
+            </button>
+          </FigTooltip>
         </>
       ) : (
         <>
-          <div className="h-5 w-px bg-[#1F1F1F]" />
+          <FigTooltip text="Volume Profile">
+            <button
+              type="button"
+              onClick={selectProfile}
+              aria-pressed={panel.isDrawMode}
+              aria-label="Volume Profile"
+              className={getButtonClass(panel.isDrawMode)}
+            >
+              <AlignLeft size={16} strokeWidth={1.5} />
+            </button>
+          </FigTooltip>
 
-          <button
-            type="button"
-            onClick={selectProfile}
-            className={buttonClass(panel.isDrawMode)}
-            title="Profile"
-            aria-pressed={panel.isDrawMode}
-            aria-label="Profile"
-          >
-            <AlignLeft size={14} strokeWidth={2.3} />
-          </button>
-
-          <button
-            type="button"
-            onClick={selectMeasure}
-            className={buttonClass(measureToolActive)}
-            title="Measure"
-            aria-pressed={measureToolActive}
-            aria-label="Measure"
-          >
-            <Ruler size={14} strokeWidth={2.4} />
-          </button>
-
-          <div className="h-5 w-px bg-[#1F1F1F]" />
+          <FigTooltip text="Measure">
+            <button
+              type="button"
+              onClick={selectMeasure}
+              aria-pressed={measureToolActive}
+              aria-label="Measure"
+              className={getButtonClass(measureToolActive)}
+            >
+              <Ruler size={16} strokeWidth={1.5} />
+            </button>
+          </FigTooltip>
 
           {FAVORITE_TOOLS.map(tool => {
             const active = panel.lineDrawMode === tool.mode;
             return (
-              <button
-                key={tool.mode}
-                type="button"
-                onClick={() => selectTool(tool.mode)}
-                className={buttonClass(active)}
-                title={tool.title}
-                aria-pressed={active}
-                aria-label={tool.title}
-              >
-                {tool.icon}
-              </button>
+              <FigTooltip key={tool.mode} text={tool.title}>
+                <button
+                  type="button"
+                  onClick={() => selectTool(tool.mode)}
+                  aria-pressed={active}
+                  aria-label={tool.title}
+                  className={getButtonClass(active)}
+                >
+                  {tool.icon}
+                </button>
+              </FigTooltip>
             );
           })}
 
-          <div className="h-5 w-px bg-[#1F1F1F]" />
-
-          <button
-            type="button"
-            onClick={() => setCollapsed(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-[#787B86] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
-            title="Collapse drawing toolbar"
-            aria-label="Collapse drawing toolbar"
-          >
-            <ChevronLeft size={14} strokeWidth={2.5} />
-          </button>
+          <FigTooltip text="Collapse toolbar">
+            <button
+              type="button"
+              onClick={() => setCollapsed(true)}
+              aria-label="Collapse drawing toolbar"
+              className="flex h-8 w-8 items-center justify-center p-1.5 rounded-md text-[#909090] hover:bg-white/10 hover:text-white transition-colors m-0 border border-transparent"
+            >
+              <ChevronLeft size={16} strokeWidth={1.5} />
+            </button>
+          </FigTooltip>
         </>
       )}
     </div>

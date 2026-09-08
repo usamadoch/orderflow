@@ -87,56 +87,16 @@ export function usePanZoom(
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const onMouseDown = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      if (isDrawMode || measureToolActive) return;
-      if (callbacksRef.current.canStartDrag && !callbacksRef.current.canStartDrag(x, y)) return;
-
-      if (x > rect.width - priceAxisWidth) {
-        dragMode.current = 'price';
-      } else if (y > rect.height - timeAxisHeight) {
-        dragMode.current = 'time';
-      } else {
-        dragMode.current = 'chart';
-      }
-
-      isDragging.current = true;
-      lastX.current = e.clientX;
-      lastY.current = e.clientY;
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      const isOver = x >= 0 && x <= rect.width && y >= 0 && y <= rect.height;
-
-      // Only update local state if we are over the canvas or currently dragging (e.g. panning out of bounds)
-      if (isOver || isDragging.current) {
-        mouseX.current = x;
-        mouseY.current = y;
-      }
-
-      // Only report crosshair changes if the mouse is actually over THIS chart area
-      if (isOver && !isDragging.current) {
-        callbacksRef.current.onCrosshairChange?.(x, y);
-      }
-
-      // Always redraw on move if we are the active panel or dragging
-      if (isOver || isDragging.current) {
-        if (!isDragging.current) {
-          callbacksRef.current.onRedraw('overlay');
-        } else {
-          callbacksRef.current.onRedraw();
-        }
-      }
-
+    const handleDragMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
       if (isDrawMode || measureToolActive) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      mouseX.current = x;
+      mouseY.current = y;
 
       const deltaX = e.clientX - lastX.current;
       const deltaY = e.clientY - lastY.current;
@@ -178,8 +138,57 @@ export function usePanZoom(
       callbacksRef.current.onRedraw();
     };
 
-    const onMouseUp = () => {
-      isDragging.current = false;
+    const handleDragEnd = () => {
+      if (isDragging.current) {
+        isDragging.current = false;
+      }
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      if (isDrawMode || measureToolActive) return;
+      if (callbacksRef.current.canStartDrag && !callbacksRef.current.canStartDrag(x, y)) return;
+
+      if (x > rect.width - priceAxisWidth) {
+        dragMode.current = 'price';
+      } else if (y > rect.height - timeAxisHeight) {
+        dragMode.current = 'time';
+      } else {
+        dragMode.current = 'chart';
+      }
+
+      isDragging.current = true;
+      lastX.current = e.clientX;
+      lastY.current = e.clientY;
+    };
+
+    const onCanvasMouseMove = (e: MouseEvent) => {
+      if (isDragging.current) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      mouseX.current = x;
+      mouseY.current = y;
+      isMouseOver.current = true;
+
+      callbacksRef.current.onCrosshairChange?.(x, y);
+      callbacksRef.current.onRedraw('overlay');
+    };
+
+    const onWindowMouseMove = (e: MouseEvent) => {
+      if (isDragging.current) {
+        handleDragMove(e);
+      }
+    };
+
+    const onWindowMouseUp = () => {
+      if (isDragging.current) {
+        handleDragEnd();
+      }
     };
 
     const onMouseEnter = () => {
@@ -188,7 +197,8 @@ export function usePanZoom(
 
     const onMouseLeave = () => {
       isMouseOver.current = false;
-      // Don't clear mouseX/Y immediately, as they are needed for the final frame of redraw
+      mouseX.current = null;
+      mouseY.current = null;
       callbacksRef.current.onCrosshairChange?.(null, null);
       callbacksRef.current.onRedraw('overlay');
     };
@@ -212,30 +222,31 @@ export function usePanZoom(
       const newBarWidth = Math.max(1, oldBarWidth / zoomFactor);
       
       if (oldBarWidth !== newBarWidth) {
-        // scrollOffset' = scrollOffset + (scrollOffset + drawableWidth - x) * (newBarWidth / oldBarWidth - 1)
         scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
         barWidth.current = newBarWidth;
         callbacksRef.current.onBarWidthChange?.(newBarWidth);
         callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
-        callbacksRef.current.onRedraw();
       }
+      
+      callbacksRef.current.onRedraw();
     };
 
     canvas.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mousemove', onCanvasMouseMove);
     canvas.addEventListener('mouseenter', onMouseEnter);
     canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
-    
+    window.addEventListener('mousemove', onWindowMouseMove);
+    window.addEventListener('mouseup', onWindowMouseUp);
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('mousemove', onCanvasMouseMove);
       canvas.removeEventListener('mouseenter', onMouseEnter);
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
+      window.removeEventListener('mousemove', onWindowMouseMove);
+      window.removeEventListener('mouseup', onWindowMouseUp);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasRef, priceAxisWidth, timeAxisHeight, profileWidth, isDrawMode, measureToolActive]);

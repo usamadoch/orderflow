@@ -42,6 +42,53 @@ export function resolveProfileBucketSize(
   return multiple * baseBucketSize;
 }
 
+export function resolveIndexFromTime(time: number, candles: Candle[]): number {
+  if (candles.length === 0) return 0;
+  if (candles.length === 1) return 0;
+
+  const firstCandle = candles[0];
+  const lastCandle = candles[candles.length - 1];
+  const avgInterval = Math.max(1, (lastCandle.time - firstCandle.time) / (candles.length - 1));
+
+  // Past the right boundary (future)
+  if (time >= lastCandle.time) {
+    return (candles.length - 1) + (time - lastCandle.time) / avgInterval;
+  }
+
+  // Before the left boundary (past)
+  if (time <= firstCandle.time) {
+    return (time - firstCandle.time) / avgInterval;
+  }
+
+  // Binary search for bounding interval: candles[idx].time <= time < candles[idx + 1].time
+  let left = 0;
+  let right = candles.length - 1;
+  let idx = 0;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    if (candles[mid].time <= time) {
+      idx = mid;
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+
+  if (candles[idx].time === time) {
+    return idx;
+  }
+
+  const nextCandle = candles[idx + 1];
+  if (!nextCandle) {
+    return idx;
+  }
+
+  const duration = Math.max(1, nextCandle.time - candles[idx].time);
+  const fraction = (time - candles[idx].time) / duration;
+  return idx + fraction;
+}
+
 export function findExactTimeIndex(time: number, candles: Candle[]): number | null {
   let left = 0;
   let right = candles.length - 1;
@@ -64,18 +111,8 @@ export function resolveIndexFromTimeOrFallback(
 ): number | null {
   if (candles.length === 0) return null;
 
-  if (time !== undefined) {
-    const lastCandle = candles[candles.length - 1];
-    if (time > lastCandle.time) {
-      if (fallbackIndex !== undefined) return fallbackIndex;
-      const firstCandle = candles[0];
-      const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
-      const indexDiff = (time - lastCandle.time) / avgInterval;
-      return (candles.length - 1) + Math.round(indexDiff);
-    }
-
-    const exactIndex = findExactTimeIndex(time, candles);
-    if (exactIndex !== null) return exactIndex;
+  if (time !== undefined && Number.isFinite(time)) {
+    return resolveIndexFromTime(time, candles);
   }
 
   if (fallbackIndex === undefined || fallbackIndex < 0) return null;
@@ -83,13 +120,29 @@ export function resolveIndexFromTimeOrFallback(
 }
 
 export function candleTimeAt(index: number | null, candles: Candle[]): number | undefined {
-  if (index === null || candles.length === 0) return undefined;
-  if (index >= 0 && index < candles.length) return candles[index].time;
+  if (index === null || !Number.isFinite(index) || candles.length === 0) return undefined;
 
-  const lastCandle = candles[candles.length - 1];
   const firstCandle = candles[0];
+  const lastCandle = candles[candles.length - 1];
   const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
-  return lastCandle.time + (index - (candles.length - 1)) * avgInterval;
+
+  if (index < 0) {
+    return firstCandle.time + index * avgInterval;
+  }
+
+  if (index >= candles.length - 1) {
+    return lastCandle.time + (index - (candles.length - 1)) * avgInterval;
+  }
+
+  const baseIndex = Math.floor(index);
+  const fraction = index - baseIndex;
+  if (fraction === 0) {
+    return candles[baseIndex]?.time;
+  }
+
+  const currTime = candles[baseIndex]?.time ?? firstCandle.time;
+  const nextTime = candles[baseIndex + 1]?.time ?? (currTime + avgInterval);
+  return currTime + fraction * (nextTime - currTime);
 }
 
 export function isPositionDrawing(line: DrawnLine): boolean {

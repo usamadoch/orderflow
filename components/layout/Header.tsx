@@ -5,8 +5,8 @@ import { useChartStore } from '../../lib/store/chart';
 import { ConnectionStatus } from '../ui/ConnectionStatus';
 import { AccountBalanceWidget } from '../ui/AccountBalanceWidget';
 import { StorageManager } from '../ui/StorageManager';
-import { ChartLayoutDropdown } from '../ui/ChartLayoutDropdown';
 import { Database } from 'lucide-react';
+import { FigButton } from '../ui/fig';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 
 export function Header() {
@@ -30,26 +30,23 @@ export function Header() {
   };
 
   return (
-    <header className="font-sans h-10 border-b border-border bg-surface flex items-center px-4 justify-between shrink-0 shadow-sm z-[60] relative">
+    <header className="font-sans h-10 border-b border-border bg-[#0F0F0F] flex items-center px-4 justify-between shrink-0 shadow-sm z-[60] relative">
       <div className="flex items-center gap-6">
-        <h1 className="font-extrabold text-base text-accent tracking-tighter flex items-center gap-2">
-          <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-          OrderFlow
-        </h1>
-        <div className="h-4 w-[1px] bg-border mx-1" />
-
-        {/* Layout Dropdown */}
-        <ChartLayoutDropdown />
+        <h1 className="sr-only">OrderFlow</h1>
       </div>
 
       <div className="flex items-center gap-4">
-        <button
-          onClick={() => setShowStorage(true)}
-          className="p-1.5 rounded-md text-text-dim hover:text-accent hover:bg-accent/10 transition-colors"
-          title="Manage Storage"
-        >
-          <Database size={16} />
-        </button>
+        {isAuthenticated && (
+          <FigButton
+            variant="ghost"
+            icon
+            onClick={() => setShowStorage(true)}
+            title="Manage Storage"
+            aria-label="Manage Storage"
+          >
+            <Database size={16} />
+          </FigButton>
+        )}
 
         {/* Premium Unlock UI */}
         <div className="flex items-center gap-2">
@@ -62,12 +59,14 @@ export function Header() {
                 </svg>
                 <span className="text-[10px] font-bold text-accent uppercase tracking-wider">PRO</span>
               </div>
-              <button 
+              <FigButton
+                variant="ghost"
+                size="small"
                 onClick={() => logout()}
-                className="text-[10px] text-text-dim hover:text-main transition-colors uppercase tracking-widest font-medium"
+                className="text-[10px] uppercase tracking-widest font-medium"
               >
                 Lock
-              </button>
+              </FigButton>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -82,23 +81,34 @@ export function Header() {
                     className="bg-transparent text-[10px] px-2 py-1 outline-none w-24 text-main placeholder:text-text-dim/50"
                     autoFocus
                   />
-                  <button onClick={handleAuth} className="px-2 py-1 text-accent hover:text-accent-bright">
+                  <FigButton
+                    variant="ghost"
+                    size="small"
+                    icon
+                    onClick={handleAuth}
+                    title="Submit Key"
+                    aria-label="Submit Key"
+                    className="h-6 w-6 text-accent hover:text-accent-bright"
+                  >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                       <path d="M5 12l5 5L20 7"/>
                     </svg>
-                  </button>
+                  </FigButton>
                 </div>
               ) : (
-                <button
+                <FigButton
+                  variant="ghost"
+                  size="small"
                   onClick={() => setShowUnlock(true)}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border hover:border-accent/50 group transition-all duration-200"
+                  title="Unlock Details"
+                  className="gap-1.5"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-text-dim group-hover:text-accent">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
-                  <span className="text-[10px] font-bold text-text-dim group-hover:text-accent uppercase tracking-wider">Unlock Details</span>
-                </button>
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Unlock Details</span>
+                </FigButton>
               )}
             </div>
           )}

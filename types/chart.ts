@@ -271,6 +271,10 @@ export interface DrawnLine {
   fillColor?: string;
   fillOpacity?: number;
   showFill?: boolean;
+  profitColor?: string;
+  profitOpacity?: number;
+  stopColor?: string;
+  stopOpacity?: number;
   time?: number;
   startTime?: number;
   startIndex?: number;

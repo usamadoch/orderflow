@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Lock, Settings, Square, Unlock, X } from 'lucide-react';
+import { Lock, Settings, Square, Unlock, Trash2 } from 'lucide-react';
+import { FigButton, FigTooltip } from '@/components/ui/fig';
 import type { DrawnLine, DrawingStrokeWidth, PanelId } from '@/lib/store/chart';
 import { useChartStore } from '@/lib/store/chart';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
 
 import {
   DEFAULT_DRAWING_STROKE_WIDTH,
@@ -53,32 +55,33 @@ export function DrawingToolbar({
     state.panels[panelId]?.drawnLines.find((l) => l.id === initialDrawing.id)
   ) ?? initialDrawing;
 
-  const [activePicker, setActivePicker] = useState<'color' | 'border' | 'fill' | null>(null);
+  const [activePicker, setActivePicker] = useState<'color' | 'border' | 'fill' | 'profit' | 'stop' | null>(null);
+  const isPosition = selectedDrawing.type === 'long-position' || selectedDrawing.type === 'short-position';
 
   return (
     <div
-      className="popup-contrast absolute flex items-center gap-1 rounded border border-[#333] bg-[#1F1F1F]/95 p-1 shadow-xl backdrop-blur-sm z-30"
+      className="popup-contrast absolute flex items-center gap-1 rounded border border-[#282828] bg-[#181818] p-1 shadow-2xl z-30"
       style={{
         top: `${selectedDrawingControls.top}px`,
         left: `${selectedDrawingControls.left}px`,
       }}
+      onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
     >
       {/* Lock / Unlock */}
-      <button
-        type="button"
-        onClick={() => {
-          useChartStore.getState().updateLine(panelId, selectedDrawing.id, { locked: !selectedDrawing.locked });
-          onRedraw();
-        }}
-        className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-          selectedDrawing.locked ? 'text-[#3D7EFF] hover:bg-[#2A2E39]' : 'text-gray-400 hover:bg-[#2A2E39] hover:text-[#E8E8E8]'
-        }`}
-        title={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
-        aria-label={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
-      >
-        {selectedDrawing.locked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
-      </button>
+      <FigTooltip text={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}>
+        <FigButton
+          variant="ghost"
+          icon
+          onClick={() => {
+            useChartStore.getState().updateLine(panelId, selectedDrawing.id, { locked: !selectedDrawing.locked });
+            onRedraw();
+          }}
+          aria-label={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
+        >
+          {selectedDrawing.locked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
+        </FigButton>
+      </FigTooltip>
 
       {/* Stroke Width Selector */}
       <select
@@ -103,7 +106,7 @@ export function DrawingToolbar({
 
       <div className="mx-0.5 h-5 w-px bg-[#333]" />
 
-      {/* Color Controls: Box has separate Border & Fill, other drawings have single Color */}
+      {/* Color Controls: Box has separate Border & Fill, Position has Profit & Stop, other drawings have single Color */}
       {selectedDrawing.type === 'box' ? (
         <>
           {/* Border Color & Border Opacity */}
@@ -148,22 +151,22 @@ export function DrawingToolbar({
 
           {/* Fill Toggle & Fill Color & Independent Fill Opacity */}
           <div className="relative flex items-center gap-0.5">
-            <button
-              type="button"
+            <FigButton
+              variant="ghost"
+              icon
+              size="compact"
               onClick={() => {
                 const currentShowFill = selectedDrawing.showFill !== false;
                 useChartStore.getState().updateLine(panelId, selectedDrawing.id, { showFill: !currentShowFill });
                 onRedraw();
               }}
               disabled={selectedDrawing.locked}
-              className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
-                selectedDrawing.showFill !== false ? 'text-[#3D7EFF] hover:bg-[#2A2E39]' : 'text-gray-500 hover:bg-[#2A2E39]'
-              } disabled:cursor-not-allowed disabled:opacity-45`}
+              className={selectedDrawing.showFill !== false ? 'text-[#3D7EFF]' : 'text-gray-500'}
               title={selectedDrawing.showFill !== false ? 'Hide box fill' : 'Show box fill'}
               aria-label={selectedDrawing.showFill !== false ? 'Hide box fill' : 'Show box fill'}
             >
               <Square size={14} className={selectedDrawing.showFill !== false ? 'fill-current' : ''} />
-            </button>
+            </FigButton>
             <button
               type="button"
               onClick={() => setActivePicker(activePicker === 'fill' ? null : 'fill')}
@@ -193,6 +196,92 @@ export function DrawingToolbar({
                 }}
                 onOpacityChange={(fillOpacity) => {
                   useChartStore.getState().updateLine(panelId, selectedDrawing.id, { fillOpacity });
+                  onRedraw();
+                }}
+                onClose={() => setActivePicker(null)}
+                chartBounds={chartBounds}
+                controlsTop={selectedDrawingControls.top}
+                controlsLeft={selectedDrawingControls.left}
+              />
+            )}
+          </div>
+        </>
+      ) : isPosition ? (
+        <>
+          {/* Profit Box Color & Opacity */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setActivePicker(activePicker === 'profit' ? null : 'profit')}
+              disabled={selectedDrawing.locked}
+              className={`flex h-7 items-center gap-1.5 rounded px-1.5 transition-colors ${
+                activePicker === 'profit' ? 'bg-[#2A2E39]' : 'hover:bg-[#2A2E39]'
+              } disabled:cursor-not-allowed disabled:opacity-45`}
+              title="Profit box color & opacity"
+              aria-label="Profit box color & opacity"
+            >
+              <span className="text-[10px] font-semibold text-[#A3A3A3]">Profit</span>
+              <span
+                className="block h-3.5 w-3.5 rounded-full border border-white/30 shadow-sm"
+                style={{
+                  backgroundColor: selectedDrawing.profitColor ?? CHART_BULLISH_COLOR,
+                  opacity: selectedDrawing.profitOpacity ?? 1,
+                }}
+              />
+            </button>
+            {activePicker === 'profit' && (
+              <ColorPickerPopover
+                color={selectedDrawing.profitColor ?? CHART_BULLISH_COLOR}
+                opacity={selectedDrawing.profitOpacity ?? 0.28}
+                onColorChange={(profitColor) => {
+                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { profitColor });
+                  onRedraw();
+                }}
+                onOpacityChange={(profitOpacity) => {
+                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { profitOpacity });
+                  onRedraw();
+                }}
+                onClose={() => setActivePicker(null)}
+                chartBounds={chartBounds}
+                controlsTop={selectedDrawingControls.top}
+                controlsLeft={selectedDrawingControls.left}
+              />
+            )}
+          </div>
+
+          <div className="mx-0.5 h-4 w-px bg-[#333]" />
+
+          {/* Stop Loss Box Color & Opacity */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setActivePicker(activePicker === 'stop' ? null : 'stop')}
+              disabled={selectedDrawing.locked}
+              className={`flex h-7 items-center gap-1.5 rounded px-1.5 transition-colors ${
+                activePicker === 'stop' ? 'bg-[#2A2E39]' : 'hover:bg-[#2A2E39]'
+              } disabled:cursor-not-allowed disabled:opacity-45`}
+              title="Stop loss color & opacity"
+              aria-label="Stop loss color & opacity"
+            >
+              <span className="text-[10px] font-semibold text-[#A3A3A3]">Stop</span>
+              <span
+                className="block h-3.5 w-3.5 rounded-full border border-white/30 shadow-sm"
+                style={{
+                  backgroundColor: selectedDrawing.stopColor ?? CHART_BEARISH_COLOR,
+                  opacity: selectedDrawing.stopOpacity ?? 1,
+                }}
+              />
+            </button>
+            {activePicker === 'stop' && (
+              <ColorPickerPopover
+                color={selectedDrawing.stopColor ?? CHART_BEARISH_COLOR}
+                opacity={selectedDrawing.stopOpacity ?? 0.28}
+                onColorChange={(stopColor) => {
+                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { stopColor });
+                  onRedraw();
+                }}
+                onOpacityChange={(stopOpacity) => {
+                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { stopOpacity });
                   onRedraw();
                 }}
                 onClose={() => setActivePicker(null)}
@@ -247,19 +336,20 @@ export function DrawingToolbar({
       <div className="mx-0.5 h-5 w-px bg-[#333]" />
 
       {/* Delete */}
-      <button
-        type="button"
-        onClick={() => {
-          useChartStore.getState().removeLine(panelId, selectedDrawing.id);
-          onDelete();
-          onRedraw();
-        }}
-        className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-red-500/10 hover:text-red-500"
-        title="Delete drawing"
-        aria-label="Delete drawing"
-      >
-        <X size={15} strokeWidth={2.5} />
-      </button>
+      <FigTooltip text="Delete drawing">
+        <FigButton
+          variant="ghost"
+          icon
+          onClick={() => {
+            useChartStore.getState().removeLine(panelId, selectedDrawing.id);
+            onDelete();
+            onRedraw();
+          }}
+          aria-label="Delete drawing"
+        >
+          <Trash2 size={15} strokeWidth={2.5} />
+        </FigButton>
+      </FigTooltip>
     </div>
   );
 }
@@ -279,47 +369,54 @@ export function CustomProfileToolbar({
 }: CustomProfileToolbarProps) {
   return (
     <div
-      className="popup-contrast absolute flex items-center gap-1 p-1 bg-[#1F1F1F]/90 backdrop-blur-sm border border-[#333] rounded shadow-xl z-20"
+      className="popup-contrast absolute flex items-center gap-1 p-1 bg-[#181818] border border-[#282828] rounded shadow-2xl z-20"
       style={{
         top: `${customProfileControls.top}px`,
         left: `${customProfileControls.left}px`,
         transform: 'translateY(-4px)',
       }}
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
     >
-      <button
-        type="button"
-        onClick={() => {
-          useChartStore.getState().setCustomProfileLocked(panelId, !customProfileLocked);
-          onRedraw();
-        }}
-        className={`p-1.5 hover:bg-[#1F1F1F] rounded-md transition-all ${customProfileLocked ? 'text-[#3D7EFF]' : 'text-gray-400'}`}
-        title={customProfileLocked ? "Unlock Profile" : "Lock Profile"}
-      >
-        {customProfileLocked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          useChartStore.getState().openIndicatorSettings(panelId, 'profiles');
-        }}
-        className="p-1.5 text-gray-400 hover:bg-[#1F1F1F] hover:text-accent rounded-md transition-all"
-        title="Profile Settings"
-        aria-label="Profile Settings"
-      >
-        <Settings size={15} strokeWidth={2.5} />
-      </button>
+      <FigTooltip text={customProfileLocked ? "Unlock Profile" : "Lock Profile"}>
+        <FigButton
+          variant="ghost"
+          icon
+          onClick={() => {
+            useChartStore.getState().setCustomProfileLocked(panelId, !customProfileLocked);
+            onRedraw();
+          }}
+          aria-label={customProfileLocked ? "Unlock Profile" : "Lock Profile"}
+        >
+          {customProfileLocked ? <Lock size={15} strokeWidth={2.5} /> : <Unlock size={15} strokeWidth={2.5} />}
+        </FigButton>
+      </FigTooltip>
+      <FigTooltip text="Profile Settings">
+        <FigButton
+          variant="ghost"
+          icon
+          onClick={() => {
+            useChartStore.getState().openIndicatorSettings(panelId, 'profiles');
+          }}
+          aria-label="Profile Settings"
+        >
+          <Settings size={15} strokeWidth={2.5} />
+        </FigButton>
+      </FigTooltip>
       <div className="w-[1px] h-4 bg-[#333] mx-0.5" />
-      <button
-        type="button"
-        onClick={() => {
-          useChartStore.getState().setCustomProfileRange(panelId, null);
-          onRedraw();
-        }}
-        className="p-1.5 hover:bg-red-500/10 text-gray-400 hover:text-red-500 rounded-md transition-all"
-        title="Remove Profile"
-      >
-        <X size={15} strokeWidth={2.5} />
-      </button>
+      <FigTooltip text="Remove Profile">
+        <FigButton
+          variant="ghost"
+          icon
+          onClick={() => {
+            useChartStore.getState().setCustomProfileRange(panelId, null);
+            onRedraw();
+          }}
+          aria-label="Remove Profile"
+        >
+          <Trash2 size={15} strokeWidth={2.5} />
+        </FigButton>
+      </FigTooltip>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { FigButton } from './fig';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '../../lib/config/chartColors';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 
@@ -19,8 +20,8 @@ export function ConnectionStatus() {
     ? '#eab308'
     : CHART_BEARISH_COLOR;
 
-  const handleManualConnect = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleManualConnect = async (e?: React.MouseEvent | MouseEvent) => {
+    e?.stopPropagation?.();
     setManualLoading(true);
     setMT5BridgeStatus('connecting');
     try {
@@ -52,15 +53,17 @@ export function ConnectionStatus() {
       </div>
 
       {!mt5Connected && (
-        <button
+        <FigButton
+          variant="ghost"
+          size="small"
           onClick={handleManualConnect}
           disabled={isConnecting}
-          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono rounded border border-border bg-surface-hover/50 hover:bg-surface-hover hover:border-accent/40 text-text-dim hover:text-accent transition-all duration-150 active:scale-95 disabled:opacity-50"
           title="Connect to local MT5 Bridge (http://localhost:3001)"
+          className="gap-1 font-mono text-[10px]"
         >
-          <RefreshCw size={10} className={isConnecting ? 'animate-spin text-accent' : ''} />
+          <RefreshCw size={10} className={isConnecting ? 'animate-spin' : ''} />
           <span>Connect</span>
-        </button>
+        </FigButton>
       )}
     </div>
   );

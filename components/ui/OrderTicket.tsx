@@ -228,7 +228,7 @@ export function OrderTicket({ panelId }: OrderTicketProps) {
   return (
     <>
       <div 
-        className={`fixed z-[100] w-[260px] max-w-[calc(100%-24px)] rounded-md border border-[#262626] bg-[#1F1F1F]/95 shadow-xl shadow-black/25 backdrop-blur transition-shadow ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''} ${!isInitialized ? 'invisible' : ''}`}
+        className={`fixed z-[100] w-[260px] max-w-[calc(100%-24px)] rounded-md border border-[#282828] bg-[#181818] shadow-2xl transition-shadow ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''} ${!isInitialized ? 'invisible' : ''}`}
         style={isInitialized ? { left: position.x, top: position.y } : undefined}
       >
         <div 

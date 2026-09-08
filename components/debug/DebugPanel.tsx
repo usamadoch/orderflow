@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Copy, RefreshCw, X } from 'lucide-react';
+import { FigButton } from '../ui/fig';
 import {
   createCopySnapshot,
   getDebugPanelSnapshot,
@@ -75,7 +76,7 @@ export function DebugPanel() {
   const current = snapshot ?? getDebugPanelSnapshot();
 
   return (
-    <div className="popup-contrast fixed right-4 top-16 z-[80] flex max-h-[calc(100vh-5rem)] w-[min(920px,calc(100vw-2rem))] flex-col overflow-hidden rounded-md border border-[#2A2F35] bg-[#1F1F1F]/95 text-main shadow-2xl backdrop-blur">
+    <div className="popup-contrast fixed right-4 top-16 z-[80] flex max-h-[calc(100vh-5rem)] w-[min(920px,calc(100vw-2rem))] flex-col overflow-hidden rounded-md border border-[#282828] bg-[#181818] text-main shadow-2xl">
       <div className="flex min-h-11 items-center justify-between border-b border-[#1F252B] px-3">
         <div className="min-w-0">
           <div className="text-xs font-black uppercase tracking-[0.14em] text-text-muted">Market Debug</div>
@@ -85,50 +86,48 @@ export function DebugPanel() {
         </div>
         <div className="flex items-center gap-1">
           {copyStatus && <span className="mr-1 text-[10px] font-semibold text-accent">{copyStatus}</span>}
-          <button
-            type="button"
+          <FigButton
+            variant="ghost"
+            icon
             onClick={refresh}
-            className="flex h-8 w-8 items-center justify-center rounded border border-white/10 text-text-muted transition-colors hover:border-accent/50 hover:text-main"
             title="Refresh"
             aria-label="Refresh debug snapshot"
           >
             <RefreshCw size={14} strokeWidth={2.2} />
-          </button>
-          <button
-            type="button"
+          </FigButton>
+          <FigButton
+            variant="ghost"
+            icon
             onClick={copySnapshot}
-            className="flex h-8 w-8 items-center justify-center rounded border border-white/10 text-text-muted transition-colors hover:border-accent/50 hover:text-main"
             title="Copy Snapshot"
             aria-label="Copy debug snapshot"
           >
             <Copy size={14} strokeWidth={2.2} />
-          </button>
-          <button
-            type="button"
+          </FigButton>
+          <FigButton
+            variant="ghost"
+            icon
             onClick={() => setOpen(false)}
-            className="flex h-8 w-8 items-center justify-center rounded border border-white/10 text-text-muted transition-colors hover:border-red-400/50 hover:text-red-200"
             title="Close"
             aria-label="Close debug panel"
           >
             <X size={15} strokeWidth={2.4} />
-          </button>
+          </FigButton>
         </div>
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-[#1F252B] px-2 py-2">
         {TABS.map((tab) => (
-          <button
+          <FigButton
             key={tab.id}
-            type="button"
+            variant={activeTab === tab.id ? 'secondary' : 'ghost'}
+            size="small"
+            selected={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`h-8 shrink-0 rounded border px-3 text-[11px] font-bold transition-colors ${
-              activeTab === tab.id
-                ? 'border-accent/60 bg-accent/15 text-main'
-                : 'border-white/10 bg-[#1F1F1F] text-text-muted hover:border-white/20 hover:text-main'
-            }`}
+            className="h-8 shrink-0 px-3 text-[11px] font-bold"
           >
             {tab.label}
-          </button>
+          </FigButton>
         ))}
       </div>
 

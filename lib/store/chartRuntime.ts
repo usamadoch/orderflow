@@ -25,9 +25,15 @@ import type {
   VirtualPosition,
 } from '../../types/trading';
 import { MAX_AGGREGATE_BUBBLE_EVENTS } from './chart';
-import type { PanelRuntimeState, TradingRuntimeStatus, GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId } from '../../types/chart';
+import type { PanelRuntimeState, TradingRuntimeStatus, GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId, DrawnLine } from '../../types/chart';
 
 export type { PanelRuntimeState, TradingRuntimeStatus };
+
+export interface DrawingDragState {
+  panelId: PanelId;
+  id: string;
+  updates: Partial<DrawnLine>;
+}
 
 export interface MT5PositionPayload {
   ticket: number;
@@ -92,6 +98,8 @@ interface ChartRuntimeState {
   placeOrder: (request: OrderRequest) => Promise<OrderResult>;
   cancelOrder: (request: OrderCancelRequest) => Promise<OrderResult>;
   modifyOrder: (request: OrderModifyRequest) => Promise<OrderResult>;
+  drawingDrag: DrawingDragState | null;
+  setDrawingDrag: (drag: DrawingDragState | null) => void;
 }
 
 function createDefaultRuntimePanel(): PanelRuntimeState {
@@ -267,6 +275,8 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
   },
   crosshair: { activePanel: null, time: null, price: null },
   tradingStatus: createDefaultTradingStatus(),
+  drawingDrag: null,
+  setDrawingDrag: (drawingDrag) => set({ drawingDrag }),
 
   resetPanelRuntime: (panelId) =>
     set((state) => updateRuntimePanel(state, panelId, createDefaultRuntimePanel())),

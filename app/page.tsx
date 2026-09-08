@@ -60,21 +60,22 @@ export default function Home() {
   const panel1Style: React.CSSProperties = !isDual
     ? { width: '100%', height: '100%' }
     : isHorizontal
-    ? { width: '100%', height: `${splitRatio * 100}%` }
-    : { width: `${splitRatio * 100}%`, height: '100%' };
+    ? { width: '100%', height: `calc(${splitRatio * 100}% - 2.5px)` }
+    : { width: `calc(${splitRatio * 100}% - 2.5px)`, height: '100%' };
 
   const panel2Style: React.CSSProperties = isHorizontal
-    ? { width: '100%', height: `${(1 - splitRatio) * 100}%` }
-    : { width: `${(1 - splitRatio) * 100}%`, height: '100%' };
+    ? { width: '100%', flex: 1 }
+    : { flex: 1, height: '100%' };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden text-main bg-background font-sans selection:bg-accent/30">
       {!focusMode && <Header />}
 
       <div className="flex flex-1 overflow-hidden">
-        {!focusMode && <Sidebar />}
+        {/* Sidebar hidden by request; code kept intact for reuse */}
+        {false && !focusMode && <Sidebar />}
 
-        <main className="flex-1 relative flex flex-col bg-[#0F0F0F] min-w-0">
+        <main className="flex-1 relative flex flex-col bg-background min-w-0 p-0 py-0">
           <div
             ref={splitContainerRef}
             className={`flex-1 relative flex min-h-0 min-w-0 ${isHorizontal ? 'flex-col' : 'flex-row'}`}
@@ -100,8 +101,8 @@ export default function Home() {
                 <div
                   className={
                     isHorizontal
-                      ? 'absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-[#1F1F1F] group-hover:bg-accent/50 transition-colors duration-150'
-                      : 'absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-[#1F1F1F] group-hover:bg-accent/50 transition-colors duration-150'
+                      ? 'absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-border group-hover:bg-accent/50 transition-colors duration-150'
+                      : 'absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-border group-hover:bg-accent/50 transition-colors duration-150'
                   }
                 />
                 {/* Wider hit area on hover glow */}
