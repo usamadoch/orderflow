@@ -20,7 +20,7 @@ import {
 } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { AggregationEngine } from '@/lib/aggregation/engine';
-import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '@/lib/config/chartColors';
+import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, DEFAULT_CANVAS_BG } from '@/lib/config/chartColors';
 import { recordVolumeBarsDebug } from '@/lib/debug/marketMetrics';
 import { drawDeltaProfile } from '@/lib/draw/drawDeltaProfile';
 import { drawIceberg } from '@/lib/draw/drawIceberg';
@@ -75,7 +75,7 @@ import { drawCandles } from './drawCandles';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
 import { drawExhaustion } from './drawExhaustion';
 import { drawFootprint } from './drawFootprint';
-import { drawDrawingPriceLabels, drawLines } from './drawLines';
+import { drawDrawingPriceLabels, drawLines, drawPositionBackgrounds } from './drawLines';
 import { drawPriceLine } from './drawPriceLine';
 import { drawSelectionRect, drawCustomProfile } from './drawSelectionRect';
 import { drawStatsGrid } from './drawStatsGrid';
@@ -375,6 +375,7 @@ export function ChartCanvas({
   const isDraggingDrawing = useRef(false);
   const drawingDragZone = useRef<DrawingHitZone | null>(null);
   const drawingSnapshot = useRef<DrawnLine | null>(null);
+  const activeDrawingUpdates = useRef<Partial<DrawnLine> | null>(null);
   const hoveredOrderLineId = useRef<string | null>(null);
   const isDraggingOrderLine = useRef(false);
   const orderDragSnapshot = useRef<Order | null>(null);
@@ -584,7 +585,7 @@ export function ChartCanvas({
           grad.addColorStop(1, chartColorToRgba(chartBackgroundGradientBottom || '#0A0A0A', chartBackgroundGradientBottomOpacity ?? 1));
           bgCtx.fillStyle = grad;
         } else {
-          bgCtx.fillStyle = chartColorToRgba(chartBackgroundColor || '#0F0F0F', chartBackgroundOpacity ?? 1);
+          bgCtx.fillStyle = chartColorToRgba(chartBackgroundColor || DEFAULT_CANVAS_BG, chartBackgroundOpacity ?? 1);
         }
         bgCtx.fillRect(0, 0, logicalWidth, logicalHeight);
       }
@@ -638,11 +639,66 @@ export function ChartCanvas({
       const priceMax = pCenter + pRange / 2;
       const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
       const liveDrawnLines = storeState.panels[panelId]?.drawnLines ?? drawnLines;
+      const isDrawingsSyncEnabled = storeState.drawingsSyncEnabled;
+      const runtimeDrawingDrag = useChartRuntimeStore.getState().drawingDrag;
       const resolvedDrawnLines = liveDrawnLines
-        .map((line) => resolveLineForRender(line, candles))
+        .map((line) => {
+          if (
+            runtimeDrawingDrag &&
+            runtimeDrawingDrag.id === line.id &&
+            (runtimeDrawingDrag.panelId === panelId || isDrawingsSyncEnabled)
+          ) {
+            return resolveLineForRender({ ...line, ...runtimeDrawingDrag.updates }, candles);
+          }
+          return resolveLineForRender(line, candles);
+        })
         .filter((line): line is DrawnLine => line !== null);
       const resolvedPositionLines = resolvedDrawnLines.filter(isPositionDrawing);
       const resolvedNonPositionLines = resolvedDrawnLines.filter((line) => !isPositionDrawing(line));
+
+      let activePosition: DrawnLine | null = null;
+      if (
+        (lineDrawMode === 'long-position' || lineDrawMode === 'short-position' || lineDrawMode === 'position') &&
+        isDragging.current &&
+        dragStart.current &&
+        dragEnd.current
+      ) {
+        const dy = dragEnd.current.y - dragStart.current.y;
+        const resolvedMode = lineDrawMode === 'position' ? (dy > 0 ? 'long-position' : 'short-position') : lineDrawMode;
+        activePosition = buildPositionFromRiskDrag(
+          resolvedMode,
+          dragStart.current,
+          dragEnd.current,
+          candles,
+          currentScrollOffset,
+          currentBarWidth,
+          chartWidth,
+          profileWidth,
+          priceMin,
+          priceMax,
+          chartHeight,
+          Math.max(tickSize, bucketSize * 0.01),
+          null
+        );
+
+        if (activePosition) {
+          activePosition.id = 'active-position';
+        }
+      }
+
+      const positionLines = activePosition ? [...resolvedPositionLines, activePosition] : resolvedPositionLines;
+
+      const isLineSelected = (line: DrawnLine) =>
+        line.id === selectedDrawingId ||
+        line.id === 'active-position' ||
+        line.id === 'active-box' ||
+        line.id === runtimeDrawingDrag?.id;
+
+      const unselectedPositionLines = positionLines.filter((line) => !isLineSelected(line));
+      const selectedPositionLines = positionLines.filter(isLineSelected);
+
+      const unselectedNonPositionLines = resolvedNonPositionLines.filter((line) => !isLineSelected(line));
+      const selectedNonPositionLines = resolvedNonPositionLines.filter(isLineSelected);
       const localProfileHitZone =
         isMouseOver.current && mouseX.current !== null && mouseY.current !== null
           ? getCustomProfileHitZone(
@@ -680,7 +736,23 @@ export function ChartCanvas({
       );
 
       if (drawAll || layersToDraw.has('overlay')) {
-        drawLines(ctx, resolvedNonPositionLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, hoveredLineId.current, selectedDrawingId, isHoveringDeleteDot.current);
+        if (selectedNonPositionLines.length > 0) {
+          drawLines(
+            ctx,
+            selectedNonPositionLines,
+            indexToX,
+            priceToY,
+            logicalWidth,
+            logicalHeight,
+            timeAxisHeight,
+            priceAxisWidth,
+            currentBarWidth,
+            hoveredLineId.current,
+            selectedDrawingId,
+            isHoveringDeleteDot.current,
+            candles
+          );
+        }
       }
 
       if (drawAll || layersToDraw.has('background')) {
@@ -801,6 +873,102 @@ export function ChartCanvas({
       }
 
       if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
+        // Volume bars — rendered directly on main canvas at bottom, layered behind candles
+        if (liveBottomLayout.volumePanel) {
+          drawVolumeBars(
+            liveCtx,
+            candles,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            currentBarWidth,
+            chartWidth,
+            chartHeight,
+            timeAxisHeight,
+            profileWidth,
+            engine,
+            aggregateBubbleEvents,
+            {
+              panelId,
+              enabled: volumeBarsEnabled,
+              inputData: volumeBarsInputData,
+              marketSource: volumeBarsMarketSource,
+              filterMode: volumeBarsFilterMode,
+              movingAverageLength: volumeBarsMovingAverageLength,
+              filterMin: volumeBarsFilterMin,
+              filterMax: volumeBarsFilterMax,
+              colorMode: volumeBarsColorMode,
+              opacity: volumeBarsOpacity,
+              heightPct: volumeBarsHeightPct,
+              showValueText: volumeBarsShowValueText,
+              textSize: volumeBarsTextSize,
+              averageLineEnabled: volumeBarsAverageLineEnabled,
+              averageLength: volumeBarsAverageLength,
+              activeChartContractType,
+              activeDataSourceMode,
+              panelTop: liveBottomLayout.volumePanel.top,
+              panelHeight: liveBottomLayout.volumePanel.height,
+              onDebug: recordVolumeBarsDebug,
+            },
+          );
+        }
+
+        // 4. Candlesticks / Footprint, volume bubbles, markers, and VWAP clipped to the main chart area
+        // Ensures candles and wicks never bleed onto the price axis (right) or bottom panels/time axis (bottom)
+        liveCtx.save();
+        liveCtx.beginPath();
+        liveCtx.rect(0, 0, chartWidth, chartHeight);
+        liveCtx.clip();
+
+        // Unselected drawings & position tools - rendered cleanly behind candlesticks
+        if (unselectedNonPositionLines.length > 0) {
+          drawLines(
+            liveCtx,
+            unselectedNonPositionLines,
+            indexToX,
+            priceToY,
+            logicalWidth,
+            logicalHeight,
+            timeAxisHeight,
+            priceAxisWidth,
+            currentBarWidth,
+            null,
+            null,
+            false,
+            candles
+          );
+        }
+
+        if (unselectedPositionLines.length > 0) {
+          drawPositionBackgrounds(
+            liveCtx,
+            unselectedPositionLines,
+            indexToX,
+            priceToY,
+            currentBarWidth,
+            chartWidth,
+            chartHeight,
+            null,
+            null,
+            candles
+          );
+          drawLines(
+            liveCtx,
+            unselectedPositionLines,
+            indexToX,
+            priceToY,
+            logicalWidth,
+            logicalHeight,
+            timeAxisHeight,
+            priceAxisWidth,
+            currentBarWidth,
+            null,
+            null,
+            false,
+            candles
+          );
+        }
+
         if (chartMode === 'candle' || chartMode === 'hollow') {
           drawCandles(
             liveCtx,
@@ -825,10 +993,6 @@ export function ChartCanvas({
         } else {
           drawFootprint(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, chartHeight, footprintMode);
         }
-      }
-
-      if (drawAll || layersToDraw.has('live') || layersToDraw.has('live-dirty')) {
-
 
         // Volume bubbles — drawn above candles/footprint, below volume profile
         if (bubblesEnabled) {
@@ -885,6 +1049,22 @@ export function ChartCanvas({
           });
         }
 
+        // 5e. VWAP (rendered over candles, under volume profile)
+        if (panelState.vwapEnabled) {
+          drawVwap(liveCtx, {
+            panel: panelState,
+            series: vwapSeries,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            priceToY,
+            chartWidth,
+            chartHeight
+          });
+        }
+
+        liveCtx.restore();
+
         // 5d. Bottom indicator panels (Stats grid, Volume bars, etc. stacked in layout order)
         if (liveBottomLayout.statsPanel) {
           drawStatsGrid(
@@ -903,59 +1083,6 @@ export function ChartCanvas({
           );
         }
 
-        if (liveBottomLayout.volumePanel) {
-          drawVolumeBars(
-            liveCtx,
-            candles,
-            firstIndex,
-            lastIndex,
-            indexToX,
-            currentBarWidth,
-            chartWidth,
-            chartHeight,
-            timeAxisHeight,
-            profileWidth,
-            engine,
-            aggregateBubbleEvents,
-            {
-              panelId,
-              enabled: volumeBarsEnabled,
-              inputData: volumeBarsInputData,
-              marketSource: volumeBarsMarketSource,
-              filterMode: volumeBarsFilterMode,
-              movingAverageLength: volumeBarsMovingAverageLength,
-              filterMin: volumeBarsFilterMin,
-              filterMax: volumeBarsFilterMax,
-              colorMode: volumeBarsColorMode,
-              opacity: volumeBarsOpacity,
-              heightPct: volumeBarsHeightPct,
-              showValueText: volumeBarsShowValueText,
-              textSize: volumeBarsTextSize,
-              averageLineEnabled: volumeBarsAverageLineEnabled,
-              averageLength: volumeBarsAverageLength,
-              activeChartContractType,
-              activeDataSourceMode,
-              panelTop: liveBottomLayout.volumePanel.top,
-              panelHeight: liveBottomLayout.volumePanel.height,
-              onDebug: recordVolumeBarsDebug,
-            },
-          );
-        }
-
-        // 5e. VWAP (rendered over candles, under volume profile)
-        if (panelState.vwapEnabled) {
-          drawVwap(liveCtx, {
-            panel: panelState,
-            series: vwapSeries,
-            firstIndex,
-            lastIndex,
-            indexToX,
-            priceToY,
-            chartWidth,
-            chartHeight
-          });
-        }
-
         if (liveCtxClipped) {
           liveCtx.restore();
         }
@@ -972,6 +1099,11 @@ export function ChartCanvas({
       if (drawAll || layersToDraw.has('overlay')) {
         // 6. Custom Profile (on top of candles and other overlays)
         if (resolvedCustomProfileRange) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, chartWidth, chartHeight);
+          ctx.clip();
+
           const customTimeBounds = getCustomProfileTimeBounds(resolvedCustomProfileRange, candles);
           const customCandles = customTimeBounds
             ? candles.filter((candle) => candle.time >= customTimeBounds.startTime && candle.time <= customTimeBounds.endTime)
@@ -1054,11 +1186,18 @@ export function ChartCanvas({
               profileScaleMode
             );
           }
+
+          ctx.restore();
         }
       }
 
       // Volume Profile & Historical Session Volume Profiles (Full live canvas only, not live-dirty)
       if (drawAll || layersToDraw.has('live')) {
+        liveCtx.save();
+        liveCtx.beginPath();
+        liveCtx.rect(0, 0, chartWidth, chartHeight);
+        liveCtx.clip();
+
         if (defaultProfileEnabled) {
           let profileCandles: typeof candles = [];
 
@@ -1274,6 +1413,8 @@ export function ChartCanvas({
             }
           }
         }
+
+        liveCtx.restore();
       }
       
       if (drawAll || layersToDraw.has('overlay')) {
@@ -1336,7 +1477,7 @@ export function ChartCanvas({
       }
 
       if (drawAll || layersToDraw.has('overlay')) {
-        drawDrawingPriceLabels(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, candles, globalTimezone, globalTimeFormat);
+        drawDrawingPriceLabels(ctx, resolvedDrawnLines, indexToX, priceToY, logicalWidth, logicalHeight, timeAxisHeight, priceAxisWidth, currentBarWidth, candles, globalTimezone, globalTimeFormat, selectedDrawingId);
       }
 
       if (drawAll || layersToDraw.has('live')) {
@@ -1359,41 +1500,22 @@ export function ChartCanvas({
       }
 
       if (drawAll || layersToDraw.has('overlay')) {
-        let activePosition: DrawnLine | null = null;
-        if (
-          (lineDrawMode === 'long-position' || lineDrawMode === 'short-position' || lineDrawMode === 'position') &&
-          isDragging.current &&
-          dragStart.current &&
-          dragEnd.current
-        ) {
-          const dy = dragEnd.current.y - dragStart.current.y;
-          const resolvedMode = lineDrawMode === 'position' ? (dy > 0 ? 'long-position' : 'short-position') : lineDrawMode;
-          activePosition = buildPositionFromRiskDrag(
-            resolvedMode,
-            dragStart.current,
-            dragEnd.current,
-            candles,
-            currentScrollOffset,
+        if (selectedPositionLines.length > 0) {
+          drawPositionBackgrounds(
+            ctx,
+            selectedPositionLines,
+            indexToX,
+            priceToY,
             currentBarWidth,
             chartWidth,
-            profileWidth,
-            priceMin,
-            priceMax,
             chartHeight,
-            Math.max(tickSize, bucketSize * 0.01),
-            null
+            activePosition ? 'active-position' : hoveredLineId.current,
+            selectedDrawingId,
+            candles
           );
-
-          if (activePosition) {
-            activePosition.id = 'active-position';
-          }
-        }
-
-        const positionLines = activePosition ? [...resolvedPositionLines, activePosition] : resolvedPositionLines;
-        if (positionLines.length > 0) {
           drawLines(
             ctx,
-            positionLines,
+            selectedPositionLines,
             indexToX,
             priceToY,
             logicalWidth,
@@ -1459,9 +1581,12 @@ export function ChartCanvas({
         let my: number | null = null;
 
         if (isMouseOver.current && mouseX.current !== null && mouseY.current !== null && !localProfileHitZone) {
-          mx = mouseX.current;
+          if (mouseX.current >= 0 && mouseX.current <= chartWidth) {
+            const snappedIndex = xToIndex(mouseX.current, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+            mx = indexToX(snappedIndex);
+          }
           my = mouseY.current;
-        } else if (crosshairSyncEnabled && crosshair.activePanel && (crosshair.activePanel !== panelId || !isMouseOver.current)) {
+        } else if (crosshair.activePanel && (!isMouseOver.current && (crosshair.activePanel === panelId || crosshairSyncEnabled))) {
           if (crosshair.time !== null) {
             const syncedIndex = timeToIndex(crosshair.time, candles);
             mx = indexToX(syncedIndex);
@@ -1471,12 +1596,16 @@ export function ChartCanvas({
           }
         }
 
+        const timeAxisTop = logicalHeight - timeAxisHeight;
+        const verticalLineHeight = showTimeAxis ? timeAxisTop : logicalHeight;
+
         if (mx !== null || my !== null) {
           drawCrosshair(ctx, mx, my, chartWidth, chartHeight, {
             color: crosshairColor,
             opacity: crosshairOpacity,
             thickness: crosshairThickness,
             style: crosshairStyle,
+            verticalLineHeight,
           });
 
           // Price Label
@@ -1500,7 +1629,7 @@ export function ChartCanvas({
               time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
             }
             if (showTimeAxis) {
-              drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
+              drawCrosshairTimeLabel(ctx, mx, time, timeAxisTop, timeAxisHeight, chartWidth);
             }
           }
         }
@@ -1603,10 +1732,11 @@ export function ChartCanvas({
       const canvas = canvasRef.current;
       if (!canvas) return;
       const chartWidth = canvas.clientWidth - priceAxisWidth;
-      const chartHeight = canvas.clientHeight - timeAxisHeight;
+      const bottomLayout = getBottomLayout(canvas.clientHeight);
+      const mainChartHeight = bottomLayout.mainChartHeight;
 
-      // Only update store if within chart area
-      if (x < 0 || x > chartWidth || y < 0 || y > chartHeight) {
+      // Only update store if within canvas horizontal area and within total height
+      if (x < 0 || x > chartWidth || y < 0 || y > canvas.clientHeight) {
         return;
       }
 
@@ -1624,7 +1754,7 @@ export function ChartCanvas({
         scrollOffset.current,
         barWidth.current,
         chartWidth,
-        chartHeight,
+        mainChartHeight,
         profileWidth,
         priceMin,
         priceMax,
@@ -1637,7 +1767,7 @@ export function ChartCanvas({
         return;
       }
 
-      const price = yToPrice(y, priceMin, priceMax, chartHeight);
+      const price = y <= mainChartHeight ? yToPrice(y, priceMin, priceMax, mainChartHeight) : null;
       const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
       
       let time = null;
@@ -1650,11 +1780,8 @@ export function ChartCanvas({
         time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
       }
 
-      const syncEnabled = useChartStore.getState().crosshairSyncEnabled;
-      if (syncEnabled) {
-        useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price });
-      }
-    }, [panelId, priceAxisWidth, timeAxisHeight, profileWidth, customProfileRange, customProfileLocked]),
+      useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price });
+    }, [panelId, priceAxisWidth, getBottomLayout, profileWidth, customProfileRange, customProfileLocked]),
     { scrollOffset, barWidth, priceCenter, priceRange }
   );
 
@@ -1670,7 +1797,8 @@ export function ChartCanvas({
   // Subscribe to crosshair changes for sync rendering
   useEffect(() => {
     const unsubscribeCrosshair = useChartRuntimeStore.subscribe((state) => state.crosshair, (crosshair, previousCrosshair) => {
-      if (!useChartStore.getState().crosshairSyncEnabled) {
+      const isCrosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
+      if (!isCrosshairSyncEnabled && crosshair.activePanel !== panelId) {
         return;
       }
 
@@ -1693,9 +1821,21 @@ export function ChartCanvas({
       redrawRef.current();
     });
 
+    const unsubscribeDrawingDrag = useChartRuntimeStore.subscribe(
+      (state) => state.drawingDrag,
+      (drawingDrag, previousDrawingDrag) => {
+        if (!drawingDrag && !previousDrawingDrag) return;
+        const isDrawingsSyncEnabled = useChartStore.getState().drawingsSyncEnabled;
+        if (drawingDrag?.panelId === panelId && isDraggingDrawing.current) return;
+        if (drawingDrag && !isDrawingsSyncEnabled && drawingDrag.panelId !== panelId) return;
+        redrawRef.current('overlay');
+      }
+    );
+
     return () => {
       unsubscribeCrosshair();
       unsubscribeSync();
+      unsubscribeDrawingDrag();
     };
   }, [panelId, isMouseOver]);
 
@@ -1706,11 +1846,13 @@ export function ChartCanvas({
     if (!canvas || !container) return;
 
     const setupCanvas = (w: number, h: number) => {
-      if (bgCanvasRef.current) bgCtxRef.current = initCanvas(bgCanvasRef.current, w, h);
-      if (liveCanvasRef.current) liveCtxRef.current = initCanvas(liveCanvasRef.current, w, h);
-      ctxRef.current = initCanvas(canvas, w, h);
-      widthRef.current = w;
-      heightRef.current = h;
+      const roundedW = Math.max(1, Math.round(w));
+      const roundedH = Math.max(1, Math.round(h));
+      if (bgCanvasRef.current) bgCtxRef.current = initCanvas(bgCanvasRef.current, roundedW, roundedH);
+      if (liveCanvasRef.current) liveCtxRef.current = initCanvas(liveCanvasRef.current, roundedW, roundedH);
+      ctxRef.current = initCanvas(canvas, roundedW, roundedH);
+      widthRef.current = roundedW;
+      heightRef.current = roundedH;
       redrawRef.current('all');
     };
 
@@ -1721,8 +1863,8 @@ export function ChartCanvas({
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        const w = entry.contentRect.width;
-        const h = entry.contentRect.height;
+        const w = Math.round(entry.contentRect.width);
+        const h = Math.round(entry.contentRect.height);
         setContainerSize({ width: w, height: h });
         setupCanvas(w, h);
       }
@@ -1730,9 +1872,21 @@ export function ChartCanvas({
 
     observer.observe(container);
 
-    // Listen for devicePixelRatio changes (zoom or monitor change)
+    // Listen for devicePixelRatio changes (zoom or monitor change between 1K and 2K)
+    let lastDpr = window.devicePixelRatio || 1;
     let dprMedia: MediaQueryList | null = null;
+    const checkDprAndRescale = () => {
+      const currentDpr = window.devicePixelRatio || 1;
+      if (Math.abs(currentDpr - lastDpr) > 0.01) {
+        lastDpr = currentDpr;
+        const r = container.getBoundingClientRect();
+        setupCanvas(r.width, r.height);
+        listenToDpr();
+      }
+    };
+
     const onDprChange = () => {
+      lastDpr = window.devicePixelRatio || 1;
       const r = container.getBoundingClientRect();
       setupCanvas(r.width, r.height);
       listenToDpr();
@@ -1745,9 +1899,11 @@ export function ChartCanvas({
     };
     
     listenToDpr();
+    window.addEventListener('resize', checkDprAndRescale);
 
     return () => {
       observer.disconnect();
+      window.removeEventListener('resize', checkDprAndRescale);
       if (dprMedia) dprMedia.removeEventListener('change', onDprChange);
     };
   }, []);
@@ -2499,7 +2655,9 @@ export function ChartCanvas({
           const priceMin = pCenter - pRange / 2;
           const priceMax = pCenter + pRange / 2;
           const price = yToPrice(y, priceMin, priceMax, chartHeight);
-          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal', value: price });
+          const lineId = crypto.randomUUID();
+          useChartStore.getState().addLine(panelId, { id: lineId, type: 'horizontal', value: price });
+          setSelectedDrawingId(lineId);
         } else if (lineDrawMode === 'horizontal-ray') {
           const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
           const pCenter = priceCenter.current ?? 0;
@@ -2508,11 +2666,15 @@ export function ChartCanvas({
           const priceMax = pCenter + pRange / 2;
           const price = yToPrice(y, priceMin, priceMax, chartHeight);
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'horizontal-ray', value: price, startIndex: index, startTime: candleTimeAt(index, candles) });
+          const lineId = crypto.randomUUID();
+          useChartStore.getState().addLine(panelId, { id: lineId, type: 'horizontal-ray', value: price, startIndex: index, startTime: candleTimeAt(index, candles) });
+          setSelectedDrawingId(lineId);
         } else if (lineDrawMode === 'vertical') {
           const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
           const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-          useChartStore.getState().addLine(panelId, { id: crypto.randomUUID(), type: 'vertical', value: index, time: candleTimeAt(index, candles) });
+          const lineId = crypto.randomUUID();
+          useChartStore.getState().addLine(panelId, { id: lineId, type: 'vertical', value: index, time: candleTimeAt(index, candles) });
+          setSelectedDrawingId(lineId);
         } else if (lineDrawMode === 'box') {
           dragStart.current = { x, y };
           dragEnd.current = { x, y };
@@ -2993,18 +3155,22 @@ export function ChartCanvas({
           if (zone === 'move') {
             const priceAtAnchor = yToPrice(dragAnchor.current.y, priceMin, priceMax, chartHeight);
             const priceAtCurrent = yToPrice(y, priceMin, priceMax, chartHeight);
-            useChartStore.getState().updateLine(panelId, snapshot.id, {
+            const updates: Partial<DrawnLine> = {
               value: snapshot.value + (priceAtCurrent - priceAtAnchor),
-            });
+            };
+            activeDrawingUpdates.current = updates;
+            useChartRuntimeStore.getState().setDrawingDrag({ panelId, id: snapshot.id, updates });
           }
           redraw();
         } else if (snapshot.type === 'vertical') {
           if (zone === 'move') {
             const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-            useChartStore.getState().updateLine(panelId, snapshot.id, {
+            const updates: Partial<DrawnLine> = {
               value: index,
               time: candleTimeAt(index, candles),
-            });
+            };
+            activeDrawingUpdates.current = updates;
+            useChartRuntimeStore.getState().setDrawingDrag({ panelId, id: snapshot.id, updates });
           }
           redraw();
         } else if (snapshot.type === 'horizontal-ray') {
@@ -3015,19 +3181,23 @@ export function ChartCanvas({
 
           if (zone === 'resize-left') {
             const startIndex = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-            useChartStore.getState().updateLine(panelId, snapshot.id, {
+            const updates: Partial<DrawnLine> = {
               startIndex,
               startTime: candleTimeAt(startIndex, candles),
               value: priceAtCurrent,
-            });
+            };
+            activeDrawingUpdates.current = updates;
+            useChartRuntimeStore.getState().setDrawingDrag({ panelId, id: snapshot.id, updates });
           } else if (zone === 'move' && baseStartIndex !== null) {
             const indexDelta = Math.round((x - dragAnchor.current.x) / barWidth.current);
             const startIndex = Math.max(0, baseStartIndex + indexDelta);
-            useChartStore.getState().updateLine(panelId, snapshot.id, {
+            const updates: Partial<DrawnLine> = {
               startIndex,
               startTime: candleTimeAt(startIndex, candles),
               value: snapshot.value + priceDelta,
-            });
+            };
+            activeDrawingUpdates.current = updates;
+            useChartRuntimeStore.getState().setDrawingDrag({ panelId, id: snapshot.id, updates });
           }
           redraw();
         } else if (
@@ -3074,7 +3244,8 @@ export function ChartCanvas({
             }
           }
 
-          useChartStore.getState().updateLine(panelId, snapshot.id, updates);
+          activeDrawingUpdates.current = updates;
+          useChartRuntimeStore.getState().setDrawingDrag({ panelId, id: snapshot.id, updates });
           redraw();
         } else if (hasPositionGeometry(snapshot)) {
           const updates: Partial<DrawnLine> = {};
@@ -3125,7 +3296,8 @@ export function ChartCanvas({
               : Math.min(priceAtCurrent, snapshot.value - minGap);
           }
 
-          useChartStore.getState().updateLine(panelId, snapshot.id, updates);
+          activeDrawingUpdates.current = updates;
+          useChartRuntimeStore.getState().setDrawingDrag({ panelId, id: snapshot.id, updates });
           redraw();
         }
       } else if (isDraggingProfile.current && dragAnchor.current && profileSnapshot.current) {
@@ -3350,6 +3522,11 @@ export function ChartCanvas({
 
       if (isDraggingDrawing.current) {
         isDraggingDrawing.current = false;
+        if (activeDrawingUpdates.current && drawingSnapshot.current) {
+          useChartStore.getState().updateLine(panelId, drawingSnapshot.current.id, activeDrawingUpdates.current);
+          activeDrawingUpdates.current = null;
+        }
+        useChartRuntimeStore.getState().setDrawingDrag(null);
         dragAnchor.current = null;
         drawingSnapshot.current = null;
         drawingDragZone.current = null;
@@ -3442,6 +3619,7 @@ export function ChartCanvas({
           );
           if (position) {
             useChartStore.getState().addLine(panelId, position);
+            setSelectedDrawingId(position.id);
           }
         }
 
@@ -3477,8 +3655,9 @@ export function ChartCanvas({
         const heightPx = Math.abs(dragEnd.current.y - dragStart.current.y);
 
         if (widthPx >= 5 && heightPx >= 5) {
+          const boxId = crypto.randomUUID();
           useChartStore.getState().addLine(panelId, {
-            id: crypto.randomUUID(),
+            id: boxId,
             type: 'box',
             value: priceHigh,
             firstIndex,
@@ -3488,6 +3667,7 @@ export function ChartCanvas({
             priceHigh,
             priceLow,
           });
+          setSelectedDrawingId(boxId);
         }
 
         useChartStore.getState().setLineDrawMode(panelId, 'none');
@@ -3606,20 +3786,84 @@ export function ChartCanvas({
       });
     };
 
+    const onCanvasMouseMove = (e: MouseEvent) => {
+      const isAnyDragging =
+        isDraggingDrawing.current ||
+        isDraggingProfile.current ||
+        isDraggingResize.current ||
+        isDraggingOrderLine.current ||
+        isDraggingBracket.current ||
+        isPanZoomDragging.current ||
+        isDragging.current;
+
+      if (!isAnyDragging) {
+        onMouseMove(e);
+      }
+    };
+
+    const onWindowMouseMove = (e: MouseEvent) => {
+      const isAnyDragging =
+        isDraggingDrawing.current ||
+        isDraggingProfile.current ||
+        isDraggingResize.current ||
+        isDraggingOrderLine.current ||
+        isDraggingBracket.current ||
+        isPanZoomDragging.current ||
+        isDragging.current;
+
+      if (isAnyDragging) {
+        onMouseMove(e);
+      }
+    };
+
+    const onWindowMouseUp = () => {
+      onMouseUp();
+    };
+
+    const onMouseLeave = () => {
+      const isAnyDragging =
+        isDraggingDrawing.current ||
+        isDraggingProfile.current ||
+        isDraggingResize.current ||
+        isDraggingOrderLine.current ||
+        isDraggingBracket.current ||
+        isPanZoomDragging.current ||
+        isDragging.current;
+
+      if (!isAnyDragging) {
+        isMouseOver.current = false;
+        mouseX.current = null;
+        mouseY.current = null;
+        hoverZone.current = null;
+        hoveredLineId.current = null;
+        hoveredDrawingZone.current = null;
+        isHoveringDeleteDot.current = false;
+        setHoveredExhaustion(null);
+        setHoveredIceberg(null);
+        canvas.style.cursor = 'default';
+        useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        redraw();
+      }
+    };
+
     canvas.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mousemove', onCanvasMouseMove);
+    canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('mousemove', onWindowMouseMove);
+    window.addEventListener('mouseup', onWindowMouseUp);
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('mousemove', onCanvasMouseMove);
+      canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('mousemove', onWindowMouseMove);
+      window.removeEventListener('mouseup', onWindowMouseUp);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, drawnLines, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect, getCandlesLength]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect, getCandlesLength, isMouseOver, mouseX, mouseY]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({
@@ -3635,7 +3879,7 @@ export function ChartCanvas({
     : null;
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-[#0F0F0F] overflow-hidden">
+    <div ref={containerRef} className="w-full h-full relative bg-background overflow-hidden">
       <canvas
         ref={bgCanvasRef}
         className="absolute top-0 left-0 outline-none pointer-events-none z-0"

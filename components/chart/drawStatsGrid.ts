@@ -1,7 +1,15 @@
 import { Candle } from '@/types/candle';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
-import { CHART_BEARISH_RGB, CHART_BULLISH_RGB, chartColorToRgba } from '@/lib/config/chartColors';
+import { useChartStore } from '@/lib/store/chart';
+import {
+  CHART_BEARISH_RGB,
+  CHART_BULLISH_RGB,
+  chartColorToRgba,
+  DEFAULT_CANVAS_BG,
+  DEFAULT_GRID_COLOR,
+  DEFAULT_GRID_OPACITY,
+} from '@/lib/config/chartColors';
 
 export const STATS_GRID_ROW_HEIGHT = 24;
 const FONT = '600 11px "JetBrains Mono", monospace';
@@ -80,10 +88,20 @@ export function drawStatsGrid(
   ctx.rect(0, startY, chartWidth, items.length * STATS_GRID_ROW_HEIGHT);
   ctx.clip();
 
-  ctx.fillStyle = '#0F0F0F';
+  const state = useChartStore.getState();
+  const gridColor = state.horizontalGridLineColor || DEFAULT_GRID_COLOR;
+  const gridOpacity = typeof state.horizontalGridLineOpacity === 'number' ? state.horizontalGridLineOpacity : DEFAULT_GRID_OPACITY;
+  const borderRgba = chartColorToRgba(gridColor, gridOpacity);
+
+  ctx.fillStyle = DEFAULT_CANVAS_BG;
   ctx.fillRect(0, startY, chartWidth, items.length * STATS_GRID_ROW_HEIGHT);
-  ctx.fillStyle = '#1F1F1F';
+  ctx.fillStyle = borderRgba;
   ctx.fillRect(0, startY, chartWidth, 1);
+
+  for (let r = 1; r < items.length; r++) {
+    const rowY = startY + r * STATS_GRID_ROW_HEIGHT;
+    ctx.fillRect(0, rowY, chartWidth, 1);
+  }
 
   const rowLabels = items.map(id => {
     switch(id) {
@@ -218,7 +236,7 @@ export function drawStatsGrid(
   }
 
   ctx.textAlign = 'left';
-  ctx.font = '600 11px Inter, sans-serif';
+  ctx.font = '600 11px "BlinkMacSystemFont", -apple-system, sans-serif';
   for (let r = 0; r < items.length; r++) {
     const rowTop = startY + r * STATS_GRID_ROW_HEIGHT;
     const rowY = rowTop + STATS_GRID_ROW_HEIGHT / 2;

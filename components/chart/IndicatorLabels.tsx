@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-// 1. External packages
 import { ChevronRight, ChevronDown, Eye, EyeOff, Settings, X, ArrowUp, ArrowDown } from 'lucide-react';
+import { FigButton } from '@/components/ui/fig';
 
 // 2. Internal packages & stores
 import { useChartStore, type DataSourceMode, type PanelId, type IndicatorId, type IndicatorSettingsSection } from '@/lib/store/chart';
@@ -82,15 +82,16 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
-        <button
-          type="button"
+        <FigButton
+          variant="ghost"
+          icon
+          size="compact"
           onClick={() => setCollapsed(panelId, !collapsed)}
-          className="flex h-3.5 w-3.5 items-center justify-center rounded-sm bg-[#1F1F1F] text-[#8B949E] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
           title={collapsed ? 'Expand chart info and indicators' : 'Collapse chart info and indicators'}
           aria-label={collapsed ? 'Expand chart info and indicators' : 'Collapse chart info and indicators'}
         >
           {collapsed ? <ChevronRight size={14} strokeWidth={2.5} /> : <ChevronDown size={14} strokeWidth={2.5} />}
-        </button>
+        </FigButton>
 
         {!collapsed && (
           <>
@@ -108,11 +109,13 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
               <span className="text-text-dim/70">{'\u00b7'}</span>
               <div className="ml-0.5 flex items-center gap-0.5">
                 {SOURCE_OPTIONS.map(({ label, value }) => (
-                  <button
+                  <FigButton
                     key={value}
-                    type="button"
+                    variant="ghost"
+                    size="small"
+                    selected={panel.dataSourceMode === value}
                     onClick={() => panel.dataSourceMode !== value && setDataSourceMode(panelId, value)}
-                    className={`h-5 rounded-sm px-1.5 text-[11px] font-bold transition-colors ${
+                    className={`h-5 px-1.5 text-[11px] font-bold ${
                       panel.dataSourceMode === value
                         ? 'text-accent'
                         : 'text-text-dim hover:text-[#E8E8E8]'
@@ -121,7 +124,7 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
                     aria-pressed={panel.dataSourceMode === value}
                   >
                     {label}
-                  </button>
+                  </FigButton>
                 ))}
               </div>
               {isLoading && (
@@ -148,38 +151,46 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
               return (
                 <div
                   key={id}
-                  className={`group flex h-4.5 items-center rounded px-1.5 text-[12px] font-black uppercase tracking-[0.14em] text-[#E8E8E8] transition-all duration-150 hover:bg-[#1F1F1F] hover:shadow-[0_4px_18px_rgba(0,0,0,0.32)] hover:backdrop-blur-sm ${
+                  className={`group flex h-6 items-center rounded px-1.5 text-[12px] font-black uppercase tracking-[0.14em] text-[#E8E8E8] transition-all duration-150 hover:bg-[#1F1F1F] hover:shadow-[0_4px_18px_rgba(0,0,0,0.32)] ${
                     config.enabled ? 'opacity-100' : 'opacity-45'
                   }`}
                 >
                   <span className="whitespace-nowrap">{config.label}</span>
-                  <div className="ml-1.5 flex w-0 translate-x-[-4px] items-center gap-0.5 overflow-hidden opacity-0 transition-all duration-180 group-hover:w-[105px] group-hover:translate-x-0 group-hover:opacity-100">
-                    <button
-                      type="button"
+                  <div className="ml-1.5 flex w-0 translate-x-[-4px] items-center gap-0.5 overflow-hidden opacity-0 transition-all duration-180 group-hover:w-[115px] group-hover:translate-x-0 group-hover:opacity-100 [--spacer-4:20px] [--spacer-3:20px]">
+                    <FigButton
+                      variant="ghost"
+                      icon
+                      className="shrink-0"
                       onClick={() => moveIndicator(panelId, id as IndicatorId, 'up')}
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
                       title={`Move ${config.label} up`}
+                      aria-label={`Move ${config.label} up`}
                     >
                       <ArrowUp size={12} strokeWidth={2.4} />
-                    </button>
-                    <button
-                      type="button"
+                    </FigButton>
+                    <FigButton
+                      variant="ghost"
+                      icon
+                      className="shrink-0"
                       onClick={() => moveIndicator(panelId, id as IndicatorId, 'down')}
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
                       title={`Move ${config.label} down`}
+                      aria-label={`Move ${config.label} down`}
                     >
                       <ArrowDown size={12} strokeWidth={2.4} />
-                    </button>
-                    <button
-                      type="button"
+                    </FigButton>
+                    <FigButton
+                      variant="ghost"
+                      icon
+                      className="shrink-0"
                       onClick={config.toggle}
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#E8E8E8]"
                       title={`${config.enabled ? 'Hide' : 'Show'} ${config.label}`}
+                      aria-label={`${config.enabled ? 'Hide' : 'Show'} ${config.label}`}
                     >
-                      {config.enabled ? <Eye size={14} strokeWidth={2.4} /> : <EyeOff size={14} strokeWidth={2.4} />}
-                    </button>
-                    <button
-                      type="button"
+                      {config.enabled ? <Eye size={12} strokeWidth={2.4} /> : <EyeOff size={12} strokeWidth={2.4} />}
+                    </FigButton>
+                    <FigButton
+                      variant="ghost"
+                      icon
+                      className="shrink-0"
                       onClick={() => {
                         if (id === 'profile') {
                           openIndicatorSettings(panelId, 'profiles');
@@ -187,19 +198,21 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
                         }
                         setOpenSection(id);
                       }}
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-accent"
                       title={`${config.label} settings`}
+                      aria-label={`${config.label} settings`}
                     >
-                      <Settings size={14} strokeWidth={2.4} />
-                    </button>
-                    <button
-                      type="button"
+                      <Settings size={12} strokeWidth={2.4} />
+                    </FigButton>
+                    <FigButton
+                      variant="ghost"
+                      icon
+                      className="shrink-0"
                       onClick={() => removeIndicator(panelId, id as IndicatorId)}
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[#9CA3AF] transition-colors hover:bg-[#1F1F1F] hover:text-[#f23645]"
                       title={`Remove ${config.label}`}
+                      aria-label={`Remove ${config.label}`}
                     >
-                      <X size={14} strokeWidth={2.5} />
-                    </button>
+                      <X size={12} strokeWidth={2.5} />
+                    </FigButton>
                   </div>
                 </div>
               );

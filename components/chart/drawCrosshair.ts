@@ -1,9 +1,8 @@
 import { formatPrice, formatTime } from "@/lib/utils/format";
 import { useChartStore } from "@/lib/store/chart";
 
-const CROSSHAIR_FONT = '12px "Inter", -apple-system, system-ui, sans-serif';
+const CROSSHAIR_FONT = '12px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
 const CROSSHAIR_BG = '#1F1F1F';
-const CROSSHAIR_BORDER = '#8A8A8A';
 const CROSSHAIR_TEXT = '#FFFFFF';
 
 export interface CrosshairOptions {
@@ -11,6 +10,7 @@ export interface CrosshairOptions {
   opacity?: number;
   thickness?: number;
   style?: 'solid' | 'dashed' | 'dotted';
+  verticalLineHeight?: number;
 }
 
 export function drawCrosshair(
@@ -25,6 +25,7 @@ export function drawCrosshair(
   const opacity = typeof options?.opacity === 'number' ? options.opacity : 1;
   const thickness = options?.thickness || 1;
   const style = options?.style || 'dashed';
+  const verticalLineHeight = options?.verticalLineHeight ?? chartHeight;
 
   ctx.save();
   ctx.lineWidth = thickness;
@@ -55,7 +56,7 @@ export function drawCrosshair(
     const x = alignCoord(mouseX);
     ctx.beginPath();
     ctx.moveTo(x, 0);
-    ctx.lineTo(x, chartHeight);
+    ctx.lineTo(x, verticalLineHeight);
     ctx.stroke();
   }
 
@@ -76,27 +77,31 @@ export function drawCrosshairPriceLabel(
   const label = formatPrice(price, precision);
   ctx.font = CROSSHAIR_FONT;
   const textWidth = ctx.measureText(label).width;
-  const padding = 8;
-  const rectHeight = 24;
-  const rectWidth = Math.max(textWidth + padding * 2, priceAxisWidth - 2);
+  const rectHeight = 22;
+  const badgeX = chartWidth + 2;
+  const badgeWidth = Math.max(textWidth + 16, priceAxisWidth - 4);
+  const badgeY = Math.round(mouseY - rectHeight / 2);
 
   ctx.fillStyle = CROSSHAIR_BG;
-  ctx.fillRect(chartWidth + 1, mouseY - rectHeight / 2, rectWidth, rectHeight);
-
-  ctx.strokeStyle = CROSSHAIR_BORDER;
-  ctx.strokeRect(chartWidth + 1, mouseY - rectHeight / 2, rectWidth, rectHeight);
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(badgeX, badgeY, badgeWidth, rectHeight, 2);
+  } else {
+    ctx.fillRect(badgeX, badgeY, badgeWidth, rectHeight);
+  }
+  ctx.fill();
 
   ctx.fillStyle = CROSSHAIR_TEXT;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, chartWidth + padding + 1, mouseY);
+  ctx.fillText(label, chartWidth + 12, mouseY);
 }
 
 export function drawCrosshairTimeLabel(
   ctx: CanvasRenderingContext2D,
   mouseX: number,
   time: number,
-  chartHeight: number,
+  timeAxisTop: number,
   timeAxisHeight: number,
   chartWidth: number
 ) {
@@ -107,18 +112,26 @@ export function drawCrosshairTimeLabel(
 
   ctx.font = CROSSHAIR_FONT;
   const textWidth = ctx.measureText(label).width;
-  const padding = 10;
-  const rectHeight = 24;
+  const padding = 8;
+  const rectHeight = 20;
   const rectWidth = textWidth + padding * 2;
+  const halfWidth = rectWidth / 2;
+  const clampedX = Math.max(halfWidth, Math.min(chartWidth - halfWidth, mouseX));
+
+  const badgeX = Math.round(clampedX - halfWidth);
+  const badgeY = Math.round(timeAxisTop + Math.max(0, (timeAxisHeight - rectHeight) / 2));
 
   ctx.fillStyle = CROSSHAIR_BG;
-  ctx.fillRect(mouseX - rectWidth / 2, chartHeight + 1, rectWidth, rectHeight);
-
-  ctx.strokeStyle = CROSSHAIR_BORDER;
-  ctx.strokeRect(mouseX - rectWidth / 2, chartHeight + 1, rectWidth, rectHeight);
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(badgeX, badgeY, rectWidth, rectHeight, 2);
+  } else {
+    ctx.fillRect(badgeX, badgeY, rectWidth, rectHeight);
+  }
+  ctx.fill();
 
   ctx.fillStyle = CROSSHAIR_TEXT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, mouseX, chartHeight + 1 + rectHeight / 2);
+  ctx.fillText(label, clampedX, badgeY + rectHeight / 2);
 }

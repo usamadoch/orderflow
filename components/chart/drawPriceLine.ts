@@ -2,8 +2,8 @@ import { Candle } from "@/types/candle";
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
 import { timeframeToSeconds, formatCountdown, formatPrice } from "@/lib/utils/format";
 
-const PRICE_LINE_FONT = 'bold 13px "Inter", -apple-system, system-ui, sans-serif';
-const COUNTDOWN_FONT = '11px "Inter", -apple-system, system-ui, sans-serif';
+const PRICE_LINE_FONT = 'bold 13px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+const COUNTDOWN_FONT = '11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
 
 export function drawPriceLine(
   ctx: CanvasRenderingContext2D,

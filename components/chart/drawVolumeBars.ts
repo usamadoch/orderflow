@@ -204,12 +204,8 @@ export function drawVolumeBars(
         ? 'ORDERS UNAVAILABLE'
         : 'AGG DATA UNAVAILABLE';
       ctx.save();
-      ctx.fillStyle = '#0F0F0F';
-      ctx.fillRect(0, top, drawableRight, panelHeight);
-      ctx.fillStyle = '#1F1F1F';
-      ctx.fillRect(0, top, drawableRight, 1);
       ctx.fillStyle = 'rgba(156, 163, 175, 0.76)';
-      ctx.font = '700 10px Inter, sans-serif';
+      ctx.font = '700 10px "BlinkMacSystemFont", -apple-system, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(message, 8, top + panelHeight / 2);
@@ -224,11 +220,6 @@ export function drawVolumeBars(
   ctx.beginPath();
   ctx.rect(0, top, drawableRight, panelHeight);
   ctx.clip();
-
-  ctx.fillStyle = '#0F0F0F';
-  ctx.fillRect(0, top, drawableRight, panelHeight);
-  ctx.fillStyle = '#1F1F1F';
-  ctx.fillRect(0, top, drawableRight, 1);
 
   let previousPoint: VolumeBarPoint | null = null;
   for (const point of points) {
@@ -248,7 +239,7 @@ export function drawVolumeBars(
 
     if (options.showValueText && barBodyWidth >= options.textSize * 1.4 && barHeight >= options.textSize + 3) {
       ctx.fillStyle = 'rgba(232, 232, 232, 0.72)';
-      ctx.font = `700 ${options.textSize}px Inter, sans-serif`;
+      ctx.font = `700 ${options.textSize}px "BlinkMacSystemFont", -apple-system, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
       ctx.fillText(formatBarValue(point.value), x, y - 2);

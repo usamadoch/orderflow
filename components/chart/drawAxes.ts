@@ -1,7 +1,7 @@
 import { Candle } from "@/types/candle";
 import { formatPrice, formatTime } from "@/lib/utils/format";
 import { useChartStore } from "@/lib/store/chart";
-import { chartColorToRgba } from "@/lib/config/chartColors";
+import { chartColorToRgba, DEFAULT_CANVAS_BG, DEFAULT_GRID_COLOR, DEFAULT_GRID_OPACITY, DEFAULT_HEADER_SIDEBAR_BG } from "@/lib/config/chartColors";
 
 export function calculatePriceStep(priceRange: number, chartHeight: number, minSpacing: number = 50) {
   const pricePerPixel = priceRange / chartHeight;
@@ -16,10 +16,11 @@ export function calculatePriceStep(priceRange: number, chartHeight: number, minS
   return magnitude * 10;
 }
 
-const AXIS_FONT = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
+const AXIS_FONT = 'bold 12px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
 const AXIS_TEXT_COLOR = '#909090';
-const AXIS_BORDER_COLOR = '#1F1F1F';
-const AXIS_BG_COLOR = '#0F0F0F';
+const AXIS_BORDER_COLOR = DEFAULT_GRID_COLOR;
+const AXIS_BG_COLOR = DEFAULT_CANVAS_BG;
+const PRICE_AXIS_BG_COLOR = DEFAULT_HEADER_SIDEBAR_BG;
 
 export interface GridOptions {
   showHorizontal?: boolean;
@@ -52,12 +53,12 @@ export function drawGrid(
 
   const showHorz = gridOptions?.showHorizontal ?? true;
   const horzColor = gridOptions?.horizontalColor || AXIS_BORDER_COLOR;
-  const horzOpacity = typeof gridOptions?.horizontalOpacity === 'number' ? gridOptions.horizontalOpacity : 1;
+  const horzOpacity = typeof gridOptions?.horizontalOpacity === 'number' ? gridOptions.horizontalOpacity : DEFAULT_GRID_OPACITY;
   const horzStyle = gridOptions?.horizontalStyle || 'solid';
 
   const showVert = gridOptions?.showVertical ?? true;
   const vertColor = gridOptions?.verticalColor || AXIS_BORDER_COLOR;
-  const vertOpacity = typeof gridOptions?.verticalOpacity === 'number' ? gridOptions.verticalOpacity : 1;
+  const vertOpacity = typeof gridOptions?.verticalOpacity === 'number' ? gridOptions.verticalOpacity : DEFAULT_GRID_OPACITY;
   const vertStyle = gridOptions?.verticalStyle || 'solid';
 
   // Horizontal Grid Lines
@@ -132,7 +133,7 @@ export function drawPriceAxis(
   const chartWidth = canvasWidth - priceAxisWidth;
 
   // Background
-  ctx.fillStyle = AXIS_BG_COLOR;
+  ctx.fillStyle = PRICE_AXIS_BG_COLOR;
   ctx.fillRect(chartWidth, 0, priceAxisWidth, canvasHeight);
 
   // Border
@@ -157,6 +158,7 @@ export function drawPriceAxis(
 
   for (let p = startPrice; p <= priceMax; p += step) {
     const y = priceToY(p);
+    if (y < 8 || y > chartHeight - 8) continue;
 
     // Tick mark
     ctx.beginPath();
@@ -190,7 +192,9 @@ export function drawTimeAxis(
   ctx.fillRect(0, chartHeight, chartWidth, timeAxisHeight);
 
   // Border
-  ctx.fillStyle = AXIS_BORDER_COLOR;
+  const state = useChartStore.getState();
+  const horzOpacity = typeof state.horizontalGridLineOpacity === 'number' ? state.horizontalGridLineOpacity : DEFAULT_GRID_OPACITY;
+  ctx.fillStyle = chartColorToRgba(state.horizontalGridLineColor || AXIS_BORDER_COLOR, horzOpacity);
   ctx.fillRect(0, chartHeight, chartWidth, 1);
 
   const skipCount = Math.max(1, Math.floor(120 / barWidth)); // Increased spacing for cleaner labels
@@ -201,9 +205,15 @@ export function drawTimeAxis(
   ctx.textBaseline = 'top';
   ctx.strokeStyle = AXIS_BORDER_COLOR;
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, chartHeight, chartWidth, timeAxisHeight);
+  ctx.clip();
+
   for (let i = rawFirstIndex; i <= rawLastIndex; i++) {
     if (i % skipCount === 0) {
       const x = indexToX(i);
+      if (x < 0 || x > chartWidth) continue;
 
       // Tick mark
       ctx.beginPath();
@@ -229,4 +239,5 @@ export function drawTimeAxis(
       }
     }
   }
+  ctx.restore();
 }

@@ -4,9 +4,9 @@ import type { Candle } from '@/types/candle';
 import type { BracketDragState, BracketOrder, Order, TradeFill, VirtualPosition, MarketOrderDragState } from '@/types/trading';
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
-const LABEL_FONT  = '600 11px "Inter", -apple-system, system-ui, sans-serif';
-const SMALL_FONT  = '500 10px "Inter", -apple-system, system-ui, sans-serif';
-const BADGE_FONT  = '700 10px "Inter", -apple-system, system-ui, sans-serif';
+const LABEL_FONT  = '600 11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+const SMALL_FONT  = '500 10px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+const BADGE_FONT  = '700 10px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
 const SL_COLOR    = '#F23645';   // Red — stop loss

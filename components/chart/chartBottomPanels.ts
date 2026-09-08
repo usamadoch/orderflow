@@ -30,7 +30,6 @@ export interface ComputeBottomPanelsOptions {
 
 export function computeBottomPanelsLayout(options: ComputeBottomPanelsOptions): BottomPanelsComputedLayout {
   const {
-    activeIndicators = ['volumeBars', 'stats'],
     statsIndicatorEnabled,
     statsIndicatorItems,
     volumeBarsEnabled,
@@ -43,53 +42,36 @@ export function computeBottomPanelsLayout(options: ComputeBottomPanelsOptions): 
   const isVolumeActive = Boolean(volumeBarsEnabled);
 
   const statsHeight = isStatsActive ? statsIndicatorItems.length * STATS_GRID_ROW_HEIGHT : 0;
-  const rawVolumeHeight = Math.round(canvasHeight * (Math.max(8, Math.min(35, volumeBarsHeightPct || 18)) / 100));
-  const volumeHeight = isVolumeActive ? Math.max(28, Math.min(Math.round(canvasHeight * 0.35), rawVolumeHeight)) : 0;
 
-  // Determine active bottom indicators in user-specified order from activeIndicators
-  const orderList: BottomIndicatorId[] = [];
-  const seen = new Set<BottomIndicatorId>();
-
-  for (const id of activeIndicators) {
-    if (id === 'stats' && isStatsActive && !seen.has('stats')) {
-      orderList.push('stats');
-      seen.add('stats');
-    } else if (id === 'volumeBars' && isVolumeActive && !seen.has('volumeBars')) {
-      orderList.push('volumeBars');
-      seen.add('volumeBars');
-    }
-  }
-
-  // Fallback: If an indicator is active but missing from activeIndicators list, append it
-  if (isVolumeActive && !seen.has('volumeBars')) {
-    orderList.push('volumeBars');
-    seen.add('volumeBars');
-  }
-  if (isStatsActive && !seen.has('stats')) {
-    orderList.push('stats');
-    seen.add('stats');
-  }
-
-  const totalHeight = (isStatsActive ? statsHeight : 0) + (isVolumeActive ? volumeHeight : 0);
+  // Only docked bottom panels (like stats grid) reduce mainChartHeight.
+  // Volume bars render directly on the main chart canvas as an overlay.
+  const totalHeight = isStatsActive ? statsHeight : 0;
   const mainChartHeight = Math.max(40, canvasHeight - timeAxisHeight - totalHeight);
 
-  let currentY = mainChartHeight;
+  const rawVolumeHeight = Math.round(mainChartHeight * (Math.max(8, Math.min(35, volumeBarsHeightPct || 18)) / 100));
+  const volumeHeight = isVolumeActive ? Math.max(28, Math.min(Math.round(mainChartHeight * 0.35), rawVolumeHeight)) : 0;
+
   const panels: BottomPanelLayout[] = [];
   let statsPanel: BottomPanelLayout | undefined;
   let volumePanel: BottomPanelLayout | undefined;
 
-  for (const id of orderList) {
-    const height = id === 'stats' ? statsHeight : volumeHeight;
-    const panelLayout: BottomPanelLayout = {
-      id,
-      top: currentY,
-      height,
-      bottom: currentY + height,
+  if (isVolumeActive) {
+    volumePanel = {
+      id: 'volumeBars',
+      top: Math.max(0, mainChartHeight - volumeHeight),
+      height: volumeHeight,
+      bottom: mainChartHeight,
     };
-    panels.push(panelLayout);
-    if (id === 'stats') statsPanel = panelLayout;
-    if (id === 'volumeBars') volumePanel = panelLayout;
-    currentY += height;
+  }
+
+  if (isStatsActive) {
+    statsPanel = {
+      id: 'stats',
+      top: mainChartHeight,
+      height: statsHeight,
+      bottom: mainChartHeight + statsHeight,
+    };
+    panels.push(statsPanel);
   }
 
   return {

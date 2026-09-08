@@ -34,19 +34,23 @@ function getDeltaWidthRatio(value: number, scale: number) {
 
 export function initCanvas(canvas: HTMLCanvasElement, width: number, height: number) {
   const dpr = window.devicePixelRatio || 1;
+  const logicalWidth = Math.max(1, Math.round(width));
+  const logicalHeight = Math.max(1, Math.round(height));
   
   // Use rounded values for internal buffer size to align with physical pixels
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
+  canvas.width = Math.round(logicalWidth * dpr);
+  canvas.height = Math.round(logicalHeight * dpr);
   
-  // Set CSS dimensions to match logical dimensions precisely
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
+  // Set CSS dimensions strictly to integer values to prevent subpixel bilinear blur
+  canvas.style.width = `${logicalWidth}px`;
+  canvas.style.height = `${logicalHeight}px`;
   
   const ctx = canvas.getContext('2d');
   if (ctx) {
     ctx.resetTransform();
-    ctx.scale(dpr, dpr);
+    const scaleX = canvas.width / logicalWidth;
+    const scaleY = canvas.height / logicalHeight;
+    ctx.scale(scaleX, scaleY);
   }
   return ctx;
 }

@@ -32,6 +32,7 @@ export function drawCandles(
   const downWick = candleColors?.downWickColor || downBody;
   const downWickOpacity = typeof candleColors?.downWickOpacity === 'number' ? candleColors.downWickOpacity : downBodyOpacity;
 
+  ctx.save();
   const bodyWidth = Math.max(1, Math.floor(barWidth * 0.82));
 
   for (let i = firstIndex; i <= lastIndex; i++) {
@@ -58,22 +59,31 @@ export function drawCandles(
     const bodyHeight = Math.max(1, bottomY - topY);
     const leftX = Math.round(x - bodyWidth / 2);
 
-    // Draw Wick (draw in two parts: high to top of body, bottom of body to low)
+    // Draw Wick (aligned to half-pixels for crisp 1px stroke without blurring)
+    const wickX = Math.floor(x) + 0.5;
+    ctx.lineWidth = 1;
     ctx.strokeStyle = wickRgba;
     ctx.beginPath();
-    ctx.moveTo(Math.round(x), Math.round(highY));
-    ctx.lineTo(Math.round(x), topY);
-    ctx.moveTo(Math.round(x), bottomY);
-    ctx.lineTo(Math.round(x), Math.round(lowY));
+    ctx.moveTo(wickX, Math.round(highY));
+    ctx.lineTo(wickX, topY);
+    ctx.moveTo(wickX, bottomY);
+    ctx.lineTo(wickX, Math.round(lowY));
     ctx.stroke();
 
-    // Draw Body
-    ctx.strokeStyle = bodyRgba;
-    ctx.fillStyle = bodyRgba;
-    if (isHollowMode) {
-      ctx.strokeRect(leftX, topY, bodyWidth, bodyHeight);
+    // Draw Body: in hollow mode, bullish is crisp hollow outline, bearish is solid filled
+    if (isHollowMode && isBullish) {
+      if (bodyHeight <= 2 || bodyWidth <= 2) {
+        ctx.fillStyle = bodyRgba;
+        ctx.fillRect(leftX, topY, bodyWidth, bodyHeight);
+      } else {
+        ctx.strokeStyle = bodyRgba;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(leftX + 0.5, topY + 0.5, bodyWidth - 1, bodyHeight - 1);
+      }
     } else {
+      ctx.fillStyle = bodyRgba;
       ctx.fillRect(leftX, topY, bodyWidth, bodyHeight);
     }
   }
+  ctx.restore();
 }
