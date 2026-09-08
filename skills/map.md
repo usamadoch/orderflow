@@ -58,9 +58,10 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `.env.local` → Local runtime environment variables for DB drivers, retention settings, and threshold limits.
 - `next.config.mjs` → Next.js configuration, including server instrumentation hook support.
 - `instrumentation.ts` → Server startup hook that initializes DB storage adapters and cleanup tasks.
-- `app/layout.tsx` → Root layout and global app shell wiring.
-- `app/page.tsx` → Main app scaffold (Header, Sidebar, chart panel layout, draggable split, focus layout mode, and debug panel mount).
-- `app/globals.css` → Tailwind base styles, theme color variables, contrast utilities, scrollbar styling, and animations.
+- `tailwind.config.ts` → Tailwind configuration mapping theme tokens and MacFont / BlinkMacSystemFont typography.
+- `app/layout.tsx` → Root layout wiring MacFont (`BlinkMacSystemFont`) local fonts, stylesheet, and global app shell.
+- `app/page.tsx` → Main app scaffold (Header, Sidebar, chart panel layout without vertical main padding, draggable split, focus layout mode, and debug panel mount).
+- `app/globals.css` → Tailwind base styles, theme color variables, MacFont typography, contrast utilities, scrollbar styling, and animations.
 
 ### History APIs
 
@@ -82,28 +83,54 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Layout / UI Components
 
-- `components/layout/Header.tsx` → Top toolbar with layout controls, connection status indicator, and symbol/settings access.
-- `components/layout/Sidebar.tsx` → Thin icon-rail sidebar for active chart tools and status tooltips.
-- `components/ui/ChartLayoutDropdown.tsx` → Layout selector dropdown for Single Chart and Two Charts (vertical/horizontal split) with Sync Crosshair toggle.
+- `components/layout/Header.tsx` → Top toolbar styled with dark #0F0F0F background and border tokens, housing connection status indicator, auth-gated storage access, and symbol/settings controls.
+- `components/layout/Sidebar.tsx` → Thin icon-rail sidebar (kept intact in codebase, hidden from view per UI requirements).
+- `components/ui/ChartLayoutDropdown.tsx` → Layout selector dropdown using FigPopup with mode="dropdown", stable bottom-right positioning without jumping, p-3.5 padding, rounded-xl corners, 1.5x larger layout buttons (h-10 w-12), FigUI3 trigger tooltip, and "Sync In Layout" toggles for independent Crosshair and Drawings synchronization.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection status indicator.
-- `components/ui/PanelToolbar.tsx` → Per-panel controls for symbol, timeframe, chart mode, position & BUY/SELL trade tools, refresh, and settings.
+- `components/ui/PanelToolbar.tsx` → Per-panel controls for symbol, timeframe, chart mode, position & BUY/SELL trade tools, chart layout selector, refresh, and settings using FigButton triggers.
 - `components/ui/OrderTicket.tsx` → Draggable floating order ticket modal with quantity presets, risk checks, and validation.
 - `components/ui/AccountBalanceWidget.tsx` → Header widget displaying available asset balances from live account snapshots.
 - `components/ui/OrdersPanel.tsx` → Bottom pane table displaying open limit orders with real-time status and cancellation controls.
-- `components/ui/DrawingFavoritesToolbar.tsx` → Floating toolbar for quick selection of favorite drawing tools (Profile, Measure, Lines, Boxes).
-- `components/ui/ChartSettingsDropdown.tsx` → The main popup/dropdown for configuring global settings, indicator settings, and profiles.
-- `components/ui/chart-settings/` → Modularized component files for `ChartSettingsDropdown` (e.g., `GeneralChartSettings.tsx`, `CanvasSettings.tsx`, `AlertsSettings.tsx`, `SessionsSettings.tsx`, `CvdSettings.tsx`, `VolumeBarsSettings.tsx`, `BubbleSettings.tsx`, `LiquidityMapSettings.tsx`, `HeatmapSettings.tsx`, `StatsSettings.tsx`, `SignalSettings.tsx`, `FootprintSettings.tsx`, `VolumeProfileSettings.tsx`, `HistoricalSessionProfileSettings.tsx`).
-- `components/ui/IndicatorsModal.tsx` → The popup modal for adding new indicators from the PanelToolbar.
+- `components/ui/DrawingFavoritesToolbar.tsx` → Draggable floating toolbar with z-[70] stacking above header, 32x32px padded button clickable targets, full-area hover, strokeWidth 1.5 icons, and unblocked window drag listeners.
+- `components/ui/ChartSettingsDropdown.tsx` → The settings window with solid opaque styling, indicator dialog mode, draggable floating settings window with custom vertical resize, FigButton sidebar navigation, and unblocked window drag listeners.
+- `components/ui/chart-settings/GeneralChartSettings.tsx` → General aggregation, global timezone/format, and interaction settings using FigUI3 and PropsKit controls.
+- `components/ui/chart-settings/CanvasSettings.tsx` → Canvas appearance settings (background, gridlines, crosshair, candle colors) using FigUI3 controls and child ColorPickerPopover.
+- `components/ui/chart-settings/AlertsSettings.tsx` → Placeholder settings panel for upcoming alert management.
+- `components/ui/chart-settings/FootprintSettings.tsx` → Footprint chart display mode settings using FigSegmentedControl.
+- `components/ui/chart-settings/VolumeProfileSettings.tsx` → Volume Profile indicator configurations (periods, type, scaling, cosmetics) using FigUI3 and PropsKit controls.
+- `components/ui/chart-settings/HistoricalSessionProfileSettings.tsx` → Historical session volume profile selection, sessions, and display modes using FigUI3 controls.
+- `components/ui/chart-settings/SessionsSettings.tsx` → Trading sessions toggles, hours, and colors using FigSwitch, TimeInput, and child ColorPickerPopover.
+- `components/ui/chart-settings/CvdSettings.tsx` → Cumulative Volume Delta indicator settings (mode, reset, scale, sliders, divergence) using FigUI3 and PropsKit controls.
+- `components/ui/chart-settings/VolumeBarsSettings.tsx` → Volume Bars indicator settings (input data, filters, colors, opacity, MA) using FigUI3 and PropsKit controls.
+- `components/ui/chart-settings/BubbleSettings.tsx` → Volume Bubbles indicator settings (size, modes, thresholds, sliders, 2D/3D, FigButton docs link) using FigUI3 and PropsKit controls.
+- `components/ui/chart-settings/LiquidityMapSettings.tsx` → Liquidity map indicator settings (opacity, bucket size, min size, range) using PropskitSlider and PropskitNumber.
+- `components/ui/chart-settings/HeatmapSettings.tsx` → Historical orderbook heatmap indicator settings (opacity, fade, strip width, depth, toggles) using FigUI3 and PropsKit controls.
+- `components/ui/chart-settings/StatsSettings.tsx` → Stats indicator toggles and display ordering using FigSwitch controls.
+- `components/ui/chart-settings/SignalSettings.tsx` → Microstructure signal detection settings (absorption, exhaustion, iceberg, liquidity vacuum) using FigButton toggles and PropsKit controls.
+- `components/ui/chart-settings/VwapSettings.tsx` → VWAP indicator configuration (mode, anchor, lookback, envelopes, bands) using FigUI3 and PropsKit components.
+- `components/ui/fig/` → Reusable React wrappers for FigUI3 and PropsKit web components (`FigSwitch`, `FigButton`, `FigSegmentedControl`, `FigSelect`, `PropskitSlider`, `PropskitNumber`, `FigPopup`, `FigDialog`, `FigTooltip`).
+- `components/ui/IndicatorsModal.tsx` → Indicator picker popup using FigPopup with mode="dropdown", generous p-2.5 padding, rounded-xl corners, +50% taller rows (min-h-[38px]), left-aligned text, and persistent active button styling matching FigUI3 tokens.
 - `components/ui/ColorPickerPopover.tsx` → Shared TradingView-style color picker popover (80-swatch matrix, custom color '+' button, 3/6/8-digit hex parser, native eyedropper, and opacity slider) used by drawing tools and indicator settings.
-- `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with AM/PM toggle) and 24-hour modes matching global settings.
+- `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with FigButton AM/PM toggle) and 24-hour modes matching global settings.
 - `components/ui/BubblesDocsModal.tsx` → Reference modal explaining Volume Bubbles visualization, sizing, and color indicators.
-- `components/ui/PairSelector.tsx` → Symbol selection modal supporting Spot and Perpetual Futures contracts.
+- `components/ui/PairSelector.tsx` → Anchored dropdown selector using FigPopup with dropdown prop opening directly underneath trigger button.
 - `components/ui/TimeframeSelector.tsx` → Panel timeframe switcher control.
-- `components/ui/ChartModeSelector.tsx` → Chart mode dropdown selector for Candle, Hollow, and Footprint.
-- `components/ui/ChartModeToggle.tsx` → (Legacy) Candle and footprint chart mode selector.
+- `components/ui/ChartModeSelector.tsx` → Chart mode dropdown selector using FigPopup with mode="dropdown", generous p-2.5 padding, rounded-xl corners, +50% taller rows (min-h-[38px]), left-aligned text, custom TradingView-style SVGs on the left, and persistent active item styling.
+- `components/ui/ChartModeToggle.tsx` → (Legacy) Candle and footprint chart mode selector using FigButton.
 - `components/ui/BucketSizeInput.tsx` → Footprint bucket size selector input.
-- `components/ui/StorageManager.tsx` → Modal component (rendered via Portal) for viewing TimescaleDB storage usage and executing manual data cleanup.
-- `components/debug/DebugPanel.tsx` → Floating dev debug panel (Ctrl+Shift+D) displaying metrics, store summaries, and restore diagnostics.
+- `components/ui/StorageManager.tsx` → Modal component (rendered via Portal) for viewing TimescaleDB storage usage and executing manual data cleanup with FigButton destructive action.
+- `components/ui/fig/useFigElement.ts` → Reusable React hook managing dynamic FigUI3 library import, Light/Shadow DOM property sync, attribute reflection, and native custom event binding.
+- `components/ui/fig/FigButton.tsx` → Reusable React wrapper for `<fig-button>` supporting id prop on custom element, variants, sizes, icon-only mode, selected states, and guaranteed cursor: pointer inheritance into shadow DOM.
+- `components/ui/fig/FigSwitch.tsx` → Reusable React wrapper for `<fig-switch>` supporting controlled/uncontrolled checked states and native change dispatch.
+- `components/ui/fig/FigSegmentedControl.tsx` → Reusable React wrapper for `<fig-segmented-control>` and `<fig-segment>` supporting radio-group selection, animated active indicators, delegated click handling, direct onChange propagation, and cursor: pointer styling.
+- `components/ui/fig/FigSelect.tsx` → Reusable React wrapper for `<fig-select>` custom dropdown selector supporting option lists, groups, and change event forwarding.
+- `components/ui/fig/PropskitSlider.tsx` → Reusable React wrapper for `<propskit-slider>` labeled numeric range slider with elastic scrub and text field support.
+- `components/ui/fig/PropskitNumber.tsx` → Reusable React wrapper for `<propskit-number>` labeled exact numeric input with precision, unit, and empty label suppression.
+- `components/ui/fig/FigPopup.tsx` → Reusable React wrapper for `<dialog is="fig-popup">` supporting explicit presentation modes (`mode="dropdown"` with synchronous pre-paint positioning supporting left, right, and center horizontal alignment without glitching vs `mode="modal"`), fixed positioning, and click-outside.
+- `components/ui/fig/FigDialog.tsx` → Reusable React wrapper for `<dialog is="fig-dialog">` supporting modal dialogs and draggable floating windows.
+- `components/ui/fig/FigTooltip.tsx` → Reusable React wrapper for `<fig-tooltip>` custom element supporting contextual hover/click tooltips.
+- `components/ui/fig/index.ts` → FigUI3 component barrel export.
+- `components/debug/DebugPanel.tsx` → Floating dev debug panel (Ctrl+Shift+D) displaying metrics, store summaries, and restore diagnostics with FigButton tab navigation.
 
 ### Feed / Engine Context
 
@@ -112,35 +139,35 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Chart Rendering
 
-- `components/chart/ChartPanel.tsx` → Panel container bridging chart settings, runtime state, symbol filtering, and historical session ranges.
+- `components/chart/ChartPanel.tsx` → Panel container bridging chart settings, runtime state, symbol filtering, historical session ranges, and global 28% opacity CVD border styling with FigButton CVD expand/collapse triggers.
 - `components/chart/chartPanelUtils.ts` → Utilities for symbol filtering (orders, positions, fills) and historical session ranges.
-- `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots and heights for bottom chart indicators.
-- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, reordering controls, and quick toggles.
+- `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots for docked bottom indicators, treating volume bars as an on-canvas overlay.
+- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, reordering controls, and quick toggles using FigButton.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas rendering coordinator with drawing anchor edge clamping, direct/optimistic bracket TP/SL drag execution, SL/TP close buttons, and position close confirmation popup.
-- `components/chart/chartCanvasUtils.ts` → Coordinate translation, bucket indexing, order placement math, and segment distance utilities.
+- `components/chart/ChartCanvas.tsx` → Main canvas coordinator with integer DPR, strict chart area clipping, TradingView-standard drawing layering (unselected drawings & position tools rendered behind candles on liveCtx, selected tools elevated to overlay ctx with handles/toolbars), bracket drag, and position close popup.
+- `components/chart/chartCanvasUtils.ts` → Continuous fractional index interpolation (resolveIndexFromTime) from timestamps for multi-timeframe drawing sync, coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
-- `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (10x6 color palette with shade variations, 0-100% opacity slider, 8-digit hex parser, box border/fill separation with fill toggle), custom profile controls, and order modification dialogs.
-- `components/chart/CvdPanel.tsx` → Canvas panel rendering Cumulative Volume Delta imperatively synced with main chart viewport via Zustand.
+- `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (1px white defaults, FigUI tooltips, Trash2 delete, box border/fill, and position tool profit & stop loss color pickers) and custom profile controls with pointer/mouse event isolation.
+- `components/chart/CvdPanel.tsx` → Canvas panel rendering Cumulative Volume Delta with background DEFAULT_CANVAS_BG fill, unoccluded drawTimeAxis on bgCtx, global grid styling sync, overlay rendering of placed vertical lines and time badges extending down on top of CVD to the bottom time axis, candle-to-candle vertical crosshair snapping synchronized with the main chart, canvas-scoped mouse events, and live drawingDrag overlay sync.
 - `components/chart/cvdPanelUtils.ts` → CVD panel scale calculations and viewport mapping.
-- `components/chart/drawStatsGrid.ts` → Canvas overlay rendering volume, delta, and CVD summary statistics grid.
-- `components/chart/useCoordinates.ts` → Hook calculating price/time coordinate bounds and visible range mappings.
+- `components/chart/drawStatsGrid.ts` → Canvas overlay rendering volume, delta, and CVD summary statistics grid with borders styled using global 28% grid opacity.
+- `components/chart/useCoordinates.ts` → Hook calculating price/time coordinate bounds, visible range mappings, and timeToIndex with boundary extrapolation.
 - `components/chart/hooks/useVwapHydration.ts` → Hook explicitly fetching and subscribing to historical 1m base candles to hydrate accurate VWAP state independent of active timeframe.
-- `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, crosshair interaction, and multi-canvas synchronization.
-- `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry using configurable body and wick colors.
-- `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with divergence markers.
+- `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, crosshair interaction, canvas-scoped mouse movement with dynamic window drag listeners, and multi-canvas synchronization.
+- `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry with half-pixel alignment for crisp high-definition lines and TradingView-standard hollow candle rendering.
+- `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with transparent background on liveCtx allowing bgCtx time axis to display, global 28% grid styling, borderless rounded crosshair badge, and divergence markers.
 - `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters, delta, or delta-volume profiles per price level.
 - `components/chart/drawBubbles.ts` → Volume bubble renderer visualizing trade volume, order clusters, and color modes with percentile scaling and 3D effects.
-- `components/chart/drawVolumeBars.ts` → Bottom histogram renderer for volume and trade counts with moving average overlay.
+- `components/chart/drawVolumeBars.ts` → On-canvas histogram overlay renderer for volume and trade counts layered behind candlesticks with moving average.
 - `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC line, developing POC trail, Value Area, and HVN/LVN levels with configurable cosmetics.
 - `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer.
-- `components/chart/drawLines.ts` → Canvas renderer for horizontal lines, vertical lines, rays, boxes, and Risk/Reward position tools with globalAlpha opacity, box fillColor/showFill separation, horizontal price axis badges, vertical time axis badges, and non-colliding ray anchor badges.
+- `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools with evaluatePositionOutcome terminating arrow & darker shading upon TP/SL hit, vertical time-split shading, and dynamic contrast text.
 - `lib/utils/format.ts` → Formatting helpers for price precision, time countdowns, elapsed duration, volume/delta abbreviations, and TradingView-style date-time badges (e.g. `Sat 05 Sep '26  12:05 AM`).
 - `components/chart/drawVwap.ts` → Canvas renderer for VWAP line, rolling window, and envelope bands.
-- `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer supporting configurable horizontal and vertical grid line toggles and colors.
+- `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer with price axis styled in #2C2C2C (DEFAULT_HEADER_SIDEBAR_BG), supporting configurable horizontal/vertical grid line toggles, colors, global 28% opacity time axis border, and boundary clipping/checking preventing labels from spilling into adjacent corners.
 - `components/chart/drawPriceLine.ts` → Current market price line, badge, and timer renderer.
 - `components/chart/drawTradingOverlays.ts` → Canvas overlay renderer for limit orders, SL/TP brackets, virtual positions, and fill markers.
-- `components/chart/drawCrosshair.ts` → Crosshair overlay and axis price/time label renderer with customizable color, opacity, thickness, and line styles (solid/dashed/dotted) with crisp subpixel coordinate alignment.
+- `components/chart/drawCrosshair.ts` → Crosshair overlay and axis price/time label renderer with borderless 2px rounded badges, axis-aligned price coordinates, customizable color, opacity, thickness, line styles, verticalLineHeight extending through indicators, and clamped bottom time label.
 - `components/chart/drawAbsorption.ts` → Marker renderer for absorption signals.
 - `components/chart/drawExhaustion.ts` → Marker renderer for exhaustion signals.
 - `components/chart/AbsorptionTooltip.tsx` → Hover tooltip displaying absorption signal details.
@@ -161,10 +188,10 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Persisted Zustand store for chart preferences, indicator settings, drag confirmation preferences, drawings, UI state, and tab-aware storage isolation.
-- `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, trades, signals, trading account data, active drag state, and optimistic bracket sync.
+- `lib/store/chart.ts` → Persisted Zustand store (v38) for chart preferences, indicator settings, default 28% grid opacity, drawings, UI state, layout sync preferences (crosshairSyncEnabled, drawingsSyncEnabled), and tab-aware storage isolation.
+- `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, trades, signals, trading account data, active drag state, optimistic bracket sync, and real-time drawingDrag stream.
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcut handler for chart tools, modes, and navigation.
-- `types/chart.ts` → TypeScript definitions for chart configurations, panels, and indicator options.
+- `types/chart.ts` → TypeScript definitions for chart configurations, panels, indicator options, and DrawnLine properties (including position profit/stop colors).
 
 ### Feeds / Shared Live Data
 
@@ -275,7 +302,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/debug/marketMetrics.ts` → Developer metrics registry tracking stream health, cache usage, and render performance.
 - `lib/debug/debugPanelAdapter.ts` → Adapter formatting market metrics for the UI debug panel.
 - `lib/config/markets.ts` → Supported market pairs, timeframe definitions, and symbol validation logic.
-- `lib/config/chartColors.ts` → Shared color palette definitions and color utility functions.
+- `lib/config/chartColors.ts` → Shared color palette definitions, theme color constants (DEFAULT_CANVAS_BG, DEFAULT_BORDER_COLOR, DEFAULT_GRID_COLOR, DEFAULT_GRID_OPACITY = 0.28, DEFAULT_HEADER_BG = '#0F0F0F'), and color utility functions.
 - `lib/config/constants.ts` → Core application constants and system defaults.
 - `types/debug.ts` → TypeScript definitions for metrics, logs, and debug snapshots.
 
@@ -285,7 +312,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/validators/orderValidation.ts` → Order request payload reading, parameter normalization, validation, and error response builder.
 - `lib/validators/historyValidation.ts` → History API time parameter normalization, contract type resolution, and query parameter validation.
 - `lib/utils/tradingApiUtils.ts` → Shared symbol/limit normalizers and error snapshot/status builders for trading APIs.
-- `lib/utils/canvas.ts` → Low-level HTML5 Canvas drawing primitives.
+- `lib/utils/canvas.ts` → Low-level HTML5 Canvas drawing primitives and integer-aligned DPR canvas initializer.
 - `lib/utils/chartUtils.ts` → General charting calculations and data helper functions.
 - `lib/utils/delta.ts` → Delta calculation and CVD series formatting utilities.
 - `lib/utils/format.ts` → Formatter functions for currency, numbers, volume, and timestamps.
@@ -297,7 +324,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `types/trade.ts` → Trade tick and market trade types.
 - `types/measurement.ts` → Measurement tool selection and measurement data types.
 - `types/trading.ts` → Types for order management, positions, account balances, and bracket orders.
-- `types/cvd.ts` → Cumulative Volume Delta types and marker configurations.
+- `types/cvd.ts` → Cumulative Volume Delta types, marker configurations, and draw options with grid styling.
+- `types/figui3.d.ts` → TypeScript custom element declarations and module typings for FigUI3.
 
 ### Artifacts / Skills
 

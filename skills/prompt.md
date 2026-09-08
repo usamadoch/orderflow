@@ -3,7 +3,7 @@ TASK:
 CONTEXT RULES:
 
 map.md = source of truth for file structure
-log.md = history of changes
+log.md = history of changes make its not more than 12 lines
 
 STRICT EXECUTION FLOW:
 

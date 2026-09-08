@@ -1,616 +1,690 @@
 # OrderFlow Chart - Change Log
 
-## [2026-09-05] - Feature: Grid Line Styles, Checkbox Toggles, Canvas Candles & General Tab Rename
-
+## [2026-09-08] - Fix: Draggable Popups & Toolbar Drag Stop-and-Start Glitch
 - **What changed**:
-  - **Grid Line Styles (`lib/store/chart.ts`, `components/chart/drawAxes.ts`, `components/chart/ChartCanvas.tsx`, `components/ui/chart-settings/CanvasSettings.tsx`)**:
-    - Added `verticalGridLineStyle` and `horizontalGridLineStyle` (`'solid' | 'dashed' | 'dotted'`) with actions and persistence in `useChartStore`.
-    - Updated `drawGrid` in `drawAxes.ts` to apply custom line styles (`solid`, `dashed [4, 4]`, `dotted [2, 2]`) using `ctx.setLineDash`.
-    - Wired grid line styles through `ChartCanvas.tsx` subscriptions and redraw dependency arrays.
-    - Updated `CanvasSettings.tsx` to include `showLineStyle={true}`, `lineStyle`, and `onLineStyleChange` in the color picker popup for both Vertical and Horizontal grid lines, matching Crosshair styling.
-    - Added line appearance preview buttons for grid lines displaying color swatch, opacity, and line style glyph (`—`, `---`, `...`).
-  - **Grid Lines Checkbox Toggles (`components/ui/chart-settings/CanvasSettings.tsx`)**:
-    - Replaced pill toggle switches with check/uncheck checkbox buttons (`role="checkbox"`) with Lucide `Check` icons.
-  - **Background Color Opacity Removal (`components/ui/chart-settings/CanvasSettings.tsx`)**:
-    - Set `showOpacity={false}` on Solid Background, Gradient Top, and Gradient Bottom color pickers so the opacity slider is not shown on background selections.
-  - **Candles Settings Moved to Canvas (`components/ui/chart-settings/CanvasSettings.tsx`, `components/ui/chart-settings/GeneralChartSettings.tsx`)**:
-    - Moved the full "Candles" section (Buy/Up body & wick, Sell/Down body & wick with color and opacity) into `CanvasSettings.tsx`.
-    - Removed Candles section from `GeneralChartSettings.tsx`, keeping `GeneralChartSettings.tsx` focused purely on Aggregation (Tick Size, Bucket Size), Global Time (Timezone, Time Format), and Interaction settings.
-  - **Symbol Tab Renamed to General Tab (`components/ui/ChartSettingsDropdown.tsx`)**:
-    - Renamed `'symbol'` tab ID and label to `'general'` / `'General'` with Lucide `Sliders` icon.
-    - Updated default tab state to `'general'`.
+  - In `DrawingFavoritesToolbar.tsx`, `ChartSettingsDropdown.tsx`, and `CanvasDrawingToolbar.tsx`, removed `onPointerMove`/`onMouseMove` `stopPropagation()`.
+  - Kept `onPointerDown` and `onMouseDown` `stopPropagation()` intact to prevent background canvas interactions on click.
+- **Why it changed**: Recent UI event boundaries added `stopPropagation()` to move events on popup containers. Because drag handlers listen on `window`, move events were blocked whenever the cursor was over the popup, causing it to freeze until the cursor left the popup boundary.
+- **Impact summary**: Both draggable favorites toolbar and global settings window drag smoothly without stopping or glitching; zero bloat; clean tsc and lint.
+
+## [2026-09-08] - Fix: Position Tool TP/SL Hit Termination & Vertical Time Shading
+- **What changed**:
+  - In `drawLines.ts`, implemented `evaluatePositionOutcome` iterating from entry candle and halting tracking the instant candle wicks touch TP or SL.
+  - Stopped trajectory arrow at the exact candle and price level of the hit SL/TP, preventing over-extension into subsequent candles.
+  - Implemented vertical time-split shading: darker highlight fills active duration up to the exit candle; remainder of the box stays base color.
+- **Why it changed**: Position tool kept tracking price after SL was already hit, erroneously drawing arrow into TP zone on subsequent bars.
+- **Impact summary**: Positions terminate strictly when SL/TP is hit, matching TradingView vertical shading and trajectory stopping; 0 errors.
+
+## [2026-09-08] - Feature: Single-Box Price Progress Shading & TradingView Drawing Layering
+- **What changed**:
+  - In `drawLines.ts`, refactored `drawPositionBackgrounds` so darker highlight tracks `currentPrice` solely inside the active box (TP or SL), leaving opposite box in base tint.
+  - Refactored trajectory arrow in `drawLines.ts` to directly connect entry to the active candle close price.
+  - In `ChartCanvas.tsx`, partitioned drawings: unselected drawings & positions render behind candles on `liveCtx`; selected tools render on overlay `ctx` on top with handles.
+  - Added auto-selection on drawing creation and restricted box price badges to selected boxes.
+- **Why it changed**: Position tool shaded both boxes simultaneously and arrow didn't track price; drawings obscured candles when unselected.
+- **Impact summary**: Visual behavior matches TradingView with crisp candles above unselected tools and single-box price tracking; 0 TS/ESLint errors.
+
+## [2026-09-08] - Feature: TradingView-Style Position Progress Shading & 2-Stage Canvas Layering
+- **What changed**:
+  - Added `drawPositionBackgrounds` in `drawLines.ts` with progress color differentiation (completed vs remaining profit and drawdown).
+  - Implemented true 2-stage canvas layering in `ChartCanvas.tsx`: position backgrounds render behind candles on `liveCtx`, level lines/handles/tooltips on `ctx`.
+  - Added trajectory dashed line with arrowhead pointing to the extreme excursion candle (max favorable or adverse excursion).
+  - Completely deleted the synthetic `drawPositionCandleOverlap` hack, restoring 100% crisp, un-tinted candle bodies and wicks.
+- **Why it changed**: Position tool rendered in front of candles causing murky artifacts, and lacked progress color differentiation.
+- **Impact summary**: Candlesticks render crystal-clear over position boxes with completed vs remaining progress shading matching TradingView; 0 TS/ESLint errors.
+
+## [2026-09-08] - Feature: Position Drawing Profit & Stop Loss Color Controls
+- **What changed**:
+  - Added `profitColor`, `profitOpacity`, `stopColor`, and `stopOpacity` fields to `DrawnLine` in `types/chart.ts`.
+  - In `CanvasDrawingToolbar.tsx`, added dedicated Profit and Stop color & opacity pickers for position drawings.
+  - In `drawLines.ts`, rendered profit/stop loss box fills, level lines, candle overlap, target/stop pill tooltips, and open P&L badge using selected colors with dynamic contrast text.
+- **Why it changed**: Position tool floating bar lacked separate color selection for loss and profit boxes and their respective labels.
+- **Impact summary**: Users can independently customize profit and stop loss colors/opacities with live canvas reflection; `npx tsc --noEmit` and `npm run lint` clean.
+
+## [2026-09-08] - Fix: UI Overlay Canvas Isolation, Drawing Drag Sticking Fix & Layout Sync Controls
+- **Drawing Drag Detachment Fix**: Fixed bug where dragging drawings stuck to cursor. When `onMouseDown` selected a drawing, React re-rendered, unmounting dynamically attached `window.mouseup` listeners and dropping the release event. Maintained persistent `window.mouseup` and dragging-only `window.mousemove` listeners across `ChartCanvas`, `usePanZoom`, and `CvdPanel`.
+- **Event Boundary Isolation**: Scoped hover/crosshair listeners directly to `canvas`. Window mousemove listeners are active strictly during active drags, preventing canvas interaction when hovering over UI overlays.
+- **Continuous Multi-Timeframe Drawing Sync**: Refactored `chartCanvasUtils.ts` to continuous fractional index interpolation (`resolveIndexFromTime`) from timestamps.
+- **Ephemeral Drawing Drag**: Added `drawingDrag` state to `chartRuntime.ts` for real-time overlay streaming without React re-renders or `localStorage` latency; committed once on mouseup.
+- **Sync Drawings Toggle**: Added independent "Drawings" switch under "Sync In Layout" in `ChartLayoutDropdown.tsx`.
+- **Validation**: `npx tsc --noEmit` and `npm run lint` pass with 0 errors and 0 warnings.
+
+## [2026-09-07] - Feature: TradingView Candle-to-Candle Vertical Crosshair Snapping & Placed Vertical Lines on Top of CVD Panel
+- **What changed**:
+  - **TradingView-Style Candle-to-Candle Vertical Crosshair Snapping**:
+    - In [`components/chart/ChartCanvas.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartCanvas.tsx):
+      - Snapped crosshair X coordinate (`mx`) to the exact candle center: `const snappedIndex = xToIndex(mouseX.current, candles, ...); mx = indexToX(snappedIndex);`.
+      - Kept crosshair Y coordinate (`my = mouseY.current`) moving completely freely anywhere on the canvas.
+      - As the cursor moves left or right, the vertical crosshair remains locked to the center of the current candle as long as the mouse is within its boundary, jumping cleanly to the neighboring candle once crossed.
+      - Enabled crosshair synchronization between `ChartCanvas` and `CvdPanel` within the same panel (`crosshair.activePanel === panelId`), ensuring the vertical dotted line extends seamlessly across both canvases without distortion.
+    - In [`components/chart/CvdPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CvdPanel.tsx):
+      - Snapped crosshair X coordinate to candle center `mx = indexToX(xToIndex(mouseX.current, ...))` on mouse move over CVD while allowing `my = mouseY.current` to move freely.
+      - Connected crosshair styles (`color, opacity, thickness, style`) from `useChartStore` to `drawCrosshair`.
+      - Updated crosshair broadcast in `updateCrosshair` to unconditionally sync with `ChartCanvas` within the panel.
+    - In [`components/chart/useCoordinates.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/useCoordinates.ts):
+      - Enhanced `timeToIndex` to support time extrapolation beyond first and last candles so crosshair alignment remains continuous in right-margin and past empty space.
+  - **Placed Vertical Line (`line.type === 'vertical'`) on Top of CVD Panel**:
+    - In [`components/chart/ChartPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartPanel.tsx):
+      - Passed `drawnLines={panel.drawnLines}` prop to `CvdPanel`.
+    - In [`components/chart/CvdPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CvdPanel.tsx):
+      - Added `drawnLines?: PanelState['drawnLines']` to `CvdPanelProps` and retrieved live drawn lines with `useMemo`.
+      - In the `overlay` layer (`canvasRef` `z-20`), filtered vertical lines (`line.type === 'vertical'`), resolved coordinates with `resolveLineForRender(line, candles)`, and rendered them on top of CVD indicator series via `drawLines`.
+      - Rendered the corresponding TradingView-style date/time badge on the bottom time axis via `drawDrawingPriceLabels`.
 - **Why it changed**:
-  - User requested grid line popups to match crosshair line styling options, grid lines to use checkboxes instead of toggles, background colors to omit the opacity slider, and candle settings to be housed in the Canvas tab while renaming Symbol to General.
+  - Direct user feedback:
+    1. Crosshair behavior on the main chart moved freely in both directions, whereas CVD snapped candle-by-candle. This caused the vertical crosshair line to misalign and appear distorted between the chart and the CVD panel. Vertical crosshairs in TradingView stay locked on a candle until the boundary to the next candle is crossed, while the horizontal line moves freely.
+    2. Placed vertical line drawings disappeared at the CVD boundary as if going "behind the CVD" rather than continuing down across the CVD panel to the bottom time axis with its date/time badge.
 - **Impact summary**:
-  - Clean separation of visual/canvas appearance (Candles, Background, Grid Lines, Crosshair) in the Canvas tab.
-  - General tab focuses on aggregation, time, and interaction controls.
-  - Grid lines can now be styled as solid, dashed, or dotted, and toggled via standard checkboxes.
-  - Passes all unit tests and `npx tsc --noEmit` with 0 errors.
+  - Vertical crosshairs now stay locked to candle centers on both chart and CVD, providing an aligned, unified line between panels.
+  - Placed vertical lines render cleanly on top of CVD and terminate with their date/time badges on the bottom time axis.
+  - Both `npx tsc --noEmit` and `npm run lint` pass with 0 errors and 0 warnings.
 
-## [2026-09-05] - Fix: ColorPicker Popover Portal Positioning & Global Settings Opacity Integration
 
+## [2026-09-07] - Fix: Candle Overlap on Price/Time Axes (Layer Clipping) & CVD Missing Horizontal Time Bar
 - **What changed**:
-  - **Shared Color Picker Positioning & Portal (`components/ui/ColorPickerPopover.tsx`)**:
-    - Portaled the popover to `document.body` via `createPortal` with `fixed z-[99999]` when not in toolbar mode (`!chartBounds`).
-    - Anchors to the trigger button using an invisible marker ref fallback to previous/parent sibling.
-    - Implemented viewport-aware positioning: flips upward when space below is insufficient, shifts left/right to prevent viewport clipping, and clamps strictly within viewport bounds (`[8px, window.innerHeight - popoverHeight - 8px]` and `[8px, window.innerWidth - popoverWidth - 8px]`).
-    - Added `ResizeObserver` on the popover container to dynamically adjust coordinates when custom hex input is toggled.
-    - Added window/modal scroll listeners with `{ capture: true }` to keep the popover aligned during scrolling.
-    - Preserved in-place absolute rendering for canvas drawing toolbars (`chartBounds`).
-  - **Opacity Support across Global Settings (`lib/store/chart.ts`, `components/ui/chart-settings/GeneralChartSettings.tsx`, `components/ui/chart-settings/CanvasSettings.tsx`)**:
-    - Added opacity store properties and setters: `candleUpOpacity`, `candleDownOpacity`, `candleUpWickOpacity`, `candleDownWickOpacity`, `chartBackgroundOpacity`, `chartBackgroundGradientTopOpacity`, `chartBackgroundGradientBottomOpacity`, `verticalGridLineOpacity`, and `horizontalGridLineOpacity`.
-    - Added all opacity fields to Zustand `partialize` persistence.
-    - Enabled `showOpacity={true}`, `opacity`, and `onOpacityChange` in `ColorPickerPopover` for all candle bodies/wicks in `GeneralChartSettings.tsx`, and solid/gradient background and vertical/horizontal grid lines in `CanvasSettings.tsx`.
-    - Updated preview swatches across `GeneralChartSettings.tsx`, `CanvasSettings.tsx`, and `SessionsSettings.tsx` to reflect active opacity values.
-  - **Canvas Rendering Engine Integration (`components/chart/ChartCanvas.tsx`, `components/chart/drawAxes.ts`, `components/chart/drawCandles.ts`, `lib/config/chartColors.ts`)**:
-    - Connected vertical and horizontal grid line opacity to `drawGrid` using `chartColorToRgba`.
-    - Connected candle body and wick opacities to `drawCandles` using `chartColorToRgba`.
-    - Subscribed `ChartCanvas.tsx` to all new opacity state values and added them to `redraw` dependency arrays.
+  - **Candles Overlapping Price Axis & Time Axis Layering Fix**:
+    - In [`components/chart/ChartCanvas.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartCanvas.tsx):
+      - Enforced strict chart area clipping `[0, 0, chartWidth, chartHeight]` via `liveCtx.save()`, `liveCtx.rect(0, 0, chartWidth, chartHeight)`, `liveCtx.clip()`, and `liveCtx.restore()` across all main chart series (`drawCandles`, `drawFootprint`, `drawAggregateTradeBubbles`, `drawAbsorption`, `drawExhaustion`, `drawIceberg`, and `drawVwap`).
+      - Prevented overscan candles (calculated by `getVisibleRange`) and panning candles from rendering into the price axis region (`x >= chartWidth`) or bottom panels/time axis (`y >= chartHeight`).
+      - Fixed the issue where candles on `liveCanvasRef` (`z-10`) sat physically in front of `bgCanvasRef` (`z-0`), eliminating the artifact where hollow candles showed price numbers through their bodies or solid candles obscured price numbers.
+      - Applied chart area clipping `[0, 0, chartWidth, chartHeight]` to live volume profiles (`drawVolumeProfile`, session profiles) and custom profiles on `ctx` (`canvasRef`).
+  - **CVD Horizontal Time Axis Occlusion Fix**:
+    - In [`components/chart/drawCvd.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawCvd.ts):
+      - Removed `ctx.fillStyle = '#0F0F0F'; ctx.fillRect(0, 0, canvasWidth, canvasHeight);` from `drawCvd` on `liveCtx` (`z-10`). This opaque fill previously wiped out and occluded `drawTimeAxis` rendered on `bgCanvasRef` (`z-0`).
+      - Kept `liveCtx` transparent in the bottom time axis area (`[0, chartHeight, chartWidth, timeAxisHeight]`), allowing `bgCtx`'s time axis to shine through.
+      - Removed unused `canvasWidth` option.
+    - In [`components/chart/CvdPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CvdPanel.tsx):
+      - Filled `DEFAULT_CANVAS_BG` (`#0F0F0F`) on `bgCtx` before rendering `drawTimeAxis` so the CVD panel has a proper dark canvas background while the time axis remains fully visible.
+  - **Axis Boundary Clamping & Corner Protection**:
+    - In [`components/chart/drawAxes.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawAxes.ts):
+      - In `drawTimeAxis`: wrapped in `ctx.save()`, `ctx.rect(0, chartHeight, chartWidth, timeAxisHeight)`, `ctx.clip()`, and added `if (x < 0 || x > chartWidth) continue;` to ensure time labels and ticks never bleed into the right-side price axis corner.
+      - In `drawPriceAxis`: added boundary check `if (y < 8 || y > chartHeight - 8) continue;` to ensure price ticks and labels never bleed into the bottom time axis corner.
 - **Why it changed**:
-  - Resolves popover clipping where popovers were cut off on the left by modal sidebars (`overflow-y: auto`) and on the top by modal headers when flipping upward.
-  - Reused the existing `ColorPickerPopover` component everywhere across Global Settings, Session Settings, and Drawing Tools, providing uniform opacity controls and fixing grid lines opacity.
+  - Direct user feedback:
+    1. When the CVD indicator is on the chart, the horizontal time bar at the bottom was not showing up.
+    2. When candles are scrolled or panned close to the price and time bars, candles were rendering on top of the price/time bars (candles on `liveCanvasRef` `z-10` rendered without clipping over `bgCanvasRef` `z-0` price/time axes, causing hollow candles to reveal price numbers through their interior and solid candles to obscure them).
 - **Impact summary**:
-  - Color pickers no longer clip on any side in Global Settings or Session Settings.
-  - All candle body, candle wick, background, grid line, and crosshair colors now feature working opacity controls that immediately render on the chart canvas and persist across browser reloads.
-  - Passes all unit tests and `npx tsc --noEmit` with 0 errors.
+  - When CVD is open, the horizontal time axis displays clearly at the bottom with timestamps, ticks, and borders intact.
+  - Candlesticks, footprints, bubbles, VWAP, and profiles are cleanly clipped at the price axis and time axis boundaries, matching standard financial charting behavior (e.g. TradingView) with zero layer bleed or see-through artifacts.
+  - `npx tsc --noEmit` passed with exit code 0; `npm run lint` passed with 0 warnings and 0 errors.
 
-## [2026-09-05] - Fix: Global Chart Settings Canvas Wiring & Persistence Integration
-
+## [2026-09-07] - Fix: Crosshair Tooltip Alignment & Style, Hollow Candlestick Sharpness, Retina/DPI Blur & Indicator Grid Borders
 - **What changed**:
-  - **Canvas Rendering Engine (`components/chart/drawCandles.ts`, `components/chart/drawAxes.ts`, `components/chart/drawCrosshair.ts`)**:
-    - `drawCandles.ts`: Added `CandleColorOptions` parameter to render custom bullish/bearish candle body colors and wick colors with clean fallbacks.
-    - `drawAxes.ts`: Extended `drawGrid` with `GridOptions` supporting independent `showHorizontal`/`showVertical` toggles and custom colors.
-    - `drawCrosshair.ts`: Extended `drawCrosshair` with `CrosshairOptions` supporting custom color, opacity, thickness (1-4px), and line styles (`solid`, `dashed`, `dotted`) with crisp subpixel coordinate alignment.
-  - **Canvas Coordinator (`components/chart/ChartCanvas.tsx`)**:
-    - Subscribed to all global settings from `useChartStore` (`candleUpColor`, `candleDownColor`, `candleUpWickColor`, `candleDownWickColor`, `chartBackgroundType`, `chartBackgroundColor`, `chartBackgroundGradientTop`, `chartBackgroundGradientBottom`, `showVerticalGridLines`, `verticalGridLineColor`, `showHorizontalGridLines`, `horizontalGridLineColor`, `crosshairColor`, `crosshairOpacity`, `crosshairThickness`, `crosshairStyle`).
-    - Implemented dynamic background rendering for solid and linear gradients (`bgCtx.createLinearGradient`).
-    - Connected custom candle colors to `drawCandles`, custom grid options to `drawGrid`, and custom crosshair settings to `drawCrosshair`.
-    - Added all global settings to the `redraw('all')` dependency array so changes immediately update the live chart without requiring page refresh.
-  - **Store Persistence (`lib/store/chart.ts`)**:
-    - Added all 16 new global settings to `partialize`, ensuring candle colors, background styles, grid visibility, and crosshair preferences persist across page reloads.
-  - **UI Design & Aesthetics (`components/ui/ColorPickerPopover.tsx`, `components/ui/chart-settings/CanvasSettings.tsx`, `components/ui/chart-settings/GeneralChartSettings.tsx`)**:
-    - Updated thickness and line style segmented controls in `ColorPickerPopover.tsx` to match the TradingView reference design (white active tab button with dark line glyph; dark inactive button with white glyph).
-    - Updated Crosshair trigger button in `CanvasSettings.tsx` to display both the color swatch and the line style preview side-by-side with active blue outline when open.
-    - Cleaned up popover wrappers in `GeneralChartSettings.tsx`.
+  - **Crosshair Tooltip Redesign & Price Axis Text Alignment**:
+    - In [`components/chart/drawCrosshair.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawCrosshair.ts):
+      - Removed the `#8A8A8A` border stroke (`ctx.strokeRect` and `CROSSHAIR_BORDER` eliminated).
+      - Added subtle 2px rounded corners using `ctx.roundRect(badgeX, badgeY, badgeWidth, rectHeight, 2)`.
+      - Corrected price text horizontal coordinate to `chartWidth + 12`, perfectly aligning the crosshair price label with the price numbers on the price axis (`drawPriceAxis.ts`).
+      - Set badge bounds to `badgeX = chartWidth + 2` and `badgeWidth = Math.max(textWidth + 16, priceAxisWidth - 4)` matching active pricing (`drawPriceLine.ts`) and line badges (`drawLines.ts`).
+      - Updated time badge to use `ctx.roundRect` with 2px radius and no border stroke.
+    - In [`components/chart/drawCvd.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawCvd.ts):
+      - Updated `drawCvdCrosshairValueLabel` to match `drawCrosshairPriceLabel` with borderless background, 2px border radius, and text alignment at `chartWidth + 12`.
+  - **Hollow Candlestick Sharpness & Standard Financial Rendering**:
+    - In [`components/chart/drawCandles.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawCandles.ts):
+      - Added half-pixel coordinate alignment (`Math.floor(coord) + 0.5`) for 1px wick lines and hollow stroke rectangles to eliminate 50% opacity antialiasing blur.
+      - Enforced explicit `ctx.lineWidth = 1` and wrapped candle rendering in `ctx.save()` / `ctx.restore()`.
+      - Followed standard financial charting (TradingView) behavior: bullish candles (`Close >= Open`) render as crisp hollow outlines with vibrant `bodyRgba`, and bearish candles (`Close < Open`) render as solid filled bodies.
+  - **Retina Display & Multi-Monitor (1K vs 2K) Crispness**:
+    - In [`lib/utils/canvas.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/lib/utils/canvas.ts) (`initCanvas`):
+      - Rounded logical dimensions `logicalWidth` and `logicalHeight` to integers, set `canvas.style.width` and `canvas.style.height` strictly to integer pixels, and set `canvas.width` and `canvas.height` to exact physical buffer dimensions (`Math.round(logical * dpr)`). Scaled context by the exact physical-to-logical ratio to prevent browser GPU bilinear interpolation blurring on 1K screens (`dpr = 1`).
+    - In [`components/chart/ChartCanvas.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartCanvas.tsx) and [`components/chart/CvdPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CvdPanel.tsx):
+      - Ensured `setupCanvas` and `ResizeObserver` use integer-rounded dimensions.
+      - Added continuous `window.devicePixelRatio` checking on window `resize` and `matchMedia` to immediately rescale canvas when dragged between 1K and 2K monitors.
+    - In [`app/page.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/app/page.tsx):
+      - Updated split container styles so panel 2 uses `flex: 1` rather than fixed percentage plus 5px divider, eliminating subpixel positioning offsets.
+  - **Unified 28% Opacity Grid Borders for Stats & CVD Indicators**:
+    - In [`components/chart/drawStatsGrid.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawStatsGrid.ts):
+      - Replaced 100% opaque `DEFAULT_BORDER_COLOR` with `chartColorToRgba(gridColor, gridOpacity)` using global chart settings (`horizontalGridLineColor` and `horizontalGridLineOpacity`, defaulting to 28% opacity `#444444`) for top border and internal row dividers.
+    - In [`components/chart/drawCvd.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawCvd.ts) & [`types/cvd.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/types/cvd.ts):
+      - Added `gridColor`, `gridOpacity`, and `gridStyle` to `DrawCvdOptions`.
+      - Updated `drawCvdGrid` and `drawCvdAxis` to use `chartColorToRgba(gridColor, gridOpacity)`.
+    - In [`components/chart/CvdPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CvdPanel.tsx):
+      - Subscribed to `horizontalGridLineColor`, `horizontalGridLineOpacity`, and `horizontalGridLineStyle` from `useChartStore` and forwarded them to `drawCvd`.
+    - In [`components/chart/ChartPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartPanel.tsx):
+      - Styled the CVD container top border `borderTopColor` using `chartColorToRgba(horizontalGridLineColor, horizontalGridLineOpacity)`.
+    - In [`components/chart/drawAxes.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawAxes.ts):
+      - Updated `drawTimeAxis` horizontal border to use `chartColorToRgba(gridColor, gridOpacity)`.
 - **Why it changed**:
-  - The initial implementation only created the store fields and UI tabs, but did not wire them into the chart's canvas rendering loop or include them in Zustand's persistence layer, causing user settings changes to have no visual effect on the chart and reset on refresh.
+  - Direct user feedback: crosshair tooltip border looked unpolished, lacked border radius, and price text was horizontally misaligned with the price axis numbers; hollow candlesticks appeared washed-out/opacitated; dragging split charts between 1K and 2K screens caused blurring; and Stats indicator and CVD borders were 100% opaque rather than inheriting the 28% opacity global grid setting.
 - **Impact summary**:
-  - All candle colors, background types/colors, grid line options, and crosshair appearances now immediately render on the chart canvas and persist across browser sessions.
-  - `npx tsc --noEmit` validates with 0 errors.
+  - Crosshair tooltips now render with clean 2px rounded corners and zero border outline, with price text aligned pixel-perfect to `chartWidth + 12`.
+  - Hollow candlesticks are razor sharp with vibrant colors, and canvas stays pixel-crisp across 1K and 2K monitors.
+  - Stats indicator, CVD horizontal gridlines, and time axis borders now cohesively adhere to the global 28% opacity theme token.
+  - Zero TypeScript compiler errors (`npx tsc --noEmit` exited 0) and zero ESLint errors (`npm run lint` clean).
 
-## [2026-09-05] - Feature: Global Chart Settings Implementation (Symbol, Canvas, Alerts)
-
+## [2026-09-07] - UI Refinement: Dropdown Padding, Row Heights (+50%), Text Alignment, Layout Positioning Fix & Cursor Pointer
 - **What changed**:
-  - **Chart Store (`lib/store/chart.ts`)**: Added global state for candle colors (body/wick up/down), chart background (solid/gradient type, color, gradients), grid lines (horizontal/vertical toggle and color), and crosshair settings (color, opacity, thickness, style).
-  - **Color Picker (`components/ui/ColorPickerPopover.tsx`)**: Upgraded to support optional thickness and line style (solid/dashed/dotted) controls underneath the color grid and opacity slider.
-  - **Chart Settings UI (`components/ui/ChartSettingsDropdown.tsx`)**: Reorganized global settings tabs. Renamed "Chart" tab to "Symbol". Added "Canvas" and "Alerts" tabs.
-  - **New Setting Tabs (`components/ui/chart-settings/CanvasSettings.tsx` & `AlertsSettings.tsx`)**: Implemented Canvas tab mapping to the new global background, grid lines, and crosshair store values. Created a placeholder for Alerts.
-  - **General Settings (`components/ui/chart-settings/GeneralChartSettings.tsx`)**: Appended candle color pickers to act as the primary content for the "Symbol" tab alongside existing time format settings.
+  - **Overall Dropdown Padding, Rounding & Width Expansion**:
+    - In [`components/ui/IndicatorsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/IndicatorsModal.tsx) and [`components/ui/ChartModeSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeSelector.tsx): increased overall padding from `p-1.5` to `p-2.5` (10px), rounded corners to `rounded-xl`, and expanded width from `w-52` (208px) to `w-56` (224px).
+    - In [`components/ui/ChartLayoutDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartLayoutDropdown.tsx): increased overall padding to `p-3.5` (14px), rounded corners to `rounded-xl`, and expanded width to `w-60` (240px).
+    - In [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css): added `border-radius: 12px !important;` to `dialog[is="fig-popup"]` and `dialog[is="fig-dialog"]`.
+  - **Left-Aligned Text for Indicators & Candlesticks**:
+    - In [`components/ui/IndicatorsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/IndicatorsModal.tsx) and [`components/ui/ChartModeSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeSelector.tsx): added `justify-start text-left` to button containers and `text-left select-none` to text labels.
+    - In [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css): added global rule `dialog[is="fig-popup"] button { text-align: left !important; justify-content: flex-start !important; cursor: pointer !important; }` to override user-agent center alignment on native `<button>`.
+  - **+50% Row Height (Spacious & Comfortable)**:
+    - In [`IndicatorsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/IndicatorsModal.tsx) and [`ChartModeSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeSelector.tsx): increased row height by 50% from `py-2` (~32px) to `py-2.5 min-h-[38px] px-3` (38–40px), eliminating narrow/squeezed rows.
+    - In [`ChartLayoutDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartLayoutDropdown.tsx): enlarged layout buttons by ~50% from `h-8 w-9` (32x36px) to `h-10 w-12` (40x48px) with `p-2 rounded-lg`, increased icon sizes from `20` to `22`, and increased Crosshair sync row to `px-3 py-2.5 min-h-[38px]`.
+  - **Fixed Layout Dropdown Position Jump**:
+    - In [`components/ui/fig/FigPopup.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigPopup.tsx): updated `updatePosition()` to support horizontal positioning modes (`right`, `center`, `left`) and parse `offset` parameters (`offsetX`, `offsetY`). For `position="bottom right"`, `left` is now computed as `rect.right - popupWidth - offsetX`, matching FigUI3's calculation.
+    - Added `position` and `offset` to the `useIsomorphicLayoutEffect` dependency array in `FigPopup.tsx`.
+    - Dropdown opens with its top-right corner directly under the trigger icon and remains anchored there without jumping to the center.
+  - **Universal Cursor Pointer Across Panel Toolbar Controls**:
+    - In [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css): enforced `cursor: pointer !important;` across `fig-button`, `fig-button *`, `fig-segment`, `fig-segment *`, `fig-segmented-control`, and `.fig-button`.
+    - In [`components/ui/fig/FigButton.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigButton.tsx): added `style={{ cursor: disabled ? 'default' : 'pointer' }}` and an effect penetrating the open shadow DOM to guarantee the inner `.fig-button-control` button has `cursor: pointer`.
+    - In [`components/ui/fig/FigSegmentedControl.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigSegmentedControl.tsx): added `cursor-pointer` class and `style={{ cursor: 'pointer' }}` to `fig-segment` and `fig-segmented-control`.
+    - In [`components/ui/PanelToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/PanelToolbar.tsx): ensured all action triggers (`PairSelector`, `FigSegmentedControl`, `ChartModeSelector`, `Indicators`, `Position`, `BUY`, `SELL`, `Refresh`, `Settings`, `Focus`) have `cursor-pointer`.
+  - **Documentation & Map Synchronization**:
+    - Updated [`skills/map.md`](file:///c:/Users/d/Documents/ob/orderflowApp/skills/map.md) with updated responsibilities for `FigPopup.tsx`, `FigButton.tsx`, `FigSegmentedControl.tsx`, `IndicatorsModal.tsx`, `ChartModeSelector.tsx`, and `ChartLayoutDropdown.tsx`.
 - **Why it changed**:
-  - Provides a centralized "Global Settings" UI matching the application's design language, breaking settings down into logical tabs (Symbol, Canvas, Alerts) without duplicating existing configs.
+  - Direct user feedback:
+    1. Provide overall rounded padding to Candlestick, Indicators, and Chart Layout dropdowns.
+    2. Left-align text for indicators and candlesticks instead of center-aligned.
+    3. Add 0.5 (+50%) to the height of individual items to fix squeezed/narrow rows.
+    4. Fix the Chart Layout dropdown glitch where it opened underneath the icon on the left, but then moved to the center.
+    5. Change cursor to pointer for all icons and controls on the chart panel (timeframes, symbol, candlestick, indicators, position, buy/sell, refresh, settings, focus).
 - **Impact summary**:
-  - The UI now features dedicated sections for theming and visual appearance (Canvas/Symbol) utilizing the shared color picker. This aligns the app closely with standard chart settings interfaces and persists configurations correctly through the existing Zustand engine.
+  - All three dropdowns are spacious, beautifully padded, and consistently rounded.
+  - Text is cleanly left-aligned across all dropdown rows.
+  - Rows are +50% taller and comfortably readable without feeling cramped.
+  - Chart Layout dropdown is rock-solidly positioned at the top-right corner under the icon with zero jump or center-shift.
+  - Hovering over any interactive element on the chart panel shows a hand/pointer cursor.
+  - `npx tsc --noEmit` passed with 0 errors; `npm run lint` passed with 0 warnings and 0 errors.
 
-## [2026-09-05] - Feature: TradingView Color Picker Integration in Session Indicator
-
+## [2026-09-07] - Feature: Chart Layout Selector Relocation & Indicator/Candlestick Dropdown UI Refinement
 - **What changed**:
-  - **Shared ColorPickerPopover (`components/ui/ColorPickerPopover.tsx`)**:
-    - Extracted the TradingView-style color picker popover into a reusable component in `components/ui/ColorPickerPopover.tsx`.
-    - Features 80 swatches (10 grayscale shades + 70 hue/tint variations), selected ring indicator, custom color `+` button with 3/6/8-digit hex parsing, native eyedropper, and optional opacity slider with gradient track.
-    - Added smart placement detection: auto-flips upward (`placement='top'`) if near the bottom of scrollable dialogs/viewport to prevent clipping.
-    - Updated `CanvasDrawingToolbar.tsx` to re-export `ColorPickerPopover`, `COLOR_PALETTE_ROWS`, and `parseHexColor` from `@/components/ui/ColorPickerPopover` to preserve backwards compatibility.
-  - **Session Settings Integration (`components/ui/chart-settings/SessionsSettings.tsx`)**:
-    - Replaced raw native `<input type="color">` with a custom Color button featuring a styled rounded rectangle swatch (`session.color`).
-    - Clicking the button opens `ColorPickerPopover` scoped to that session (`tokyo`, `london`, `newYork`).
-    - Allows direct selection of colors and opacity adjustments.
-  - **Session Opacity Support (`types/chart.ts`, `lib/store/chart.ts`, `lib/draw/drawSessions.ts`)**:
-    - Added `opacity?: number` to `SessionConfig` (defaults to 0.07 if not specified).
-    - Added `setSessionOpacity(panelId, sessionId, opacity)` action and updated `setSessionColor` to accept optional opacity.
-    - Updated `drawSessions.ts` to render background tint using `config.opacity ?? 0.07`.
-  - **Verification & Testing (`scratch/test_session_color_picker.ts`)**:
-    - Verified store mutations (`setSessionColor`, `setSessionOpacity`), `drawSessions` custom opacity rendering, fallback behavior, and `ColorPickerPopover` hex parsing. All passed.
-
-- **What changed**:
-  - **TradingView-Style Date-Time Formatter (`lib/utils/format.ts`)**:
-    - Added `formatTradingViewDateTime(timestamp, timezone, format)`:
-      - Produces exact TradingView-format date-time badge strings (e.g. `Sat 05 Sep '26  12:05 AM` for 12h or `Sat 05 Sep '26  00:05` for 24h).
-      - Uses cached `Intl.DateTimeFormat` instances to ensure zero garbage-collection overhead during 60fps canvas redraw loops.
-      - Defensively handles local PC time, UTC, and custom IANA timezones with fallbacks.
-  - **Drawing Axis Badges (`components/chart/drawLines.ts`)**:
-    - Added `drawPriceAxisBadge(ctx, y, price, chartWidth, priceAxisWidth, canvasHeight, accentColor)`:
-      - Renders a rounded rectangle badge on the right price axis at `x = chartWidth + 2` with width `priceAxisWidth - 4` and height 20px, vertically centered at `y = priceToY(line.value)`.
-      - Solid background fill matching `line.color ?? DEFAULT_DRAWING_COLOR`.
-      - Bold white text (`#FFFFFF`) with formatted price `formatPrice(line.value)`.
-      - Automatically invoked for `horizontal` lines and `horizontal-ray` drawings.
-    - Added `drawTimeAxisBadge(ctx, x, chartHeight, timeAxisHeight, timeText, chartWidth, accentColor)`:
-      - Renders a rounded rectangle badge on the bottom time axis at `y = chartHeight + 1` with height 22px, horizontally centered at the vertical line's coordinate `x = indexToX(line.value)`.
-      - Clamped within `[2, chartWidth - badgeWidth - 2]` so it never renders off-screen.
-      - Solid background fill matching `line.color ?? DEFAULT_DRAWING_COLOR`.
-      - Bold white text (`#FFFFFF`) displaying `formatTradingViewDateTime(time, timezone, timeFormat)`.
-      - Timestamp accurately resolved from `line.time ?? candleTimeAt(line.value, candles)`.
-      - Automatically invoked for `vertical` lines.
-  - **Verification & Testing (`scratch/test_draw_lines_mock.ts`)**:
-    - Added Test 7 verifying horizontal price axis badge rendering (position, dimensions, line color, solid alpha).
-    - Added Test 8 verifying vertical time axis badge rendering in 12h (`Sat 05 Sep '26  12:05 AM`) and 24h (`Sat 05 Sep '26  00:05`) formats with line color.
-    - Added Test 9 verifying `formatTradingViewDateTime` across UTC and custom formats.
-    - All 14 canvas mock tests and 27 drawing verification tests passed; `npx tsc --noEmit` passed with 0 errors.
-
-## [2026-09-05] - Enhancement: Pixel-Crisp 1px Line Alignment, Instant Redraw Reflection & Independent Box Fill Opacity
-
-- **What changed**:
-  - **1px Crisp Coordinate Alignment (`components/chart/drawLines.ts`)**:
-    - Identified why 1px lines looked 2px thick: on HTML5 Canvas, odd stroke widths (1px, 3px) centered on integer coordinates anti-alias across 2 physical pixels.
-    - Implemented `alignCoord(coord, strokeWidth)`: aligns odd stroke widths to half-pixel boundaries (`Math.floor(coord) + 0.5`) matching grid lines in `drawAxes.ts`, and even stroke widths (2px, 4px) to integer boundaries (`Math.round(coord)`).
-    - Applied alignment across horizontal lines, vertical lines, rays, and box borders for razor-sharp, pixel-perfect rendering identical to grid lines.
-  - **Instant 0ms UI & Canvas Reflection (`components/chart/ChartCanvas.tsx`, `components/chart/CanvasDrawingToolbar.tsx`)**:
-    - Identified the millisecond delay when changing colors/opacity: `redraw()` in `ChartCanvas` was previously reading stale `drawnLines` props waiting for React's batched component re-render.
-    - Updated `redraw()` to read live synchronous state from `useChartStore.getState().panels[panelId]?.drawnLines ?? drawnLines`.
-    - Subscribed `DrawingToolbar` directly to `useChartStore` for `selectedDrawing` to eliminate React re-render batching delays.
-    - Result: color and opacity changes render on the canvas instantaneously on the very next display frame (0ms latency).
-  - **Independent Box Border and Fill Opacity (`types/chart.ts`, `components/chart/drawLines.ts`, `components/chart/CanvasDrawingToolbar.tsx`)**:
-    - Added `fillOpacity?: number` to `DrawnLine`.
-    - Separated border opacity (`line.opacity ?? 1`) and fill opacity (`line.fillOpacity ?? line.opacity ?? 1`) in `drawLines.ts`.
-    - In `CanvasDrawingToolbar.tsx`, the Border picker controls `opacity`, and the Fill picker controls `fillOpacity`, allowing complete independent opacity adjustment for box borders and fills.
-- **Impact summary**:
-  - 1px lines are now ultra-sharp and true single-pixel width.
-  - Zero latency when picking colors or dragging the opacity slider.
-  - Box border and fill opacity operate 100% independently.
-  - 0 TypeScript errors, all unit and canvas mock tests pass.
-
-## [2026-09-05] - Feature: Drawing Tools Color & Opacity Overhaul, Box Fill/Border Separation & Ray Time/Price Badges
-
-- **What changed**:
-  - **Drawing Data Model (`types/chart.ts`)**:
-    - Added `opacity?: number` (0–1), `fillColor?: string`, and `showFill?: boolean` to `DrawnLine`.
-  - **Canvas Renderer (`components/chart/drawLines.ts`)**:
-    - Applied `ctx.globalAlpha = line.opacity ?? 1` to strokes for horizontal lines, vertical lines, rays, and boxes.
-    - Preserved full opacity (`ctx.globalAlpha = 1`) on interactive UI resize handles and delete dots.
-    - Updated box rendering to respect `line.showFill !== false`. Uses `line.fillColor` with `line.opacity` when set, or falls back to legacy `rgba(61,126,255,0.10)` / `rgba(120,123,134,0.08)` when unset, ensuring 100% regression compatibility for existing drawings.
-    - Updated `drawDrawingPriceLabels` for `horizontal-ray`: renders both price badge (above line at `y - 4`) and time badge (below line at `y + 4`) at `startX` anchor without visual collision.
-  - **Drawing Toolbar & Color Picker (`components/chart/CanvasDrawingToolbar.tsx`, `app/globals.css`)**:
-    - Replaced the fixed 9-swatch row with a TradingView-style ColorPicker popover matching TradingView's exact 8-row grid (Row 0: 10 grayscale swatches from pure white to black, Rows 1-7: 7 rows of 10 pure hue & shade variations, totaling 80 swatches).
-    - Fixed CSS selector conflict: `.popup-contrast button` in `globals.css` was forcing `background-color: #262626 !important;` on all buttons inside the toolbar, causing swatches to render as dark gray boxes. Resolved by rendering the swatch color on an inner `<span style={{ backgroundColor: swatchColor }} />` immune to button overrides, adding `data-swatch="true"`, and adding `:not([data-swatch])` exclusions in `globals.css`.
-    - Added TradingView-style ring selection indicator (`ring-2 ring-white ring-offset-1 ring-offset-[#1E222D]`) around the active swatch.
-    - Upgraded the opacity slider with a transparent-to-color gradient background track (`linear-gradient(to right, rgba(255,255,255,0.05), ${color})`), white ring thumb (`.color-picker-slider::-webkit-slider-thumb`), and neat bordered percentage badge (`100%`) matching TradingView.
-    - Added custom hex input behind a "+" button supporting 3-digit (#RGB), 6-digit (#RRGGBB), and 8-digit (#RRGGBBAA) hex codes. Explicitly implemented 8-digit hex splitting: extracts `#RRGGBB` as color and `AA / 255` as opacity.
-    - Integrated native HTML5 `<input type="color">` eyedropper / OS picker trigger.
-    - Added independent Border and Fill color controls with a `showFill` toggle button for `box` drawings.
-  - **Screen-Edge Clamping & Sizing (`components/chart/ChartCanvas.tsx`, `components/chart/CanvasDrawingToolbar.tsx`)**:
-    - Measured actual rendered ColorPicker dimensions (238px width x 240px height) and toolbar dimensions (234px for box, 170px for line).
-    - Set `overlayWidth` to match measured toolbar widths (234px / 170px).
-    - Configured dynamic flip-up (`bottom: 100%`) when near the bottom chart edge and right-alignment (`right: 0`) when near the right edge so the picker never clips off-screen.
+  - **Relocated Chart Layout Selector**:
+    - Removed `<ChartLayoutDropdown />` and its import from [`components/layout/Header.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Header.tsx). Preserved the semantic single `<h1>` (`OrderFlow Terminal`).
+    - Updated [`components/ui/ChartLayoutDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartLayoutDropdown.tsx) to accept an optional `panelId?: PanelId` prop, generating unique trigger anchor IDs (`chart-layout-dropdown-trigger-${panelId}`) to prevent ID collision in split-screen layouts.
+    - Removed the `<ChevronDown>` down-arrow icon next to the layout icon on the trigger button, keeping only the layout preview icon.
+    - Styled trigger button as `variant="ghost" icon` with comfortable padding (`px-1.5`) and set dropdown popup position to `position="bottom right"`.
+    - Mounted `<ChartLayoutDropdown panelId={panelId} />` in [`components/ui/PanelToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/PanelToolbar.tsx) on the chart panel toolbar, placed directly to the left of the right action group (Refresh, Settings, and Expand buttons).
+  - **Indicator Dropdown UI Refinement**:
+    - Updated [`components/ui/IndicatorsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/IndicatorsModal.tsx):
+      - Removed the "Indicators" title/header from the dropdown.
+      - Removed the one-line descriptions/explanations under each indicator name.
+      - Removed plus icons (`+`) and checkmark/tick icons (`Check`).
+      - Added persistent selected state styling on active indicators (`bg-[#2A2A2A] border border-[#383838] text-white`) matching the timeframe button visual pattern.
+      - Preserved instant click-to-add/toggle and dropdown dismiss behavior.
+  - **Candlestick / Chart Mode Dropdown UI Refinement**:
+    - Updated [`components/ui/ChartModeSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeSelector.tsx):
+      - Added custom TradingView-style SVG icons for Candlestick, Hollow Candlestick, and Footprint positioned on the left of each option row.
+      - Removed "Chart Mode" title/header.
+      - Removed descriptions/subtext for each chart mode.
+      - Removed checkmark/tick icons on the right.
+      - Added persistent selected state styling on the active mode (`bg-[#2A2A2A] border border-[#383838] text-white`) matching the timeframe button visual pattern.
+      - Maintained FigUI 3 design system tokens and spacing (dark theme, crisp left-aligned button rows).
+  - **Documentation & Map Synchronization**:
+    - Updated [`skills/map.md`](file:///c:/Users/d/Documents/ob/orderflowApp/skills/map.md) with updated responsibilities for `Header.tsx`, `PanelToolbar.tsx`, `ChartLayoutDropdown.tsx`, `ChartModeSelector.tsx`, and `IndicatorsModal.tsx`.
 - **Why it changed**:
-  - Upgraded the drawing tools from a basic fixed 9-swatch row to professional color selection with full opacity control, independent box styling, and clean timestamped ray labels matching TradingView microstructure workflows.
+  - Direct user requirements:
+    1. Move the "Select chart layout" button from the top-left header to the chart panel toolbar on the left side next to the Refresh, Settings, and Expand buttons.
+    2. Remove the chevron down-arrow next to the layout icon on the trigger button.
+    3. Refine Indicator dropdown: remove "Indicators" title, remove descriptions, remove plus/check icons, add persistent selected background matching timeframe buttons, and keep simple click-to-add.
+    4. Refine Candlestick dropdown: remove "Chart Mode" title, remove descriptions, remove check icons, add TradingView-style SVGs on the left for Candlestick, Hollow Candlestick, and Footprint, add persistent selected background matching timeframe buttons.
 - **Impact summary**:
-  - Full color customization across lines, rays, and boxes.
-  - Independent fill/border styling with toggleable fill on boxes.
-  - Non-colliding price and time badges on horizontal rays.
-  - Zero regression for legacy drawings without opacity or custom fills.
-  - 0 TypeScript errors.
+  - Layout selector is conveniently located on each chart panel's action bar without cluttering the global header.
+  - Indicator and Candlestick dropdowns now have a clean, concise, high-density TradingView-inspired layout with FigUI 3 dark-theme design tokens and active state pill styling.
+  - Clean TypeScript verification (`npx tsc --noEmit` exited 0) and ESLint verification (`npm run lint` exited 0).
 
-## [2026-09-05] - Feature: Chart Layout Dropdown & Sync Crosshair Migration
+## [2026-09-07] - Fix: Dropdown Centering Glitch, Toolbar Z-Index Stacking, and Pricing Sidebar Color
+- **What changed**:
+  - **Eliminated Dropdown Centering Flash & Glitch**:
+    - Updated [`components/ui/fig/FigPopup.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigPopup.tsx):
+      - Added explicit `mode?: 'dropdown' | 'modal'` prop (with backward-compatible support for `dropdown={true}`).
+      - Forwarded `anchor={typeof anchor === 'string' ? anchor : undefined}` directly onto the `<dialog>` element in JSX so FigUI3's `connectedCallback()` and `showPopup()` resolve the anchor element immediately during DOM connection rather than falling back to centered viewport coordinates.
+      - Forwarded `data-mode={isDropdown ? 'dropdown' : 'modal'}` and applied base fixed positioning in inline styles (`...(isDropdown ? { position: 'fixed', margin: 0 } : {})`).
+      - Switched dropdown positioning to `useIsomorphicLayoutEffect` (`useLayoutEffect`), calculating and setting `top`, `left`, `position = 'fixed'`, and `margin = '0'` synchronously before browser paint, eliminating `requestAnimationFrame` and `setTimeout(30)` initial delays.
+    - Updated [`components/ui/ChartLayoutDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartLayoutDropdown.tsx), [`components/ui/ChartModeSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeSelector.tsx), and [`components/ui/IndicatorsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/IndicatorsModal.tsx) to explicitly pass `mode="dropdown"`.
+  - **Corrected Draggable Toolbar vs Header Stacking Order**:
+    - Updated [`components/ui/DrawingFavoritesToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/DrawingFavoritesToolbar.tsx): changed z-index from `z-40` to `z-[70]`.
+    - Preserved Header at `z-[60]` and Global Settings at `z-[1000]`. Stacking order is now strictly: Global Settings (`z-[1000]`) > Draggable Toolbar (`z-[70]`) > Header (`z-[60]`) > Normal page content (`z-0` – `z-10`). Dragging the toolbar over/near the header keeps the toolbar rendered above the header while remaining beneath Global Settings.
+  - **Updated Pricing Sidebar Color to Existing Global Token #2C2C2C**:
+    - Updated [`components/chart/drawAxes.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawAxes.ts): imported `DEFAULT_HEADER_SIDEBAR_BG` (`#2C2C2C`, matching root `--bg-surface`) from [`lib/config/chartColors.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/lib/config/chartColors.ts).
+    - Defined `PRICE_AXIS_BG_COLOR = DEFAULT_HEADER_SIDEBAR_BG` and updated `drawPriceAxis` background fill to `PRICE_AXIS_BG_COLOR`, rendering the vertical pricing sidebar in `#2C2C2C` while preserving `DEFAULT_CANVAS_BG` (`#0F0F0F`) on the horizontal time axis and chart canvas.
+  - **Documentation & Map Synchronization**:
+    - Updated [`skills/map.md`](file:///c:/Users/d/Documents/ob/orderflowApp/skills/map.md) with updated responsibilities for all modified components.
+- **Why it changed**:
+  - Direct user requirements:
+    1. Fix Indicator, Candlestick, and Chart Layout dropdowns popping open in the center of the application before jumping underneath their triggers.
+    2. Fix draggable toolbar sliding underneath the header when dragged near the top.
+    3. Change pricing sidebar color to `#2C2C2C` using the existing global CSS variable/token without altering unrelated styles.
+- **Impact summary**:
+  - Dropdowns open directly underneath triggers on the first frame with zero flicker, jumping, or centered intermediate state. Modal mode remains supported for centered/modal dialogs.
+  - Draggable toolbar stays layered above the header and beneath Global Settings.
+  - Pricing sidebar cleanly renders with the `#2C2C2C` design token.
+  - Zero TypeScript compiler errors (`npx tsc --noEmit` exited 0) and zero ESLint errors or warnings (`npm run lint` exited 0).
+
+## [2026-09-07] - UI Improvements: Chart Layout Select Styling, Tooltip & Browser Tooltip Removal
+- **Layout Select Styling**: Updated `ChartLayoutDropdown.tsx` with toolbar-matched icon thickness (`strokeWidth="1.5"`), comfortable padding (`h-8 w-9 p-1.5`), full-area hover covers, `cursor-pointer`, and active blue border/glow.
+- **Closed Dropdown Tooltip**: Wrapped header trigger in `<FigTooltip text={!isOpen ? 'Select chart layout' : ''}>` for clean FigUI3 tooltip only when closed.
+- **Removed Default Tooltips**: Stripped all `title` attributes inside the dropdown so hovering options shows no default/browser tooltip.
+- **Validation**: Verified with `npx tsc --noEmit` (exit 0) and `npm run lint` (exit 0).
+
+## [2026-09-07] - UI Fixes: 28% Grid Opacity & Draggable Toolbar Sizing Fix
+- **Default Grid Opacity**: Updated `DEFAULT_GRID_OPACITY = 0.28` (28%) in `chartColors.ts`, `chart.ts` (store v38 migration), and `drawAxes.ts`.
+- **Draggable Toolbar Fix**: Removed `popup-contrast` causing drag handle grey card; styled buttons with 32x32px hit area, full-area hover, strokeWidth 1.5 icons, and active border/glow inside `FigTooltip`.
+- **Dropdowns, Header & Crosshair**: Header `#0F0F0F`, hidden Sidebar, `dropdown` prop on `FigPopup` selectors, crosshair extended through indicators with bottom-aligned time label.
+- **Validation**: Verified with `npx tsc --noEmit` (exit 0) and `npm run lint` (exit 0).
+
+## [2026-09-06] - Fix: Timeframe Switching, Drawing Axis Badge Contrast, TradingView Pair Selector, and Main Padding
 
 - **What changed**:
-  - **Layout Dropdown Component (`components/ui/ChartLayoutDropdown.tsx`)**:
-    - Created a compact TradingView-style dropdown containing:
-      - Row 1: Single chart layout with custom square icon.
-      - Row 2: Two charts with Vertical split (side by side) and Horizontal split (top and bottom) custom icons.
-      - Divider and "SYNC IN LAYOUT" section with an integrated "Crosshair" toggle switch.
-  - **Header Integration (`components/layout/Header.tsx`)**:
-    - Replaced the two legacy hardcoded layout buttons with the new `<ChartLayoutDropdown />`.
-  - **Types & State (`types/chart.ts`, `lib/store/chart.ts`)**:
-    - Added `SplitDirection = 'vertical' | 'horizontal'` type.
-    - Added `splitDirection` state (default `'vertical'`) and `setSplitDirection` action to `ChartState`.
-    - Added `splitDirection` to tab-aware session persistence (`tabKeys`, `partialize`).
-  - **Page Chart Scaffold (`app/page.tsx`)**:
-    - Implemented dynamic layout orientation: supports both vertical split (side by side) and horizontal split (top/bottom).
-    - Draggable divider adapts dynamically: col-resize for vertical split and row-resize for horizontal split with accurate splitRatio calculations.
-  - **Global Settings Cleanup (`components/ui/chart-settings/GeneralChartSettings.tsx`)**:
-    - Removed the redundant "Sync Crosshairs" toggle from global chart settings; crosshair sync is now exclusively controlled via the Layout dropdown.
-  - **Header & Dropdown Z-Index Stacking (`components/layout/Header.tsx`, `components/ui/ChartLayoutDropdown.tsx`)**:
-    - Increased `<header>` z-index from `z-20` to `z-[60]` and added dynamic `z-50` to dropdown container so the Layout dropdown renders above fixed floating elements (such as `DrawingFavoritesToolbar` with `z-40`).
-  - **Sidebar Active Indicator (`components/layout/Sidebar.tsx`)**:
-    - Active panel indicator dynamically displays 'T'/'B' (Top/Bottom) when in horizontal split mode or 'L'/'R' (Left/Right) in vertical split mode.
+  - **Timeframe Click Fix**:
+    - Updated [`components/ui/fig/FigSegmentedControl.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigSegmentedControl.tsx): added explicit `onClick` prop forwarding to [`FigSegment`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigSegmentedControl.tsx#L26), bound delegated native `click` listener on host `<fig-segmented-control>`, and added synthetic React click handling on the host to ensure timeframe pill clicks reliably invoke `onChange` / `setTimeframe(panelId, tf)` and update the chart.
+  - **Drawing Badge Text Contrast Fix**:
+    - Updated [`components/chart/drawLines.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawLines.ts): implemented `getContrastTextColor(color)` relative luminance calculator. Updated `drawTimeAxisBadge` and `drawPriceAxisBadge` to dynamically calculate text fill color based on badge background (`accentColor`) instead of hardcoded `#FFFFFF`. When drawing badges have white `#FFFFFF` fill (e.g. vertical lines or box boundaries), text now renders in `#0F0F0F`, completely eliminating the invisible white-on-white text bug.
+  - **TradingView Symbol Search Redesign via FigUI3**:
+    - Reimplemented [`components/ui/PairSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/PairSelector.tsx) adhering to FigUI3 architecture and TradingView's symbol search layout (without a searchbar):
+      - Uses `<FigPopup>` anchored directly to `#pair-selector-trigger-${panelId}` with `offset="0 4"` and solid `#181818` background.
+      - Uses `<FigSegmentedControl full size="small">` for category filter tabs: `All`, `Perpetual Futures`, `Spot`.
+      - Uses `<FigButton variant="ghost" size="medium">` for each instrument row, featuring circular crypto badges (BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, LINK, LTC), bold bright blue tickers (`#2962FF`, e.g. `BTCUSDT.P`), contract descriptions, `swap crypto defi` / `spot crypto` tags, and Binance exchange badges with yellow logos.
+      - Active and hover selection states adhering to FigUI3 design tokens and TradingView aesthetics.
+  - **Main Tag Vertical Padding Removal**:
+    - Updated [`app/page.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/app/page.tsx): added `p-0 py-0` to `<main>` to ensure no vertical padding is applied.
+  - **Documentation & Map Synchronization**:
+    - Updated [`skills/map.md`](file:///c:/Users/d/Documents/ob/orderflowApp/skills/map.md) to record updated responsibilities for `FigSegmentedControl.tsx`, `drawLines.ts`, `PairSelector.tsx`, and `app/page.tsx`.
 - **Why it changed**:
-  - Replaced the top-left layout buttons with a clean TradingView-style Layout dropdown with Single Chart, 2-Chart Vertical and Horizontal split modes, and moved the Sync Crosshair control out of global settings directly into the Layout dropdown.
+  - User requested:
+    1. Fix clicking on timeframes not changing the chart.
+    2. Fix white-on-white invisible text in time axis badges from attached screenshot.
+    3. Fix pair selection popup dialog with inspiration from TradingView symbol search, omitting searchbar.
+    4. Remove unnecessary vertical padding on `<main>` tag.
 - **Impact summary**:
-  - Compact, modern chart layout switcher with clear active layout indicator.
-  - Full support for both horizontal (top/bottom) and vertical (side/side) 2-chart splits with fluid dragging.
-  - Crosshair synchronization cleanly grouped in layout dropdown.
-  - 0 TypeScript errors.
+  - Timeframe pills immediately switch chart timeframes on click.
+  - Time and price axis badges for white drawing objects render readable dark text.
+  - Pair selection dialog is now an expansive, polished TradingView-style modal with instant tab filtering.
+  - Main app view operates with zero vertical padding.
+  - Clean TypeScript verification (`npx tsc --noEmit` exited 0) and ESLint verification (`npm run lint` exited 0).
 
-## [2026-09-02] - Bug Fix: VWAP O(N^2) Lag and Rendering Skip
+## [2026-09-06] - Feature: On-Canvas Volume Overlay, Drawing Tool 1px White Defaults, Auth-Gated Storage, and FigUI Tooltips
 
 - **What changed**:
-  - **Math Optimization (`lib/utils/vwap.ts`)**:
-    - Rewrote `calculateVwapSeries` to use constant-time `O(1)` mathematical accumulators (`cumPV2`, `cumPV`, `cumV`) for calculating VWAP and Standard Deviation variance instead of re-iterating over the entire rolling window on every display candle.
-    - Fixed a critical expiration logic bug in `Rolling` mode where expired candles were being checked inside an inner loop that only fired when new base candles arrived, preventing expired candles from being dropped during periods of no volume.
-  - **Rendering Alignment (`lib/utils/vwap.ts`)**:
-    - Updated `VwapPoint.value` to accept `number | null`.
-    - Pushed a `null` value instead of using `continue` when `vwapValue === 0`. This fixes an index misalignment bug where the `points` array length desynced from the `displayCandles` array length, causing the canvas to throw bounds errors or draw nothing.
-  - **Menu Visibility (`components/ui/IndicatorsModal.tsx`)**:
-    - Added VWAP to the `AVAILABLE_INDICATORS` array so users can actually enable it via the indicator menu UI.
+  - **On-Canvas Volume Indicator Overlay**:
+    - Updated [`chartBottomPanels.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/chartBottomPanels.ts): volume bars no longer deduct layout height from `mainChartHeight`. The main price canvas retains its full height (only reduced by docked stats grid items if active). `volumePanel` calculates `panelHeight` and anchors directly to the bottom of the main canvas (`panelTop = mainChartHeight - panelHeight`).
+    - Updated [`drawVolumeBars.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawVolumeBars.ts): removed opaque `DEFAULT_CANVAS_BG` background fill and `DEFAULT_BORDER_COLOR` top border so volume bars render transparently on canvas.
+    - Updated [`ChartCanvas.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartCanvas.tsx): relocated `drawVolumeBars` invocation directly before candlesticks/footprints on `liveCtx` so volume bars sit at the bottom of the main chart canvas layered behind candlesticks (matching TradingView and user capture).
+  - **Drawing Object Defaults & Trash Delete Icon**:
+    - In [`ColorPickerPopover.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ColorPickerPopover.tsx) and [`drawLines.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawLines.ts), updated `DEFAULT_DRAWING_COLOR` to `'#FFFFFF'` (white) and `DEFAULT_DRAWING_STROKE_WIDTH` to `1` (1px).
+    - In [`CanvasDrawingToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CanvasDrawingToolbar.tsx), replaced close `X` icon with `Trash2` icon on the delete action buttons in both `DrawingToolbar` and `CustomProfileToolbar`.
+  - **Manage Storage Unlock Gating**:
+    - In [`Header.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Header.tsx), conditionally gated the Manage Storage database button behind `isAuthenticated` so it only displays when unlocked.
+  - **Draggable Drawing Toolbar Spacing & Native FigUI Tooltips**:
+    - Added `FigTooltipProps` and `'fig-tooltip'` element declarations to [`types/figui3.d.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/types/figui3.d.ts).
+    - Built reusable [`FigTooltip.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigTooltip.tsx) wrapper and exported from [`components/ui/fig/index.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/index.ts).
+    - In [`DrawingFavoritesToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/DrawingFavoritesToolbar.tsx), expanded horizontal room with `gap-1.5`, `px-2 py-1`, and `mx-0.5` dividers. Wrapped all buttons in `<FigTooltip text="...">` and removed redundant native `title="..."` attributes to replace default browser tooltips with FigUI tooltips.
+    - Wrapped action buttons in [`CanvasDrawingToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CanvasDrawingToolbar.tsx) with `<FigTooltip text="...">`.
+  - **Documentation & Map Synchronization**:
+    - Updated [`skills/map.md`](file:///c:/Users/d/Documents/ob/orderflowApp/skills/map.md) to describe new responsibilities across the modified files.
 - **Why it changed**:
-  - The previous Standard Deviation envelope calculation for VWAP was iterating over the entire session window (up to 43,200 candles) for *every single display candle*. For 1,000 display candles, this caused up to 43.2 million inner-loop iterations on the main thread, resulting in severe UI lag/freezing. 
-  - The rendering skip for 0-volume candles caused array misalignment that completely broke the VWAP line rendering on the chart canvas.
+  - Direct user request:
+    1. Fix volume indicator to render directly on canvas instead of taking separate bottom layout space.
+    2. Set default drawing objects to 1px white stroke with a delete/trash icon instead of close icon.
+    3. Make Manage Storage button visible only when unlocked.
+    4. Give draggable drawing toolbar horizontal room and replace browser default tooltips with FigUI tooltips.
 - **Impact summary**:
-  - VWAP rendering is now instantaneous, `O(N)`, and causes zero main thread lag.
-  - The VWAP line correctly draws gaps during 0-volume periods.
-  - VWAP can now be toggled on/off in the Indicators UI.
+  - Main price chart is full height with volume bars sitting directly at the bottom behind candles.
+  - Drawing tools default to 1px white lines and have clear trash icons.
+  - Storage button is safely hidden until authenticated.
+  - Draggable favorites toolbar has comfortable horizontal spacing and modern FigUI tooltips on hover.
+  - TypeScript checks clean (`npx tsc --noEmit` exited 0) and ESLint clean (`next lint` exited 0).
 
-## [2026-09-01] - Bug Fix: Vercel Serverless Connection Exhaustion (HTTP 500)
+## [2026-09-06] - Typography & Header: MacFont (BlinkMacSystemFont) Replacement & Header Logo Removal
 
 - **What changed**:
-  - **TimescaleDB Connection Pool (`lib/db/timescale/client.ts`)**:
-    - Cached the `pg` Pool on `globalThis._timescalePool` to ensure connection reuse across warm serverless invocations.
-    - Reduced `max` pool size from `20` to `5` and added `connectionTimeoutMillis: 5000` to prevent serverless lambdas from hoarding connections during cold starts.
-  - **Frontend Throttling (`components/FeedProvider.tsx`)**:
-    - Reduced parallel volume profile chunk fetching concurrency (`CONCURRENCY`) from 4 to 1 in `hydrateStoredFineProfileRanges` to smooth out load on Vercel.
-  - **API Error Handling (`app/api/history/footprint/route.ts`, `app/api/history/profile/route.ts`)**:
-    - Wrapped database queries in robust `try / catch` blocks.
-    - Updated error handlers to return proper JSON `{ error, details }` with HTTP 503 instead of throwing unhandled exceptions that crash the serverless function.
+  - **MacFont (`BlinkMacSystemFont`) Integration**:
+    - Replaced Google `Inter` font in [`app/layout.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/app/layout.tsx) with Next.js `localFont` loading `MacFont` files (`app/fonts/MacFont/fonts/BlinkMacSystemFont-*.woff2`) spanning weights 100 to 900 in normal and italic styles.
+    - Imported `app/fonts/MacFont/stylesheet.css` in [`app/layout.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/app/layout.tsx) to register the native `@font-face` `'BlinkMacSystemFont'` family in CSS and `document.fonts`.
+    - Configured `--font-sans` CSS variable on `<html>` and applied `macFont.className` to `<body>`.
+    - Updated [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css) `body` font family to `var(--font-sans), 'BlinkMacSystemFont', -apple-system, sans-serif` and removed Inter-specific `font-feature-settings`.
+    - Updated [`tailwind.config.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/tailwind.config.ts) `fontFamily.sans` to `["var(--font-sans)", "BlinkMacSystemFont", "-apple-system", "sans-serif"]`.
+  - **Canvas Renderer Font Family Standardization**:
+    - Replaced hardcoded `"Inter"` with `"BlinkMacSystemFont"` across canvas rendering utilities:
+      - [`drawAxes.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawAxes.ts) (`AXIS_FONT`)
+      - [`drawCrosshair.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawCrosshair.ts) (`CROSSHAIR_FONT`)
+      - [`drawCvd.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawCvd.ts) (`AXIS_FONT`)
+      - [`drawLines.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawLines.ts) (price badges, time badges, stacked pills, anchored badges)
+      - [`drawPriceLine.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawPriceLine.ts) (`PRICE_LINE_FONT`, `COUNTDOWN_FONT`)
+      - [`drawStatsGrid.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawStatsGrid.ts) (row labels)
+      - [`drawTradingOverlays.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawTradingOverlays.ts) (`LABEL_FONT`, `SMALL_FONT`, `BADGE_FONT`)
+      - [`drawVolumeBars.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawVolumeBars.ts) (volume values and fallback warnings)
+  - **Header Logo & Name Removal**:
+    - In [`components/layout/Header.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Header.tsx), removed the pulsating dot logo, the visible "OrderFlow" text heading, and the vertical divider from top-left.
+    - Preserved `<h1 className="sr-only">OrderFlow</h1>` to maintain semantic single-h1 SEO heading hierarchy without visual clutter.
+  - **Documentation & Map Synchronization**:
+    - Updated [`skills/map.md`](file:///c:/Users/d/Documents/ob/orderflowApp/skills/map.md) to record the new responsibilities for `tailwind.config.ts`, `app/layout.tsx`, and `components/layout/Header.tsx`.
 - **Why it changed**:
-  - Fetching historical footprints and drawing volume profiles on Vercel returned HTTP 500 errors. When the frontend requested 8-13 time chunks simultaneously, Vercel spawned multiple parallel Lambdas. Each Lambda tried to open a 20-connection pool to Timescale Cloud, instantly exhausting the database connection limits and causing unhandled API crashes.
+  - Direct user request: replace the current font across the application with the custom font added to `app/fonts/MacFont` (`mcfont`), and remove the logo/name from the top-left header.
 - **Impact summary**:
-  - Historical footprint data and volume profile fetching is now stable and reliable on Vercel production.
-  - Smooth throttled loading with zero HTTP 500 errors.
-  - Graceful fallback (HTTP 503) during temporary database unavailability.
+  - Entire application UI (menus, toolbars, settings dialogs, tables, popovers) and HTML5 canvas overlays (price badges, axes, crosshair, line tools) now render with Apple San Francisco style `BlinkMacSystemFont`.
+  - Header top-left is clean and minimal, displaying only layout controls while maintaining SEO heading accessibility.
+  - TypeScript compiler passed with 0 errors (`npx tsc --noEmit` clean).
+  - ESLint passed with 0 errors or warnings (`npm run lint` clean).
 
-## [2026-09-01] - Feature: MT5 Bridge Polling Backoff & Header Manual Connect
+## [2026-09-06] - Style: Canvas Background Restored to #0F0F0F with #444444 Borders Preserved
 
 - **What changed**:
-  - **State & Runtime Actions (`types/chart.ts`, `lib/store/chartRuntime.ts`)**:
-    - Added `mt5BridgeStatus: 'connected' | 'disconnected' | 'connecting' | 'paused'` to `TradingRuntimeStatus`.
-    - Added `setMT5BridgeStatus` and `syncMT5Bridge()` actions in `useChartRuntimeStore` with timeout protection and position sync.
-  - **Polling Backoff & Pause (`hooks/useTradingSync.ts`)**:
-    - Replaced unthrottled 2-second polling with a failure-aware sync loop.
-    - After 3 consecutive failed attempts (e.g. when the bridge server `http://localhost:3001` is not running), `mt5BridgeStatus` transitions to `'paused'` and stops the polling interval, eliminating `net::ERR_CONNECTION_REFUSED` console error noise.
-  - **Header UI & Manual Connect (`components/ui/ConnectionStatus.tsx`)**:
-    - Added reactive connection states: pulsing green for `MT5 LIVE`, amber with spinner for `CONNECTING...`, and red with `MT5 OFFLINE`.
-    - Added a sleek "Connect" button next to `MT5 OFFLINE` in the header, allowing one-click reconnection and polling resumption whenever the user starts the bridge.
+  - Updated central canvas background token in [`lib/config/chartColors.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/lib/config/chartColors.ts):
+    - `DEFAULT_CANVAS_BG = '#0F0F0F'` (restored from `#1E1E1E`).
+    - Preserved `DEFAULT_BORDER_COLOR = '#444444'`, `DEFAULT_GRID_COLOR = '#444444'`, and `DEFAULT_HEADER_SIDEBAR_BG = '#2C2C2C'`.
+  - Updated root CSS variable in [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css):
+    - `--bg-base: #0F0F0F;` (restored from `#1E1E1E`).
+    - Preserved `--border: #444444;`, `--grid-color: var(--border);`, and `--bg-surface: #2C2C2C;`.
 - **Why it changed**:
-  - Continuous 2-second background polling to `http://localhost:3001/status` when the bridge was offline flooded the browser developer console with `GET http://localhost:3001/status net::ERR_CONNECTION_REFUSED` errors.
+  - User feedback: Revert canvas background to `#0F0F0F` while maintaining the current `#444444` borders and grid styling.
 - **Impact summary**:
-  - Browser console remains clean when the MT5 bridge is offline.
-  - Traders can connect and reconnect with a single click in the header at any time.
-  - Codebase compiles cleanly with 0 TypeScript errors.
+  - The canvas surface, store defaults, and layout backgrounds seamlessly revert to deep dark `#0F0F0F` via the design token architecture, while header, sidebar, and grid borders remain crisp `#444444`.
+  - Clean TypeScript verification (`npx tsc --noEmit` exited 0).
 
-
-## [2026-09-01] - Bug Fix: Web Worker ReferenceError (`window is not defined`) in Footprint Cache
+## [2026-09-06] - Architecture: Theme Color Reusability, Canvas #1E1E1E Background, and Grid Border Sync
 
 - **What changed**:
-  - **Footprint Base Cache (`lib/aggregation/footprintCache.ts`)**:
-    - Removed `declare global { interface Window { diagnosticLogs?: string[]; } }`.
-    - Removed diagnostic `window.diagnosticLogs` assignments and `console.log` statements from `trim()` and `deleteBaseSlice()`.
+  - **Design Token & Constant Architecture**:
+    - Defined central reusable theme constants in [`lib/config/chartColors.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/lib/config/chartColors.ts):
+      - `DEFAULT_CANVAS_BG = '#1E1E1E'`
+      - `DEFAULT_BORDER_COLOR = '#444444'`
+      - `DEFAULT_GRID_COLOR = DEFAULT_BORDER_COLOR` (`#444444`)
+      - `DEFAULT_HEADER_SIDEBAR_BG = '#2C2C2C'`
+    - Updated CSS variables in [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css):
+      - `--bg-base: #1E1E1E;` (mapped to Tailwind `bg-background`)
+      - `--bg-surface: #2C2C2C;` (mapped to Tailwind `bg-surface`)
+      - `--border: #444444;` (mapped to Tailwind `border-border`)
+      - `--grid-color: var(--border);`
+  - **Store & Canvas Engine Integration**:
+    - Updated [`lib/store/chart.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/lib/store/chart.ts) defaults to use `DEFAULT_CANVAS_BG` for `chartBackgroundColor` and `DEFAULT_GRID_COLOR` for `verticalGridLineColor` and `horizontalGridLineColor`.
+    - Updated canvas renderers ([`drawAxes.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawAxes.ts), [`drawCvd.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawCvd.ts), [`drawVolumeBars.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawVolumeBars.ts), [`drawStatsGrid.ts`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/drawStatsGrid.ts), and [`ChartCanvas.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartCanvas.tsx)) to reference `DEFAULT_CANVAS_BG` and `DEFAULT_GRID_COLOR` instead of hardcoded hex codes.
+  - **UI Layouts & Semantic Token Refactoring**:
+    - Replaced hardcoded hex classes in [`Header.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Header.tsx) and [`Sidebar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Sidebar.tsx) with semantic tokens: `bg-surface`, `border-border`, and `bg-border`.
+    - Standardized container backgrounds in [`app/page.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/app/page.tsx), [`ChartPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartPanel.tsx), and [`CvdPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CvdPanel.tsx) to `bg-background` and `bg-border`.
 - **Why it changed**:
-  - `footprintCache.ts` is imported and executed within `aggregationWorker.ts` (a dedicated Web Worker context). Because `window` is not defined in Web Workers, referencing `window.diagnosticLogs` threw `ReferenceError: window is not defined` whenever `trim()` or `deleteBaseSlice()` was called during base candle hydration.
-  - This exception interrupted worker message processing, aborting footprint hydration and preventing live footprint charts and candle data from rendering on the screen.
+  - User requirement: Apply `#1E1E1E` for canvas background and match grid line color to the border color (`#444444`), implemented strictly via reusable tokens and constants rather than hardcoded hex values across files.
 - **Impact summary**:
-  - Web Worker executes cleanly with zero runtime exceptions.
-  - Footprint candle hydration and aggregation pipeline updates resume normal operation.
-  - Code passes TypeScript type check with 0 errors.
+  - Pure reusable design token architecture: changing a color in one source of truth (`app/globals.css` and `lib/config/chartColors.ts`) cascades across all UI layouts, store defaults, canvas rendering passes, and axis grids.
+  - TypeScript checks pass cleanly (`npx tsc --noEmit` exited 0).
 
-
-## [2026-09-01] - Feature: Complete Volume Profile Engine (Tiers 1-8 Upgrades)
+## [2026-09-06] - Style: Border Color Adjustment to #444444 for Header and Sidebar
 
 - **What changed**:
-  - **Tier 6 — Developing POC Trail (`lib/volumeProfile/profileEngine.ts`, `components/chart/drawVolumeProfile.ts`, `components/chart/drawSelectionRect.ts`)**:
-    - Implemented a single-pass O(N) incremental POC tracker in `profileEngine.ts` that snapshots the running Point of Control across time-sorted candles into a `developingPoc` coordinate array.
-    - Added canvas rendering in `drawVolumeProfile.ts` and `drawSelectionRect.ts` tracing the developing POC path across the chart timeline with rounded joins and configurable styles.
-  - **Tier 7 — Flexibility, Periodic Anchoring & Canvas Merge/Split (`components/chart/ChartCanvas.tsx`, `components/chart/chartCanvasHitTest.ts`, `lib/utils/historicalSessions.ts`, `types/chart.ts`, `lib/store/chart.ts`)**:
-    - Added support for rigid calendar-anchored "Periodic" volume profiles (e.g., Every 4 Hours, Daily) anchored to calendar intervals rather than rolling viewport edges.
-    - Updated `HistoricalSessionProfileSettings.tsx` and `drawSessions.ts` to dynamically render custom user-defined sessions from `panel.sessions`.
-    - Added `getHistoricalSessionProfileHitZone` in `chartCanvasHitTest.ts` to detect clicks on historical session profile bounding boxes.
-    - Implemented a right-click Context Menu on the chart canvas allowing traders to dynamically "Merge With Next Session" or "Split Session" in real time, persisting merged session ranges in `useChartStore`.
-  - **Tier 8 — Cosmetic Settings & Styling Overrides (`components/ui/chart-settings/VolumeProfileSettings.tsx`, `types/chart.ts`, `lib/store/chart.ts`, `components/chart/drawVolumeProfile.ts`, `components/chart/drawSelectionRect.ts`)**:
-    - Added customizable color pickers and width selectors for POC (`profilePocColor`, `profilePocWidth`), HVN (`profileHvnColor`), and LVN (`profileLvnColor`) in `VolumeProfileSettings.tsx`.
-    - Wired cosmetic settings into the drawing pipeline, replacing hardcoded amber/pink/cyan values.
-  - **Type Safety & Repository Cleanups (`components/chart/ChartCanvas.tsx`, `lib/db/timescale/repositories/profileRepository.ts`, `lib/db/timescale/repositories/footprintRepository.ts`, `types/volumeProfile.ts`)**:
-    - Replaced `any[]` query parameter types in TimescaleDB repositories with `QueryParam[]`.
-    - Resolved variable scoping for `heatmapRows` and aligned `drawCustomProfile` argument order in `ChartCanvas.tsx`.
+  - Updated [`components/layout/Header.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Header.tsx):
+    - Adjusted header bottom border to `border-[#444444]`.
+    - Adjusted internal vertical divider between logo and layout dropdown to `bg-[#444444]`.
+    - Adjusted unlock container border to `border-[#444444]`.
+    - Adjusted MT5 account widget border to `border-[#444444]` and divider to `bg-[#444444]`.
+  - Updated [`components/layout/Sidebar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Sidebar.tsx):
+    - Adjusted sidebar right border to `border-[#444444]`.
+    - Adjusted tool hover tooltip border to `border-[#444444]`.
 - **Why it changed**:
-  - To complete the full Volume Profile specification according to the roadmap (Tiers 1 through 8), delivering institutional-grade volume distribution analysis, session flexibility, developing POC dynamics, and user customization.
+  - User feedback: previous `#e6e6e6` border appeared too stark/white against the `#2C2C2C` background; updated to `#444444` for a smoother, balanced dark-mode border.
 - **Impact summary**:
-  - Traders have full control over volume profile inputs, periods, developing POC trails, custom session merging/splitting via right-click, and visual cosmetics.
-  - Codebase compiles cleanly with 0 TypeScript or linting errors.
+  - Provides subtle, cohesive mid-tone borders framing the header and sidebar.
+  - Zero TypeScript errors (`npx tsc --noEmit` clean).
 
-## [2026-09-01] - Bug Fix: Volume Profile Order Count and Aggregate Trades Input Data
+## [2026-09-06] - Style: #2C2C2C Background and #e6e6e6 Borders for Header and Sidebar
 
 - **What changed**:
-  - **TimescaleDB Repository (`lib/db/timescale/repositories/profileRepository.ts`)**:
-    - Added `order_count: row.order_count` to the row mapping in `getFineProfileRows`.
-  - **libSQL Repository (`lib/db/repositories/profileRepository.ts`)**:
-    - Updated `FineProfileRow` interface to explicitly include `order_count?: number` to accurately reflect the database response.
+  - Updated [`components/layout/Header.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Header.tsx):
+    - Changed `<header>` background to `#2C2C2C` and bottom border to `border-[#e6e6e6]`.
+    - Updated internal vertical divider between logo and layout dropdown to `bg-[#e6e6e6]`.
+    - Updated password unlock container border to `border-[#e6e6e6]`.
+    - Updated MT5 account widget border to `border-[#e6e6e6]` and divider to `bg-[#e6e6e6]`.
+  - Updated [`components/layout/Sidebar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Sidebar.tsx):
+    - Changed `<aside>` background to `#2C2C2C` and right border to `border-[#e6e6e6]`.
+    - Updated tool hover state to `hover:bg-white/10` to ensure clean contrast on `#2C2C2C`.
+    - Updated tool hover tooltip to `#2C2C2C` background and `border-[#e6e6e6]` border.
 - **Why it changed**:
-  - The historical database query for Volume Profile rows was fetching `order_count` from the table but failing to map it into the returned JavaScript object. Because `order_count` was `undefined` coming from the DB, the frontend caching engine (`lib/volumeProfile/profileCache.ts`) fell back to using `tradeCount`. 
-  - As a result, both "Order Count" and "Agg Trades" input settings were silently using identical `tradeCount` data under the hood. Furthermore, since `tradeCount` correlates strongly with `volume` and the profile scaling is relative to max volume, the visual shape appeared effectively identical across all three settings.
+  - Direct user requirement to apply `#2C2C2C` as the background color to the header and sidebar, and `#e6e6e6` for borders.
 - **Impact summary**:
-  - The "Order Count" input setting now correctly utilizes actual order counts from the database instead of defaulting to trade counts.
-  - The "Agg Trades" setting still utilizes trade counts.
-  - The UI accurately triggers changes between Volume, Order Count, and Agg Trades based on the correct underlying data streams.
+  - Header and sidebar now have the requested dark grey `#2C2C2C` background framed by crisp `#e6e6e6` borders, cleanly separating navigation/controls from the chart workspace.
+  - Zero TypeScript errors (`npx tsc --noEmit` clean).
 
-## [2026-08-31] - Feature: Real-Time Cancel Icon Dragging & Entry-Line Draggable TP/SL Handles
+## [2026-09-06] - Feature: FigUI3 Migration (Phase 6 — Toolbar, Header, and Overlay Compound Buttons)
 
 - **What changed**:
-  - **Real-Time Cancel Icon Following (`components/chart/ChartCanvas.tsx`)**:
-    - Subscribed `tradingOverlayControls` to `bracketDrag` in Zustand and updated SL/TP `top` coordinate calculations to use `bracketDrag.previewPrice` during active drags.
-    - The remove `(X)` icon now follows the bar, handle badge, and cursor synchronously across the entire drag with zero lag.
-  - **Draggable `+SL` and `+TP` Handles on Position Entry Line (`components/chart/drawTradingOverlays.ts`, `components/chart/ChartCanvas.tsx`)**:
-    - Added `drawEntryBracketButton` in `drawTradingOverlays.ts` to render `+SL` and `+TP` pill buttons directly on the Position Entry line whenever a position lacks an active SL or TP (or after removing one).
-    - Registered their bounding boxes into `hitZones.slHandles` and `hitZones.tpHandles`.
-    - Clicking and dragging `+SL` or `+TP` from the entry line initiates an interactive drag directly from `vp.entryPrice`, drawing out the SL/TP level in real time and committing it to MT5 upon mouse release.
+  - Migrated remaining toolbar, header, overlay compound, and dropdown action buttons to `<FigButton>` across 17 component files:
+    - [`components/layout/Header.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/layout/Header.tsx): Password auth unlock trigger converted to `<FigButton variant="ghost" size="small" icon>`.
+    - [`components/ui/StorageManager.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/StorageManager.tsx): Manual "Delete Data" action converted to `<FigButton variant="destructiveSecondary" size="medium">`.
+    - [`components/debug/DebugPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/debug/DebugPanel.tsx): Debug tab buttons converted to `<FigButton variant={activeTab === tab.id ? 'secondary' : 'ghost'} size="small">`.
+    - [`components/ui/PanelToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/PanelToolbar.tsx): Drawing tool mode triggers (`Position`, `BUY`, `SELL`) migrated to `<FigButton size="compact" variant="ghost">`.
+    - [`components/ui/ChartLayoutDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartLayoutDropdown.tsx): Layout mode buttons (single, vertical split, horizontal split) migrated to `<FigButton variant="ghost" size="medium" icon>`.
+    - [`components/ui/PairSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/PairSelector.tsx): Expandable symbol accordion buttons migrated to `<FigButton variant="ghost" size="medium">`.
+    - [`components/ui/ChartModeSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeSelector.tsx): Chart mode option list buttons migrated to `<FigButton variant="ghost" size="medium">`.
+    - [`components/ui/IndicatorsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/IndicatorsModal.tsx): Indicator selection item buttons migrated to `<FigButton variant="ghost" size="medium">`.
+    - [`components/ui/ChartModeToggle.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeToggle.tsx): Legacy CANDLES and FOOTPRINT buttons migrated to `<FigButton size="small" variant="ghost">`.
+    - [`components/ui/DrawingFavoritesToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/DrawingFavoritesToolbar.tsx): Expand button, Profile toggle, Measure toggle, and favorite drawing tools (Horizontal line, Vertical line, Ray, Box) migrated to `<FigButton variant="ghost" icon size="compact">`.
+    - [`components/chart/IndicatorLabels.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/IndicatorLabels.tsx): Data source switcher buttons (`Spot`, `Futures`, `Both`) migrated to `<FigButton variant="ghost" size="small">`.
+    - [`components/chart/ChartPanel.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/ChartPanel.tsx): Compact CVD expand strip button migrated to `<FigButton variant="ghost" size="compact">`.
+    - [`components/chart/CanvasDrawingToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CanvasDrawingToolbar.tsx): Box drawing fill toggle button migrated to `<FigButton variant="ghost" icon size="compact">`.
+    - [`components/ui/ChartSettingsDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartSettingsDropdown.tsx): Sidebar category navigation tabs migrated to `<FigButton variant="ghost" size="medium">`.
+    - [`components/ui/TimeInput.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/TimeInput.tsx): 12h AM and PM period toggle buttons migrated to `<FigButton variant="ghost" size="compact">`.
+    - [`components/ui/chart-settings/BubbleSettings.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/chart-settings/BubbleSettings.tsx): "DOCS" link trigger migrated to `<FigButton variant="link" size="small">`.
+    - [`components/ui/chart-settings/SignalSettings.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/chart-settings/SignalSettings.tsx): Microstructure signal toggle rows (Absorption, Exhaustion, Iceberg, Liquidity Vacuum) migrated to `<FigButton variant="ghost" size="medium">`.
 - **Why it changed**:
-  - The cancel `(X)` icon previously remained stationary at Place A during drag before jumping to Place B on mouseup, and users needed a way to drag out new TP/SL levels directly from the position entry line after removing them.
+  - Phase 6 of FigUI3 migration plan (`skills/new/figui3 migration.md:L199-L221`): Unified buttons across toolbars, header, overlays, and modal/dropdown options with design system tokens while keeping Phase 5 (color pickers) and Phase 7 (trade execution & canvas overlay actions) strictly demarcated.
 - **Impact summary**:
-  - Cancel icons now follow dragging smoothly in real-time, and traders can click/drag `+SL` or `+TP` directly from any active position entry line to set new levels.
-  - All application code passes TypeScript type checks with 0 errors.
+  - All compound toolbar and overlay buttons now leverage `<FigButton>` with standard FigUI3 variants (`ghost`, `secondary`, `primary`, `destructiveSecondary`, `link`) and responsive sizing tokens (`small`, `compact`, `medium`).
+  - No visual regression in compact toolbar height, alignment, or keyboard accessibility.
+  - Zero TypeScript compiler errors (`npx tsc --noEmit` clean) and zero ESLint warnings (`npm run lint` clean).
 
-## [2026-08-31] - Bug Fix: Complete Elimination of TP/SL Drag Snap-Back Glitch
+## [2026-09-06] - Fix: Anchored Dropdowns for Chart/Symbol Selection & Global Glass Effect Removal
 
 - **What changed**:
-  - **In-Memory Bridge Cache Update (`market_order_bridge/server.mjs`)**:
-    - Updated `POST /modify` in the bridge server to immediately update `mt5Account.positions` in memory with the new `sl` and `tp` values. This ensures that any subsequent `/status` polls returning to Next.js immediately reflect the new prices without serving stale pre-drag snapshot data (Point A).
-    - Updated `POST /close-position` to immediately filter closed tickets out of `mt5Account.positions`.
-  - **Instant EA Account Snapshot Push (`market_order_bridge/MarketOrderEA.mq5`)**:
-    - Updated `ExecuteModification` and `ExecutePositionClose` to immediately trigger `SendAccountUpdate()` upon successful execution (`trade.PositionModify` / `trade.PositionClose`), pushing authoritative live MT5 positions back to the bridge within ~100ms instead of waiting for the slow 5-second timer tick.
-  - **Enhanced Frontend Sync & Grace Lock (`lib/store/chartRuntime.ts`, `components/chart/ChartCanvas.tsx`)**:
-    - Expanded `syncMT5Positions` grace window to 6000ms and preserved local optimistic bracket prices and status until MT5 confirms the change.
-    - Added state refresh with `updatedAt: Date.now()` inside `executeBracketModifyDirect` on modification response.
+  - **Chart/Symbol Selection Dropdown Conversion**:
+    - Converted [`PairSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/PairSelector.tsx) from a centered full-screen modal (`fixed inset-0 ... flex items-center justify-center bg-black/20`) into a small anchored dropdown using `<FigPopup>` positioned directly underneath its trigger button (`anchor="#pair-selector-trigger-${panelId}"`, `position="bottom left"`, `offset="0 4"`).
+    - Added configurable `position` prop (`'bottom left' | 'bottom right' | 'bottom center'`) to [`PairSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/PairSelector.tsx), [`ChartModeSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeSelector.tsx), and [`IndicatorsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/IndicatorsModal.tsx) for flexible anchor positioning.
+  - **Glass Effect Removal Across Popovers & Modals**:
+    - Removed `backdrop-blur-*` filters and translucent background overlays from [`StorageManager.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/StorageManager.tsx), [`ColorPickerPopover.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ColorPickerPopover.tsx), [`BubblesDocsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/BubblesDocsModal.tsx), [`OrderTicket.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/OrderTicket.tsx), [`DrawingFavoritesToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/DrawingFavoritesToolbar.tsx), and [`CanvasDrawingToolbar.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/chart/CanvasDrawingToolbar.tsx).
+    - Preserved indicator settings modals and global settings dialog in [`ChartSettingsDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartSettingsDropdown.tsx) as centered/floating dialogs per instructions.
 - **Why it changed**:
-  - When dragging TP or SL from Point A to Point B, the line previously snapped back to Point A temporarily before moving back to Point B because the bridge `/status` cache retained Point A for up to 5 seconds while waiting for MT5's periodic timer tick.
+  - Direct user requirement: Chart selection must open as a small anchored dropdown under the trigger button (not a centered modal dialog); Candlestick and Indicator selections must also be anchored dropdown lists directly under their triggers; glass effect must be removed; and indicator settings/global settings modals must remain centered dialogs.
 - **Impact summary**:
-  - Dragging TP and SL from Point A to Point B now remains rock-solid at Point B with zero flicker, zero jump back to Point A, and immediate synchronization across the web chart and MT5.
-  - All application code passes TypeScript type checks with 0 errors.
+  - Chart/Symbol selection, Candlestick selection, and Indicator selection all behave consistently as anchored popover dropdowns directly underneath their respective buttons.
+  - No background bleed-through or glass textures anywhere.
+  - All TypeScript checks clean (`npx tsc --noEmit` exits 0).
 
-## [2026-08-31] - Bug Fix: TP/SL Cancel Icon Alignment and Notification Auto-Dismiss
+## [2026-09-06] - Fix: Solid Popup Backgrounds, Duplicate Dialog Header Elimination, and Pixel-Perfect List Alignment
 
 - **What changed**:
-  - **Button Alignment Fix (`components/chart/ChartCanvas.tsx`)**:
-    - Fixed the `chartHeight` calculation in `tradingOverlayControls` and `chartOrderControls` to use `getBottomLayout(containerSize.height).mainChartHeight` instead of raw canvas height minus time axis. This eliminates vertical displacement caused by active bottom panels (Stats, Volume Bars, CVD).
-    - Reduced close button dimensions to 18x18px with `top: y - 9` and `left: chartWidth - 24` to achieve pixel-perfect vertical and horizontal alignment directly adjacent to the 18px `[ TP ]` and `[ SL ]` handle badges.
-  - **Notification Toast Fix (`components/chart/ChartCanvas.tsx`, `market_order_bridge/MarketOrderEA.mq5`)**:
-    - Added an automatic 3.5-second auto-dismiss timer via `useEffect` to clear `chartOrderMessage` and runtime store action status messages.
-    - Made the notification toast interactive and clickable to dismiss immediately on click.
-    - Updated `MarketOrderEA.mq5` and `ChartCanvas.tsx` to ensure `fillPrice` falls back to `currentPrice` or recent candle close if `trade.ResultPrice()` returns 0 on certain broker market fills, preventing "Market Order filled at undefined".
+  - **Eliminated Glass Texture & Enforced Pure Solid Dark Backgrounds**:
+    - Removed all `backdrop-blur-*` filters and translucent `bg-white/10` styling from [`ChartModeSelector.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartModeSelector.tsx), [`IndicatorsModal.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/IndicatorsModal.tsx), [`ChartLayoutDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartLayoutDropdown.tsx), and [`ChartSettingsDropdown.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/ChartSettingsDropdown.tsx).
+    - Enforced `opacity: 1 !important`, `backdrop-filter: none !important`, and solid `background: #181818 !important` on `dialog[is="fig-popup"]` and `dialog[is="fig-dialog"]` in [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css) so no chart candles or grid lines bleed through.
+  - **Pixel-Perfect Popup Alignment & Spacing**:
+    - Corrected FigUI3 `offset` token orientation from `"6 0"` to `"0 4"` across all popups. FigUI3 parses offsets as `[x, y]`; `"6 0"` pushed popups 6px horizontally away from the trigger button and 0px vertically, whereas `"0 4"` aligns flush with the trigger button's left edge and creates a clean 4px vertical margin below it.
+    - Standardized list item spacing with `p-1.5` padding, `gap-1` column layout, refined section headers (`text-[10px] font-black uppercase tracking-[0.18em] text-[#787B86]`), solid hover states (`hover:bg-[#242424]`), and solid active states (`bg-[#282828] border border-[#383838]`).
+  - **Duplicate Header Bar Elimination in Settings**:
+    - Confirmed `ChartSettingsDropdown.tsx` uses custom floating tool window structure without wrapping `fig-dialog`, eliminating the duplicate auto-generated `<fig-header data-auto><h3>Dialog</h3><fig-button close-dialog>` bar seen above the Settings header. Cleaned up unused `FigDialog` import.
+  - **Stray Label Artifact Fix in PropsKit Numbers**:
+    - Verified `PropskitNumber.tsx` sets `label: label ?? ''` to trigger FigUI3's internal `LJ` class `#Q.remove()`, eliminating stray "La" text (e.g. "La0.5", "La10") in numeric inputs.
 - **Why it changed**:
-  - Cancel icons were vertically misaligned with the TP/SL lines on charts with active bottom indicators, and market order notifications were not disappearing automatically.
+  - Direct user feedback: user requested pure solid background colors instead of glassmorphism/translucent textures, removal of the duplicate dialog header, and pixel-perfect spacing/alignment for Footprint and Indicator dropdown lists.
 - **Impact summary**:
-  - Cancel icons on TP, SL, and Entry lines are now pixel-perfect aligned directly next to their handle badges, and order notifications auto-dismiss cleanly.
-  - All application code passes TypeScript type checks with 0 errors.
+  - Popups are 100% opaque, eliminating background chart bleed-through.
+  - Footprint and Indicator popup lists open flush with trigger buttons and have clean, tight row spacing.
+  - Zero TypeScript compiler errors (`npx tsc --noEmit` clean).
 
-## [2026-08-31] - Feature: Close Buttons on SL, TP, and Position Entry Lines
+## [2026-09-05] - Feature: FigUI3 Migration (Phase 3 — Popup/Modal Unification Part 1)
 
 - **What changed**:
-  - **Chart Close Buttons (`components/chart/ChartCanvas.tsx`, `components/chart/drawTradingOverlays.ts`)**:
-    - Added dedicated circular close icon (`X`) buttons on Stop Loss (SL), Take Profit (TP), and Position Entry lines directly on the chart canvas.
-    - Adjusted canvas drawing offsets and handle width in `drawTradingOverlays.ts` (`drawBracketHandle` and `drawOrderLabelRight`) to provide spacing for interactive overlay buttons.
-    - **Stop Loss (SL) Removal**: Clicking the `X` button on the SL line optimistically removes the SL from the local store and dispatches an asynchronous background modification to MT5 via `POST /modify` setting `sl: 0`.
-    - **Take Profit (TP) Removal**: Clicking the `X` button on the TP line optimistically removes the TP from the local store and dispatches an asynchronous background modification to MT5 via `POST /modify` setting `tp: 0`.
-    - **Position Entry Close & Confirmation Popup**: Clicking the `X` button on the Position Entry line opens a confirmation modal detailing the ticket number, side, volume, entry price, and current floating P&L. Confirming executes market position closure via `POST /close-position`.
-  - **Bridge & EA Position Close Support (`market_order_bridge/server.mjs`, `market_order_bridge/MarketOrderEA.mq5`)**:
-    - Extended Express bridge with `/close-position`, `/poll-close`, and `/close-result` endpoints.
-    - Added `CheckForPendingCloses()`, `ExecutePositionClose()`, and `SendCloseResult()` in `MarketOrderEA.mq5` leveraging MQL5 `trade.PositionClose(ticket)` to close open positions at market.
+  - **Empirical Shadow/Light DOM Analysis & Contrast Protection**:
+    - Checked `class FigPopup` (`n0`) and `class FigDialog` (`a0`) in `@rogieking/figui3/dist/fig.js`: confirmed both are **100% Light DOM** (no shadow root attached).
+    - Patched `.popup-contrast` exclusions in [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css) to explicitly exclude `dialog[is="fig-popup"] *`, `dialog[is="fig-dialog"] *`, `fig-popup *`, and `fig-dialog *` from blanket `!important` button/container overrides, and added base transparent/borderless resets for dialogs.
+  - **TypeScript Declarations (`types/figui3.d.ts`)**:
+    - Added `FigPopupProps` and `FigDialogProps` interfaces.
+    - Augmented JSX intrinsic elements for `fig-popup`, `fig-dialog`, and standard `dialog` to support FigUI3 custom attributes (`is`, `anchor`, `position`, `offset`, `closedby`, `modal`, `drag`, `handle`, `autoresize`).
+  - **Reusable React Wrappers (`components/ui/fig/`)**:
+    - Built [`FigPopup.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigPopup.tsx): React wrapper for `<dialog is="fig-popup">` syncing `open`, `anchor` (string selector or element ref), `position`, `offset`, `closedby`, and bridging native `close`/`toggle` events to `onClose`.
+    - Built [`FigDialog.tsx`](file:///c:/Users/d/Documents/ob/orderflowApp/components/ui/fig/FigDialog.tsx): React wrapper for `<dialog is="fig-dialog">` managing modal/non-modal mode (`showModal()` vs `show()`), native pointer dragging (`drag`, `handle`), `position`, and `close`/`cancel` events.
+    - Exported `FigPopup` and `FigDialog` from `components/ui/fig/index.ts`.
+  - **Sequential Migrations (4 Target Components)**:
+    - **ChartLayoutDropdown (`ChartLayoutDropdown.tsx`)**: Migrated dropdown to `<FigPopup>` anchored to `#chart-layout-dropdown-trigger`. Removed hand-rolled `keydown` (Escape) and `mousedown` (click-outside) `useEffect` listeners.
+    - **ChartModeSelector (`ChartModeSelector.tsx`)**: Migrated dropdown to `<FigPopup>` anchored to `#chart-mode-selector-trigger-${panelId}`. Removed hand-rolled `keydown` (Escape) and `mousedown` (click-outside) `useEffect` listeners.
+    - **ChartSettingsDropdown (`ChartSettingsDropdown.tsx`)**:
+      - Centered indicator dialog mode migrated to `<FigDialog open modal position="center center" closedby="any">`.
+      - Floating settings window mode migrated to `<FigDialog open drag handle=".settings-drag-handle" closedby="any">`. Window dragging is now driven natively by `fig-dialog`'s pointer capture and coordinate logic.
+      - Retained custom bottom vertical resize bar (`handleResizeMouseDown` / `isResizing` / `setSettingsDropdownHeight`) since `fig-dialog`'s `a0` class does not implement interactive pointer resizing.
+    - **IndicatorsModal (`IndicatorsModal.tsx` & `PanelToolbar.tsx`)**: Migrated indicator picker to `<FigPopup>` anchored to `#panel-indicators-trigger-${panelId}`. Removed manual `mousedown` click-outside hook.
 - **Why it changed**:
-  - Users needed quick one-click actions on chart lines to remove active SL or TP brackets independently and close open market positions directly from the chart with a clear confirmation step.
+  - Implements Phase 3 of the approved FigUI3 migration plan to unify popups and modals with standard Web Components (`fig-popup` and `fig-dialog`), replacing bespoke Escape and click-outside handling.
 - **Impact summary**:
-  - Traders can remove SL or TP brackets with a single click on their respective lines, and close market positions safely via the chart entry line close button with confirmation.
-  - Passes TypeScript compilation with 0 errors.
+  - Eliminates duplicate window event listeners and ad-hoc absolute/fixed positioning math.
+  - Zero TypeScript compiler errors (`npx tsc --noEmit` clean).
+  - All four popups/modals maintain identical opening triggers and clean dismiss behaviors.
 
-## [2026-08-31] - Feature: Smooth TP/SL Dragging without Confirmation Modals or Glitches
+## [2026-09-06] - Feature: FigUI3 Migration (Phase 4 — All 14 Settings Panels & PropsKit Rollout)
 
 - **What changed**:
-  - **Optimistic State & Direct Execution (`components/chart/ChartCanvas.tsx`)**:
-    - Refactored `onMouseUp` bracket dragging so that when `bracketDragConfirmEnabled` is `false` (the default), the local runtime store's `bracketOrders` are optimistically updated (`upsertBracketOrder`) immediately to the new price upon mouse release.
-    - Drag visualization state is cleared simultaneously with zero visual snap-back (the TP/SL line stays firmly and smoothly at the target point B instead of jumping back to point A).
-    - Dispatched the position modification to the local bridge (`POST http://localhost:3001/modify`) asynchronously in the background (`executeBracketModifyDirect`).
-    - Handled error rollbacks and toast notifications if the MT5 bridge or EA rejects the modification.
-  - **Grace Period Sync (`lib/store/chartRuntime.ts`)**:
-    - Updated `syncMT5Positions` to protect recent local user bracket modifications with a 2500ms grace window, preventing in-flight bridge polling ticks from momentarily reverting optimistic drag updates before MT5 finishes processing.
-  - **Settings Toggle (`lib/store/chart.ts`, `components/ui/chart-settings/GeneralChartSettings.tsx`)**:
-    - Added `bracketDragConfirmEnabled: boolean` (persisted in Zustand `useChartStore`, default `false`).
-    - Added an interactive UI toggle under the "Interaction" section in `GeneralChartSettings.tsx` ("TP / SL Drag Confirmation") allowing users to choose between instant one-click dragging and modal confirmation flows.
+  - **Sequential Panel Verification & PropsKit Migration (All 14 Panels)**:
+  - **CVD Settings (`CvdSettings.tsx`)**:
+    - Migrated CVD Mode (`Session`, `Continuous`) to `<FigSegmentedControl full>`.
+    - Migrated Reset Mode (`Session`, `None`) and Scale Mode (`Auto`, `Fixed`) to `<FigSegmentedControl full>`.
+    - Migrated Height and Smoothing sliders to `<PropskitSlider>`.
+    - Migrated Fixed Range limit to `<PropskitNumber>`.
+    - Migrated Divergence Markers and Compact Mode toggles to `<FigSwitch>`, with lookback slider on `<PropskitSlider>`.
+  - **Volume Bars Settings (`VolumeBarsSettings.tsx`)**:
+    - Migrated Input Data (`Volume`, `Orders`, `Agg Trades`) and Filter Mode (`Absolute`, `Relative`) to `<FigSegmentedControl full>`.
+    - Migrated Moving Average Length, Min Filter, and Max Filter to `<PropskitNumber>`.
+    - Migrated Color Mode (`Delta`, `Volume`) to `<FigSegmentedControl full>`.
+    - Migrated Opacity, Height, Text Size, and Average Line Length to `<PropskitSlider>`.
+    - Migrated Show Values and Average Line toggles to `<FigSwitch>`.
+  - **Heatmap Settings (`HeatmapSettings.tsx`)**:
+    - Migrated Base Opacity, Age Fade Factor, Strip Width, and History Depth sliders to `<PropskitSlider>`.
+    - Migrated Show Pulled, Show Consumed, Show CURRENT, Profile Sync, and Persistence Bars toggles to `<FigSwitch>`.
+  - **Liquidity Map Settings (`LiquidityMapSettings.tsx`)**:
+    - Migrated Opacity and Range sliders to `<PropskitSlider>`.
+    - Migrated Bucket Size and Min Size to `<PropskitNumber>`.
+  - **Footprint Settings (`FootprintSettings.tsx`)**:
+    - Migrated Footprint Mode (`Bid/Ask`, `Delta`, `Volume`, `Volume Profile`) to `<FigSegmentedControl full>`.
+  - **Volume Profile Settings (`VolumeProfileSettings.tsx`)**:
+    - Migrated Profile Type and POC Width to `<FigSegmentedControl full>`.
+    - Migrated Scaling (`Linear`, `Logarithmic`) to `<FigSegmentedControl>`.
+    - Migrated Row Size, Width, Opacity, Min Row Width, Min Row Height, Node Sensitivity, and Delta Width to `<PropskitSlider>`.
+    - Migrated Periodic Profile Period Value to `<PropskitNumber>` and Period Unit to `<FigSelect>`.
+    - Migrated Threshold Filter Min and Max to `<PropskitNumber>`.
+    - Migrated POC Highlight, VA Area Fill, POC Line, and VA Lines toggles to `<FigSwitch>`.
+  - **Signal Settings (`SignalSettings.tsx`)**:
+    - Migrated Absorption Side and Exhaustion Side (`Both`, `Bid`, `Ask`) to `<FigSegmentedControl full>`.
+    - Migrated Absorption Min Score, Exhaustion Min Score, Exhaustion Lookback to `<PropskitSlider>`.
+    - Migrated Iceberg Min Score, Lookback, Size Ratio to `<PropskitSlider>`.
+    - Migrated Sweeps Min Depth, Min Speed, Lookback to `<PropskitSlider>`.
+    - Migrated Absorption, Exhaustion, Provisional, Iceberg, and Sweeps toggles to `<FigSwitch>`.
+  - **General Chart Settings (`GeneralChartSettings.tsx`)**:
+    - Migrated Tick Size and Bucket Size inputs to `<PropskitNumber>`.
+    - Migrated Bucket Size Auto toggle button to `<FigButton>`.
+  - **Canvas Settings (`CanvasSettings.tsx`)**:
+    - Migrated Vertical and Horizontal Grid Line checkboxes to `<FigSwitch>`.
+  - **ColorPicker Boundary Preservation (`CanvasSettings.tsx` & `SessionsSettings.tsx`)**:
+    - Preserved integration with child `ColorPickerPopover` completely untouched per Phase 4 boundary requirements (reserved for Phase 5 consolidation).
+  - **Lint & TypeScript Cleanup (`BubbleSettings.tsx`)**:
+    - Removed unused `useState` and `useEffect` imports in `BubbleSettings.tsx`.
 - **Why it changed**:
-  - Dragging TP or SL previously suffered from an awkward double confirmation flow (modal popup) and a visual glitch where the line snapped back to point A before waiting for network round-trips to MT5 and eventually moving to point B.
+  - Completes FigUI3 and PropsKit component integration across all remaining indicator settings popup modals and global chart settings panels following the Phase 2 standard.
 - **Impact summary**:
-  - TP and SL can now be dragged smoothly and directly from point A to point B with zero popups, zero extra clicks, and zero visual latency or jumping.
-  - All application code passes TypeScript type checks with 0 errors.
+  - Replaces legacy HTML range inputs, checkboxes, selects, and unstyled number inputs across the entire settings modal suite with FigUI3/PropsKit controls.
+  - Zero TypeScript compiler errors (`npx tsc --noEmit` exits 0).
+  - Zero ESLint warnings or errors (`npm run lint` passes).
+  - All 14 settings panels verified for correct store actions and behavioral updates.
 
-## [2026-08-31] - Investigation: Volume Profile Implementation Status
+## [2026-09-05] - Feature: FigUI3 Migration (Volume Bubbles, Sessions, HSVP, and Stats Settings)
 
 - **What changed**:
-  - Investigated the current codebase against 11 specific Volume Profile features (Profile Type, Period, Length, Input Data, Min/Max Filter, Tick Grouping, Session Splitting, POC controls, Peak/Valley detection, Merge/Split profiles).
-  - Authored a summary report artifact (`volume_profile_investigation_report.md`) detailing exactly how each feature is currently implemented, partially implemented, or missing.
-  - Did NOT modify any source code files as per the instruction.
+  - **Volume Bubbles Settings (`BubbleSettings.tsx`)**:
+    - Migrated Size By selection to `<FigSegmentedControl full>` (`Volume`, `Orders`).
+    - Migrated Bubble Mode to `<FigSegmentedControl full>` (`Ask/Bid Split`, `Delta`, `Volume`).
+    - Migrated Volume Color Mode to `<FigSegmentedControl full>` (`Delta Absolute`, `Delta Percentual`).
+    - Migrated Side Filter to `<FigSegmentedControl full>` (`Buy`, `Sell`, `Both`).
+    - Migrated Scale Mode to `<FigSegmentedControl>` (`Linear`, `SQRT`, `Log`).
+    - Migrated Display Mode to `<FigSegmentedControl>` (`2D`, `3D`).
+    - Migrated Min Volume threshold mode from raw button toggle to `<FigSegmentedControl>` (`Fixed (BTC)` vs `Adaptive (x Avg)`).
+    - Migrated numeric slider controls (`Filter Bubble (px)`, `Std Dev Val`, `Outlier Cap %`, `Min Orders`, `Line Width`, `Opacity`) to `<PropskitSlider>`.
+  - **Sessions Settings (`SessionsSettings.tsx` & `TimeInput.tsx`)**:
+    - Migrated per-session enabled toggles to `<FigSwitch>`.
+    - In `TimeInput.tsx`, replaced high-intensity accent blue AM/PM active toggle styling with clean, neutral ghost styling (`bg-[#2A2A2A]` border `#383838`).
+  - **Historical Session Volume Profile Settings (`HistoricalSessionProfileSettings.tsx`)**:
+    - Migrated Session dropdown and Sessions to Display to `<FigSelect>`.
+    - Migrated Profile Display mode to `<FigSegmentedControl full>` (`Separate`, `Combined`).
+    - Migrated multiple session checkbox list to clean individual `<FigSwitch>` toggles with high-contrast card borders.
+  - **Stats Indicator Settings (`StatsSettings.tsx`)**:
+    - Migrated Master toggle to `<FigSwitch>`.
+    - Migrated Stats items (`Volume`, `Delta`, `CVD`) to individual `<FigSwitch>` cards with refined dark borders and contrast.
 - **Why it changed**:
-  - The user requested a report only on the current state of the Volume Profile implementation before proceeding with any new implementations.
+  - Extends FigUI3 and PropsKit component integration across remaining key indicator settings panels (Volume Bubbles, Sessions, HSVP, and Stats Indicator) as requested.
 - **Impact summary**:
-  - Provided clarity on the current state. No functional changes made.
+  - Eliminates raw HTML inputs, ranges, checkboxes, and buttons across all 4 target panels.
+  - Consistent visual design, animated segmented states, and elastic numeric scrub sliders.
+  - `npx tsc --noEmit` verified clean with 0 errors.
 
-## [2026-08-30] - Refactoring: Component Modularization (`ChartSettingsDropdown.tsx`)
+## [2026-09-05] - Feature: FigUI3 Phase 2 Migration (Segmented Controls & First Full Panel: VwapSettings)
 
 - **What changed**:
-  - Refactored `ChartSettingsDropdown.tsx`, a monolithic 2,476-line file, into modular, isolated sub-components.
-  - Created a new `components/ui/chart-settings/` directory and `index.ts` export barrel.
-  - Extracted UI render functions into independent components: `SessionsSettings`, `CvdSettings`, `VolumeBarsSettings`, `BubbleSettings`, `VolumeProfileSettings`, `HistoricalSessionProfileSettings`, `LiquidityMapSettings`, `HeatmapSettings`, `StatsSettings`, `SignalSettings`, `GeneralChartSettings`, and `FootprintSettings`.
-  - Fixed sidebar tab selection contrast issue where global `.popup-contrast` CSS was applying dark background overrides onto inactive tab buttons instead of the active tab.
-  - Added dedicated `.sidebar-tab-btn` styling to `globals.css` with clean active highlight and transparent default states.
-  - Refined draggable start coordinate calculation to use bounding client rect on mount.
-
+  - **Standing Rule 1 Empirical Shadow/Light DOM Check & Contrast Protection**:
+    - Inspected installed package source in `@rogieking/figui3`: confirmed `fig-segmented-control` (class `FigSegmentedControl`), `fig-segment` (class `FigSegment`), `fig-select` (class `FigSelect`), `propskit-slider` (class `PropskitSlider`), and `propskit-number` (class `PropskitNumber`) all render in **Light DOM** (no shadow root).
+    - Patched `.popup-contrast` in [`app/globals.css`](file:///c:/Users/d/Documents/ob/orderflowApp/app/globals.css) to explicitly exclude `fig-segmented-control *`, `fig-segment *`, `fig-select *`, `fig-select-option *`, `propskit-slider *`, `propskit-number *`, `propskit-switch *`, `propskit-select *`, `[data-propskit] *`, and `[class*="propskit-"] *` from blanket `!important` color/border overrides.
+  - **Shared Wrapper Hook & Bundle Setup (`components/ui/fig/`, `app/layout.tsx`, `types/figui3.d.ts`)**:
+    - Extended `types/figui3.d.ts` with custom element JSX declarations for `fig-segmented-control`, `fig-segment`, `fig-select`, `fig-select-options`, `fig-select-option`, `propskit-slider`, `propskit-number`, `propskit-switch`, and `propskit-select`.
+    - Extended `app/layout.tsx` to import `@rogieking/figui3/fig-editor.css` and `@rogieking/figui3/fig-lab.css`.
+    - Extended `useFigElement.ts` to dynamically import core `@rogieking/figui3`, `@rogieking/figui3/fig-editor.js`, and `@rogieking/figui3/fig-lab.js` together.
+    - Built `FigSegmentedControl.tsx` & `FigSegment.tsx`: reusable React wrapper for `<fig-segmented-control>` and `<fig-segment>` supporting radio-group selection, animated selection indicators, and custom segment options with native change/input event forwarding.
+    - Built `FigSelect.tsx`: reusable React wrapper for `<fig-select>` supporting options array/slotted options, labels, and change event forwarding.
+    - Built `PropskitSlider.tsx`: reusable React wrapper for `<propskit-slider>` labeled numeric range slider with elastic scrub and text field support.
+    - Built `PropskitNumber.tsx`: reusable React wrapper for `<propskit-number>` labeled exact numeric input with precision, unit, and stepper support.
+    - Exported all new wrappers from `components/ui/fig/index.ts`.
+  - **Segmented Controls Migrated across App (11 controls)**:
+    - `PanelToolbar.tsx`: Migrated timeframe pills (`1m`, `5m`, `15m`, `1h`, `4h`) to `<FigSegmentedControl>`.
+    - `TimeframeSelector.tsx`: Migrated timeframe pills (`1m`, `5m`, `15m`, `1h`, `4h`) to `<FigSegmentedControl>`.
+    - `PairSelector.tsx`: Migrated Spot / Perpetual contract options to full-width `<FigSegmentedControl>`.
+    - `ChartSettingsDropdown.tsx`: Migrated sidebar category navigation tabs (`General`, `Canvas`, `Alerts`, `Profiles`, `Signals`) to `<FigSegmentedControl>` with vertical layout and `<FigSegment>`.
+  - **Full Panel Migration: `VwapSettings.tsx` (100% FigUI3 & PropsKit)**:
+    - Replaced all raw HTML `<button>`, `<input>`, `<select>` controls:
+      - Master VWAP Toggle: `<FigSwitch>`
+      - Period Mode (Session vs Rolling): `<FigSegmentedControl>`
+      - Session Anchor (Day, Week, Month): `<FigSelect>`
+      - Rolling Lookback (Days): `<PropskitSlider>`
+      - Envelope Mode (Standard Deviation vs Percentage): `<FigSelect>`
+      - Bands 1, 2, 3 Toggles: `<FigSwitch>`
+      - Bands 1, 2, 3 Multipliers: `<PropskitNumber>`
 - **Why it changed**:
-  - The original file violated the client code refactoring guidelines (hard limit of 250 lines per component), making it difficult to maintain and scale.
-  - Improved readability, modularity, and encapsulation of state management (`useChartStore`).
+  - Phase 2 of the approved FigUI3 migration plan to migrate all segmented/tab controls to `<fig-segmented-control>` and prove a complete settings panel end-to-end with PropsKit components before scaling to other panels.
 - **Impact summary**:
-  - No functional logic changes were made; strictly a cosmetic and structural refactor.
-  - Greatly improved code maintainability and adherence to the 250-line component size rule.
+  - Unifies segmented controls with animated active pill indicators.
+  - Zero raw HTML form controls remain in `VwapSettings.tsx`.
+  - All store actions and canvas rendering loops validated via behavioral test.
+  - Passes ESLint and `npx tsc --noEmit` with 0 errors.
 
-## [2026-08-30] - Feature: Volume Bubbles Configuration & Cosmetic Upgrades
+## [2026-09-05] - Feature: FigUI3 Phase 1 Migration (Switches & Icon/Toolbar Ghost Buttons)
 
 - **What changed**:
-  - **Bubble Data Strategy**: Dropped 'Footprint' source option; standardized exclusively on high-performance 'Orders' scaling (`bubbleSizeBy='orders'`).
-  - **Threshold Config**: Abstracted global volume thresholds to `process.env.NEXT_PUBLIC_BUBBLE_MIN_BTC_THRESHOLD` and added informative UI warnings inside `ChartSettingsDropdown.tsx`.
-  - **Bubble Settings Store (`types/bubble.ts`, `types/chart.ts`, `lib/store/chart.ts`)**: Replaced deprecated radius configuration with robust `bubbleDisplayMode` (`2d` / `3d`), customizable hex colors (`bubbleBidColor`, `bubbleAskColor`), adjustable `bubbleLineWidth` and global `bubbleOpacity`. Implemented `bubbleColorMode` and `bubbleVolumeColorMode` enums.
-  - **Bubble Renderer (`components/chart/drawBubbles.ts`)**: Integrated the new sizing and semantic styling fields into the drawing loop, removing unused legacy `BUBBLE_BULLISH_RGB`/`BUBBLE_BEARISH_RGB` logic, fixing duplicate loop declarations, and introducing 3D canvas `createRadialGradient` support.
-  - **UI Selectors (`components/ui/ChartSettingsDropdown.tsx`)**: Built a complete aesthetic control panel to control Bubble display modes, standardizing hex inputs for custom Bid/Ask colors, and adding visual slider elements for line width and opacity tuning.
+  - **Shared Wrapper Hook & Components (`components/ui/fig/`)**:
+    - Built `useFigElement.ts`: reusable React hook ensuring single dynamic import of `@rogieking/figui3`, Light/Shadow DOM property synchronization (`checked`, `disabled`, `selected`), attribute reflection, and native custom event binding (`change`, `click`).
+    - Built `FigSwitch.tsx`: clean React wrapper for `<fig-switch>` with controlled/uncontrolled state support and change event forwarding.
+    - Built `FigButton.tsx`: clean React wrapper for `<fig-button>` supporting `variant` (primary, secondary, ghost, destructive, etc.), `size` (small, compact, medium, large), `icon` mode, `selected` state, and native click dispatch.
+    - Exported from `components/ui/fig/index.ts`.
+  - **Pill Toggle Switches Migrated to `<FigSwitch>` (17 total across 13 settings panels)**:
+    - `BubbleSettings.tsx` (volume bubbles toggle)
+    - `CvdSettings.tsx` (divergences toggle)
+    - `GeneralChartSettings.tsx` (drawings synchronization toggle)
+    - `GeneralChartSettings.tsx` (bracket close confirmation toggle)
+    - `HeatmapSettings.tsx` (liquidity heatmap toggle)
+    - `HistoricalSessionProfileSettings.tsx` (historical profile toggle)
+    - `LiquidityMapSettings.tsx` (liquidity map toggle)
+    - `SessionsSettings.tsx` (sessions toggle)
+    - `SignalSettings.tsx` (exhaustion provisional toggle, plus 4 signal row toggles: Absorption, Exhaustion, Sweeps, Trap Delta)
+    - `StatsSettings.tsx` (stats grid toggle)
+    - `VolumeBarsSettings.tsx` (moving average toggle)
+    - `VwapSettings.tsx` (rolling VWAP toggle)
+    - `ChartLayoutDropdown.tsx` (crosshair sync toggle)
+  - **Icon-Only Utility Buttons Migrated to `<FigButton variant="ghost" icon>` (19 total)**:
+    - Close 'X' buttons: `ChartSettingsDropdown.tsx` (2 instances), `BubblesDocsModal.tsx`, `PairSelector.tsx`, `StorageManager.tsx`, `DebugPanel.tsx`
+    - Action buttons: `DebugPanel.tsx` (RefreshCw, Copy)
+    - Panel/Indicator controls: `ChartPanel.tsx` (CVD minimize), `IndicatorLabels.tsx` (collapse chevron, visibility eye toggle, remove indicator 'X')
+    - Canvas drawing toolbar buttons: `CanvasDrawingToolbar.tsx` (drawing lock, delete X, profile lock, profile settings gear, remove profile X)
+    - Toolbar collapse buttons: `DrawingFavoritesToolbar.tsx` (collapse chevron)
+    - PanelToolbar buttons: `PanelToolbar.tsx` (focus mode maximize/minimize toggle, panel refresh button, panel settings gear button)
+  - **Toolbar Navigation Buttons Migrated to `<FigButton variant="ghost">` (`components/ui/PanelToolbar.tsx`)**:
+    - Timeframe selector buttons (`1m`, `5m`, `15m`, `1h`, `4h`) with `variant="ghost"`, `size="small"`, and active `selected={panel.timeframe === tf}` state.
+    - Indicators modal trigger button with `variant="ghost"` and active `selected={showIndicatorsModal}` state.
+  - **CSS Enhancements (`app/globals.css`)**:
+    - Added `:root` tokens for `--figma-color-bg-switch: #3A3A3A`, `--figma-color-bg-transparent-hover: rgba(255, 255, 255, 0.08)`, and `--figma-color-bg-transparent-pressed: rgba(255, 255, 255, 0.14)`.
+    - Added safety reset rule targeting raw `button` elements to prevent FigUI3's package-level button rules from styling unmigrated native buttons.
 - **Why it changed**:
-  - To finalize the required visual and logical upgrades requested in the Volume Bubbles modernization plan (Tiers 1, 2, 3, and 5).
-  - Centralizes configuration and provides traders with advanced visual customization options (flat vs. spheres, adjustable opacity, colors, etc.) previously unavailable.
+  - Phase 1 of the approved FigUI3 migration plan to replace bespoke inline toggle switches and icon utility buttons with unified, accessible, and theme-compliant FigUI3 custom elements.
 - **Impact summary**:
-  - Enhanced customization and a unified logical rendering path.
-  - UI seamlessly links setting changes to drawing loop execution.
-  - `npx tsc --noEmit` validates all related file typings properly (ignoring unrelated legacy `.ts` scripts).
-
-## [2026-08-30] - Fix & Refactor: StorageManager TimescaleDB Migration & UI Z-Index Overlay
-
-- **What changed**:
-  - **Storage Service (`lib/services/storageService.ts`)**: Removed separate "Main DB" and "Bubbles DB" aggregation logic, combining storage metrics into a single unified TimescaleDB report that matches the new architecture.
-  - **API Route (`app/api/history/storage/route.ts`)**: Removed redundant `targets` array from the `DELETE` payload.
-  - **Types (`types/storage.ts`)**: Cleaned up `StorageDay` to only hold a unified `sizeMb`, and `DatabasesInfo` to only hold `timescale`.
-  - **Modal UI (`components/ui/StorageManager.tsx`)**:
-    - Migrated UI layout to reflect a single TimescaleDB connection instead of splitting Main vs Bubbles databases.
-    - Removed obsolete checkboxes for granular deletion targets.
-    - Wrapped the entire modal in a React Portal (`createPortal` to `document.body`) to escape the `Header` (`z-20`) stacking context.
-    - Explicitly called `e.stopPropagation()` on `onPointerDown` and `onWheel` events at the modal container boundary.
-- **Why it changed**:
-  - The Storage Manager was the final remnant of the old dual MongoDB database architecture and failed to reflect the migrated TimescaleDB single-database schema.
-  - Because the modal was mounted inside the `Header` (`z-20`), chart overlays and crosshairs (`z-30`) were intercepting mouse and wheel events, making the modal visually overlap the canvas but behave as if it was underneath it.
-- **Impact summary**:
-  - The Storage Manager accurately represents the single TimescaleDB backend. Deleting data properly truncates footprints, profiles, and bubbles concurrently for chosen dates.
-  - The UI modal now correctly traps all scroll and click events, cleanly isolating interaction away from the chart canvas.
-
-## [2026-08-30] - Feature: Hollow Candles Support
-
-- **What changed**:
-  - Added `'hollow'` to `ChartMode` in `types/chart.ts`.
-  - Updated `drawCandles.ts` to support rendering hollow bodies (with continuous wicks) for ALL candles when `isHollowMode` is true, keeping standard up/down coloring.
-  - Replaced the inline "C and F" mode toggle buttons in `PanelToolbar.tsx` with a new `ChartModeSelector.tsx` dropdown.
-  - Mapped dropdown options to `Candlestick`, `Hollow`, and `Footprint`, styled identically to the Indicators modal (including a custom thin scrollbar, descriptions, and active state checkmarks).
-- **Why it changed**:
-  - To fulfill user request for a third "Hollow Candles" chart type conforming to conventional charting rules, and to provide a more scalable UI for switching chart modes as the application grows.
-- **Impact summary**:
-  - Users can now select Hollow Candles, improving visualization options without impacting underlying data aggregation or fetching logic. UI is modernized with a dropdown selector.
-
-## [2026-08-29] - Feature: TimescaleDB Migration
-
-- **What changed**:
-  - Replaced MongoDB time-series collections with a unified TimescaleDB schema running via PostgreSQL (`pg`).
-  - Added new TimescaleDB repositories for candles, footprint, profile, and bubbles under `lib/db/timescale/`.
-  - Migrated `btcusdtCollector.mjs` to use PostgreSQL pooling directly instead of MongoClient.
-  - Quarantined the old MongoDB driver under `lib/db/_mongo_quarantine` for future deletion.
-  - Created optional `scripts/migrateMongoToTimescale.ts` to aid in data export.
-- **Why it changed**:
-  - MongoDB time-series collections presented limitations and performance scaling issues for raw OHLCV and tick volume aggregation.
-  - TimescaleDB natively supports continuous aggregates, hypertables, and relational cross-analysis, which is vastly superior for complex order flow data queries.
-- **Impact summary**:
-  - Storage adapter automatically mounts TimescaleDB when `MARKET_DB_DRIVER=timescaledb`.
-  - Faster ingestion and more flexible time-windowing for analytical endpoints.
-
-## [2026-08-30] - Orderbook Pipeline Updates
-
-### Changes Made
-
-- **Feeds**:
-  - Integrated `OrderbookManager` into `BinanceAdapter` (`binance.ts`) and `BinanceFuturesAdapter` (`binanceFutures.ts`).
-  - Adapters now fetch a REST `/depth` snapshot on connect, buffer diffs, and strictly align sequence IDs.
-  - Added gap detection (`U` vs `lastUpdateId` + 1) which automatically triggers a `RESYNCING` transition to repair the local book.
-- **Why it changed**:
-  - Following the `part-1-data-ingestion-pipeline.md` specification to guarantee downstream consumers (frontend and DB collector) receive perfect, gap-free orderbook states.
-
-## [2026-08-29] - Update: TimescaleDB Final Cleanup and Bug Fixes
-
-- **What changed**:
-  - Fixed duplicate `let shuttingDown = false` declaration in `btcusdtCollector.mjs` (would have caused SyntaxError at runtime).
-  - Fixed dead `_test.setMongoDb` / `_test.setBubbleMongoDb` exports in `btcusdtCollector.mjs` referencing removed variables. Replaced with `_test.setPgPool`.
-  - Added missing `UNIQUE (symbol, contract_type, timeframe, time)` constraint on `market_candles` table so `ON CONFLICT DO NOTHING` actually prevents duplicate insertions.
-  - Added compression policies for all 4 hypertables (previously defined as a variable but never applied).
-  - Added missing `db:migrate` script to `package.json`.
-  - Commented out old MongoDB URIs in `.env.local`.
-  - Removed unused `fileURLToPath` import from collector.
-  - Added `ssl: { rejectUnauthorized: false }` to pg Pool in `client.ts` to support Timescale Cloud connections.
-- **Why it changed**:
-  - Senior audit of the previous implementation identified 2 critical, 2 functional, and 3 minor issues against the approved plan. Timescale Cloud connections timed out without SSL explicitly configured.
-- **Impact summary**:
-  - Collector can now start without a SyntaxError. Candle deduplication actually works. Compression policies will compress old chunks automatically. Timescale Cloud connection works successfully.
-
-## [2026-08-29] - Update: Default Chart, Indicator, Market, and Stats Settings
-
-- **What changed**:
-  - **Volume Profile Defaults (`lib/store/chart.ts`, `components/chart/drawVolumeProfile.ts`, `components/chart/drawSelectionRect.ts`)**:
-    - Updated default `profileWidthPct` from `70` to `45`.
-    - Maintained default `profileOpacity` at `0.6` (60%).
-  - **Volume Bubbles Defaults (`lib/store/chart.ts`)**:
-    - Updated default `bubbleThreshold` (Minimum Volume) from `50` to `100`.
-    - Updated default `bubbleMinRadius` (Minimum Radius) from `2` to `4` px.
-    - Updated default `bubbleMaxRadius` (Maximum Radius) from `8` to `20` px.
-  - **Default Market Selection (`lib/store/chart.ts`)**:
-    - Updated initial default panel contract from `contractType: 'spot'` to `contractType: 'futures'` and `dataSourceMode: 'futures'` (BTCUSD Perpetual Futures).
-  - **Stats Indicator Defaults (`lib/store/chart.ts`)**:
-    - Updated default `statsIndicatorItems` from `['volume', 'delta', 'cvd']` to `['volume', 'delta']` (CVD disabled by default; volume and delta enabled).
-    - Updated default `statsIndicatorCount` to `2`.
-- **Why it changed**:
-  - Adjusted out-of-the-box defaults to preferred trader standards: perpetual futures as the initial market, tighter volume profile width, cleaner volume bubble scaling, and essential volume/delta stats without default CVD clutter.
-- **Impact summary**:
-  - New charts and panels initialize with BTCUSD Perpetual Futures by default.
-  - Volume profiles render at 45% default width.
-  - Volume bubbles default to 100 min volume, 4px min radius, and 20px max radius.
-  - Stats indicator displays Volume + Delta by default, with CVD available via settings.
-  - All indicator and market logic remains fully intact and configurable.
-  - TypeScript validation passes with 0 errors.
-
-## [2026-08-29] - Fix: Stats and Volume Simultaneous Display with Dynamic Vertical Stacking
-
-- **What changed**:
-  - **Dynamic Multi-Indicator Bottom Panel Engine (`components/chart/chartBottomPanels.ts`)**:
-    - Created `computeBottomPanelsLayout` which calculates non-overlapping vertical slots (`top`, `height`, `bottom`) for all active bottom-docked chart indicators (`stats`, `volumeBars`).
-    - Stacking order dynamically responds to `panel.activeIndicators` (e.g. `['volumeBars', 'stats']` stacks Volume above Stats, `['stats', 'volumeBars']` stacks Stats above Volume).
-    - Accurately computes `mainChartHeight = Math.max(40, canvasHeight - timeAxisHeight - totalHeight)`, reserving clean space for candlestick/footprint charts.
-  - **Removed Suppression Logic (`components/chart/ChartPanel.tsx`)**:
-    - Removed `volumeBarsEnabled={panel.statsIndicatorEnabled ? false : panel.volumeBarsEnabled}` and `volumeBarsShowValueText={panel.statsIndicatorEnabled ? false : panel.volumeBarsShowValueText}` which previously disabled volume whenever stats was turned on.
-    - Passed `activeIndicators={panel.activeIndicators}` down to `ChartCanvas`.
-  - **Panel Positioning & Clipping (`components/chart/drawVolumeBars.ts`, `components/chart/drawStatsGrid.ts`)**:
-    - Extended `DrawVolumeBarsOptions` with `panelTop?: number` and `panelHeight?: number`.
-    - Updated `drawVolumeBars` to clip and fill within its designated vertical slot with a crisp 1px separator top border.
-    - Updated `drawStatsGrid` to render with a crisp 1px separator top border.
-  - **Unified Canvas Coordinate & Mouse Hit Bounds (`components/chart/ChartCanvas.tsx`, `components/chart/usePanZoom.ts`)**:
-    - Replaced all hardcoded `statsGridHeight` math in mouse handlers (`onMouseDown`, `onMouseMove`, `onMouseUp`, `getUnifiedHitTarget`, `pricePerPixel`) with layout-aware `getBottomLayout(rect.height).mainChartHeight`.
-  - **Store Reordering Actions & UI Controls (`lib/store/chart.ts`, `components/chart/IndicatorLabels.tsx`)**:
-    - Added `reorderIndicators` and `moveIndicator(panelId, indicatorId, 'up' | 'down')` store actions.
-    - Added Move Up / Move Down buttons to indicator header labels for easy user-driven reordering.
-- **Why it changed**:
-  - `ChartPanel.tsx` intentionally suppressed Volume Bars when Stats Indicator was active because the previous canvas layout hardcoded a single vertical offset (`statsGridHeight`), causing indicator visual collisions.
-  - Users require both Stats and Volume to be simultaneously active, visible, functional, and vertically stacked in their preferred order without hardcoded offsets or hacks.
-- **Impact summary**:
-  - Stats only → works cleanly.
-  - Volume only → works cleanly.
-  - Stats + Volume → both visible simultaneously without overlap.
-  - Enabling either indicator or reordering positions dynamically updates both indicator positions and price coordinate scaling.
-  - `npx tsc --noEmit` and unit verification tests pass with 0 errors.
-
-## [2026-08-29] - Feature: Session-Based Historical Session Volume Profile (HSVP) Configuration
-
-- **What changed**:
-  - **Refactored Settings (`components/ui/ChartSettingsDropdown.tsx`)**: Replaced raw start/end time inputs with a Session selector (Tokyo, London, New York) and a Multiple selection mode.
-  - **Store State Migration (`lib/store/chart.ts`, `types/chart.ts`)**: Removed legacy time-based properties (`historicalSessionProfileStartHour`, etc.) and added `historicalSessionProfileSession`, `historicalSessionProfileSessions`, and `historicalSessionProfileDisplayMode`.
-  - **Segment-Based Session Math (`lib/utils/historicalSessions.ts`)**: Upgraded `getHistoricalSessionRanges` to support segment-based ranges, correctly handling overlapping and discontinuous sessions across dates.
-  - **Profile Restoration & Cache Logic (`components/FeedProvider.tsx`)**: Updated history restoration and cache eviction algorithms to evaluate min/max timestamps of segment arrays instead of flat span dates.
-  - **Segmented Canvas Rendering (`components/chart/ChartCanvas.tsx`)**: Refactored the volume profile drawing loop to properly aggregate candles across non-contiguous session segments before calculating the final combined profile.
-- **Why it changed**:
-  - The HSVP configuration was overly complex (raw time inputs). Users wanted simple check-box style configurations mapping to existing global sessions (Tokyo, London, NY) with the ability to combine multi-session data into one continuous profile.
-- **Impact summary**:
-  - Simplified, intuitive configuration. Seamless combining of multiple overlapping or disjointed global sessions into one precise Volume Profile.
-
-## [2026-08-29] - Fix: Drawing Tool Coordinate / Hit-Testing Misalignment
-
-- **What changed**:
-  - **Shared Coordinate Bounds (`components/chart/ChartCanvas.tsx`)**:
-    - Computed `statsGridHeight` globally at the top of the canvas rendering cycle.
-    - Updated all mouse interaction boundaries (`onMouseDown`, `onMouseMove`, `getUnifiedHitTarget`) to calculate `chartHeight` as `rect.height - timeAxisHeight - statsGridHeight`.
-  - **Panning Coordinate Fix (`components/chart/usePanZoom.ts`)**:
-    - Added `statsGridHeight` to `usePanZoom` function signature and used it to compute correct vertical panning ratio (`pricePerPixel`), keeping panning perfectly bound to the drawable chart height.
-  - **Measurement Tool Coordinates (`lib/utils/measurement.ts`)**:
-    - Updated `computeMeasurementMetrics` to accept `statsGridHeight` and apply it to chart bounds for accurate coordinate measurement when stats grid is enabled.
-- **Why it changed**:
-  - The rendering pipeline scaled the vertical drawing area (`drawableHeight`) by subtracting `statsGridHeight`. However, the mouse interaction pipeline and hit-testing functions ignored `statsGridHeight`, using the full canvas height.
-  - This divergence created a vertical offset in price-to-pixel coordinate translation that scaled linearly with price depth, causing drawing tools (rectangles, positions, lines, volume profiles) to render out-of-sync with their hit-testing hitboxes when the Stats Indicator was active.
-- **Impact summary**:
-  - 100% pixel-to-pixel accuracy restored for drawing tool hit-testing, panning, and interaction, irrespective of the presence or size of the Stats Indicator Grid.
-  - `npx tsc --noEmit` validates clean type signatures across updated hooks and utilities.
+  - Consistent switch and icon button design language across all panels and toolbars.
+  - Passes all ESLint checks and `npx tsc --noEmit` with 0 errors.
