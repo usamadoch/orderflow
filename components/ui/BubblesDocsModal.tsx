@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { FigButton } from './fig';
 
 interface BubblesDocsModalProps {
   onClose: () => void;
@@ -24,17 +25,23 @@ export function BubblesDocsModal({ onClose }: BubblesDocsModalProps) {
       onClick={onClose}
     >
       <div 
-        className="popup-contrast flex max-h-[min(600px,calc(100vh-48px))] w-full flex-col overflow-y-auto rounded-xl border border-[#1F1F1F] bg-[#0F0F0F] shadow-2xl"
+        className="popup-contrast flex max-h-[min(600px,calc(100vh-48px))] w-full flex-col overflow-y-auto rounded-xl border border-[#282828] bg-[#141414] shadow-2xl"
         style={{ maxWidth: 500 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[#1F1F1F] bg-[#1F1F1F]/50 p-4 sticky top-0 z-10 backdrop-blur-sm">
+        <div className="flex items-center justify-between border-b border-[#282828] bg-[#181818] p-4 sticky top-0 z-10">
           <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-accent">
             How Volume Bubbles Work
           </h3>
-          <button onClick={onClose} className="p-1 text-text-dim transition-colors hover:text-main">
+          <FigButton
+            variant="ghost"
+            icon
+            onClick={onClose}
+            title="Close"
+            aria-label="Close"
+          >
             <X size={14} />
-          </button>
+          </FigButton>
         </div>
         
         <div className="p-4 space-y-6 text-[11px] leading-relaxed text-text-dim">

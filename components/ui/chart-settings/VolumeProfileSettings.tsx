@@ -1,4 +1,7 @@
+'use client';
+
 import { forwardRef } from 'react';
+import { FigSwitch, FigSegmentedControl, PropskitSlider, PropskitNumber, FigSelect } from '../fig';
 import { useChartStore, PanelId } from '../../../lib/store/chart';
 import type { VolumeProfileType, VolumeBarsInputData } from '../../../types/chart';
 
@@ -54,306 +57,239 @@ export const VolumeProfileSettings = forwardRef<HTMLDivElement, VolumeProfileSet
       <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Volume Profile</div>
 
       <div className="space-y-3">
-        <button
-          onClick={() => setDefaultProfileEnabled(panelId, !panel.defaultProfileEnabled)}
-          className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.defaultProfileEnabled
-            ? 'bg-accent/5 border-accent text-accent'
-            : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-            }`}
-        >
-          <span className="text-[10px] font-bold uppercase tracking-wider">Default Profile</span>
-          <div className={`w-1.5 h-1.5 rounded-full ${panel.defaultProfileEnabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-        </button>
+        <div className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-[#1F1F1F] bg-[#1F1F1F]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Default Profile</span>
+          <FigSwitch
+            checked={panel.defaultProfileEnabled}
+            onChange={(checked) => setDefaultProfileEnabled(panelId, checked)}
+            aria-label="Toggle Default Profile"
+          />
+        </div>
 
         {panel.defaultProfileEnabled && (
           <div className="flex justify-between items-center bg-[#1F1F1F] p-2 rounded-lg border border-[#333]">
             <label className="text-[10px] font-bold text-text-dim uppercase tracking-wide">Period</label>
-            <div className="flex gap-1">
-              {[
-                { id: 'visible', label: 'Visible' },
-                { id: 'latest', label: 'Latest' },
-                { id: 'composite', label: 'Composite' },
-                { id: 'periodic', label: 'Periodic' }
-              ].map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setDefaultProfilePeriod(panelId, t.id as 'visible' | 'latest' | 'composite' | 'periodic')}
-                  className={`px-2 py-1 rounded text-[9px] font-bold uppercase transition-all duration-200 border ${
-                    panel.defaultProfilePeriod === t.id
-                      ? 'bg-[#2A2A2A] border-accent text-accent'
-                      : 'bg-transparent border-transparent text-text-dim hover:text-text-main'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <FigSegmentedControl
+              value={panel.defaultProfilePeriod}
+              onChange={(val) => setDefaultProfilePeriod(panelId, val as 'visible' | 'latest' | 'composite' | 'periodic')}
+              options={[
+                { value: 'visible', label: 'Visible' },
+                { value: 'latest', label: 'Latest' },
+                { value: 'composite', label: 'Composite' },
+                { value: 'periodic', label: 'Periodic' },
+              ]}
+            />
           </div>
         )}
 
         {panel.defaultProfileEnabled && panel.defaultProfilePeriod === 'periodic' && (
-          <div className="flex gap-2 items-center bg-[#1F1F1F] p-2 rounded-lg border border-[#333]">
-            <input
-              type="number"
-              min="1"
+          <div className="flex gap-2 items-center bg-[#1F1F1F] p-2 rounded-lg border border-[#1F1F1F]">
+            <PropskitNumber
               value={panel.profilePeriodValue || 4}
-              onChange={(e) => setProfilePeriodValue(panelId, parseInt(e.target.value) || 1)}
-              className="w-16 bg-[#181818] border border-[#444] rounded px-2 py-1 text-[11px] text-main font-bold outline-none"
+              min={1}
+              step={1}
+              onChange={(val) => setProfilePeriodValue(panelId, val || 1)}
+              className="w-20"
             />
-            <select
+            <FigSelect
               value={panel.profilePeriodUnit || 'hours'}
-              onChange={(e) => setProfilePeriodUnit(panelId, e.target.value as 'minutes' | 'hours' | 'days')}
-              className="flex-1 bg-[#181818] border border-[#444] rounded px-2 py-1 text-[11px] text-main font-bold outline-none appearance-none cursor-pointer"
-            >
-              <option value="minutes">Minutes</option>
-              <option value="hours">Hours</option>
-              <option value="days">Days</option>
-            </select>
+              onChange={(val) => setProfilePeriodUnit(panelId, val as 'minutes' | 'hours' | 'days')}
+              options={[
+                { value: 'minutes', label: 'Minutes' },
+                { value: 'hours', label: 'Hours' },
+                { value: 'days', label: 'Days' },
+              ]}
+              className="flex-1"
+            />
           </div>
         )}
 
         <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Input Data</label>
-          <div className="grid grid-cols-3 gap-1 mb-2">
-            {[
-              { id: 'volume', label: 'Volume' },
-              { id: 'orders', label: 'Order Count' },
-              { id: 'aggregateTrades', label: 'Agg Trades' },
-            ].map(t => (
-              <button
-                key={t.id}
-                onClick={() => setProfileInputData(panelId, t.id as VolumeBarsInputData)}
-                className={`py-1.5 rounded text-[10px] font-bold uppercase transition-all duration-200 border ${
-                  panel.profileInputData === t.id
-                    ? 'bg-[#1F1F1F] border-accent text-accent'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <FigSegmentedControl
+            full
+            value={panel.profileInputData}
+            onChange={(val) => setProfileInputData(panelId, val as VolumeBarsInputData)}
+            options={[
+              { value: 'volume', label: 'Volume' },
+              { value: 'orders', label: 'Order Count' },
+              { value: 'aggregateTrades', label: 'Agg Trades' },
+            ]}
+          />
 
           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Profile Type</label>
-          <div className="grid grid-cols-2 gap-1">
-            {[
-              { id: 'volume', label: 'Volume' },
-              { id: 'bidAsk', label: 'Ask/Bid Split' },
-              { id: 'delta', label: 'Delta' },
-              { id: 'deltaVolume', label: 'Delta + Volume' },
-            ].map(t => (
-              <button
-                key={t.id}
-                onClick={() => setProfileType(panelId, t.id as VolumeProfileType)}
-                className={`py-1.5 rounded text-[10px] font-bold uppercase transition-all duration-200 border ${
-                  panel.profileType === t.id
-                    ? 'bg-[#1F1F1F] border-accent text-accent'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <FigSegmentedControl
+            full
+            value={panel.profileType}
+            onChange={(val) => setProfileType(panelId, val as VolumeProfileType)}
+            options={[
+              { value: 'volume', label: 'Volume' },
+              { value: 'bidAsk', label: 'Ask/Bid' },
+              { value: 'delta', label: 'Delta' },
+              { value: 'deltaVolume', label: 'Delta+Vol' },
+            ]}
+          />
         </div>
 
         <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Threshold Filter</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              value={panel.profileFilterMin ?? ''}
-              onChange={(e) => setProfileFilterMin(panelId, e.target.value ? Number(e.target.value) : undefined)}
-              placeholder="Min"
-              className="flex-1 bg-black border border-[#333] rounded px-2 py-1.5 text-xs text-text-dim focus:outline-none focus:border-accent text-center font-mono placeholder:text-[#333]"
-            />
-            <span className="text-text-dim/50 font-bold">-</span>
-            <input
-              type="number"
-              value={panel.profileFilterMax ?? ''}
-              onChange={(e) => setProfileFilterMax(panelId, e.target.value ? Number(e.target.value) : undefined)}
-              placeholder="Max"
-              className="flex-1 bg-black border border-[#333] rounded px-2 py-1.5 text-xs text-text-dim focus:outline-none focus:border-accent text-center font-mono placeholder:text-[#333]"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scaling</label>
-            <div className="flex gap-1 w-24">
-              {(['linear', 'sqrt'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => setProfileScaleMode(panelId, m)}
-                  title={m === 'linear' ? 'True proportions - best for shape reading' : 'Amplifies low volume - best for activity presence'}
-                  className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.profileScaleMode === m
-                    ? 'bg-[#1F1F1F] border-accent text-accent'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                >
-                  {m}
-                </button>
-              ))}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <PropskitNumber
+                label="Min"
+                value={panel.profileFilterMin ?? 0}
+                min={0}
+                step={1}
+                onChange={(val) => setProfileFilterMin(panelId, val > 0 ? val : undefined)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <PropskitNumber
+                label="Max"
+                value={panel.profileFilterMax ?? 0}
+                min={0}
+                step={1}
+                onChange={(val) => setProfileFilterMax(panelId, val > 0 ? val : undefined)}
+              />
             </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Row Size</label>
-            <span className="text-[12px] font-mono font-bold text-accent">
-              {profileRowSizeLabel}
-            </span>
+          <div className="flex justify-between items-center">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scaling</label>
+            <FigSegmentedControl
+              value={panel.profileScaleMode}
+              onChange={(val) => setProfileScaleMode(panelId, val as 'linear' | 'sqrt')}
+              options={[
+                { value: 'linear', label: 'Linear', title: 'True proportions - best for shape reading' },
+                { value: 'sqrt', label: 'SQRT', title: 'Amplifies low volume - best for activity presence' },
+              ]}
+            />
           </div>
-          <input
-            type="range"
+        </div>
+
+        <div className="flex flex-col gap-3 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+          <PropskitSlider
+            label="Row Size"
             value={panel.profileResolutionTicks}
-            onChange={(e) => handleProfileResolutionChange(Number(e.target.value))}
-            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-            min="0"
+            min={0}
             max={maxProfileResolutionTicks}
-            step="1"
+            step={1}
+            title={`Resolution: ${profileRowSizeLabel}`}
+            onChange={handleProfileResolutionChange}
+            onInput={handleProfileResolutionChange}
           />
-        </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Width</label>
-            <span className="text-[12px] font-mono font-bold text-accent">{panel.profileWidthPct}%</span>
-          </div>
-          <input
-            type="range"
+          <PropskitSlider
+            label="Width"
             value={panel.profileWidthPct}
-            onChange={(e) => setProfileWidthPct(panelId, Number(e.target.value))}
-            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-            min="10" max="100" step="5"
+            min={10}
+            max={100}
+            step={5}
+            units="%"
+            onChange={(val: number) => setProfileWidthPct(panelId, val)}
+            onInput={(val: number) => setProfileWidthPct(panelId, val)}
           />
-        </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
-            <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.profileOpacity * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            value={panel.profileOpacity * 100}
-            onChange={(e) => setProfileOpacity(panelId, Number(e.target.value) / 100)}
-            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-            min="10" max="100" step="5"
+          <PropskitSlider
+            label="Opacity"
+            value={Math.round(panel.profileOpacity * 100)}
+            min={10}
+            max={100}
+            step={5}
+            units="%"
+            onChange={(val: number) => setProfileOpacity(panelId, val / 100)}
+            onInput={(val: number) => setProfileOpacity(panelId, val / 100)}
           />
-        </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Width</label>
-            <span className="text-[12px] font-mono font-bold text-accent">
-              {panel.profileMinRowWidth === 0 ? 'OFF' : `${panel.profileMinRowWidth}px`}
-            </span>
-          </div>
-          <input
-            type="range"
+          <PropskitSlider
+            label="Min Row Width"
             value={panel.profileMinRowWidth}
-            onChange={(e) => setProfileMinRowWidth(panelId, Number(e.target.value))}
-            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-            min="0" max="8" step="1"
+            min={0}
+            max={8}
+            step={1}
+            units="px"
+            onChange={(val: number) => setProfileMinRowWidth(panelId, val)}
+            onInput={(val: number) => setProfileMinRowWidth(panelId, val)}
           />
-        </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Row Height</label>
-            <span className="text-[12px] font-mono font-bold text-accent">
-              {panel.profileMinRowHeight === 0 ? 'OFF' : `${panel.profileMinRowHeight}px`}
-            </span>
-          </div>
-          <input
-            type="range"
+          <PropskitSlider
+            label="Min Row Height"
             value={panel.profileMinRowHeight}
-            onChange={(e) => setProfileMinRowHeight(panelId, Number(e.target.value))}
-            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-            min="0" max="4" step="0.5"
+            min={0}
+            max={4}
+            step={0.5}
+            units="px"
+            onChange={(val: number) => setProfileMinRowHeight(panelId, val)}
+            onInput={(val: number) => setProfileMinRowHeight(panelId, val)}
           />
-        </div>
 
-        <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Node Sensitivity</label>
-            <span className="text-[12px] font-mono font-bold text-accent">
-              {Math.round(panel.profileNodeSensitivity * 100)}%
-            </span>
-          </div>
-          <input
-            type="range"
-            value={panel.profileNodeSensitivity}
-            onChange={(e) => setProfileNodeSensitivity(panelId, Number(e.target.value))}
-            className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-            min="0" max="1" step="0.05"
+          <PropskitSlider
+            label="Node Sensitivity"
+            value={Math.round(panel.profileNodeSensitivity * 100)}
+            min={0}
+            max={100}
+            step={5}
+            units="%"
+            onChange={(val: number) => setProfileNodeSensitivity(panelId, val / 100)}
+            onInput={(val: number) => setProfileNodeSensitivity(panelId, val / 100)}
           />
         </div>
 
         <div className="grid grid-cols-2 gap-2 pt-1">
-          <button
-            onClick={() => setProfileShowPocHighlight(panelId, !panel.profileShowPocHighlight)}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocHighlight
-              ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-              }`}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider">POC Highlight</span>
-            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowPocHighlight ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-          </button>
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">POC Highlight</span>
+            <FigSwitch
+              checked={panel.profileShowPocHighlight}
+              onChange={(checked) => setProfileShowPocHighlight(panelId, checked)}
+              aria-label="Toggle POC Highlight"
+            />
+          </div>
 
-          <button
-            onClick={() => setProfileShowVaFill(panelId, !panel.profileShowVaFill)}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaFill
-              ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-              }`}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider">VA Area Fill</span>
-            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowVaFill ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-          </button>
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">VA Area Fill</span>
+            <FigSwitch
+              checked={panel.profileShowVaFill}
+              onChange={(checked) => setProfileShowVaFill(panelId, checked)}
+              aria-label="Toggle VA Area Fill"
+            />
+          </div>
 
-          <button
-            onClick={() => setProfileShowPocLine(panelId, !panel.profileShowPocLine)}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowPocLine
-              ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-              }`}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider">POC Line</span>
-            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowPocLine ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-          </button>
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">POC Line</span>
+            <FigSwitch
+              checked={panel.profileShowPocLine}
+              onChange={(checked) => setProfileShowPocLine(panelId, checked)}
+              aria-label="Toggle POC Line"
+            />
+          </div>
 
-          <button
-            onClick={() => setProfileShowVaLines(panelId, !panel.profileShowVaLines)}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.profileShowVaLines
-              ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-              }`}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider">VA Lines</span>
-            <div className={`w-1.5 h-1.5 rounded-full ${panel.profileShowVaLines ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-          </button>
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">VA Lines</span>
+            <FigSwitch
+              checked={panel.profileShowVaLines}
+              onChange={(checked) => setProfileShowVaLines(panelId, checked)}
+              aria-label="Toggle VA Lines"
+            />
+          </div>
         </div>
 
         {(panel.profileType === 'delta' || panel.profileType === 'deltaVolume') && (
           <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Delta Width</label>
-              <span className="text-[12px] font-mono font-bold text-accent">{panel.deltaProfileWidth}px</span>
-            </div>
-            <input
-              type="range"
+            <PropskitSlider
+              label="Delta Width"
               value={panel.deltaProfileWidth}
-              onChange={(e) => setDeltaProfileWidth(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-              min="40" max="160" step="5"
+              min={40}
+              max={160}
+              step={5}
+              units="px"
+              onChange={(val: number) => setDeltaProfileWidth(panelId, val)}
+              onInput={(val: number) => setDeltaProfileWidth(panelId, val)}
             />
           </div>
         )}
+
         <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Cosmetics</label>
           <div className="grid grid-cols-2 gap-2 mt-2">
@@ -386,16 +322,17 @@ export const VolumeProfileSettings = forwardRef<HTMLDivElement, VolumeProfileSet
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[9px] font-bold text-text-dim/80 uppercase">POC Width</label>
-              <select
-                value={panel.profilePocWidth || 1}
-                onChange={(e) => setProfilePocWidth(panelId, parseInt(e.target.value))}
-                className="w-full bg-[#1F1F1F] border border-[#333] rounded px-2 py-1 text-[11px] text-main font-bold appearance-none cursor-pointer"
-              >
-                <option value={1}>1px</option>
-                <option value={2}>2px</option>
-                <option value={3}>3px</option>
-                <option value={4}>4px</option>
-              </select>
+              <FigSegmentedControl
+                full
+                value={String(panel.profilePocWidth || 1)}
+                onChange={(val) => setProfilePocWidth(panelId, parseInt(val) || 1)}
+                options={[
+                  { value: '1', label: '1px' },
+                  { value: '2', label: '2px' },
+                  { value: '3', label: '3px' },
+                  { value: '4', label: '4px' },
+                ]}
+              />
             </div>
           </div>
         </div>

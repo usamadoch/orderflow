@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Sliders, Layers, Zap, X, Layout, Bell } from 'lucide-react';
+import { FigButton } from './fig';
 import { useChartStore, PanelId, IndicatorSettingsSection, SettingsFocusSection } from '../../lib/store/chart';
 import { BubblesDocsModal } from './BubblesDocsModal';
 
@@ -98,8 +99,6 @@ export function ChartSettingsDropdown({
 
   const [showBubblesDocs, setShowBubblesDocs] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'canvas' | 'alerts' | 'profiles' | 'signals'>('general');
-  
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const indicatorDialogTitles: Record<IndicatorSettingsSection, string> = {
     sessions: 'Sessions',
@@ -113,7 +112,7 @@ export function ChartSettingsDropdown({
     vwap: 'VWAP',
   };
 
-  // --- Draggable Logic ---
+  // Window position & height state (solid opaque background, smooth drag by header, vertical resize by bottom bar)
   const [position, setPosition] = useState(() => getInitialSettingsPosition(initialAnchor, settingsDropdownHeight || SETTINGS_DEFAULT_HEIGHT));
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -176,17 +175,12 @@ export function ChartSettingsDropdown({
   }, [height, position.y, setSettingsDropdownHeight]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only drag from header, not buttons/inputs
     if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('input') || (e.target as HTMLElement).closest('select')) return;
     
-    const rect = dropdownRef.current?.getBoundingClientRect();
-    const currentX = rect ? rect.left : (position.x === -1 ? window.innerWidth - SETTINGS_WIDTH - VIEWPORT_MARGIN : position.x);
-    const currentY = rect ? rect.top : position.y;
-
     setIsDragging(true);
     setDragStart({
-      x: e.clientX - currentX,
-      y: e.clientY - currentY
+      x: e.clientX - (position.x === -1 ? window.innerWidth - SETTINGS_WIDTH - VIEWPORT_MARGIN : position.x),
+      y: e.clientY - position.y
     });
     e.preventDefault();
   };
@@ -196,7 +190,6 @@ export function ChartSettingsDropdown({
       if (isDragging) {
         const newX = e.clientX - dragStart.x;
         const newY = e.clientY - dragStart.y;
-
         setPosition(clampSettingsPosition({ x: newX, y: newY }, height));
         return;
       }
@@ -226,7 +219,6 @@ export function ChartSettingsDropdown({
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [dragStart, height, isDragging, isResizing, position.y, resizeStart, setSettingsDropdownHeight]);
-  // --- End Draggable Logic ---
 
   const handleResizeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -271,7 +263,7 @@ export function ChartSettingsDropdown({
   if (indicatorSection) {
     return (
       <div
-        className="pointer-events-auto fixed inset-0 z-[1000] flex items-center justify-center bg-black/20 px-3 py-6"
+        className="pointer-events-auto fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-3 py-6"
         onPointerDown={(event) => {
           event.stopPropagation();
           if (event.target === event.currentTarget) {
@@ -282,27 +274,27 @@ export function ChartSettingsDropdown({
         onClick={(event) => event.stopPropagation()}
       >
         <div
-          className="popup-contrast flex max-h-[min(720px,calc(100vh-48px))] w-full flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#1F1F1F] shadow-2xl"
+          className="popup-contrast flex max-h-[min(720px,calc(100vh-48px))] w-full flex-col overflow-hidden rounded-xl border border-[#282828] bg-[#181818] shadow-2xl"
           style={{ maxWidth: INDICATOR_DIALOG_WIDTH }}
         >
-          <div className="flex items-center justify-between border-b border-[#1F1F1F] bg-[#1F1F1F]/50 p-4">
+          <div className="flex items-center justify-between border-b border-[#282828] bg-[#1C1C1C] p-4">
             <div className="flex flex-col">
               <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-accent">
                 {indicatorTitle ?? indicatorDialogTitles[indicatorSection]}
               </h3>
               <span className="text-[9px] font-bold text-text-dim/60 uppercase tracking-tighter">{panelId} Panel</span>
             </div>
-            <button
-              type="button"
+            <FigButton
+              variant="ghost"
+              icon
               onClick={onClose}
-              className="p-1 text-text-dim transition-colors hover:text-main"
               title="Close"
               aria-label="Close"
             >
               <X size={16} />
-            </button>
+            </FigButton>
           </div>
-          <div className="overflow-y-auto p-5 custom-scrollbar">
+          <div className="overflow-y-auto p-5 custom-scrollbar bg-[#181818]">
             {renderIndicatorSettingsContent(indicatorSection)}
           </div>
         </div>
@@ -313,8 +305,7 @@ export function ChartSettingsDropdown({
 
   return (
     <div
-      ref={dropdownRef}
-      className={`popup-contrast pointer-events-auto fixed z-[1000] flex w-[544px] flex-col overflow-hidden rounded-xl border border-[#1F1F1F] bg-[#1F1F1F] shadow-2xl transition-shadow duration-200 ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''}`}
+      className={`popup-contrast pointer-events-auto fixed z-[1000] flex w-[544px] flex-col overflow-hidden rounded-xl border border-[#282828] bg-[#181818] shadow-2xl transition-shadow duration-200 ${isDragging ? 'shadow-accent/20 ring-1 ring-accent/20' : ''}`}
       style={{ 
         left: position.x === -1 ? 'auto' : position.x,
         top: position.y,
@@ -331,56 +322,60 @@ export function ChartSettingsDropdown({
       {/* Header / Drag Handle */}
       <div 
         onMouseDown={handleMouseDown}
-        className={`p-4 border-b border-[#1F1F1F] flex items-center justify-between bg-[#1F1F1F]/50 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab active:cursor-grabbing'}`}
+        className={`p-4 border-b border-[#282828] flex items-center justify-between bg-[#1C1C1C] select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab active:cursor-grabbing'}`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pointer-events-none">
           <div className="flex flex-col">
             <h3 className="text-[12px] font-black uppercase tracking-[0.15em] text-accent">Settings</h3>
             <span className="text-[9px] font-bold text-text-dim/60 uppercase tracking-tighter">{panelId} Panel</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 flex items-center justify-center text-text-dim/20">
+          <div className="w-6 h-6 flex items-center justify-center text-text-dim/20 pointer-events-none">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
               <circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/>
               <circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>
             </svg>
           </div>
-          <button
+          <FigButton
+            variant="ghost"
+            icon
             onClick={onClose}
-            className="text-text-dim hover:text-main transition-colors p-1"
+            title="Close"
+            aria-label="Close"
           >
             <X size={16} />
-          </button>
+          </FigButton>
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 bg-[#181818]">
         {/* Sidebar Navigation */}
-        <div className="w-32 bg-[#1F1F1F]/50 border-r border-[#1F1F1F] flex flex-col p-1.5 gap-1">
+        <div className="w-32 bg-[#1C1C1C] border-r border-[#282828] flex flex-col p-1.5 gap-1 shrink-0">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
-              <button
+              <FigButton
                 key={tab.id}
-                type="button"
-                data-active={isActive}
+                variant="ghost"
+                size="medium"
+                selected={isActive}
                 onClick={() => setActiveTab(tab.id)}
-                className={`sidebar-tab-btn flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 ${
+                className={`sidebar-tab-btn flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-left w-full cursor-pointer justify-start ${
                   isActive
-                    ? 'text-accent shadow-[inset_0_0_10px_rgba(61,126,255,0.05)]'
-                    : 'text-text-dim hover:text-main'
+                    ? 'text-white bg-[#2A2A2A] border border-[#383838]'
+                    : 'text-text-dim hover:text-main hover:bg-[#242424]'
                 }`}
               >
-                <tab.icon size={14} className={isActive ? 'opacity-100' : 'opacity-40'} />
-                {tab.label}
-              </button>
+                <tab.icon size={14} className={isActive ? 'opacity-100 text-white' : 'opacity-40'} />
+                <span>{tab.label}</span>
+              </FigButton>
             );
           })}
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar bg-[#181818]">
           <div className="flex flex-col gap-8">
             {/* Tab: General */}
             {activeTab === 'general' && (
@@ -415,17 +410,17 @@ export function ChartSettingsDropdown({
       </div>
 
       {/* Footer info */}
-      <div className="p-3 border-t border-[#1F1F1F] bg-[#1F1F1F]/50">
+      <div className="p-3 border-t border-[#282828] bg-[#1C1C1C]">
         <div className="text-[9px] text-text-dim/40 text-center font-medium uppercase tracking-widest">
           Global Settings • {panelId} Panel
         </div>
       </div>
       <div
         onMouseDown={handleResizeMouseDown}
-        className="h-3 shrink-0 cursor-row-resize bg-[#1F1F1F]/60 border-t border-[#1F1F1F] flex items-center justify-center"
+        className="h-3 shrink-0 cursor-row-resize bg-[#181818] border-t border-[#282828] flex items-center justify-center hover:bg-[#222222] transition-colors"
         title="Resize settings panel"
       >
-        <div className="w-16 h-1 rounded-full bg-[#1F1F1F] opacity-50" />
+        <div className="w-16 h-1 rounded-full bg-[#383838]" />
       </div>
       {showBubblesDocs && <BubblesDocsModal onClose={() => setShowBubblesDocs(false)} />}
     </div>

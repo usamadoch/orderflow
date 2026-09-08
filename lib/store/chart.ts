@@ -2,7 +2,14 @@ import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { FootprintMode } from '@/types/footprint';
 import { getMinimumFineProfileResolutionTicks } from '@/lib/config/markets';
-import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR, normalizeChartSemanticColor } from '@/lib/config/chartColors';
+import {
+  CHART_BEARISH_COLOR,
+  CHART_BULLISH_COLOR,
+  normalizeChartSemanticColor,
+  DEFAULT_CANVAS_BG,
+  DEFAULT_GRID_COLOR,
+  DEFAULT_GRID_OPACITY,
+} from '@/lib/config/chartColors';
 import type {
   ChartMode,
   PanelId,
@@ -810,19 +817,19 @@ export const useChartStore = create<ChartState>()(
       candleDownWickColor: '#F23645',
       candleDownWickOpacity: 1,
       chartBackgroundType: 'solid',
-      chartBackgroundColor: '#0F0F0F',
+      chartBackgroundColor: DEFAULT_CANVAS_BG,
       chartBackgroundOpacity: 1,
       chartBackgroundGradientTop: '#131722',
       chartBackgroundGradientTopOpacity: 1,
       chartBackgroundGradientBottom: '#0A0A0A',
       chartBackgroundGradientBottomOpacity: 1,
       showVerticalGridLines: true,
-      verticalGridLineColor: '#1F1F1F',
-      verticalGridLineOpacity: 1,
+      verticalGridLineColor: DEFAULT_GRID_COLOR,
+      verticalGridLineOpacity: DEFAULT_GRID_OPACITY,
       verticalGridLineStyle: 'solid',
       showHorizontalGridLines: true,
-      horizontalGridLineColor: '#1F1F1F',
-      horizontalGridLineOpacity: 1,
+      horizontalGridLineColor: DEFAULT_GRID_COLOR,
+      horizontalGridLineOpacity: DEFAULT_GRID_OPACITY,
       horizontalGridLineStyle: 'solid',
       crosshairColor: '#8A8A8A',
       crosshairOpacity: 1,
@@ -1521,7 +1528,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 36,
+      version: 38,
       storage: createJSONStorage(() => tabAwareStorage),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
@@ -1706,6 +1713,14 @@ export const useChartStore = create<ChartState>()(
         persisted.settingsDropdownHeight = Math.max(350, Math.min(900, persisted.settingsDropdownHeight ?? 500));
         delete persisted.crosshair;
         delete persisted.indicatorLabelsCollapsed;
+        if (version < 38) {
+          if (persisted.verticalGridLineOpacity === 1 || persisted.verticalGridLineOpacity === 0.12) {
+            persisted.verticalGridLineOpacity = DEFAULT_GRID_OPACITY;
+          }
+          if (persisted.horizontalGridLineOpacity === 1 || persisted.horizontalGridLineOpacity === 0.12) {
+            persisted.horizontalGridLineOpacity = DEFAULT_GRID_OPACITY;
+          }
+        }
         return persisted;
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2094,11 +2109,11 @@ export const useChartStore = create<ChartState>()(
         chartBackgroundGradientBottomOpacity: state.chartBackgroundGradientBottomOpacity ?? 1,
         showVerticalGridLines: state.showVerticalGridLines,
         verticalGridLineColor: state.verticalGridLineColor,
-        verticalGridLineOpacity: state.verticalGridLineOpacity ?? 1,
+        verticalGridLineOpacity: state.verticalGridLineOpacity ?? DEFAULT_GRID_OPACITY,
         verticalGridLineStyle: state.verticalGridLineStyle ?? 'solid',
         showHorizontalGridLines: state.showHorizontalGridLines,
         horizontalGridLineColor: state.horizontalGridLineColor,
-        horizontalGridLineOpacity: state.horizontalGridLineOpacity ?? 1,
+        horizontalGridLineOpacity: state.horizontalGridLineOpacity ?? DEFAULT_GRID_OPACITY,
         horizontalGridLineStyle: state.horizontalGridLineStyle ?? 'solid',
         crosshairColor: state.crosshairColor,
         crosshairOpacity: state.crosshairOpacity,

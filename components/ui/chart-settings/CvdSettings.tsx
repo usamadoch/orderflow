@@ -1,4 +1,7 @@
+'use client';
+
 import { forwardRef } from 'react';
+import { FigSwitch, FigSegmentedControl, PropskitSlider, PropskitNumber } from '../fig';
 import { useChartStore, PanelId, CvdMode, CvdResetMode, CvdScaleMode } from '../../../lib/store/chart';
 
 interface CvdSettingsProps {
@@ -40,112 +43,87 @@ export const CvdSettings = forwardRef<HTMLDivElement, CvdSettingsProps>(({ panel
     <div ref={ref} className="scroll-mt-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">CVD</div>
-        <button
-          onClick={() => setCvdEnabled(panelId, !panel.cvdEnabled)}
-          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.cvdEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'}`}
-        >
-          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.cvdEnabled ? 'left-5' : 'left-1'}`} />
-        </button>
+        <FigSwitch
+          checked={panel.cvdEnabled}
+          onChange={(checked) => setCvdEnabled(panelId, checked)}
+          aria-label="Toggle CVD"
+        />
       </div>
 
       {panel.cvdEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="grid grid-cols-4 gap-1.5">
-            {cvdModes.map((mode) => (
-              <button
-                key={mode.value}
-                onClick={() => setCvdMode(panelId, mode.value)}
-                className={`py-2 rounded-lg border text-[9px] font-black uppercase transition-all duration-200 ${panel.cvdMode === mode.value
-                  ? 'bg-accent/10 border-accent text-accent'
-                  : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                  }`}
-              >
-                {mode.label}
-              </button>
-            ))}
+          <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">CVD Mode</label>
+            <FigSegmentedControl
+              full
+              value={panel.cvdMode}
+              onChange={(val) => setCvdMode(panelId, val as CvdMode)}
+              options={cvdModes.map(m => ({ label: m.label, value: m.value }))}
+            />
           </div>
 
-          <button
-            onClick={() => setCvdMinimized(panelId, !panel.cvdMinimized)}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdMinimized
-              ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-              }`}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider">Compact Mode</span>
-            <span className="text-[9px] font-black uppercase tracking-wider">{panel.cvdMinimized ? 'Minimized' : 'Expanded'}</span>
-          </button>
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+            <span className="text-[11px] font-bold text-main">Compact Mode</span>
+            <FigSwitch
+              checked={panel.cvdMinimized}
+              onChange={(checked) => setCvdMinimized(panelId, checked)}
+              aria-label="Toggle Compact Mode"
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Reset</label>
-              <select
+              <FigSegmentedControl
+                full
                 value={panel.cvdResetMode}
-                onChange={(e) => setCvdResetMode(panelId, e.target.value as CvdResetMode)}
-                className="bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-bold text-main focus:border-accent focus:outline-none"
-              >
-                {cvdResetModes.map((mode) => (
-                  <option key={mode.value} value={mode.value}>{mode.label}</option>
-                ))}
-              </select>
+                onChange={(val) => setCvdResetMode(panelId, val as CvdResetMode)}
+                options={cvdResetModes.map(m => ({ label: m.label, value: m.value }))}
+              />
             </div>
 
             <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scale</label>
-              <div className="flex gap-1">
-                {cvdScaleModes.map((mode) => (
-                  <button
-                    key={mode.value}
-                    onClick={() => setCvdScaleMode(panelId, mode.value)}
-                    className={`flex-1 py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.cvdScaleMode === mode.value
-                      ? 'bg-[#1F1F1F] border-accent text-accent'
-                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
+              <FigSegmentedControl
+                full
+                value={panel.cvdScaleMode}
+                onChange={(val) => setCvdScaleMode(panelId, val as CvdScaleMode)}
+                options={cvdScaleModes.map(m => ({ label: m.label, value: m.value }))}
+              />
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Height</label>
-              <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdPanelHeightPct}%</span>
-            </div>
-            <input
-              type="range"
+          <div className="flex flex-col gap-3 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <PropskitSlider
+              label="Height"
               value={panel.cvdPanelHeightPct}
-              onChange={(e) => setCvdPanelHeightPct(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-              min="12" max="45" step="1"
+              min={12}
+              max={45}
+              step={1}
+              units="%"
+              onChange={(val) => setCvdPanelHeightPct(panelId, val)}
+              onInput={(val) => setCvdPanelHeightPct(panelId, val)}
             />
-          </div>
 
-          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Smoothing</label>
-              <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdSmoothing <= 1 ? 'OFF' : `${panel.cvdSmoothing}`}</span>
-            </div>
-            <input
-              type="range"
+            <PropskitSlider
+              label="Smoothing"
               value={panel.cvdSmoothing}
-              onChange={(e) => setCvdSmoothing(panelId, Number(e.target.value))}
-              className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-              min="1" max="50" step="1"
+              min={1}
+              max={50}
+              step={1}
+              onChange={(val) => setCvdSmoothing(panelId, val)}
+              onInput={(val) => setCvdSmoothing(panelId, val)}
             />
           </div>
 
           {panel.cvdScaleMode === 'fixed' && (
             <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Fixed Range</label>
-              <input
-                type="number"
+              <PropskitNumber
+                label="Fixed Range"
                 value={panel.cvdFixedRange}
-                onChange={(e) => setCvdFixedRange(panelId, Number(e.target.value) || 1)}
-                className="w-full bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1.5 text-[11px] font-mono font-bold text-main focus:border-accent focus:outline-none"
-                min="1"
+                min={1}
+                step={1}
+                onChange={(val) => setCvdFixedRange(panelId, val || 1)}
               />
             </div>
           )}
@@ -171,29 +149,25 @@ export const CvdSettings = forwardRef<HTMLDivElement, CvdSettingsProps>(({ panel
             </label>
           </div>
 
-          <button
-            onClick={() => setCvdShowDivergence(panelId, !panel.cvdShowDivergence)}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.cvdShowDivergence
-              ? 'bg-accent/5 border-accent text-accent'
-              : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-              }`}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider">Divergence Markers</span>
-            <div className={`w-1.5 h-1.5 rounded-full ${panel.cvdShowDivergence ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-          </button>
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+            <span className="text-[11px] font-bold text-main">Divergence Markers</span>
+            <FigSwitch
+              checked={panel.cvdShowDivergence}
+              onChange={(checked) => setCvdShowDivergence(panelId, checked)}
+              aria-label="Toggle Divergence Markers"
+            />
+          </div>
 
           {panel.cvdShowDivergence && (
             <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Divergence Lookback</label>
-                <span className="text-[12px] font-mono font-bold text-accent">{panel.cvdDivergenceLookback}</span>
-              </div>
-              <input
-                type="range"
+              <PropskitSlider
+                label="Divergence Lookback"
                 value={panel.cvdDivergenceLookback}
-                onChange={(e) => setCvdDivergenceLookback(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="3" max="30" step="1"
+                min={3}
+                max={30}
+                step={1}
+                onChange={(val) => setCvdDivergenceLookback(panelId, val)}
+                onInput={(val) => setCvdDivergenceLookback(panelId, val)}
               />
             </div>
           )}

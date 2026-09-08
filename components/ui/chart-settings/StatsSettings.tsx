@@ -1,4 +1,7 @@
+'use client';
+
 import { forwardRef } from 'react';
+import { FigSwitch } from '../fig';
 import { useChartStore, PanelId, StatsIndicatorItem } from '../../../lib/store/chart';
 
 interface StatsSettingsProps {
@@ -20,41 +23,38 @@ export const StatsSettings = forwardRef<HTMLDivElement, StatsSettingsProps>(({ p
     <div ref={ref} className="scroll-mt-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Stats Indicator</div>
-        <button
-          onClick={() => setStatsIndicatorEnabled(panelId, !panel.statsIndicatorEnabled)}
-          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.statsIndicatorEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-            }`}
-        >
-          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.statsIndicatorEnabled ? 'left-5' : 'left-1'
-            }`} />
-        </button>
+        <FigSwitch
+          checked={panel.statsIndicatorEnabled}
+          onChange={(checked) => setStatsIndicatorEnabled(panelId, checked)}
+          aria-label="Toggle Stats Indicator"
+        />
       </div>
 
       {panel.statsIndicatorEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="space-y-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Select Stats</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-2">
               {statsOptions.map((opt) => {
                 const isSelected = panel.statsIndicatorItems.includes(opt.value);
                 return (
-                  <button
+                  <div
                     key={opt.value}
-                    onClick={() => {
-                      if (isSelected) {
-                        setStatsIndicatorItems(panelId, panel.statsIndicatorItems.filter(i => i !== opt.value));
-                      } else {
-                        setStatsIndicatorItems(panelId, [...panel.statsIndicatorItems, opt.value]);
-                      }
-                    }}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${isSelected
-                      ? 'bg-accent/5 border-accent text-accent'
-                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
+                    className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414] hover:border-[#383838] transition-colors"
                   >
-                    <span className="text-[10px] font-bold uppercase tracking-wider">{opt.label}</span>
-                    <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                  </button>
+                    <span className="text-[11px] font-bold text-main">{opt.label}</span>
+                    <FigSwitch
+                      checked={isSelected}
+                      onChange={(checked) => {
+                        if (!checked) {
+                          setStatsIndicatorItems(panelId, panel.statsIndicatorItems.filter(i => i !== opt.value));
+                        } else {
+                          setStatsIndicatorItems(panelId, [...panel.statsIndicatorItems, opt.value]);
+                        }
+                      }}
+                      aria-label={`Toggle ${opt.label}`}
+                    />
+                  </div>
                 );
               })}
             </div>

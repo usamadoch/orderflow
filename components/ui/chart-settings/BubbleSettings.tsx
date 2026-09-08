@@ -1,4 +1,7 @@
-import { forwardRef, useState, useEffect } from 'react';
+'use client';
+
+import { forwardRef } from 'react';
+import { FigSwitch, FigSegmentedControl, FigButton, PropskitSlider, PropskitNumber } from '../fig';
 import { 
   useChartStore, 
   PanelId, 
@@ -35,20 +38,7 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
   const setBubbleLineWidth = useChartStore(s => s.setBubbleLineWidth);
   const setBubbleOpacity = useChartStore(s => s.setBubbleOpacity);
 
-  const [localThreshold, setLocalThreshold] = useState(String(panel.bubbleThreshold));
 
-  useEffect(() => {
-    setLocalThreshold(String(panel.bubbleThreshold));
-  }, [panel.bubbleThreshold]);
-
-  const handleThresholdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    setLocalThreshold(raw);
-    const val = Number(raw);
-    if (!isNaN(val) && val >= 1) {
-      setBubbleThreshold(panelId, val);
-    }
-  };
 
   const bubbleSides: { label: string; value: BubbleSide }[] = [
     { label: 'Buy', value: 'buy' },
@@ -84,16 +74,19 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Bubbles</div>
-          <button onClick={onShowDocs} className="text-[10px] font-bold text-accent hover:underline">DOCS</button>
+          <FigButton
+            variant="link"
+            size="small"
+            onClick={onShowDocs}
+            className="text-[10px] font-bold text-accent hover:underline p-0 h-auto"
+          >
+            DOCS
+          </FigButton>
         </div>
-        <button
-          onClick={() => setBubblesEnabled(panelId, !panel.bubblesEnabled)}
-          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.bubblesEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-            }`}
-        >
-          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.bubblesEnabled ? 'left-5' : 'left-1'
-            }`} />
-        </button>
+        <FigSwitch
+          checked={panel.bubblesEnabled}
+          onChange={(checked) => setBubblesEnabled(panelId, checked)}
+        />
       </div>
 
       {panel.bubblesEnabled && (
@@ -104,83 +97,65 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
           <div className="space-y-3">
             <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Size By</label>
-              <div className="grid grid-cols-2 gap-1">
-                {bubbleSizeModes.map(({ label, value }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setBubbleSizeBy(panelId, value)}
-                    className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
-                      panel.bubbleSizeBy === value
-                        ? 'bg-[#1F1F1F] border-accent text-accent'
-                        : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <FigSegmentedControl
+                full
+                value={panel.bubbleSizeBy}
+                onChange={(val) => setBubbleSizeBy(panelId, val as BubbleSizeBy)}
+                options={bubbleSizeModes.map(({ label, value }) => ({ label, value }))}
+              />
             </div>
             <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Bubble Mode</label>
-              <div className="grid grid-cols-3 gap-1">
-                {bubbleColorModes.map(({ label, value }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setBubbleColorMode(panelId, value)}
-                    className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
-                      panel.bubbleColorMode === value
-                        ? 'bg-[#1F1F1F] border-accent text-accent'
-                        : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <FigSegmentedControl
+                full
+                value={panel.bubbleColorMode}
+                onChange={(val) => setBubbleColorMode(panelId, val as BubbleColorMode)}
+                options={bubbleColorModes.map(({ label, value }) => ({ label, value }))}
+              />
               {panel.bubbleColorMode === 'volume' && (
-                <div className="grid grid-cols-2 gap-1 mt-2">
-                  {bubbleVolumeColorModes.map(({ label, value }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setBubbleVolumeColorMode(panelId, value)}
-                      className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${
-                        panel.bubbleVolumeColorMode === value
-                          ? 'bg-[#1F1F1F] border-accent text-accent'
-                          : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="mt-2">
+                  <FigSegmentedControl
+                    full
+                    value={panel.bubbleVolumeColorMode}
+                    onChange={(val) => setBubbleVolumeColorMode(panelId, val as BubbleVolumeColorMode)}
+                    options={bubbleVolumeColorModes.map(({ label, value }) => ({ label, value }))}
+                  />
                 </div>
               )}
             </div>
           </div>
 
           {!showOrderBubbleControls && (
-            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Volume</label>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setBubbleThresholdMode(panelId, panel.bubbleThresholdMode === 'absolute' ? 'relative' : 'absolute')}
-                  className="px-2 py-1 bg-[#1F1F1F] border border-[#1F1F1F] rounded text-[10px] font-black text-text-dim hover:text-main transition-colors uppercase"
-                >
-                  {panel.bubbleThresholdMode === 'absolute' ? 'Fixed (BTC)' : 'Adaptive (x Avg)'}
-                </button>
-                <input
-                  type="number"
-                  value={localThreshold}
-                  onChange={handleThresholdChange}
-                  step={panel.bubbleThresholdMode === 'relative' ? "0.5" : "1"}
-                  className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                  min="0.1"
+            <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Volume</label>
+                <FigSegmentedControl
+                  value={panel.bubbleThresholdMode}
+                  onChange={(val) => setBubbleThresholdMode(panelId, val as 'absolute' | 'relative')}
+                  options={[
+                    { label: 'Fixed (BTC)', value: 'absolute' },
+                    { label: 'Adaptive (x Avg)', value: 'relative' },
+                  ]}
                 />
               </div>
-              {panel.bubbleThresholdMode === 'absolute' && Number(localThreshold) < 1 && (
-                <div className="text-[10px] text-orange-400 mt-2 font-medium">
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] text-text-dim/70">
+                  {panel.bubbleThresholdMode === 'absolute' ? 'Threshold (BTC)' : 'Multiplier'}
+                </span>
+                <PropskitNumber
+                  value={panel.bubbleThreshold}
+                  onChange={(val) => {
+                    if (val >= 0.1) {
+                      setBubbleThreshold(panelId, val);
+                    }
+                  }}
+                  step={panel.bubbleThresholdMode === 'relative' ? 0.5 : 1}
+                  min={0.1}
+                  className="w-24"
+                />
+              </div>
+              {panel.bubbleThresholdMode === 'absolute' && Number(panel.bubbleThreshold) < 1 && (
+                <div className="text-[10px] text-orange-400 mt-1 font-medium">
                   ⚠ Collector floor is 1 BTC — history below this won&apos;t have data
                 </div>
               )}
@@ -188,205 +163,85 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
           )}
 
           <div className="flex flex-col gap-3 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide" title="Hides bubbles smaller than this pixel radius after scaling">Filter Bubble (px)</label>
-                <input
-                  type="number"
-                  value={panel.bubbleFilterRender}
-                  onChange={(e) => setBubbleFilterRender(panelId, Number(e.target.value))}
-                  className="w-16 bg-[#1A1A1A] border border-[#1A1A1A] rounded px-2 py-1 text-right text-[11px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                  min="0"
-                  max="20"
-                  step="0.5"
-                />
-              </div>
-              <input
-                type="range"
-                value={panel.bubbleFilterRender}
-                onChange={(e) => setBubbleFilterRender(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent mt-1"
-                min="0"
-                max="20"
-                step="0.5"
-              />
-            </div>
+            <PropskitSlider
+              label="Filter Bubble"
+              value={panel.bubbleFilterRender}
+              min={0}
+              max={20}
+              step={0.5}
+              units="px"
+              onChange={(val) => setBubbleFilterRender(panelId, val)}
+              onInput={(val) => setBubbleFilterRender(panelId, val)}
+              title="Hides bubbles smaller than this pixel radius after scaling"
+            />
 
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide" title="Standard deviation multiplier for scale ceiling">Std Dev Val</label>
-                <input
-                  type="number"
-                  value={panel.bubbleStdDevVal}
-                  onChange={(e) => setBubbleStdDevVal(panelId, Number(e.target.value))}
-                  className="w-16 bg-[#1A1A1A] border border-[#1A1A1A] rounded px-2 py-1 text-right text-[11px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                  min="0.5"
-                  max="5"
-                  step="0.1"
-                />
-              </div>
-              <input
-                type="range"
-                value={panel.bubbleStdDevVal}
-                onChange={(e) => setBubbleStdDevVal(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent mt-1"
-                min="0.5"
-                max="5"
-                step="0.1"
-              />
-            </div>
+            <PropskitSlider
+              label="Std Dev Val"
+              value={panel.bubbleStdDevVal}
+              min={0.5}
+              max={5}
+              step={0.1}
+              onChange={(val) => setBubbleStdDevVal(panelId, val)}
+              onInput={(val) => setBubbleStdDevVal(panelId, val)}
+              title="Standard deviation multiplier for scale ceiling"
+            />
 
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between items-center">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide" title="Percentage of largest values treated as outliers">Outlier Cap %</label>
-                <input
-                  type="number"
-                  value={panel.bubbleOutStdDevPerc}
-                  onChange={(e) => setBubbleOutStdDevPerc(panelId, Number(e.target.value))}
-                  className="w-16 bg-[#1A1A1A] border border-[#1A1A1A] rounded px-2 py-1 text-right text-[11px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                  min="0"
-                  max="50"
-                  step="1"
-                />
-              </div>
-              <input
-                type="range"
-                value={panel.bubbleOutStdDevPerc}
-                onChange={(e) => setBubbleOutStdDevPerc(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1A1A1A] rounded-lg appearance-none cursor-pointer accent-accent mt-1"
-                min="0"
-                max="50"
-                step="1"
-              />
-            </div>
+            <PropskitSlider
+              label="Outlier Cap"
+              value={panel.bubbleOutStdDevPerc}
+              min={0}
+              max={50}
+              step={1}
+              units="%"
+              onChange={(val) => setBubbleOutStdDevPerc(panelId, val)}
+              onInput={(val) => setBubbleOutStdDevPerc(panelId, val)}
+              title="Percentage of largest values treated as outliers"
+            />
           </div>
 
           {showOrderBubbleControls && (
             <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Orders</label>
-                <input
-                  type="number"
-                  value={panel.bubbleMinOrders}
-                  onChange={(e) => setBubbleMinOrders(panelId, Number(e.target.value))}
-                  className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                  min="1"
-                  max="1000"
-                  step="1"
-                />
-              </div>
-              <input
-                type="range"
+              <PropskitSlider
+                label="Min Orders"
                 value={panel.bubbleMinOrders}
-                onChange={(e) => setBubbleMinOrders(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="1"
-                max="1000"
-                step="1"
+                min={1}
+                max={1000}
+                step={1}
+                onChange={(val) => setBubbleMinOrders(panelId, val)}
+                onInput={(val) => setBubbleMinOrders(panelId, val)}
               />
             </div>
           )}
 
           <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
-            <div className="flex gap-1">
-              {bubbleSides.map(({ label, value }) => (
-                <button
-                  key={value}
-                  onClick={() => setBubbleSide(panelId, value)}
-                  className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.bubbleSide === value
-                    ? 'bg-[#1F1F1F] border-accent text-accent'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <FigSegmentedControl
+              full
+              value={panel.bubbleSide}
+              onChange={(val) => setBubbleSide(panelId, val as BubbleSide)}
+              options={bubbleSides.map(({ label, value }) => ({ label, value }))}
+            />
           </div>
 
           <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Scale Mode</label>
-              <div className="flex gap-1 w-36">
-                {bubbleScaleModes.map(({ label, value, title }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    title={title}
-                    onClick={() => setBubbleScaleMode(panelId, value)}
-                    className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.bubbleScaleMode === value
-                      ? 'bg-[#1F1F1F] border-accent text-accent'
-                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <FigSegmentedControl
+                value={panel.bubbleScaleMode}
+                onChange={(val) => setBubbleScaleMode(panelId, val as BubbleScaleMode)}
+                options={bubbleScaleModes.map(({ label, value, title }) => ({ label, value, title }))}
+              />
             </div>
-          </div>
-
-          <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Color Mode</label>
-              <div className="flex gap-1 w-48">
-                {bubbleColorModes.map(({ label, value }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setBubbleColorMode(panelId, value)}
-                    className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.bubbleColorMode === value
-                      ? 'bg-[#1F1F1F] border-accent text-accent'
-                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            
-            {panel.bubbleColorMode === 'volume' && (
-              <div className="flex justify-between items-center mt-2 border-t border-[#333] pt-2">
-                <label className="text-[10px] font-bold text-text-dim uppercase tracking-wide">Volume Base</label>
-                <div className="flex gap-1 w-48">
-                  {bubbleVolumeColorModes.map(({ label, value }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setBubbleVolumeColorMode(panelId, value)}
-                      className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.bubbleVolumeColorMode === value
-                        ? 'bg-[#1F1F1F] border-accent text-accent'
-                        : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                        }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Display Mode</label>
-              <div className="flex gap-1 w-36">
-                {bubbleDisplayModes.map(({ label, value }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setBubbleDisplayMode(panelId, value)}
-                    className={`flex-1 py-1 rounded text-[9px] font-black uppercase transition-all duration-200 border ${panel.bubbleDisplayMode === value
-                      ? 'bg-[#1F1F1F] border-accent text-accent'
-                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <FigSegmentedControl
+                value={panel.bubbleDisplayMode}
+                onChange={(val) => setBubbleDisplayMode(panelId, val as BubbleDisplayMode)}
+                options={bubbleDisplayModes.map(({ label, value }) => ({ label, value }))}
+              />
             </div>
             
             <div className="grid grid-cols-2 gap-3 mt-2">
@@ -416,37 +271,27 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
               </div>
             </div>
             
-            <div className="mt-2 space-y-3">
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-[9px] font-bold text-text-dim uppercase tracking-wide">Line Width</label>
-                  <span className="text-[10px] font-mono text-main">{panel.bubbleLineWidth}px</span>
-                </div>
-                <input
-                  type="range"
-                  value={panel.bubbleLineWidth}
-                  onChange={(e) => setBubbleLineWidth(panelId, Number(e.target.value))}
-                  className="w-full h-1 bg-[#2A2A2A] rounded-lg appearance-none cursor-pointer accent-accent"
-                  min="0"
-                  max="5"
-                  step="0.5"
-                />
-              </div>
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-[9px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
-                  <span className="text-[10px] font-mono text-main">{Math.round(panel.bubbleOpacity * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  value={panel.bubbleOpacity}
-                  onChange={(e) => setBubbleOpacity(panelId, Number(e.target.value))}
-                  className="w-full h-1 bg-[#2A2A2A] rounded-lg appearance-none cursor-pointer accent-accent"
-                  min="0.1"
-                  max="1"
-                  step="0.05"
-                />
-              </div>
+            <div className="mt-3 space-y-3 pt-2 border-t border-[#2A2A2A]">
+              <PropskitSlider
+                label="Line Width"
+                value={panel.bubbleLineWidth}
+                min={0}
+                max={5}
+                step={0.5}
+                units="px"
+                onChange={(val) => setBubbleLineWidth(panelId, val)}
+                onInput={(val) => setBubbleLineWidth(panelId, val)}
+              />
+              <PropskitSlider
+                label="Opacity"
+                value={Math.round(panel.bubbleOpacity * 100)}
+                min={10}
+                max={100}
+                step={5}
+                units="%"
+                onChange={(val) => setBubbleOpacity(panelId, val / 100)}
+                onInput={(val) => setBubbleOpacity(panelId, val / 100)}
+              />
             </div>
           </div>
         </div>

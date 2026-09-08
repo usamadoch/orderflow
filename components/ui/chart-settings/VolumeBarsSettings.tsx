@@ -1,4 +1,7 @@
+'use client';
+
 import { forwardRef } from 'react';
+import { FigSwitch, FigSegmentedControl, PropskitSlider, PropskitNumber } from '../fig';
 import { useChartStore, PanelId, VolumeBarsInputData, VolumeBarsFilterMode, VolumeBarsColorMode } from '../../../lib/store/chart';
 
 interface VolumeBarsSettingsProps {
@@ -37,215 +40,147 @@ export const VolumeBarsSettings = forwardRef<HTMLDivElement, VolumeBarsSettingsP
     <div ref={ref} className="scroll-mt-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Volume</div>
-        <button
-          onClick={() => setVolumeBarsEnabled(panelId, !panel.volumeBarsEnabled)}
-          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.volumeBarsEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-            }`}
-        >
-          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.volumeBarsEnabled ? 'left-5' : 'left-1'
-            }`} />
-        </button>
+        <FigSwitch
+          checked={panel.volumeBarsEnabled}
+          onChange={(checked) => setVolumeBarsEnabled(panelId, checked)}
+          aria-label="Toggle Volume"
+        />
       </div>
 
       {panel.volumeBarsEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="space-y-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Input Data</label>
-              <span className="text-[11px] font-mono font-bold text-accent">
-                {volumeBarsInputOptions.find((option) => option.value === panel.volumeBarsInputData)?.label ?? 'Volume'}
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-1">
-              {volumeBarsInputOptions.map(({ label, value }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setVolumeBarsInputData(panelId, value)}
-                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsInputData === value
-                    ? 'bg-[#1F1F1F] border-accent text-accent'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Input Data</label>
+            <FigSegmentedControl
+              full
+              value={panel.volumeBarsInputData}
+              onChange={(val) => setVolumeBarsInputData(panelId, val as VolumeBarsInputData)}
+              options={volumeBarsInputOptions.map(({ label, value }) => ({ label, value }))}
+            />
           </div>
 
-          <div className="space-y-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Mode</label>
-              <span className="text-[11px] font-mono font-bold text-accent">
-                {panel.volumeBarsFilterMode === 'relative' ? 'Relative' : 'Absolute'}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-1">
-              {['absolute', 'relative'].map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setVolumeBarsFilterMode(panelId, mode as VolumeBarsFilterMode)}
-                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsFilterMode === mode
-                    ? 'bg-[#1F1F1F] border-accent text-accent'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Filter Mode</label>
+            <FigSegmentedControl
+              full
+              value={panel.volumeBarsFilterMode}
+              onChange={(val) => setVolumeBarsFilterMode(panelId, val as VolumeBarsFilterMode)}
+              options={[
+                { label: 'Absolute', value: 'absolute' },
+                { label: 'Relative', value: 'relative' },
+              ]}
+            />
           </div>
 
           {panel.volumeBarsFilterMode === 'relative' && (
-            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">MA Length</label>
-              <input
-                type="number"
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+              <PropskitNumber
+                label="MA Length"
                 value={panel.volumeBarsMovingAverageLength}
-                onChange={(e) => setVolumeBarsMovingAverageLength(panelId, Number(e.target.value))}
-                className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                min="1"
-                step="1"
+                min={1}
+                step={1}
+                onChange={(val) => setVolumeBarsMovingAverageLength(panelId, val)}
               />
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min {panel.volumeBarsFilterMode === 'relative' ? '(x)' : ''}</label>
-              <input
-                type="number"
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+              <PropskitNumber
+                label={`Min ${panel.volumeBarsFilterMode === 'relative' ? '(x)' : ''}`}
                 value={panel.volumeBarsFilterMin}
-                onChange={(e) => setVolumeBarsFilterMin(panelId, Number(e.target.value))}
-                className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                min="0"
-                step={panel.volumeBarsFilterMode === 'relative' ? '0.1' : '1'}
+                min={0}
+                step={panel.volumeBarsFilterMode === 'relative' ? 0.1 : 1}
+                onChange={(val) => setVolumeBarsFilterMin(panelId, val)}
               />
             </div>
 
-            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Max {panel.volumeBarsFilterMode === 'relative' ? '(x)' : ''}</label>
-              <input
-                type="number"
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+              <PropskitNumber
+                label={`Max ${panel.volumeBarsFilterMode === 'relative' ? '(x)' : ''}`}
                 value={panel.volumeBarsFilterMax}
-                onChange={(e) => setVolumeBarsFilterMax(panelId, Number(e.target.value))}
-                className="w-20 bg-[#1F1F1F] border border-[#1F1F1F] rounded px-2 py-1 text-right text-[12px] font-bold focus:border-accent focus:outline-none transition-all text-main font-mono"
-                min="0"
-                step={panel.volumeBarsFilterMode === 'relative' ? '0.1' : '1'}
+                min={0}
+                step={panel.volumeBarsFilterMode === 'relative' ? 0.1 : 1}
+                onChange={(val) => setVolumeBarsFilterMax(panelId, val)}
               />
             </div>
           </div>
 
-          <div className="space-y-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Color Mode</label>
-            <div className="grid grid-cols-4 gap-1">
-              {volumeBarsColorModes.map(({ label, value }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setVolumeBarsColorMode(panelId, value)}
-                  className={`py-1.5 rounded text-[9px] font-black uppercase border transition-all duration-200 ${panel.volumeBarsColorMode === value
-                    ? 'bg-[#1F1F1F] border-accent text-accent'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Color Mode</label>
+            <FigSegmentedControl
+              full
+              value={panel.volumeBarsColorMode}
+              onChange={(val) => setVolumeBarsColorMode(panelId, val as VolumeBarsColorMode)}
+              options={volumeBarsColorModes.map(({ label, value }) => ({ label, value }))}
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Opacity</label>
-                <span className="text-[12px] font-mono font-bold text-accent">{Math.round(panel.volumeBarsOpacity * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                value={panel.volumeBarsOpacity * 100}
-                onChange={(e) => setVolumeBarsOpacity(panelId, Number(e.target.value) / 100)}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="10"
-                max="100"
-                step="5"
-              />
-            </div>
+          <div className="flex flex-col gap-3 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <PropskitSlider
+              label="Opacity"
+              value={Math.round(panel.volumeBarsOpacity * 100)}
+              min={10}
+              max={100}
+              step={5}
+              units="%"
+              onChange={(val) => setVolumeBarsOpacity(panelId, val / 100)}
+              onInput={(val) => setVolumeBarsOpacity(panelId, val / 100)}
+            />
 
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Height</label>
-                <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsHeightPct}%</span>
-              </div>
-              <input
-                type="range"
-                value={panel.volumeBarsHeightPct}
-                onChange={(e) => setVolumeBarsHeightPct(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="8"
-                max="35"
-                step="1"
-              />
-            </div>
+            <PropskitSlider
+              label="Height"
+              value={panel.volumeBarsHeightPct}
+              min={8}
+              max={35}
+              step={1}
+              units="%"
+              onChange={(val) => setVolumeBarsHeightPct(panelId, val)}
+              onInput={(val) => setVolumeBarsHeightPct(panelId, val)}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-2 pt-1">
-            <button
-              onClick={() => setVolumeBarsShowValueText(panelId, !panel.volumeBarsShowValueText)}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.volumeBarsShowValueText
-                ? 'bg-accent/5 border-accent text-accent'
-                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                }`}
-            >
-              <span className="text-[10px] font-bold uppercase tracking-wider">Show Values</span>
-              <div className={`w-1.5 h-1.5 rounded-full ${panel.volumeBarsShowValueText ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-            </button>
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+              <span className="text-[11px] font-bold text-main">Show Values</span>
+              <FigSwitch
+                checked={panel.volumeBarsShowValueText}
+                onChange={(checked) => setVolumeBarsShowValueText(panelId, checked)}
+                aria-label="Toggle Show Values"
+              />
+            </div>
 
-            <button
-              onClick={() => setVolumeBarsAverageLineEnabled(panelId, !panel.volumeBarsAverageLineEnabled)}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${panel.volumeBarsAverageLineEnabled
-                ? 'bg-accent/5 border-accent text-accent'
-                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                }`}
-            >
-              <span className="text-[10px] font-bold uppercase tracking-wider">Average Line</span>
-              <div className={`w-1.5 h-1.5 rounded-full ${panel.volumeBarsAverageLineEnabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-            </button>
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+              <span className="text-[11px] font-bold text-main">Average Line</span>
+              <FigSwitch
+                checked={panel.volumeBarsAverageLineEnabled}
+                onChange={(checked) => setVolumeBarsAverageLineEnabled(panelId, checked)}
+                aria-label="Toggle Average Line"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Text Size</label>
-                <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsTextSize}px</span>
-              </div>
-              <input
-                type="range"
-                value={panel.volumeBarsTextSize}
-                onChange={(e) => setVolumeBarsTextSize(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="8"
-                max="16"
-                step="1"
-              />
-            </div>
+          <div className="flex flex-col gap-3 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <PropskitSlider
+              label="Text Size"
+              value={panel.volumeBarsTextSize}
+              min={8}
+              max={16}
+              step={1}
+              units="px"
+              onChange={(val) => setVolumeBarsTextSize(panelId, val)}
+              onInput={(val) => setVolumeBarsTextSize(panelId, val)}
+            />
 
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Average Len</label>
-                <span className="text-[12px] font-mono font-bold text-accent">{panel.volumeBarsAverageLength}</span>
-              </div>
-              <input
-                type="range"
-                value={panel.volumeBarsAverageLength}
-                onChange={(e) => setVolumeBarsAverageLength(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="1"
-                max="200"
-                step="1"
-              />
-            </div>
+            <PropskitSlider
+              label="Average Len"
+              value={panel.volumeBarsAverageLength}
+              min={1}
+              max={200}
+              step={1}
+              onChange={(val) => setVolumeBarsAverageLength(panelId, val)}
+              onInput={(val) => setVolumeBarsAverageLength(panelId, val)}
+            />
           </div>
         </div>
       )}

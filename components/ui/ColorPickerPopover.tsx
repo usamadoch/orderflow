@@ -4,8 +4,8 @@ import { Check, Plus } from 'lucide-react';
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
-export const DEFAULT_DRAWING_STROKE_WIDTH = 2;
-export const DEFAULT_DRAWING_COLOR = '#787B86';
+export const DEFAULT_DRAWING_STROKE_WIDTH = 1;
+export const DEFAULT_DRAWING_COLOR = '#FFFFFF';
 
 export const COLOR_PALETTE_ROWS: string[][] = [
   // Row 0: Grayscale (10 swatches)
@@ -314,8 +314,8 @@ export function ColorPickerPopover({
       ref={popoverRef}
       className={
         chartBounds
-          ? `absolute z-[1100] w-[236px] rounded-lg border border-[#333333] bg-[#1E222D] p-3 shadow-2xl backdrop-blur-md select-none text-white ${className}`
-          : `fixed z-[99999] w-[236px] rounded-lg border border-[#333333] bg-[#1E222D] p-3 shadow-2xl backdrop-blur-md select-none text-white custom-scrollbar ${className}`
+          ? `absolute z-[1100] w-[236px] rounded-lg border border-[#333333] bg-[#1E222D] p-3 shadow-2xl select-none text-white ${className}`
+          : `fixed z-[99999] w-[236px] rounded-lg border border-[#333333] bg-[#1E222D] p-3 shadow-2xl select-none text-white custom-scrollbar ${className}`
       }
       style={chartBounds ? toolbarStyle : portalStyle}
       onMouseDown={(e) => e.stopPropagation()}

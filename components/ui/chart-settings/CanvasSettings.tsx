@@ -1,5 +1,7 @@
+'use client';
+
 import { forwardRef, useState } from 'react';
-import { Check } from 'lucide-react';
+import { FigSwitch, FigSegmentedControl } from '../fig';
 import { useChartStore } from '../../../lib/store/chart';
 import { ColorPickerPopover } from '../ColorPickerPopover';
 
@@ -249,14 +251,14 @@ export const CanvasSettings = forwardRef<HTMLDivElement, Record<string, never>>(
         <div className="flex flex-col gap-3 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex items-center justify-between">
             <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Type</label>
-            <select
+            <FigSegmentedControl
               value={chartBackgroundType}
-              onChange={(e) => setChartBackgroundType(e.target.value as 'solid' | 'gradient')}
-              className="bg-[#1A1A1A] border border-[#333] rounded px-2 py-1 text-[11px] font-bold text-main appearance-none cursor-pointer outline-none focus:border-accent"
-            >
-              <option value="solid">Solid</option>
-              <option value="gradient">Gradient</option>
-            </select>
+              onChange={(val) => setChartBackgroundType(val as 'solid' | 'gradient')}
+              options={[
+                { value: 'solid', label: 'Solid' },
+                { value: 'gradient', label: 'Gradient' },
+              ]}
+            />
           </div>
 
           {chartBackgroundType === 'solid' ? (
@@ -312,19 +314,11 @@ export const CanvasSettings = forwardRef<HTMLDivElement, Record<string, never>>(
         
         <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              role="checkbox"
-              aria-checked={showVerticalGridLines}
-              onClick={() => setShowVerticalGridLines(!showVerticalGridLines)}
-              className={`w-4 h-4 rounded flex items-center justify-center border transition-all duration-200 cursor-pointer ${
-                showVerticalGridLines
-                  ? 'bg-accent border-accent text-white shadow-sm'
-                  : 'bg-[#141414] border-[#3D404A] hover:border-[#555] text-transparent'
-              }`}
-            >
-              <Check size={12} strokeWidth={3} className={showVerticalGridLines ? 'opacity-100' : 'opacity-0'} />
-            </button>
+            <FigSwitch
+              checked={showVerticalGridLines}
+              onChange={(checked) => setShowVerticalGridLines(checked)}
+              aria-label="Vert Grid Lines"
+            />
             <label
               onClick={() => setShowVerticalGridLines(!showVerticalGridLines)}
               className="text-[11px] font-bold text-text-dim uppercase tracking-wide cursor-pointer select-none"
@@ -352,19 +346,11 @@ export const CanvasSettings = forwardRef<HTMLDivElement, Record<string, never>>(
 
         <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              role="checkbox"
-              aria-checked={showHorizontalGridLines}
-              onClick={() => setShowHorizontalGridLines(!showHorizontalGridLines)}
-              className={`w-4 h-4 rounded flex items-center justify-center border transition-all duration-200 cursor-pointer ${
-                showHorizontalGridLines
-                  ? 'bg-accent border-accent text-white shadow-sm'
-                  : 'bg-[#141414] border-[#3D404A] hover:border-[#555] text-transparent'
-              }`}
-            >
-              <Check size={12} strokeWidth={3} className={showHorizontalGridLines ? 'opacity-100' : 'opacity-0'} />
-            </button>
+            <FigSwitch
+              checked={showHorizontalGridLines}
+              onChange={(checked) => setShowHorizontalGridLines(checked)}
+              aria-label="Horz Grid Lines"
+            />
             <label
               onClick={() => setShowHorizontalGridLines(!showHorizontalGridLines)}
               className="text-[11px] font-bold text-text-dim uppercase tracking-wide cursor-pointer select-none"

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Database, Trash2, X, AlertCircle } from 'lucide-react';
+import { FigButton } from './fig';
 
 import type { StorageDay, DatabasesInfo } from '../../types/storage';
 
@@ -106,24 +107,27 @@ export function StorageManager({ isOpen, onClose }: StorageManagerProps) {
 
   const modalContent = (
     <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
       onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      <div className="bg-surface border border-border rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-[#181818] border border-[#282828] rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border bg-background/30">
+        <div className="flex items-center justify-between p-4 border-b border-[#282828] bg-[#1C1C1C]">
           <div className="flex items-center gap-2 text-main">
             <Database size={18} className="text-accent" />
             <h2 className="font-bold text-sm tracking-wide">Storage Manager</h2>
           </div>
-          <button 
+          <FigButton 
+            variant="ghost"
+            icon
             onClick={onClose}
-            className="p-1 rounded-md text-text-dim hover:text-main hover:bg-white/5 transition-colors"
+            title="Close"
+            aria-label="Close"
           >
             <X size={18} />
-          </button>
+          </FigButton>
         </div>
 
         {/* Content */}
@@ -221,14 +225,14 @@ export function StorageManager({ isOpen, onClose }: StorageManagerProps) {
               </span>
             </div>
             
-            <button
+            <FigButton
+              variant="destructiveSecondary"
+              size="medium"
               onClick={handleDelete}
               disabled={selectedDays.size === 0 || isDeleting || isLoading}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md font-bold text-xs uppercase tracking-wider transition-all ${
-                selectedDays.size > 0 && !isDeleting
-                  ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20'
-                  : 'bg-background text-text-dim border border-border cursor-not-allowed'
-              }`}
+              className="gap-2 px-4 py-2 font-bold text-xs uppercase tracking-wider"
+              title="Delete Data"
+              aria-label="Delete Data"
             >
               {isDeleting ? (
                 <>
@@ -241,7 +245,7 @@ export function StorageManager({ isOpen, onClose }: StorageManagerProps) {
                   Delete Data
                 </>
               )}
-            </button>
+            </FigButton>
           </div>
         </div>
         

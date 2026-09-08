@@ -1,4 +1,7 @@
+'use client';
+
 import { forwardRef } from 'react';
+import { FigSwitch, FigSegmentedControl, FigButton, PropskitSlider } from '../fig';
 import { useChartStore, PanelId, AbsorptionSide, ExhaustionSide } from '../../../lib/store/chart';
 
 interface SignalSettingsProps {
@@ -69,28 +72,23 @@ export const SignalSettings = forwardRef<HTMLDivElement, SignalSettingsProps>(({
         <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Signal Toggles</div>
         <div className="grid grid-cols-1 gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           {signalToggles.map((signal) => (
-            <button
+            <FigButton
               key={signal.id}
+              variant="ghost"
+              size="medium"
+              selected={signal.enabled}
               onClick={signal.onToggle}
-              className={`flex items-center justify-between rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition-all duration-200 ${
+              className={`flex items-center justify-between rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] w-full ${
                 signal.enabled
                   ? signal.enabledClass
                   : 'border-[#1F1F1F] bg-[#1F1F1F] text-text-dim hover:border-[#333] hover:text-main'
               }`}
             >
               <span>{signal.label}</span>
-              <div
-                className={`relative h-4 w-8 rounded-full transition-colors duration-200 ${
-                  signal.enabled ? 'bg-current/25' : 'bg-[#1F1F1F]'
-                }`}
-              >
-                <div
-                  className={`absolute top-1 h-2 w-2 rounded-full bg-current transition-all duration-200 ${
-                    signal.enabled ? 'left-5' : 'left-1'
-                  }`}
-                />
+              <div className="pointer-events-none">
+                <FigSwitch checked={signal.enabled} />
               </div>
-            </button>
+            </FigButton>
           ))}
         </div>
       </div>
@@ -107,35 +105,29 @@ export const SignalSettings = forwardRef<HTMLDivElement, SignalSettingsProps>(({
         {panel.absorptionEnabled && (
           <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Score</label>
-                <span className="text-[12px] font-mono font-bold text-[#089981]">{panel.absorptionMinScore}</span>
-              </div>
-              <input
-                type="range"
+              <PropskitSlider
+                label="Min Score"
                 value={panel.absorptionMinScore}
-                onChange={(e) => setAbsorptionMinScore(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#089981]"
-                min="30" max="90" step="5"
+                min={30}
+                max={90}
+                step={5}
+                onChange={(val: number) => setAbsorptionMinScore(panelId, val)}
+                onInput={(val: number) => setAbsorptionMinScore(panelId, val)}
               />
             </div>
 
             <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
-              <div className="flex gap-1">
-                {(['buyer', 'seller', 'both'] as AbsorptionSide[]).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setAbsorptionSide(panelId, s)}
-                    className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.absorptionSide === s
-                      ? 'bg-[#1F1F1F] border-[#089981] text-[#089981]'
-                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
-                  >
-                    {s === 'buyer' ? 'Buy' : s === 'seller' ? 'Sell' : 'Both'}
-                  </button>
-                ))}
-              </div>
+              <FigSegmentedControl
+                full
+                value={panel.absorptionSide}
+                onChange={(val) => setAbsorptionSide(panelId, val as AbsorptionSide)}
+                options={[
+                  { value: 'buyer', label: 'Buy' },
+                  { value: 'seller', label: 'Sell' },
+                  { value: 'both', label: 'Both' },
+                ]}
+              />
             </div>
           </div>
         )}
@@ -153,61 +145,51 @@ export const SignalSettings = forwardRef<HTMLDivElement, SignalSettingsProps>(({
         {panel.exhaustionEnabled && (
           <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Min Score</label>
-                <span className="text-[12px] font-mono font-bold text-[#F0B90B]">{panel.exhaustionMinScore}</span>
-              </div>
-              <input
-                type="range"
+              <PropskitSlider
+                label="Min Score"
                 value={panel.exhaustionMinScore}
-                onChange={(e) => setExhaustionMinScore(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#F0B90B]"
-                min="30" max="90" step="5"
+                min={30}
+                max={90}
+                step={5}
+                onChange={(val: number) => setExhaustionMinScore(panelId, val)}
+                onInput={(val: number) => setExhaustionMinScore(panelId, val)}
               />
             </div>
 
             <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
               <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Side Filter</label>
-              <div className="flex gap-1">
-                {(['buyer', 'seller', 'both'] as ExhaustionSide[]).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setExhaustionSide(panelId, s)}
-                    className={`flex-1 py-1.5 rounded text-[10px] font-black uppercase transition-all duration-200 border ${panel.exhaustionSide === s
-                      ? 'bg-[#1F1F1F] border-[#F0B90B] text-[#F0B90B]'
-                      : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                      }`}
-                  >
-                    {s === 'buyer' ? 'Buy' : s === 'seller' ? 'Sell' : 'Both'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Lookback window</label>
-                <span className="text-[12px] font-mono font-bold text-accent">{panel.exhaustionLookback} Candles</span>
-              </div>
-              <input
-                type="range"
-                value={panel.exhaustionLookback}
-                onChange={(e) => setExhaustionLookback(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="3" max="8" step="1"
+              <FigSegmentedControl
+                full
+                value={panel.exhaustionSide}
+                onChange={(val) => setExhaustionSide(panelId, val as ExhaustionSide)}
+                options={[
+                  { value: 'buyer', label: 'Buy' },
+                  { value: 'seller', label: 'Sell' },
+                  { value: 'both', label: 'Both' },
+                ]}
               />
             </div>
 
-            <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Show on live candle</label>
-              <button
-                onClick={() => setExhaustionShowProvisional(panelId, !panel.exhaustionShowProvisional)}
-                className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.exhaustionShowProvisional ? 'bg-[#3D7EFF]' : 'bg-[#1F1F1F]'
-                  }`}
-              >
-                <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.exhaustionShowProvisional ? 'left-5' : 'left-1'
-                  }`} />
-              </button>
+            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+              <PropskitSlider
+                label="Lookback"
+                value={panel.exhaustionLookback}
+                min={3}
+                max={8}
+                step={1}
+                units=" candles"
+                onChange={(val: number) => setExhaustionLookback(panelId, val)}
+                onInput={(val: number) => setExhaustionLookback(panelId, val)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Show on live candle</span>
+              <FigSwitch
+                checked={panel.exhaustionShowProvisional}
+                onChange={(checked) => setExhaustionShowProvisional(panelId, checked)}
+                aria-label="Show on live candle"
+              />
             </div>
           </div>
         )}
@@ -225,50 +207,47 @@ export const SignalSettings = forwardRef<HTMLDivElement, SignalSettingsProps>(({
         {panel.icebergEnabled && (
           <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Minimum score</label>
-                <span className="text-[12px] font-mono font-bold text-[#089981]">{panel.icebergMinScore}</span>
-              </div>
-              <input
-                type="range"
+              <PropskitSlider
+                label="Minimum score"
                 value={panel.icebergMinScore}
-                onChange={(e) => setIcebergMinScore(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#089981]"
-                min="30" max="80" step="5"
+                min={30}
+                max={80}
+                step={5}
+                onChange={(val: number) => setIcebergMinScore(panelId, val)}
+                onInput={(val: number) => setIcebergMinScore(panelId, val)}
               />
             </div>
 
             <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Lookback window</label>
-                <span className="text-[12px] font-mono font-bold text-accent">{panel.icebergLookback} Candles</span>
-              </div>
-              <input
-                type="range"
+              <PropskitSlider
+                label="Lookback"
                 value={panel.icebergLookback}
-                onChange={(e) => setIcebergLookback(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="5" max="20" step="1"
+                min={5}
+                max={20}
+                step={1}
+                units=" candles"
+                onChange={(val: number) => setIcebergLookback(panelId, val)}
+                onInput={(val: number) => setIcebergLookback(panelId, val)}
               />
             </div>
 
             <div className="grid grid-cols-1 gap-2">
               {[
-                ['Show suspected', panel.icebergShowSuspected, () => setIcebergShowSuspected(panelId, !panel.icebergShowSuspected)],
-                ['Show labels', panel.icebergShowLabels, () => setIcebergShowLabels(panelId, !panel.icebergShowLabels)],
-                ['Show background tint', panel.icebergShowTint, () => setIcebergShowTint(panelId, !panel.icebergShowTint)],
-              ].map(([label, enabled, onClick]) => (
-                <button
-                  key={label as string}
-                  onClick={onClick as () => void}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 ${enabled
-                    ? 'bg-[#089981]/5 border-[#089981] text-[#089981]'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
+                { label: 'Show suspected', checked: panel.icebergShowSuspected, toggle: () => setIcebergShowSuspected(panelId, !panel.icebergShowSuspected) },
+                { label: 'Show labels', checked: panel.icebergShowLabels, toggle: () => setIcebergShowLabels(panelId, !panel.icebergShowLabels) },
+                { label: 'Show background tint', checked: panel.icebergShowTint, toggle: () => setIcebergShowTint(panelId, !panel.icebergShowTint) },
+              ].map(({ label, checked, toggle }) => (
+                <div
+                  key={label}
+                  className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]"
                 >
-                  <span className="text-[10px] font-bold uppercase tracking-wider">{label as string}</span>
-                  <div className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-[#089981] shadow-[0_0_8px_rgba(8,153,129,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                </button>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">{label}</span>
+                  <FigSwitch
+                    checked={checked}
+                    onChange={toggle}
+                    aria-label={`Toggle ${label}`}
+                  />
+                </div>
               ))}
             </div>
           </div>
@@ -286,58 +265,47 @@ export const SignalSettings = forwardRef<HTMLDivElement, SignalSettingsProps>(({
 
         {panel.liquidityVacuumEnabled && (
           <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Minimum score</label>
-                <span className="text-[12px] font-mono font-bold text-[#3D7EFF]">{panel.liquidityVacuumMinScore}</span>
-              </div>
-              <input
-                type="range"
+            <div className="flex flex-col gap-3 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+              <PropskitSlider
+                label="Minimum score"
                 value={panel.liquidityVacuumMinScore}
-                onChange={(e) => setLiquidityVacuumMinScore(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
-                min="30" max="90" step="5"
+                min={30}
+                max={90}
+                step={5}
+                onChange={(val: number) => setLiquidityVacuumMinScore(panelId, val)}
+                onInput={(val: number) => setLiquidityVacuumMinScore(panelId, val)}
               />
-            </div>
 
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Zone opacity</label>
-                <span className="text-[12px] font-mono font-bold text-[#3D7EFF]">{Math.round(panel.liquidityVacuumOpacity * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                value={panel.liquidityVacuumOpacity * 100}
-                onChange={(e) => setLiquidityVacuumOpacity(panelId, Number(e.target.value) / 100)}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-[#3D7EFF]"
-                min="5" max="50" step="1"
+              <PropskitSlider
+                label="Zone opacity"
+                value={Math.round(panel.liquidityVacuumOpacity * 100)}
+                min={5}
+                max={50}
+                step={1}
+                units="%"
+                onChange={(val: number) => setLiquidityVacuumOpacity(panelId, val / 100)}
+                onInput={(val: number) => setLiquidityVacuumOpacity(panelId, val / 100)}
               />
-            </div>
 
-            <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Max zones</label>
-                <span className="text-[12px] font-mono font-bold text-accent">{panel.liquidityVacuumMaxZones}</span>
-              </div>
-              <input
-                type="range"
+              <PropskitSlider
+                label="Max zones"
                 value={panel.liquidityVacuumMaxZones}
-                onChange={(e) => setLiquidityVacuumMaxZones(panelId, Number(e.target.value))}
-                className="w-full h-1 bg-[#1F1F1F] rounded-lg appearance-none cursor-pointer accent-accent"
-                min="1" max="20" step="1"
+                min={1}
+                max={20}
+                step={1}
+                onChange={(val: number) => setLiquidityVacuumMaxZones(panelId, val)}
+                onInput={(val: number) => setLiquidityVacuumMaxZones(panelId, val)}
               />
             </div>
 
-            <button
-              onClick={() => setLiquidityVacuumShowLabels(panelId, !panel.liquidityVacuumShowLabels)}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-200 w-full ${panel.liquidityVacuumShowLabels
-                ? 'bg-[#3D7EFF]/5 border-[#3D7EFF] text-[#3D7EFF]'
-                : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                }`}
-            >
-              <span className="text-[10px] font-bold uppercase tracking-wider">Show labels</span>
-              <div className={`w-1.5 h-1.5 rounded-full ${panel.liquidityVacuumShowLabels ? 'bg-[#3D7EFF] shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-            </button>
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#2A2A2A] bg-[#141414]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">Show labels</span>
+              <FigSwitch
+                checked={panel.liquidityVacuumShowLabels}
+                onChange={(checked) => setLiquidityVacuumShowLabels(panelId, checked)}
+                aria-label="Toggle Show labels"
+              />
+            </div>
           </div>
         )}
       </div>

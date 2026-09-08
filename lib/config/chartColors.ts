@@ -4,6 +4,13 @@ export const CHART_BEARISH_COLOR = '#f23645';
 export const CHART_BULLISH_RGB = { r: 8, g: 153, b: 129 } as const;
 export const CHART_BEARISH_RGB = { r: 242, g: 54, b: 69 } as const;
 
+export const DEFAULT_CANVAS_BG = '#0F0F0F';
+export const DEFAULT_BORDER_COLOR = '#444444';
+export const DEFAULT_GRID_COLOR = DEFAULT_BORDER_COLOR;
+export const DEFAULT_GRID_OPACITY = 0.28;
+export const DEFAULT_HEADER_BG = '#0F0F0F';
+export const DEFAULT_HEADER_SIDEBAR_BG = '#2C2C2C';
+
 const LEGACY_BULLISH_COLOR = '#26a69a';
 const LEGACY_BEARISH_COLOR = '#ef5350';
 

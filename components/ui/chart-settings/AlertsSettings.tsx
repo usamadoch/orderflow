@@ -1,3 +1,5 @@
+'use client';
+
 import { forwardRef } from 'react';
 
 export const AlertsSettings = forwardRef<HTMLDivElement, Record<string, never>>((props, ref) => {

@@ -1,4 +1,7 @@
+'use client';
+
 import { forwardRef, useState } from 'react';
+import { FigSwitch } from '../fig';
 import { useChartStore, PanelId, SessionId } from '../../../lib/store/chart';
 import { TimeInput } from '../TimeInput';
 import { TIMEZONE_OPTIONS } from './constants';
@@ -26,14 +29,11 @@ export const SessionsSettings = forwardRef<HTMLDivElement, SessionsSettingsProps
     <div ref={ref} className="scroll-mt-5 space-y-6">
       <div className="flex items-center justify-between">
         <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Sessions</div>
-        <button
-          onClick={() => setSessionsEnabled(panelId, !panel.sessionsEnabled)}
-          className={`relative w-8 h-4 rounded-full transition-colors duration-200 ${panel.sessionsEnabled ? 'bg-accent' : 'bg-[#1F1F1F]'
-            }`}
-        >
-          <div className={`absolute top-1 w-2 h-2 rounded-full bg-white transition-all duration-200 ${panel.sessionsEnabled ? 'left-5' : 'left-1'
-            }`} />
-        </button>
+        <FigSwitch
+          checked={panel.sessionsEnabled}
+          onChange={(checked) => setSessionsEnabled(panelId, checked)}
+          aria-label="Toggle Sessions"
+        />
       </div>
 
       <div className="space-y-6 pt-2">
@@ -56,16 +56,14 @@ export const SessionsSettings = forwardRef<HTMLDivElement, SessionsSettingsProps
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setSessionEnabled(panelId, sid, !session.enabled)}
-                  className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all duration-200 ${session.enabled
-                    ? 'bg-accent/5 border-accent text-accent'
-                    : 'bg-[#1F1F1F] border-[#1F1F1F] text-text-dim hover:border-[#333]'
-                    }`}
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Enabled</span>
-                  <div className={`w-1.5 h-1.5 rounded-full ${session.enabled ? 'bg-accent shadow-[0_0_8px_rgba(61,126,255,0.5)]' : 'bg-[#1F1F1F]'}`} />
-                </button>
+                <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-[#1F1F1F] bg-[#1F1F1F]">
+                  <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider">Enabled</span>
+                  <FigSwitch
+                    checked={session.enabled}
+                    onChange={(checked) => setSessionEnabled(panelId, sid, checked)}
+                    aria-label={`Toggle ${label} session`}
+                  />
+                </div>
 
                 <div className="relative">
                   <button
