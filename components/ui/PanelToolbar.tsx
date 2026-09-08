@@ -2,9 +2,11 @@
 
 import React from 'react';
 import { Maximize2, Minimize2, Settings, TrendingUp, RefreshCw } from 'lucide-react';
+import { FigButton, FigSegmentedControl } from './fig';
 import { useChartStore, PanelId, type SettingsOpenRequest } from '../../lib/store/chart';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 import { ChartSettingsDropdown } from './ChartSettingsDropdown';
+import { ChartLayoutDropdown } from './ChartLayoutDropdown';
 import { PairSelector } from './PairSelector';
 import { ChartModeSelector } from './ChartModeSelector';
 import { deleteSharedCandleCache } from '../../lib/feeds/candleCache';
@@ -36,7 +38,7 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
   const [settingsFocusRequest, setSettingsFocusRequest] = React.useState<SettingsOpenRequest | null>(null);
   const [showIndicatorsModal, setShowIndicatorsModal] = React.useState(false);
   const settingsContainerRef = React.useRef<HTMLDivElement | null>(null);
-  const settingsButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const settingsButtonRef = React.useRef<HTMLElement | null>(null);
 
   const selectPositionTool = React.useCallback(() => {
     setActivePanel(panelId);
@@ -90,91 +92,96 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
       <PairSelector panelId={panelId} />
 
       {/* Timeframe Selector */}
-      <div className="flex gap-0.5 bg-[#0F0F0F] p-0.5 rounded-md border border-[#1F1F1F]">
-        {TIMEFRAMES.map((tf) => (
-          <button
-            key={tf}
-            onClick={() => setTimeframe(panelId, tf)}
-            className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-all duration-200 ${panel.timeframe === tf
-              ? 'bg-[#1F1F1F] text-accent border border-[#252525] shadow-sm'
-              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
-              }`}
-          >
-            {tf}
-          </button>
-        ))}
-      </div>
+      <FigSegmentedControl
+        value={panel.timeframe}
+        onChange={(tf: string) => setTimeframe(panelId, tf)}
+        options={TIMEFRAMES.map((tf) => ({ value: tf, label: tf }))}
+        title="Timeframe"
+        aria-label="Timeframe"
+      />
 
       {/* Mode Toggle */}
       <ChartModeSelector panelId={panelId} />
 
       {/* Indicators Button */}
       <div className="relative flex items-center h-full">
-        <button
+        <FigButton
+          id={`panel-indicators-trigger-${panelId}`}
+          variant="ghost"
+          size="small"
+          selected={showIndicatorsModal}
           onClick={() => setShowIndicatorsModal(!showIndicatorsModal)}
-          className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-bold tracking-tight transition-all duration-200 ${
-            showIndicatorsModal
-              ? 'bg-[#1F1F1F] text-accent border border-[#252525] shadow-sm'
-              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
-          }`}
           title="Indicators"
+          aria-label="Indicators"
+          className="gap-1.5 cursor-pointer"
         >
           <Activity size={13} strokeWidth={2.5} />
           Indicators
-        </button>
-        {showIndicatorsModal && (
-          <IndicatorsModal panelId={panelId} onClose={() => setShowIndicatorsModal(false)} />
-        )}
+        </FigButton>
+        <IndicatorsModal
+          open={showIndicatorsModal}
+          anchor={`#panel-indicators-trigger-${panelId}`}
+          panelId={panelId}
+          onClose={() => setShowIndicatorsModal(false)}
+        />
       </div>
 
       <div className="flex gap-0.5 bg-[#0F0F0F] p-0.5 rounded-md border border-[#1F1F1F]">
-        <button
-          type="button"
+        <FigButton
+          size="compact"
+          variant="ghost"
+          selected={panel.lineDrawMode === 'position'}
           onClick={() => selectPositionTool()}
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
+          className={`gap-1 px-1.5 py-0.5 text-[10px] font-black tracking-tight cursor-pointer ${
             panel.lineDrawMode === 'position'
               ? 'bg-[#3D7EFF] text-white shadow-sm shadow-[#3D7EFF]/20'
-              : 'text-text-dim hover:text-main hover:bg-[#1F1F1F]'
+              : 'text-text-dim hover:text-main'
           }`}
           title="Position Tool (Drag Up for Short, Down for Long)"
-          aria-pressed={panel.lineDrawMode === 'position'}
           aria-label="Position Tool"
         >
           <TrendingUp size={11} strokeWidth={2.5} />
           Position
-        </button>
-        <button
-          type="button"
+        </FigButton>
+        <FigButton
+          size="compact"
+          variant="ghost"
+          selected={panel.lineDrawMode === 'buy'}
           onClick={() => selectTradeTool('buy')}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
+          className={`gap-1 px-2 py-0.5 text-[10px] font-black tracking-tight cursor-pointer ${
             panel.lineDrawMode === 'buy'
               ? 'bg-[#089981] text-white shadow-sm shadow-[#089981]/25'
               : 'text-[#089981] hover:text-white hover:bg-[#089981]/20'
           }`}
           title="Buy Market Order (Click chart to set Stop Loss)"
-          aria-pressed={panel.lineDrawMode === 'buy'}
           aria-label="Buy Market Order"
         >
           BUY
-        </button>
-        <button
-          type="button"
+        </FigButton>
+        <FigButton
+          size="compact"
+          variant="ghost"
+          selected={panel.lineDrawMode === 'sell'}
           onClick={() => selectTradeTool('sell')}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black tracking-tight transition-all duration-200 ${
+          className={`gap-1 px-2 py-0.5 text-[10px] font-black tracking-tight cursor-pointer ${
             panel.lineDrawMode === 'sell'
               ? 'bg-[#F23645] text-white shadow-sm shadow-[#F23645]/25'
               : 'text-[#F23645] hover:text-white hover:bg-[#F23645]/20'
           }`}
           title="Sell Market Order (Click chart to set Stop Loss)"
-          aria-pressed={panel.lineDrawMode === 'sell'}
           aria-label="Sell Market Order"
         >
           SELL
-        </button>
+        </FigButton>
       </div>
 
       <div className="ml-auto flex items-center gap-1 border-l border-[#1F1F1F] pl-3 h-5">
-        <button
+        <ChartLayoutDropdown panelId={panelId} />
+
+        <FigButton
+          variant="ghost"
+          icon
+          className="cursor-pointer"
           onClick={() => {
             deleteSharedCandleCache({
               symbol: panel.pair,
@@ -199,27 +206,25 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
             });
             triggerPanelRefresh(panelId);
           }}
-          className="h-6 w-6 flex items-center justify-center rounded border border-[#1F1F1F] bg-[#0F0F0F] text-[#787B86] transition-all duration-200 hover:border-accent/60 hover:text-[#E8E8E8]"
           title={`${panelId === 'left' ? 'Left' : 'Right'} panel refresh`}
           aria-label={`Refresh ${panelId} panel`}
         >
           <RefreshCw size={11} strokeWidth={2.5} />
-        </button>
+        </FigButton>
 
         <div ref={settingsContainerRef} className="relative">
-          <button
+          <FigButton
             ref={settingsButtonRef}
+            variant="ghost"
+            icon
+            selected={showSettings}
             onClick={() => (showSettings ? setShowSettings(false) : openSettings())}
-            className={`h-6 w-6 flex items-center justify-center rounded border transition-all duration-200 ${
-              showSettings
-                ? 'border-accent bg-accent/10 text-accent'
-                : 'border-[#1F1F1F] bg-[#0F0F0F] text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8]'
-            }`}
             title={`${panelId === 'left' ? 'Left' : 'Right'} panel settings`}
             aria-label={`${panelId === 'left' ? 'Left' : 'Right'} panel settings`}
+            className="cursor-pointer"
           >
             <Settings size={12} strokeWidth={2.5} />
-          </button>
+          </FigButton>
 
           {showSettings && (
             <ChartSettingsDropdown
@@ -232,13 +237,16 @@ export function PanelToolbar({ panelId }: PanelToolbarProps) {
           )}
         </div>
 
-        <button
+        <FigButton
+          variant="ghost"
+          icon
           onClick={() => setFocusMode(!focusMode)}
-          className="h-6 w-6 flex items-center justify-center rounded border border-[#1F1F1F] bg-[#0F0F0F] text-[#787B86] transition-all duration-200 hover:border-accent/60 hover:text-[#E8E8E8]"
           title={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
+          aria-label={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
+          className="cursor-pointer"
         >
           {focusMode ? <Minimize2 size={11} strokeWidth={2.5} /> : <Maximize2 size={11} strokeWidth={2.5} />}
-        </button>
+        </FigButton>
       </div>
 
     </div>

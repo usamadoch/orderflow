@@ -1,59 +1,80 @@
 'use client';
 
-import React from 'react';
-import { ChevronDown, CandlestickChart, Activity, Circle, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { FigButton, FigPopup } from './fig';
 import { useChartStore, PanelId } from '../../lib/store/chart';
 import type { ChartMode } from '../../types/chart';
 
-const CHART_MODE_OPTIONS: Array<{ label: string; value: ChartMode; desc: string; icon: React.ReactNode }> = [
-  { label: 'Candlestick', value: 'candle', desc: 'Standard OHLC candlesticks', icon: <CandlestickChart size={14} strokeWidth={2.5} /> },
-  { label: 'Hollow', value: 'hollow', desc: 'Hollow directional candles', icon: <Circle size={14} strokeWidth={2.5} /> },
-  { label: 'Footprint', value: 'footprint', desc: 'Orderflow volume clusters', icon: <Activity size={14} strokeWidth={2.5} /> },
+export function CandlestickIcon({ className = '', size = 16 }: { className?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <line x1="4.5" y1="2" x2="4.5" y2="14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <rect x="3" y="4" width="3" height="7" rx="0.5" fill="currentColor" />
+      <line x1="11.5" y1="1" x2="11.5" y2="15" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <rect x="10" y="6" width="3" height="7" rx="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function HollowCandlestickIcon({ className = '', size = 16 }: { className?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <line x1="4.5" y1="2" x2="4.5" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="4.5" y1="11" x2="4.5" y2="14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <rect x="3" y="4" width="3" height="7" rx="0.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
+      <line x1="11.5" y1="1" x2="11.5" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="11.5" y1="13" x2="11.5" y2="15" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <rect x="10" y="6" width="3" height="7" rx="0.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
+    </svg>
+  );
+}
+
+export function FootprintIcon({ className = '', size = 16 }: { className?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <line x1="4" y1="1.5" x2="4" y2="14.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <line x1="4" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="4" y1="7" x2="10" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="4" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="4" y1="13" x2="8" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const CHART_MODE_OPTIONS: Array<{ label: string; value: ChartMode; icon: React.ReactNode }> = [
+  { label: 'Candlestick', value: 'candle', icon: <CandlestickIcon size={15} /> },
+  { label: 'Hollow Candlestick', value: 'hollow', icon: <HollowCandlestickIcon size={15} /> },
+  { label: 'Footprint', value: 'footprint', icon: <FootprintIcon size={15} /> },
 ];
 
-export function ChartModeSelector({ panelId = 'left' }: { panelId?: PanelId }) {
+export function ChartModeSelector({
+  panelId = 'left',
+  position = 'bottom left',
+}: {
+  panelId?: PanelId;
+  position?: 'bottom left' | 'bottom right' | 'bottom center';
+}) {
   const panel = useChartStore(s => s.panels[panelId]);
   const setChartMode = useChartStore(s => s.setChartMode);
   const setActivePanel = useChartStore(s => s.setActivePanel);
-  const [isOpen, setIsOpen] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsOpen(false);
-    };
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
+  const [isOpen, setIsOpen] = useState(false);
 
   const currentOption = CHART_MODE_OPTIONS.find(o => o.value === panel.chartMode) || CHART_MODE_OPTIONS[0];
+  const triggerId = `chart-mode-selector-trigger-${panelId}`;
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        type="button"
+    <div className="relative">
+      <FigButton
+        id={triggerId}
+        variant="ghost"
+        size="small"
+        selected={isOpen}
         onClick={() => {
           setActivePanel(panelId);
           setIsOpen(open => !open);
         }}
-        className={`h-6 min-w-[100px] flex items-center justify-between gap-1.5 rounded-md border px-2 text-[11px] font-bold tracking-tight transition-all duration-150 ${
-          isOpen
-            ? 'border-accent bg-accent/10 text-accent shadow-sm shadow-accent/10'
-            : 'border-[#1F1F1F] bg-[#0F0F0F] text-[#E8E8E8] hover:border-accent/60 hover:text-white'
-        }`}
+        className="h-6 gap-1.5 px-2 text-[11px] font-bold tracking-tight cursor-pointer"
         title="Chart Mode"
         aria-expanded={isOpen}
       >
@@ -66,48 +87,46 @@ export function ChartModeSelector({ panelId = 'left' }: { panelId?: PanelId }) {
           strokeWidth={2.5}
           className={`shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
         />
-      </button>
+      </FigButton>
 
-      {isOpen && (
-        <div className="absolute top-8 left-0 z-50 w-64 rounded-xl border border-[#262626] bg-[#121212] p-2 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
-          <div className="mb-2 px-2 pt-1 text-[11px] font-black uppercase tracking-[0.2em] text-[#787B86]">
-            Chart Mode
-          </div>
-          <div className="flex max-h-[400px] flex-col gap-0.5 overflow-y-auto custom-scrollbar">
-            {CHART_MODE_OPTIONS.map(option => {
-              const isActive = panel.chartMode === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  disabled={isActive}
-                  onClick={() => {
-                    if (!isActive) {
-                      setChartMode(panelId, option.value);
-                    }
-                    setIsOpen(false);
-                  }}
-                  className={`group flex items-center justify-between rounded-lg px-2 py-2 text-left transition-colors ${
-                    isActive 
-                      ? 'cursor-default bg-transparent opacity-50'
-                      : 'hover:bg-[#1F1F1F] active:bg-[#262626]'
+      <FigPopup
+        open={isOpen}
+        anchor={`#${triggerId}`}
+        position={position}
+        offset="0 4"
+        mode="dropdown"
+        onClose={() => setIsOpen(false)}
+        className="z-50 w-56 rounded-xl border border-[#282828] bg-[#181818] p-2.5 shadow-2xl select-none"
+      >
+        <div className="flex flex-col gap-1 p-1">
+          {CHART_MODE_OPTIONS.map(option => {
+            const isActive = panel.chartMode === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  if (!isActive) {
+                    setChartMode(panelId, option.value);
+                  }
+                  setIsOpen(false);
+                }}
+                className={`flex items-center justify-start w-full px-3 py-2.5 min-h-[38px] rounded-lg text-[13px] font-medium transition-colors text-left cursor-pointer border ${isActive
+                  ? 'border-[#383838] bg-[#2A2A2A] text-white shadow-sm'
+                  : 'border-transparent text-[#CCCCCC] hover:bg-white/10 hover:text-white'
                   }`}
-                >
-                  <div className="flex flex-col">
-                    <span className={`text-[12px] font-bold ${isActive ? 'text-[#787B86]' : 'text-[#E8E8E8]'}`}>
-                      {option.label}
-                    </span>
-                    <span className="text-[10px] text-[#787B86]">{option.desc}</span>
-                  </div>
-                  <div className={`flex h-6 w-6 items-center justify-center rounded-md ${isActive ? 'text-[#089981]' : 'text-[#787B86] group-hover:bg-[#262626] group-hover:text-accent'}`}>
-                    {isActive ? <Check size={14} strokeWidth={2.5} /> : option.icon}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                aria-pressed={isActive}
+                aria-label={option.label}
+              >
+                <span className={`mr-3 flex items-center shrink-0 ${isActive ? 'text-white' : 'text-[#909090]'}`}>
+                  {option.icon}
+                </span>
+                <span className="text-left select-none">{option.label}</span>
+              </button>
+            );
+          })}
         </div>
-      )}
+      </FigPopup>
     </div>
   );
 }
