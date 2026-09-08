@@ -1,7 +1,7 @@
 'use client';
 
 // 1. External packages
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 // 2. Internal packages & stores
 import { useChartStore, PanelId, PanelState } from '@/lib/store/chart';
@@ -11,12 +11,16 @@ import { initCanvas } from '@/lib/utils/canvas';
 import { buildCvdSeries, detectLocalCvdDivergences } from '@/lib/utils/delta';
 import type { Candle } from '@/types/candle';
 import type { CvdScale, CvdDragMode } from '@/types/cvd';
+import { DEFAULT_CANVAS_BG } from '@/lib/config/chartColors';
 
 // 3. Relative component & utility imports
 import { createManualScale } from './cvdPanelUtils';
 import { drawTimeAxis } from './drawAxes';
 import { drawCrosshair, drawCrosshairTimeLabel } from './drawCrosshair';
 import { drawCvd, drawCvdCrosshairValueLabel, getCvdScale } from './drawCvd';
+import { drawDrawingPriceLabels, drawLines } from './drawLines';
+import { resolveLineForRender } from './chartCanvasUtils';
+import type { DrawnLine } from '@/types/chart';
 import { getVisibleRange, indexToX as calcIndexToX, xToIndex, timeToIndex } from './useCoordinates';
 
 interface CvdPanelProps {
@@ -38,6 +42,7 @@ interface CvdPanelProps {
   cvdFixedRange: number;
   cvdShowDivergence: boolean;
   cvdDivergenceLookback: number;
+  drawnLines?: PanelState['drawnLines'];
 }
 
 
@@ -60,6 +65,7 @@ export function CvdPanel({
   cvdFixedRange,
   cvdShowDivergence,
   cvdDivergenceLookback,
+  drawnLines: drawnLinesProp,
 }: CvdPanelProps) {
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -72,6 +78,15 @@ export function CvdPanel({
   const heightRef = useRef(0);
   const scheduledLayers = useRef<Set<'background' | 'live' | 'overlay' | 'live-dirty'>>(new Set(['background', 'live', 'overlay']));
   const isRedrawScheduled = useRef(false);
+  const horizontalGridLineColor = useChartStore(s => s.horizontalGridLineColor);
+  const horizontalGridLineOpacity = useChartStore(s => s.horizontalGridLineOpacity);
+  const horizontalGridLineStyle = useChartStore(s => s.horizontalGridLineStyle);
+  const crosshairColor = useChartStore(s => s.crosshairColor);
+  const crosshairOpacity = useChartStore(s => s.crosshairOpacity);
+  const crosshairThickness = useChartStore(s => s.crosshairThickness);
+  const crosshairStyle = useChartStore(s => s.crosshairStyle);
+  const storeDrawnLines = useChartStore(s => s.panels[panelId]?.drawnLines);
+  const drawnLines = useMemo(() => storeDrawnLines ?? drawnLinesProp ?? [], [storeDrawnLines, drawnLinesProp]);
   const prevCandlesRef = useRef<Candle[]>([]);
   const isDragging = useRef(false);
   const dragMode = useRef<CvdDragMode | null>(null);
@@ -187,6 +202,8 @@ export function CvdPanel({
 
       if (drawAll || layersToDraw.has('background')) {
         bgCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+        bgCtx.fillStyle = DEFAULT_CANVAS_BG;
+        bgCtx.fillRect(0, 0, logicalWidth, logicalHeight);
         drawTimeAxis(bgCtx, candles, rawFirstIndex, rawLastIndex, indexToX, logicalWidth, logicalHeight, priceAxisWidth, timeAxisHeight, barWidthProp);
       }
 
@@ -223,6 +240,9 @@ export function CvdPanel({
           priceAxisWidth,
           timeAxisHeight,
           barWidth: barWidthProp,
+          gridColor: horizontalGridLineColor,
+          gridOpacity: horizontalGridLineOpacity,
+          gridStyle: horizontalGridLineStyle,
         });
         
         if (isDirty && candles.length > 0) {
@@ -232,6 +252,59 @@ export function CvdPanel({
 
       if (drawAll || layersToDraw.has('overlay')) {
         ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+        // Draw vertical lines on top of CVD
+        const runtimeDrawingDrag = useChartRuntimeStore.getState().drawingDrag;
+        const drawingsSyncEnabled = useChartStore.getState().drawingsSyncEnabled;
+        let liveDrawnLines = useChartStore.getState().panels[panelId]?.drawnLines ?? drawnLines ?? [];
+        if (runtimeDrawingDrag) {
+          const isSelf = runtimeDrawingDrag.panelId === panelId;
+          if (isSelf || drawingsSyncEnabled) {
+            liveDrawnLines = liveDrawnLines.map((line) =>
+              line.id === runtimeDrawingDrag.id
+                ? ({ ...line, ...runtimeDrawingDrag.updates } as DrawnLine)
+                : line
+            );
+          }
+        }
+        const verticalLines = liveDrawnLines
+          .filter((line) => line.type === 'vertical')
+          .map((line) => resolveLineForRender(line, candles))
+          .filter((line): line is DrawnLine => line !== null);
+
+        if (verticalLines.length > 0) {
+          drawLines(
+            ctx,
+            verticalLines,
+            indexToX,
+            () => 0,
+            logicalWidth,
+            logicalHeight,
+            timeAxisHeight,
+            priceAxisWidth,
+            barWidthProp,
+            null,
+            null,
+            false,
+            candles
+          );
+
+          drawDrawingPriceLabels(
+            ctx,
+            verticalLines,
+            indexToX,
+            () => 0,
+            logicalWidth,
+            logicalHeight,
+            timeAxisHeight,
+            priceAxisWidth,
+            barWidthProp,
+            candles,
+            globalTimezone,
+            globalTimeFormat
+          );
+        }
+
         const crosshair = useChartRuntimeStore.getState().crosshair;
         const crosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
         let mx: number | null = null;
@@ -246,14 +319,24 @@ export function CvdPanel({
           mouseY.current >= 0 &&
           mouseY.current <= chartHeight
         ) {
-          mx = mouseX.current;
+          const snappedIndex = xToIndex(mouseX.current, candles, scrollOffsetProp, barWidthProp, chartWidth, profileWidth);
+          mx = indexToX(snappedIndex);
           my = mouseY.current;
-        } else if (crosshairSyncEnabled && crosshair.activePanel && crosshair.time !== null && candles.length > 0) {
-          mx = indexToX(timeToIndex(crosshair.time, candles));
+        } else if (crosshair.activePanel && (!isMouseOver.current && (crosshair.activePanel === panelId || crosshairSyncEnabled))) {
+          if (crosshair.time !== null && candles.length > 0) {
+            const syncedIndex = timeToIndex(crosshair.time, candles);
+            mx = indexToX(syncedIndex);
+          }
         }
 
         if (mx !== null || my !== null) {
-          drawCrosshair(ctx, mx, my, chartWidth, chartHeight);
+          drawCrosshair(ctx, mx, my, chartWidth, chartHeight, {
+            color: crosshairColor,
+            opacity: crosshairOpacity,
+            thickness: crosshairThickness,
+            style: crosshairStyle,
+            verticalLineHeight: chartHeight,
+          });
 
           if (my !== null) {
             drawCvdCrosshairValueLabel(ctx, my, scale.yToValue(my), chartWidth, priceAxisWidth, chartHeight);
@@ -261,7 +344,17 @@ export function CvdPanel({
 
           if (mx !== null && mx >= 0 && mx <= chartWidth) {
             const index = xToIndex(mx, candles, scrollOffsetProp, barWidthProp, chartWidth, profileWidth);
-            const time = candles[index]?.time ?? crosshair.time ?? 0;
+            let time = 0;
+            if (candles[index]) {
+              time = candles[index].time;
+            } else if (candles.length > 0) {
+              const lastCandle = candles[candles.length - 1];
+              const firstCandle = candles[0];
+              const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
+              time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
+            } else if (crosshair.time) {
+              time = crosshair.time;
+            }
             if (time > 0) {
               drawCrosshairTimeLabel(ctx, mx, time, chartHeight, timeAxisHeight, chartWidth);
             }
@@ -288,6 +381,14 @@ export function CvdPanel({
     getViewportScale,
     globalTimezone,
     globalTimeFormat,
+    horizontalGridLineColor,
+    horizontalGridLineOpacity,
+    horizontalGridLineStyle,
+    drawnLines,
+    crosshairColor,
+    crosshairOpacity,
+    crosshairThickness,
+    crosshairStyle,
   ]);
 
   const redrawRef = useRef(redraw);
@@ -314,11 +415,15 @@ export function CvdPanel({
 
     const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
     const index = xToIndex(x, candles, scrollOffsetProp, barWidthProp, chartWidth, profileWidth);
-    const time = candles[index]?.time ?? null;
-
-    if (useChartStore.getState().crosshairSyncEnabled) {
-      useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price: null });
+    let time = candles[index]?.time ?? null;
+    if (time === null && candles.length > 0) {
+      const lastCandle = candles[candles.length - 1];
+      const firstCandle = candles[0];
+      const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
+      time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
     }
+
+    useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price: null });
   }, [panelId, scrollOffsetProp, barWidthProp, profileWidth]);
 
   useEffect(() => {
@@ -333,11 +438,13 @@ export function CvdPanel({
     if (!canvas || !container) return;
 
     const setupCanvas = (w: number, h: number) => {
-      if (bgCanvasRef.current) bgCtxRef.current = initCanvas(bgCanvasRef.current, w, h);
-      if (liveCanvasRef.current) liveCtxRef.current = initCanvas(liveCanvasRef.current, w, h);
-      if (canvasRef.current) ctxRef.current = initCanvas(canvasRef.current, w, h);
-      widthRef.current = w;
-      heightRef.current = h;
+      const roundedW = Math.max(1, Math.round(w));
+      const roundedH = Math.max(1, Math.round(h));
+      if (bgCanvasRef.current) bgCtxRef.current = initCanvas(bgCanvasRef.current, roundedW, roundedH);
+      if (liveCanvasRef.current) liveCtxRef.current = initCanvas(liveCanvasRef.current, roundedW, roundedH);
+      if (canvasRef.current) ctxRef.current = initCanvas(canvasRef.current, roundedW, roundedH);
+      widthRef.current = roundedW;
+      heightRef.current = roundedH;
       redrawRef.current('all');
     };
 
@@ -347,13 +454,24 @@ export function CvdPanel({
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      setupCanvas(entry.contentRect.width, entry.contentRect.height);
+      setupCanvas(Math.round(entry.contentRect.width), Math.round(entry.contentRect.height));
     });
 
     observer.observe(container);
 
+    let lastDpr = window.devicePixelRatio || 1;
     let dprMedia: MediaQueryList | null = null;
+    const checkDprAndRescale = () => {
+      const currentDpr = window.devicePixelRatio || 1;
+      if (Math.abs(currentDpr - lastDpr) > 0.01) {
+        lastDpr = currentDpr;
+        const nextRect = container.getBoundingClientRect();
+        setupCanvas(nextRect.width, nextRect.height);
+        listenToDpr();
+      }
+    };
     const onDprChange = () => {
+      lastDpr = window.devicePixelRatio || 1;
       const nextRect = container.getBoundingClientRect();
       setupCanvas(nextRect.width, nextRect.height);
       listenToDpr();
@@ -365,9 +483,11 @@ export function CvdPanel({
     };
 
     listenToDpr();
+    window.addEventListener('resize', checkDprAndRescale);
 
     return () => {
       observer.disconnect();
+      window.removeEventListener('resize', checkDprAndRescale);
       if (dprMedia) dprMedia.removeEventListener('change', onDprChange);
     };
   }, []);
@@ -416,47 +536,71 @@ export function CvdPanel({
       setCursor(x, y, width, height);
     };
 
-    const onMouseMove = (event: MouseEvent) => {
+    const onWindowDragMove = (event: MouseEvent) => {
+      if (!isDragging.current) return;
       const { x, y, width, height } = getLocalPoint(event);
-      const isOver = x >= 0 && x <= width && y >= 0 && y <= height;
-
-      if (isOver || isDragging.current) {
-        mouseX.current = x;
-        mouseY.current = y;
-      }
-
+      mouseX.current = x;
+      mouseY.current = y;
       setCursor(x, y, width, height);
 
       const chartHeight = height - timeAxisHeight;
+      const deltaY = event.clientY - lastY.current;
+      lastY.current = event.clientY;
 
-      if (isDragging.current) {
-        const deltaY = event.clientY - lastY.current;
-        lastY.current = event.clientY;
-
-        if (scaleCenter.current !== null && scaleRange.current !== null) {
-          if (dragMode.current === 'scale') {
-            const nextRange = scaleRange.current * (1 + deltaY * 0.006);
-            scaleRange.current = Math.max(1, Math.min(1_000_000_000, nextRange));
-          } else {
-            const valuePerPixel = scaleRange.current / Math.max(1, chartHeight);
-            scaleCenter.current += deltaY * valuePerPixel;
-          }
+      if (scaleCenter.current !== null && scaleRange.current !== null) {
+        if (dragMode.current === 'scale') {
+          const nextRange = scaleRange.current * (1 + deltaY * 0.006);
+          scaleRange.current = Math.max(1, Math.min(1_000_000_000, nextRange));
+        } else {
+          const valuePerPixel = scaleRange.current / Math.max(1, chartHeight);
+          scaleCenter.current += deltaY * valuePerPixel;
         }
-
-        redrawRef.current();
-        return;
       }
 
-      if (isOver) {
-        updateCrosshair(x, y);
-        redrawRef.current();
+      redrawRef.current();
+    };
+
+    const onWindowDragUp = (event: MouseEvent) => {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      dragMode.current = null;
+
+      const { x, y, width, height } = getLocalPoint(event);
+      const isOver = x >= 0 && x <= width && y >= 0 && y <= height;
+      isMouseOver.current = isOver;
+      if (!isOver) {
+        mouseX.current = null;
+        mouseY.current = null;
+        updateCrosshair(null, null);
+        canvas.style.cursor = '';
+        redrawRef.current('overlay');
+      } else {
+        setCursor(x, y, width, height);
       }
     };
 
-    const onMouseUp = () => {
-      isDragging.current = false;
-      dragMode.current = null;
-      canvas.style.cursor = isMouseOver.current ? 'crosshair' : '';
+    const onCanvasMouseMove = (event: MouseEvent) => {
+      if (isDragging.current) return;
+      const { x, y, width, height } = getLocalPoint(event);
+      isMouseOver.current = true;
+      mouseX.current = x;
+      mouseY.current = y;
+
+      setCursor(x, y, width, height);
+      updateCrosshair(x, y);
+      redrawRef.current('overlay');
+    };
+
+    const onWindowMouseMove = (event: MouseEvent) => {
+      if (isDragging.current) {
+        onWindowDragMove(event);
+      }
+    };
+
+    const onWindowMouseUp = (event: MouseEvent) => {
+      if (isDragging.current) {
+        onWindowDragUp(event);
+      }
     };
 
     const onMouseEnter = () => {
@@ -467,9 +611,11 @@ export function CvdPanel({
       isMouseOver.current = false;
 
       if (!isDragging.current) {
+        mouseX.current = null;
+        mouseY.current = null;
         updateCrosshair(null, null);
         canvas.style.cursor = '';
-        redrawRef.current();
+        redrawRef.current('overlay');
       }
     };
 
@@ -503,21 +649,23 @@ export function CvdPanel({
     };
 
     canvas.addEventListener('mousedown', onMouseDown);
+    canvas.addEventListener('mousemove', onCanvasMouseMove);
     canvas.addEventListener('mouseenter', onMouseEnter);
     canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('dblclick', onDoubleClick);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('mousemove', onWindowMouseMove);
+    window.addEventListener('mouseup', onWindowMouseUp);
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
+      canvas.removeEventListener('mousemove', onCanvasMouseMove);
       canvas.removeEventListener('mouseenter', onMouseEnter);
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('dblclick', onDoubleClick);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('mousemove', onWindowMouseMove);
+      window.removeEventListener('mouseup', onWindowMouseUp);
     };
   }, [ensureManualScale, updateCrosshair]);
 
@@ -564,13 +712,31 @@ export function CvdPanel({
   ]);
 
   useEffect(() => {
+    redraw('overlay');
+  }, [drawnLines, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle, redraw]);
+
+  useEffect(() => {
+    const unsubscribeDrawingDrag = useChartRuntimeStore.subscribe(
+      (state) => state.drawingDrag,
+      (drag, prevDrag) => {
+        if (drag || prevDrag) {
+          redrawRef.current('overlay');
+        }
+      }
+    );
+    return () => unsubscribeDrawingDrag();
+  }, []);
+
+  useEffect(() => {
     const unsubscribeCrosshair = useChartRuntimeStore.subscribe((state) => state.crosshair, (crosshair, previousCrosshair) => {
-      if (!useChartStore.getState().crosshairSyncEnabled) return;
+      const isCrosshairSyncEnabled = useChartStore.getState().crosshairSyncEnabled;
+      if (!isCrosshairSyncEnabled && crosshair.activePanel !== panelId) return;
+      if (crosshair.activePanel === panelId && isMouseOver.current) return;
       if (
         crosshair.time !== previousCrosshair.time ||
         crosshair.activePanel !== previousCrosshair.activePanel
       ) {
-        redrawRef.current();
+        redrawRef.current('overlay');
       }
     });
 
@@ -579,17 +745,17 @@ export function CvdPanel({
       if (!state.crosshairSyncEnabled) {
         useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
       }
-      redrawRef.current();
+      redrawRef.current('overlay');
     });
 
     return () => {
       unsubscribeCrosshair();
       unsubscribeSync();
     };
-  }, []);
+  }, [panelId]);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-[#0F0F0F] overflow-hidden">
+    <div ref={containerRef} className="w-full h-full relative bg-background overflow-hidden">
       <canvas
         ref={bgCanvasRef}
         className="absolute top-0 left-0 pointer-events-none"

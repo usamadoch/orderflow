@@ -50,4 +50,7 @@ export interface DrawCvdOptions {
   priceAxisWidth: number;
   timeAxisHeight: number;
   barWidth: number;
+  gridColor?: string;
+  gridOpacity?: number;
+  gridStyle?: 'solid' | 'dashed' | 'dotted';
 }

@@ -1,12 +1,11 @@
 import type { CvdMode, CvdScaleMode } from '@/lib/store/chart';
 import type { CvdDivergenceMarker, CvdPoint } from '@/lib/utils/delta';
 import type { CvdScale, DrawCvdOptions } from '../../types/cvd';
+import { DEFAULT_CANVAS_BG, DEFAULT_GRID_COLOR, DEFAULT_GRID_OPACITY, chartColorToRgba } from '@/lib/config/chartColors';
 
-const AXIS_FONT = 'bold 12px "Inter", -apple-system, system-ui, sans-serif';
+const AXIS_FONT = 'bold 12px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
 const MONO_FONT = '11px "JetBrains Mono", monospace';
-const BORDER = '#1F1F1F';
-const AXIS_BG = '#0F0F0F';
-const GRID = '#1F1F1F';
+const AXIS_BG = DEFAULT_CANVAS_BG;
 const TEXT = '#909090';
 const MUTED_TEXT = '#5F6368';
 
@@ -96,17 +95,16 @@ export function drawCvd(
     divergenceMarkers,
     chartWidth,
     chartHeight,
-    canvasWidth,
     canvasHeight,
     priceAxisWidth,
     timeAxisHeight,
     barWidth,
+    gridColor = DEFAULT_GRID_COLOR,
+    gridOpacity = DEFAULT_GRID_OPACITY,
+    gridStyle = 'solid',
   } = options;
 
-  ctx.fillStyle = '#0F0F0F';
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-  drawCvdGrid(ctx, scale, chartWidth, chartHeight);
+  drawCvdGrid(ctx, scale, chartWidth, chartHeight, gridColor, gridOpacity, gridStyle);
   drawResetMarkers(ctx, points, firstIndex, lastIndex, indexToX, chartHeight);
 
   ctx.save();
@@ -130,7 +128,7 @@ export function drawCvd(
 
   ctx.restore();
 
-  drawCvdAxis(ctx, scale, chartWidth, canvasHeight, priceAxisWidth, timeAxisHeight);
+  drawCvdAxis(ctx, scale, chartWidth, canvasHeight, priceAxisWidth, timeAxisHeight, gridColor, gridOpacity);
   drawCvdHeader(ctx, mode, points, lastIndex, positiveColor, negativeColor);
 }
 
@@ -147,24 +145,45 @@ export function drawCvdCrosshairValueLabel(
   const label = formatCvdValue(value);
   ctx.font = AXIS_FONT;
   const textWidth = ctx.measureText(label).width;
-  const padding = 8;
-  const rectHeight = 24;
-  const rectWidth = Math.max(textWidth + padding * 2, priceAxisWidth - 2);
+  const rectHeight = 22;
+  const badgeX = chartWidth + 2;
+  const badgeWidth = Math.max(textWidth + 16, priceAxisWidth - 4);
+  const badgeY = Math.round(mouseY - rectHeight / 2);
 
   ctx.fillStyle = '#1F1F1F';
-  ctx.fillRect(chartWidth + 1, mouseY - rectHeight / 2, rectWidth, rectHeight);
-  ctx.strokeStyle = '#8A8A8A';
-  ctx.strokeRect(chartWidth + 1, mouseY - rectHeight / 2, rectWidth, rectHeight);
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(badgeX, badgeY, badgeWidth, rectHeight, 2);
+  } else {
+    ctx.fillRect(badgeX, badgeY, badgeWidth, rectHeight);
+  }
+  ctx.fill();
 
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, chartWidth + padding + 1, mouseY);
+  ctx.fillText(label, chartWidth + 12, mouseY);
 }
 
-function drawCvdGrid(ctx: CanvasRenderingContext2D, scale: CvdScale, chartWidth: number, chartHeight: number) {
-  ctx.strokeStyle = GRID;
+function drawCvdGrid(
+  ctx: CanvasRenderingContext2D,
+  scale: CvdScale,
+  chartWidth: number,
+  chartHeight: number,
+  gridColor: string = DEFAULT_GRID_COLOR,
+  gridOpacity: number = DEFAULT_GRID_OPACITY,
+  gridStyle: 'solid' | 'dashed' | 'dotted' = 'solid'
+) {
+  ctx.save();
+  ctx.strokeStyle = chartColorToRgba(gridColor, gridOpacity);
   ctx.lineWidth = 1;
+  if (gridStyle === 'solid') {
+    ctx.setLineDash([]);
+  } else if (gridStyle === 'dashed') {
+    ctx.setLineDash([4, 4]);
+  } else if (gridStyle === 'dotted') {
+    ctx.setLineDash([2, 2]);
+  }
 
   const step = calculateValueStep(scale.max - scale.min, chartHeight);
   const start = Math.floor(scale.min / step) * step;
@@ -179,12 +198,12 @@ function drawCvdGrid(ctx: CanvasRenderingContext2D, scale: CvdScale, chartWidth:
 
   if (scale.min < 0 && scale.max > 0) {
     const zeroY = Math.round(scale.valueToY(0)) + 0.5;
-    ctx.strokeStyle = GRID;
     ctx.beginPath();
     ctx.moveTo(0, zeroY);
     ctx.lineTo(chartWidth, zeroY);
     ctx.stroke();
   }
+  ctx.restore();
 }
 
 function drawResetMarkers(
@@ -381,13 +400,15 @@ function drawCvdAxis(
   chartWidth: number,
   canvasHeight: number,
   priceAxisWidth: number,
-  timeAxisHeight: number
+  timeAxisHeight: number,
+  borderColor: string = DEFAULT_GRID_COLOR,
+  borderOpacity: number = DEFAULT_GRID_OPACITY
 ) {
   const chartHeight = canvasHeight - timeAxisHeight;
 
   ctx.fillStyle = AXIS_BG;
   ctx.fillRect(chartWidth, 0, priceAxisWidth, canvasHeight);
-  ctx.fillStyle = BORDER;
+  ctx.fillStyle = chartColorToRgba(borderColor, borderOpacity);
   ctx.fillRect(chartWidth, 0, 1, canvasHeight);
 
   const step = calculateValueStep(scale.max - scale.min, chartHeight);
@@ -397,7 +418,7 @@ function drawCvdAxis(
   ctx.fillStyle = TEXT;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.strokeStyle = BORDER;
+  ctx.strokeStyle = chartColorToRgba(borderColor, borderOpacity);
 
   for (let value = start; value <= scale.max; value += step) {
     const y = scale.valueToY(value);

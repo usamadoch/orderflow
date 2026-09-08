@@ -2,11 +2,13 @@
 
 import React from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
+import { FigButton } from '../ui/fig';
 
 // 2. Internal packages & stores
 import { useChartStore, PanelId } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { buildCvdSeries } from '@/lib/utils/delta';
+import { chartColorToRgba, DEFAULT_GRID_COLOR, DEFAULT_GRID_OPACITY } from '@/lib/config/chartColors';
 
 // 3. Relative component & utility imports
 import { DrawingFavoritesToolbar } from '../ui/DrawingFavoritesToolbar';
@@ -43,6 +45,8 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const tickSize = useChartStore(s => s.tickSize);
   const globalTimezone = useChartStore(s => s.globalTimezone);
   const globalTimeFormat = useChartStore(s => s.globalTimeFormat);
+  const horizontalGridLineColor = useChartStore(s => s.horizontalGridLineColor);
+  const horizontalGridLineOpacity = useChartStore(s => s.horizontalGridLineOpacity);
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
   const { volumeProfileEngine, volumeProfileRevision } = useVolumeProfileEngine();
@@ -161,12 +165,12 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   return (
     <div
       data-chart-panel-id={panelId}
-      className="relative flex flex-col h-full w-full overflow-hidden bg-[#0F0F0F]"
+      className="relative flex flex-col h-full w-full overflow-hidden bg-background"
       onMouseEnter={() => setActivePanel(panelId)}
     >
       <PanelToolbar panelId={panelId} />
       <DrawingFavoritesToolbar panelId={panelId} />
-      <div ref={chartAreaRef} className="flex-1 relative min-h-0 flex flex-col bg-[#0F0F0F]">
+      <div ref={chartAreaRef} className="flex-1 relative min-h-0 flex flex-col bg-background">
         <div
           className={`relative min-h-0 ${isCvdCompact ? 'flex-1' : ''}`}
           style={{ height: isCvdExpanded ? `${100 - panel.cvdPanelHeightPct}%` : panel.cvdEnabled ? '100%' : '100%' }}
@@ -289,10 +293,13 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           <IndicatorLabels panelId={panelId} isLoading={isPanelLoading} />
           {process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && <OrderTicket panelId={panelId} />}
           {isCvdCompact && (
-            <button
+            <FigButton
+              variant="ghost"
+              size="compact"
               onClick={() => setCvdMinimized(panelId, false)}
-              className="absolute left-0 right-0 bottom-6 z-30 h-7 border-y border-[#1F1F1F] bg-[#1F1F1F]/95 hover:bg-[#1F1F1F] transition-colors flex items-center justify-between px-3 group"
+              className="absolute left-0 right-0 bottom-6 z-30 h-7 rounded-none border-y border-[#1F1F1F] bg-[#1F1F1F]/95 hover:bg-[#1F1F1F] transition-colors flex items-center justify-between px-3 group"
               title="Maximize CVD panel"
+              aria-label="Maximize CVD panel"
             >
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black tracking-[0.18em] text-text-dim">CVD</span>
@@ -301,21 +308,27 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
               <div className="h-5 w-5 rounded border border-[#262626] text-[#787B86] group-hover:border-accent/60 group-hover:text-[#E8E8E8] transition-colors flex items-center justify-center">
                 <Maximize2 size={11} strokeWidth={2.5} />
               </div>
-            </button>
+            </FigButton>
           )}
         </div>
         {isCvdExpanded && (
           <div
-            className="relative min-h-[88px] border-t border-[#1F1F1F]"
-            style={{ height: `${panel.cvdPanelHeightPct}%` }}
+            className="relative min-h-[88px] border-t"
+            style={{
+              height: `${panel.cvdPanelHeightPct}%`,
+              borderTopColor: chartColorToRgba(horizontalGridLineColor || DEFAULT_GRID_COLOR, horizontalGridLineOpacity ?? DEFAULT_GRID_OPACITY),
+            }}
           >
-            <button
+            <FigButton
+              variant="ghost"
+              icon
               onClick={() => setCvdMinimized(panelId, true)}
-              className="absolute top-2 right-[92px] z-30 h-6 w-6 rounded border border-[#262626] bg-[#1F1F1F]/80 text-[#787B86] hover:border-accent/60 hover:text-[#E8E8E8] transition-colors flex items-center justify-center"
+              className="absolute top-2 right-[92px] z-30"
               title="Minimize CVD panel"
+              aria-label="Minimize CVD panel"
             >
               <Minimize2 size={12} strokeWidth={2.4} />
-            </button>
+            </FigButton>
             <div
               onMouseDown={startCvdResize}
               className="absolute -top-1 left-0 right-0 h-2 cursor-row-resize z-20 group"
@@ -342,6 +355,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
               cvdFixedRange={panel.cvdFixedRange}
               cvdShowDivergence={panel.cvdShowDivergence}
               cvdDivergenceLookback={panel.cvdDivergenceLookback}
+              drawnLines={panel.drawnLines}
             />
           </div>
         )}

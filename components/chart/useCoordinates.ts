@@ -105,6 +105,19 @@ export function xToIndex(
 export function timeToIndex(time: number, candles: Candle[]) {
   if (candles.length === 0) return 0;
   
+  const firstCandle = candles[0];
+  const lastCandle = candles[candles.length - 1];
+  const avgInterval = candles.length > 1 ? (lastCandle.time - firstCandle.time) / (candles.length - 1) : 60;
+
+  if (time > lastCandle.time) {
+    const diff = Math.round((time - lastCandle.time) / (avgInterval || 60));
+    return candles.length - 1 + diff;
+  }
+  if (time < firstCandle.time) {
+    const diff = Math.round((firstCandle.time - time) / (avgInterval || 60));
+    return Math.max(0, -diff);
+  }
+  
   let left = 0;
   let right = candles.length - 1;
   let result = 0;
