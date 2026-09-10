@@ -135,6 +135,7 @@ export interface FigTooltipProps extends FigCustomElementProps {
   action?: 'hover' | 'click' | 'manual' | string;
   delay?: number;
   offset?: string;
+  position?: string;
   show?: boolean;
   open?: boolean;
 }

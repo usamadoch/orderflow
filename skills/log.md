@@ -1,5 +1,22 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-10] - Fix: Tooltip Dark Overlay Removal & Position Offsets
+- **What changed**:
+  - In `globals.css`: excluded `variant="tooltip"` from `dialog[is="fig-popup"]` 48px box-shadow; disabled `::backdrop` overlay on tooltips.
+  - Styled tooltips as compact `#1A1A1A` pills with subtle 2px shadow (`0 2px 6px rgba(0,0,0,0.45)`), 4px radius, and pointer-events none.
+  - In `FigTooltip.tsx`: added `position="bottom center"` and `offset="4 4"` support forwarding directly to internal popup dialog.
+- **Why it changed**: Tooltips were inheriting large dialog shadow and backdrop overlay, covering buttons instead of appearing cleanly on top/bottom.
+- **Impact summary**: Zero darkish overlay; tooltips render cleanly below/above items with button hover states intact; 0 lint/tsc errors.
+
+## [2026-09-10] - Feature: FigUI3 Tooltips for Header, Subheader & Indicator Labels
+- **What changed**:
+  - In `Header.tsx` & `ConnectionStatus.tsx`: wrapped Storage, Unlock, Submit Key, Lock, MT5 status & Connect button in `<FigTooltip>`.
+  - In `PanelToolbar.tsx`, `PairSelector.tsx` & `ChartModeSelector.tsx`: wrapped Timeframe, Pair, Mode, Indicators, Position, BUY/SELL, Refresh, Settings, and Focus in `<FigTooltip>`.
+  - In `IndicatorLabels.tsx`: wrapped collapse toggle, live feed dot, source pills, and indicator action buttons in `<FigTooltip>`.
+  - In `globals.css`: added `fig-tooltip { display: contents; }`; removed native browser `title` attributes.
+- **Why it changed**: Replaced default browser tooltips with FigUI3 tooltips across top header, canvas subheaders, and indicator labels.
+- **Impact summary**: Consistent FigUI3 dark-mode tooltips on hover across all controls; 0 tsc and lint errors.
+
 ## [2026-09-08] - Fix: Draggable Popups & Toolbar Drag Stop-and-Start Glitch
 - **What changed**:
   - In `DrawingFavoritesToolbar.tsx`, `ChartSettingsDropdown.tsx`, and `CanvasDrawingToolbar.tsx`, removed `onPointerMove`/`onMouseMove` `stopPropagation()`.

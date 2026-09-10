@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { ChevronDown, X } from 'lucide-react';
-import { FigButton, FigSegmentedControl, FigPopup } from './fig';
+import { FigButton, FigSegmentedControl, FigPopup, FigTooltip } from './fig';
 import { ALLOWED_SYMBOLS, type AllowedSymbol } from '../../lib/config/markets';
 import { useChartStore, PanelId, type ContractType } from '../../lib/store/chart';
 
@@ -133,26 +133,27 @@ export function PairSelector({
 
   return (
     <div className="relative">
-      <FigButton
-        id={triggerId}
-        variant="ghost"
-        size="small"
-        selected={isOpen}
-        onClick={() => {
-          setActivePanel(panelId);
-          setIsOpen((open) => !open);
-        }}
-        className="h-6 min-w-[88px] gap-1.5 px-2 text-[11px] font-bold tracking-tight"
-        title={`${panelId === 'left' ? 'Left' : 'Right'} panel symbol`}
-        aria-expanded={isOpen}
-      >
-        <span>{displaySymbol}</span>
-        <ChevronDown
-          size={12}
-          strokeWidth={2.5}
-          className={`shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </FigButton>
+      <FigTooltip text={!isOpen ? `${panelId === 'left' ? 'Left' : 'Right'} panel symbol` : ''}>
+        <FigButton
+          id={triggerId}
+          variant="ghost"
+          size="small"
+          selected={isOpen}
+          onClick={() => {
+            setActivePanel(panelId);
+            setIsOpen((open) => !open);
+          }}
+          className="h-6 min-w-[88px] gap-1.5 px-2 text-[11px] font-bold tracking-tight cursor-pointer"
+          aria-expanded={isOpen}
+        >
+          <span>{displaySymbol}</span>
+          <ChevronDown
+            size={12}
+            strokeWidth={2.5}
+            className={`shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </FigButton>
+      </FigTooltip>
 
       <FigPopup
         open={isOpen}
@@ -168,17 +169,17 @@ export function PairSelector({
           <span className="text-[10px] font-black uppercase tracking-[0.18em] text-[#787B86]">
             Binance USDT
           </span>
-          <FigButton
-            variant="ghost"
-            icon
-            size="compact"
-            onClick={() => setIsOpen(false)}
-            title="Close"
-            aria-label="Close"
-            className="h-5 w-5 text-[#787B86] hover:text-white"
-          >
-            <X size={12} strokeWidth={2.5} />
-          </FigButton>
+          <FigTooltip text="Close">
+            <FigButton
+              variant="ghost"
+              icon
+              size="compact"
+              onClick={() => setIsOpen(false)}
+              className="h-5 w-5 text-[#787B86] hover:text-white"
+            >
+              <X size={12} strokeWidth={2.5} />
+            </FigButton>
+          </FigTooltip>
         </div>
 
         {/* Filter Tabs using FigSegmentedControl */}

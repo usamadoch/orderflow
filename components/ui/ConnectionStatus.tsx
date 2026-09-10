@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { FigButton } from './fig';
+import { FigButton, FigTooltip } from './fig';
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from '../../lib/config/chartColors';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 
@@ -17,8 +17,8 @@ export function ConnectionStatus() {
   const statusColor = mt5Connected
     ? CHART_BULLISH_COLOR
     : isConnecting
-    ? '#eab308'
-    : CHART_BEARISH_COLOR;
+      ? '#eab308'
+      : CHART_BEARISH_COLOR;
 
   const handleManualConnect = async (e?: React.MouseEvent | MouseEvent) => {
     e?.stopPropagation?.();
@@ -35,35 +35,38 @@ export function ConnectionStatus() {
   };
 
   return (
-    <div className="flex items-center gap-2 text-xs font-mono select-none" title={mt5Connected ? "MetaTrader 5 Connected (http://localhost:3001)" : "MetaTrader 5 Disconnected"}>
-      <div className="flex items-center gap-1.5">
-        <span 
-          className={`w-2 h-2 rounded-full transition-all duration-300 ${mt5Connected ? 'animate-pulse' : isConnecting ? 'animate-ping' : ''}`}
-          style={{ 
-            backgroundColor: statusColor,
-            boxShadow: `0 0 8px ${statusColor}`
-          }}
-        />
-        <span 
-          className="text-xs transition-colors"
-          style={mt5Connected ? undefined : { color: statusColor }}
-        >
-          {mt5Connected ? 'MT5 LIVE' : isConnecting ? 'CONNECTING...' : 'MT5 OFFLINE'}
-        </span>
-      </div>
+    <div className="flex items-center gap-2 text-xs font-mono select-none">
+      <FigTooltip text={mt5Connected ? "MT5 Connected" : isConnecting ? "Connecting to MT5..." : "MT5 Disconnected"}>
+        <div className="flex items-center gap-1.5 cursor-pointer">
+          <span
+            className={`w-2 h-2 rounded-full transition-all duration-300 ${mt5Connected ? 'animate-pulse' : isConnecting ? 'animate-ping' : ''}`}
+            style={{
+              backgroundColor: statusColor,
+              boxShadow: `0 0 8px ${statusColor}`
+            }}
+          />
+          <span
+            className="text-xs transition-colors"
+            style={mt5Connected ? undefined : { color: statusColor }}
+          >
+            {mt5Connected ? 'MT5 LIVE' : isConnecting ? 'CONNECTING...' : 'MT5 OFFLINE'}
+          </span>
+        </div>
+      </FigTooltip>
 
       {!mt5Connected && (
-        <FigButton
-          variant="ghost"
-          size="small"
-          onClick={handleManualConnect}
-          disabled={isConnecting}
-          title="Connect to local MT5 Bridge (http://localhost:3001)"
-          className="gap-1 font-mono text-[10px]"
-        >
-          <RefreshCw size={10} className={isConnecting ? 'animate-spin' : ''} />
-          <span>Connect</span>
-        </FigButton>
+        <FigTooltip text="Connect to MT5">
+          <FigButton
+            variant="ghost"
+            size="small"
+            onClick={handleManualConnect}
+            disabled={isConnecting}
+            className="gap-1 font-mono text-[10px]"
+          >
+            <RefreshCw size={10} className={isConnecting ? 'animate-spin' : ''} />
+            <span>Connect</span>
+          </FigButton>
+        </FigTooltip>
       )}
     </div>
   );

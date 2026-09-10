@@ -6,7 +6,7 @@ import { ConnectionStatus } from '../ui/ConnectionStatus';
 import { AccountBalanceWidget } from '../ui/AccountBalanceWidget';
 import { StorageManager } from '../ui/StorageManager';
 import { Database } from 'lucide-react';
-import { FigButton } from '../ui/fig';
+import { FigButton, FigTooltip } from '../ui/fig';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
 
 export function Header() {
@@ -37,15 +37,16 @@ export function Header() {
 
       <div className="flex items-center gap-4">
         {isAuthenticated && (
-          <FigButton
-            variant="ghost"
-            icon
-            onClick={() => setShowStorage(true)}
-            title="Manage Storage"
-            aria-label="Manage Storage"
-          >
-            <Database size={16} />
-          </FigButton>
+          <FigTooltip text="Manage Storage">
+            <FigButton
+              variant="ghost"
+              icon
+              onClick={() => setShowStorage(true)}
+              aria-label="Manage Storage"
+            >
+              <Database size={16} />
+            </FigButton>
+          </FigTooltip>
         )}
 
         {/* Premium Unlock UI */}
@@ -59,14 +60,16 @@ export function Header() {
                 </svg>
                 <span className="text-[10px] font-bold text-accent uppercase tracking-wider">PRO</span>
               </div>
-              <FigButton
-                variant="ghost"
-                size="small"
-                onClick={() => logout()}
-                className="text-[10px] uppercase tracking-widest font-medium"
-              >
-                Lock
-              </FigButton>
+              <FigTooltip text="Lock Details">
+                <FigButton
+                  variant="ghost"
+                  size="small"
+                  onClick={() => logout()}
+                  className="text-[10px] uppercase tracking-widest font-medium"
+                >
+                  Lock
+                </FigButton>
+              </FigTooltip>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -81,34 +84,36 @@ export function Header() {
                     className="bg-transparent text-[10px] px-2 py-1 outline-none w-24 text-main placeholder:text-text-dim/50"
                     autoFocus
                   />
+                  <FigTooltip text="Submit Key">
+                    <FigButton
+                      variant="ghost"
+                      size="small"
+                      icon
+                      onClick={handleAuth}
+                      aria-label="Submit Key"
+                      className="h-6 w-6 text-accent hover:text-accent-bright"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <path d="M5 12l5 5L20 7"/>
+                      </svg>
+                    </FigButton>
+                  </FigTooltip>
+                </div>
+              ) : (
+                <FigTooltip text="Unlock Details">
                   <FigButton
                     variant="ghost"
                     size="small"
-                    icon
-                    onClick={handleAuth}
-                    title="Submit Key"
-                    aria-label="Submit Key"
-                    className="h-6 w-6 text-accent hover:text-accent-bright"
+                    onClick={() => setShowUnlock(true)}
+                    className="gap-1.5"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                      <path d="M5 12l5 5L20 7"/>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                     </svg>
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Unlock Details</span>
                   </FigButton>
-                </div>
-              ) : (
-                <FigButton
-                  variant="ghost"
-                  size="small"
-                  onClick={() => setShowUnlock(true)}
-                  title="Unlock Details"
-                  className="gap-1.5"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Unlock Details</span>
-                </FigButton>
+                </FigTooltip>
               )}
             </div>
           )}

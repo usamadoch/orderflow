@@ -83,11 +83,11 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Layout / UI Components
 
-- `components/layout/Header.tsx` → Top toolbar styled with dark #0F0F0F background and border tokens, housing connection status indicator, auth-gated storage access, and symbol/settings controls.
+- `components/layout/Header.tsx` → Top toolbar styled with dark #0F0F0F background and border tokens, housing connection status indicator, auth-gated storage access, and symbol/settings controls with FigTooltip triggers.
 - `components/layout/Sidebar.tsx` → Thin icon-rail sidebar (kept intact in codebase, hidden from view per UI requirements).
 - `components/ui/ChartLayoutDropdown.tsx` → Layout selector dropdown using FigPopup with mode="dropdown", stable bottom-right positioning without jumping, p-3.5 padding, rounded-xl corners, 1.5x larger layout buttons (h-10 w-12), FigUI3 trigger tooltip, and "Sync In Layout" toggles for independent Crosshair and Drawings synchronization.
-- `components/ui/ConnectionStatus.tsx` → Combined live connection status indicator.
-- `components/ui/PanelToolbar.tsx` → Per-panel controls for symbol, timeframe, chart mode, position & BUY/SELL trade tools, chart layout selector, refresh, and settings using FigButton triggers.
+- `components/ui/ConnectionStatus.tsx` → Combined live connection status indicator with FigTooltip for connection state and manual connect trigger.
+- `components/ui/PanelToolbar.tsx` → Per-panel controls for symbol, timeframe, chart mode, position & BUY/SELL trade tools, chart layout selector, refresh, and settings using FigButton and FigTooltip triggers.
 - `components/ui/OrderTicket.tsx` → Draggable floating order ticket modal with quantity presets, risk checks, and validation.
 - `components/ui/AccountBalanceWidget.tsx` → Header widget displaying available asset balances from live account snapshots.
 - `components/ui/OrdersPanel.tsx` → Bottom pane table displaying open limit orders with real-time status and cancellation controls.
@@ -113,9 +113,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/ColorPickerPopover.tsx` → Shared TradingView-style color picker popover (80-swatch matrix, custom color '+' button, 3/6/8-digit hex parser, native eyedropper, and opacity slider) used by drawing tools and indicator settings.
 - `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with FigButton AM/PM toggle) and 24-hour modes matching global settings.
 - `components/ui/BubblesDocsModal.tsx` → Reference modal explaining Volume Bubbles visualization, sizing, and color indicators.
-- `components/ui/PairSelector.tsx` → Anchored dropdown selector using FigPopup with dropdown prop opening directly underneath trigger button.
+- `components/ui/PairSelector.tsx` → Anchored dropdown selector using FigPopup with dropdown prop opening directly underneath trigger button with FigTooltip.
 - `components/ui/TimeframeSelector.tsx` → Panel timeframe switcher control.
-- `components/ui/ChartModeSelector.tsx` → Chart mode dropdown selector using FigPopup with mode="dropdown", generous p-2.5 padding, rounded-xl corners, +50% taller rows (min-h-[38px]), left-aligned text, custom TradingView-style SVGs on the left, and persistent active item styling.
+- `components/ui/ChartModeSelector.tsx` → Chart mode dropdown selector using FigPopup with mode="dropdown", generous p-2.5 padding, rounded-xl corners, +50% taller rows (min-h-[38px]), left-aligned text, custom TradingView-style SVGs on the left, persistent active item styling, and FigTooltip trigger.
 - `components/ui/ChartModeToggle.tsx` → (Legacy) Candle and footprint chart mode selector using FigButton.
 - `components/ui/BucketSizeInput.tsx` → Footprint bucket size selector input.
 - `components/ui/StorageManager.tsx` → Modal component (rendered via Portal) for viewing TimescaleDB storage usage and executing manual data cleanup with FigButton destructive action.
@@ -128,9 +128,10 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/fig/PropskitNumber.tsx` → Reusable React wrapper for `<propskit-number>` labeled exact numeric input with precision, unit, and empty label suppression.
 - `components/ui/fig/FigPopup.tsx` → Reusable React wrapper for `<dialog is="fig-popup">` supporting explicit presentation modes (`mode="dropdown"` with synchronous pre-paint positioning supporting left, right, and center horizontal alignment without glitching vs `mode="modal"`), fixed positioning, and click-outside.
 - `components/ui/fig/FigDialog.tsx` → Reusable React wrapper for `<dialog is="fig-dialog">` supporting modal dialogs and draggable floating windows.
-- `components/ui/fig/FigTooltip.tsx` → Reusable React wrapper for `<fig-tooltip>` custom element supporting contextual hover/click tooltips.
+- `components/ui/fig/FigTooltip.tsx` → Reusable React wrapper for `<fig-tooltip>` custom element supporting contextual hover/click tooltips with explicit position/offset forwarding and no-overlay styling.
 - `components/ui/fig/index.ts` → FigUI3 component barrel export.
 - `components/debug/DebugPanel.tsx` → Floating dev debug panel (Ctrl+Shift+D) displaying metrics, store summaries, and restore diagnostics with FigButton tab navigation.
+- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, reordering controls, and quick toggles using FigButton and FigTooltip wrappers.
 
 ### Feed / Engine Context
 

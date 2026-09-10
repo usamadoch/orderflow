@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { ChevronRight, ChevronDown, Eye, EyeOff, Settings, X, ArrowUp, ArrowDown } from 'lucide-react';
-import { FigButton } from '@/components/ui/fig';
+import { FigButton, FigTooltip } from '@/components/ui/fig';
 
 // 2. Internal packages & stores
 import { useChartStore, type DataSourceMode, type PanelId, type IndicatorId, type IndicatorSettingsSection } from '@/lib/store/chart';
@@ -82,16 +82,17 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
         onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
-        <FigButton
-          variant="ghost"
-          icon
-          size="compact"
-          onClick={() => setCollapsed(panelId, !collapsed)}
-          title={collapsed ? 'Expand chart info and indicators' : 'Collapse chart info and indicators'}
-          aria-label={collapsed ? 'Expand chart info and indicators' : 'Collapse chart info and indicators'}
-        >
-          {collapsed ? <ChevronRight size={14} strokeWidth={2.5} /> : <ChevronDown size={14} strokeWidth={2.5} />}
-        </FigButton>
+        <FigTooltip text={collapsed ? 'Expand chart info and indicators' : 'Collapse chart info and indicators'}>
+          <FigButton
+            variant="ghost"
+            icon
+            size="compact"
+            onClick={() => setCollapsed(panelId, !collapsed)}
+            aria-label={collapsed ? 'Expand chart info and indicators' : 'Collapse chart info and indicators'}
+          >
+            {collapsed ? <ChevronRight size={14} strokeWidth={2.5} /> : <ChevronDown size={14} strokeWidth={2.5} />}
+          </FigButton>
+        </FigTooltip>
 
         {!collapsed && (
           <>
@@ -101,30 +102,31 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
               <span className="whitespace-nowrap text-[#D1D4DC]">{contractLabel}</span>
               <span className="text-text-dim/70">{'\u00b7'}</span>
               <span className="whitespace-nowrap text-[#D1D4DC]">Binance</span>
-              <span
-                className={`h-2 w-2 rounded-full ${connected ? 'bg-[#089981]' : 'bg-[#f23645]'}`}
-                title={connected ? 'Live feed connected' : 'Live feed disconnected'}
-                aria-hidden="true"
-              />
+              <FigTooltip text={connected ? 'Live feed connected' : 'Live feed disconnected'}>
+                <span
+                  className={`h-2 w-2 rounded-full cursor-pointer ${connected ? 'bg-[#089981]' : 'bg-[#f23645]'}`}
+                  aria-hidden="true"
+                />
+              </FigTooltip>
               <span className="text-text-dim/70">{'\u00b7'}</span>
               <div className="ml-0.5 flex items-center gap-0.5">
                 {SOURCE_OPTIONS.map(({ label, value }) => (
-                  <FigButton
-                    key={value}
-                    variant="ghost"
-                    size="small"
-                    selected={panel.dataSourceMode === value}
-                    onClick={() => panel.dataSourceMode !== value && setDataSourceMode(panelId, value)}
-                    className={`h-5 px-1.5 text-[11px] font-bold ${
-                      panel.dataSourceMode === value
-                        ? 'text-accent'
-                        : 'text-text-dim hover:text-[#E8E8E8]'
-                    }`}
-                    title={`${label} source`}
-                    aria-pressed={panel.dataSourceMode === value}
-                  >
-                    {label}
-                  </FigButton>
+                  <FigTooltip key={value} text={`${label} source`}>
+                    <FigButton
+                      variant="ghost"
+                      size="small"
+                      selected={panel.dataSourceMode === value}
+                      onClick={() => panel.dataSourceMode !== value && setDataSourceMode(panelId, value)}
+                      className={`h-5 px-1.5 text-[11px] font-bold ${
+                        panel.dataSourceMode === value
+                          ? 'text-accent'
+                          : 'text-text-dim hover:text-[#E8E8E8]'
+                      }`}
+                      aria-pressed={panel.dataSourceMode === value}
+                    >
+                      {label}
+                    </FigButton>
+                  </FigTooltip>
                 ))}
               </div>
               {isLoading && (
@@ -157,62 +159,67 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
                 >
                   <span className="whitespace-nowrap">{config.label}</span>
                   <div className="ml-1.5 flex w-0 translate-x-[-4px] items-center gap-0.5 overflow-hidden opacity-0 transition-all duration-180 group-hover:w-[115px] group-hover:translate-x-0 group-hover:opacity-100 [--spacer-4:20px] [--spacer-3:20px]">
-                    <FigButton
-                      variant="ghost"
-                      icon
-                      className="shrink-0"
-                      onClick={() => moveIndicator(panelId, id as IndicatorId, 'up')}
-                      title={`Move ${config.label} up`}
-                      aria-label={`Move ${config.label} up`}
-                    >
-                      <ArrowUp size={12} strokeWidth={2.4} />
-                    </FigButton>
-                    <FigButton
-                      variant="ghost"
-                      icon
-                      className="shrink-0"
-                      onClick={() => moveIndicator(panelId, id as IndicatorId, 'down')}
-                      title={`Move ${config.label} down`}
-                      aria-label={`Move ${config.label} down`}
-                    >
-                      <ArrowDown size={12} strokeWidth={2.4} />
-                    </FigButton>
-                    <FigButton
-                      variant="ghost"
-                      icon
-                      className="shrink-0"
-                      onClick={config.toggle}
-                      title={`${config.enabled ? 'Hide' : 'Show'} ${config.label}`}
-                      aria-label={`${config.enabled ? 'Hide' : 'Show'} ${config.label}`}
-                    >
-                      {config.enabled ? <Eye size={12} strokeWidth={2.4} /> : <EyeOff size={12} strokeWidth={2.4} />}
-                    </FigButton>
-                    <FigButton
-                      variant="ghost"
-                      icon
-                      className="shrink-0"
-                      onClick={() => {
-                        if (id === 'profile') {
-                          openIndicatorSettings(panelId, 'profiles');
-                          return;
-                        }
-                        setOpenSection(id);
-                      }}
-                      title={`${config.label} settings`}
-                      aria-label={`${config.label} settings`}
-                    >
-                      <Settings size={12} strokeWidth={2.4} />
-                    </FigButton>
-                    <FigButton
-                      variant="ghost"
-                      icon
-                      className="shrink-0"
-                      onClick={() => removeIndicator(panelId, id as IndicatorId)}
-                      title={`Remove ${config.label}`}
-                      aria-label={`Remove ${config.label}`}
-                    >
-                      <X size={12} strokeWidth={2.5} />
-                    </FigButton>
+                    <FigTooltip text={`Move ${config.label} up`}>
+                      <FigButton
+                        variant="ghost"
+                        icon
+                        className="shrink-0 cursor-pointer"
+                        onClick={() => moveIndicator(panelId, id as IndicatorId, 'up')}
+                        aria-label={`Move ${config.label} up`}
+                      >
+                        <ArrowUp size={12} strokeWidth={2.4} />
+                      </FigButton>
+                    </FigTooltip>
+                    <FigTooltip text={`Move ${config.label} down`}>
+                      <FigButton
+                        variant="ghost"
+                        icon
+                        className="shrink-0 cursor-pointer"
+                        onClick={() => moveIndicator(panelId, id as IndicatorId, 'down')}
+                        aria-label={`Move ${config.label} down`}
+                      >
+                        <ArrowDown size={12} strokeWidth={2.4} />
+                      </FigButton>
+                    </FigTooltip>
+                    <FigTooltip text={`${config.enabled ? 'Hide' : 'Show'} ${config.label}`}>
+                      <FigButton
+                        variant="ghost"
+                        icon
+                        className="shrink-0 cursor-pointer"
+                        onClick={config.toggle}
+                        aria-label={`${config.enabled ? 'Hide' : 'Show'} ${config.label}`}
+                      >
+                        {config.enabled ? <Eye size={12} strokeWidth={2.4} /> : <EyeOff size={12} strokeWidth={2.4} />}
+                      </FigButton>
+                    </FigTooltip>
+                    <FigTooltip text={`${config.label} settings`}>
+                      <FigButton
+                        variant="ghost"
+                        icon
+                        className="shrink-0 cursor-pointer"
+                        onClick={() => {
+                          if (id === 'profile') {
+                            openIndicatorSettings(panelId, 'profiles');
+                            return;
+                          }
+                          setOpenSection(id);
+                        }}
+                        aria-label={`${config.label} settings`}
+                      >
+                        <Settings size={12} strokeWidth={2.4} />
+                      </FigButton>
+                    </FigTooltip>
+                    <FigTooltip text={`Remove ${config.label}`}>
+                      <FigButton
+                        variant="ghost"
+                        icon
+                        className="shrink-0 cursor-pointer"
+                        onClick={() => removeIndicator(panelId, id as IndicatorId)}
+                        aria-label={`Remove ${config.label}`}
+                      >
+                        <X size={12} strokeWidth={2.5} />
+                      </FigButton>
+                    </FigTooltip>
                   </div>
                 </div>
               );

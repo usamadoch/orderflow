@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { FigButton, FigPopup } from './fig';
+import { FigButton, FigPopup, FigTooltip } from './fig';
 import { useChartStore, PanelId } from '../../lib/store/chart';
 import type { ChartMode } from '../../types/chart';
 
@@ -33,19 +33,37 @@ export function HollowCandlestickIcon({ className = '', size = 16 }: { className
 export function FootprintIcon({ className = '', size = 16 }: { className?: string; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
-      <line x1="4" y1="1.5" x2="4" y2="14.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <line x1="4" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="4" y1="7" x2="10" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="4" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <line x1="4" y1="13" x2="8" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="8" y1="1" x2="8" y2="15" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
+      <rect x="2" y="3" width="5.5" height="3" rx="0.5" fill="currentColor" opacity="0.8" />
+      <rect x="8.5" y="3" width="5.5" height="3" rx="0.5" fill="currentColor" />
+      <rect x="2" y="6.5" width="5.5" height="3" rx="0.5" fill="currentColor" />
+      <rect x="8.5" y="6.5" width="5.5" height="3" rx="0.5" fill="currentColor" opacity="0.6" />
+      <rect x="2" y="10" width="5.5" height="3" rx="0.5" fill="currentColor" opacity="0.4" />
+      <rect x="8.5" y="10" width="5.5" height="3" rx="0.5" fill="currentColor" opacity="0.9" />
     </svg>
   );
 }
 
-const CHART_MODE_OPTIONS: Array<{ label: string; value: ChartMode; icon: React.ReactNode }> = [
-  { label: 'Candlestick', value: 'candle', icon: <CandlestickIcon size={15} /> },
-  { label: 'Hollow Candlestick', value: 'hollow', icon: <HollowCandlestickIcon size={15} /> },
-  { label: 'Footprint', value: 'footprint', icon: <FootprintIcon size={15} /> },
+export const CHART_MODE_OPTIONS: {
+  value: ChartMode;
+  label: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    value: 'candle',
+    label: 'Candlestick',
+    icon: <CandlestickIcon size={15} className="text-white" />,
+  },
+  {
+    value: 'hollow',
+    label: 'Hollow Candlestick',
+    icon: <HollowCandlestickIcon size={15} className="text-white" />,
+  },
+  {
+    value: 'footprint',
+    label: 'Footprint',
+    icon: <FootprintIcon size={15} className="text-white" />,
+  },
 ];
 
 export function ChartModeSelector({
@@ -65,29 +83,30 @@ export function ChartModeSelector({
 
   return (
     <div className="relative">
-      <FigButton
-        id={triggerId}
-        variant="ghost"
-        size="small"
-        selected={isOpen}
-        onClick={() => {
-          setActivePanel(panelId);
-          setIsOpen(open => !open);
-        }}
-        className="h-6 gap-1.5 px-2 text-[11px] font-bold tracking-tight cursor-pointer"
-        title="Chart Mode"
-        aria-expanded={isOpen}
-      >
-        <div className="flex items-center gap-1.5">
-          {currentOption.icon}
-          <span>{currentOption.label}</span>
-        </div>
-        <ChevronDown
-          size={12}
-          strokeWidth={2.5}
-          className={`shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </FigButton>
+      <FigTooltip text={!isOpen ? 'Chart Mode' : ''}>
+        <FigButton
+          id={triggerId}
+          variant="ghost"
+          size="small"
+          selected={isOpen}
+          onClick={() => {
+            setActivePanel(panelId);
+            setIsOpen(open => !open);
+          }}
+          className="h-6 gap-1.5 px-2 text-[11px] font-bold tracking-tight cursor-pointer"
+          aria-expanded={isOpen}
+        >
+          <div className="flex items-center gap-1.5">
+            {currentOption.icon}
+            <span>{currentOption.label}</span>
+          </div>
+          <ChevronDown
+            size={12}
+            strokeWidth={2.5}
+            className={`shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </FigButton>
+      </FigTooltip>
 
       <FigPopup
         open={isOpen}
