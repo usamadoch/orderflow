@@ -239,7 +239,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Signals / Analysis
 
-- `lib/utils/vwap.ts` → Math utilities and state logic for Volume Weighted Average Price (VWAP).
+- `lib/utils/vwap.ts` → Incremental and full VWAP calculation engine supporting base-candle fallback, sessions, rolling windows, and envelope bands.
 - `lib/absorption/engine.ts` → Signal engine orchestrating order flow absorption candidate detection.
 - `lib/absorption/absorptionScorer.ts` → Pure scoring algorithms for single-candle absorption (delta extremity, volume extremity, progression, imbalance).
 - `lib/exhaustion/engine.ts` → Signal engine orchestrating order flow exhaustion signal detection.

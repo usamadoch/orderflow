@@ -1,5 +1,13 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-12] - Fix: VWAP Visual Rendering & Incremental Array Truncation
+- **What changed**:
+  - In `lib/utils/vwap.ts`: enabled fallback to `displayCandles` when `base1mCandles` is empty; eliminated blocking `pending` state on missing 1m storage.
+  - In `VwapCalculator.fullRecompute`: pushed all candle points to `this.series` instead of discarding all except the last point (`isLast`).
+  - Added array length consistency check to trigger recomputation if series length diverges from candles length.
+- **Why it changed**: VWAP was stuck in `pending` because local 1m DB history was empty, and `fullRecompute` produced an array with only 1 point, preventing line strokes.
+- **Impact summary**: VWAP line and envelope bands render visibly and update in real-time; 0 tsc/lint errors.
+
 ## [2026-09-10] - Fix: Price & Time Axis Cursor Icons (ns/ew-resize) & Wheel Zoom
 - **What changed**:
   - In `usePanZoom.ts` & `ChartCanvas.tsx`: added cursor detection setting `'ns-resize'` on price bar and `'ew-resize'` on time bar during hover/drag.

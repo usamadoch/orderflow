@@ -75,14 +75,13 @@ export function calculateVwapSeriesLegacy(
   base1mCandles: Candle[],
   timeframeSeconds: number,
   options: VwapCalculateOptions,
-  isHydrating: boolean
+  _isHydrating?: boolean
 ): VwapResult {
+  void _isHydrating;
   if (displayCandles.length === 0) return { status: 'success', series: [] };
 
-  const firstDisplayCandleTime = displayCandles[0].time;
-  const requiredAnchorTime = getVwapAnchorTime(firstDisplayCandleTime, options);
-
-  if (base1mCandles.length === 0 || (isHydrating && base1mCandles[0].time > requiredAnchorTime)) {
+  const baseCandles = (base1mCandles && base1mCandles.length > 0) ? base1mCandles : displayCandles;
+  if (baseCandles.length === 0) {
     return { status: 'pending' };
   }
 
@@ -107,8 +106,8 @@ export function calculateVwapSeriesLegacy(
       }
     }
 
-    while (baseIndex < base1mCandles.length && base1mCandles[baseIndex].time < displayEndTime) {
-      const baseCandle = base1mCandles[baseIndex];
+    while (baseIndex < baseCandles.length && baseCandles[baseIndex].time < displayEndTime) {
+      const baseCandle = baseCandles[baseIndex];
       const typicalPrice = getTypicalPrice(baseCandle, options.priceSource);
       
       if (options.periodMode === 'Rolling') {
@@ -208,31 +207,33 @@ export class VwapCalculator {
     base1mCandles: Candle[],
     timeframeSeconds: number,
     options: VwapCalculateOptions,
-    isHydrating: boolean
+    _isHydrating?: boolean
   ): VwapResult {
+    void _isHydrating;
     const optionsStr = JSON.stringify(options);
     
     if (displayCandles.length === 0) {
       return { status: 'success', series: [] };
     }
 
-    const firstDisplayCandleTime = displayCandles[0].time;
-    const requiredAnchorTime = getVwapAnchorTime(firstDisplayCandleTime, options);
-
-    if (base1mCandles.length === 0 || (isHydrating && base1mCandles[0].time > requiredAnchorTime)) {
+    const baseCandles = (base1mCandles && base1mCandles.length > 0) ? base1mCandles : displayCandles;
+    if (baseCandles.length === 0) {
       return { status: 'pending' };
     }
+
+    const firstDisplayCandleTime = displayCandles[0].time;
 
     const isStructuralChange = 
       this.lastOptionsStr !== optionsStr || 
       this.lastTfSeconds !== timeframeSeconds ||
       this.lastFirstCandleTime !== firstDisplayCandleTime ||
       this.closeCountSinceFull >= 100 ||
-      displayCandles.length < this.lastDisplayCandles.length;
+      displayCandles.length < this.lastDisplayCandles.length ||
+      this.series.length !== displayCandles.length;
 
     if (isStructuralChange) {
       markStart('calculateVwapSeries_full');
-      this.fullRecompute(displayCandles, base1mCandles, timeframeSeconds, options);
+      this.fullRecompute(displayCandles, baseCandles, timeframeSeconds, options);
       this.lastOptionsStr = optionsStr;
       this.lastTfSeconds = timeframeSeconds;
       this.lastFirstCandleTime = firstDisplayCandleTime;
@@ -240,7 +241,7 @@ export class VwapCalculator {
       markEnd('calculateVwapSeries_full');
     } else {
       markStart('calculateVwapSeries_incremental');
-      this.incrementalCompute(displayCandles, base1mCandles, timeframeSeconds, options);
+      this.incrementalCompute(displayCandles, baseCandles, timeframeSeconds, options);
       markEnd('calculateVwapSeries_incremental');
     }
 
@@ -256,7 +257,7 @@ export class VwapCalculator {
   
   private fullRecompute(
     displayCandles: Candle[],
-    base1mCandles: Candle[],
+    baseCandles: Candle[],
     timeframeSeconds: number,
     options: VwapCalculateOptions
   ) {
@@ -270,13 +271,13 @@ export class VwapCalculator {
     this.cumPV2 = 0;
     
     for (let i = 0; i < displayCandles.length; i++) {
-      this.processDisplayCandle(displayCandles[i], base1mCandles, timeframeSeconds, options, i === displayCandles.length - 1);
+      this.series.push(this.processDisplayCandle(displayCandles[i], baseCandles, timeframeSeconds, options));
     }
   }
 
   private incrementalCompute(
     displayCandles: Candle[],
-    base1mCandles: Candle[],
+    baseCandles: Candle[],
     timeframeSeconds: number,
     options: VwapCalculateOptions
   ) {
@@ -298,7 +299,7 @@ export class VwapCalculator {
     // We only support rolling back the very last display candle(s).
     // If a historical candle changed (rare), doing a full recompute is safer.
     if (firstChangedIdx < this.lastDisplayCandles.length - 1) {
-      this.fullRecompute(displayCandles, base1mCandles, timeframeSeconds, options);
+      this.fullRecompute(displayCandles, baseCandles, timeframeSeconds, options);
       return;
     }
     
@@ -326,7 +327,7 @@ export class VwapCalculator {
           }
           
           // Reset baseIndex back to the start of this display candle
-          while (this.baseIndex > 0 && base1mCandles[this.baseIndex - 1].time >= candle.time) {
+          while (this.baseIndex > 0 && baseCandles[this.baseIndex - 1].time >= candle.time) {
              this.baseIndex--;
           }
           
@@ -334,16 +335,15 @@ export class VwapCalculator {
         }
       }
       
-      this.series[i] = this.processDisplayCandle(candle, base1mCandles, timeframeSeconds, options, i === displayCandles.length - 1);
+      this.series[i] = this.processDisplayCandle(candle, baseCandles, timeframeSeconds, options);
     }
   }
 
   private processDisplayCandle(
     displayCandle: Candle,
-    base1mCandles: Candle[],
+    baseCandles: Candle[],
     timeframeSeconds: number,
-    options: VwapCalculateOptions,
-    isLast: boolean
+    options: VwapCalculateOptions
   ): VwapPoint {
     const displayEndTime = displayCandle.time + timeframeSeconds;
     
@@ -361,8 +361,8 @@ export class VwapCalculator {
       }
     }
 
-    while (this.baseIndex < base1mCandles.length && base1mCandles[this.baseIndex].time < displayEndTime) {
-      const baseCandle = base1mCandles[this.baseIndex];
+    while (this.baseIndex < baseCandles.length && baseCandles[this.baseIndex].time < displayEndTime) {
+      const baseCandle = baseCandles[this.baseIndex];
       const typicalPrice = getTypicalPrice(baseCandle, options.priceSource);
       
       const pv = typicalPrice * baseCandle.volume;
@@ -428,9 +428,6 @@ export class VwapCalculator {
       }
     }
     
-    if (isLast) {
-      this.series.push(point);
-    }
     return point;
   }
 }
