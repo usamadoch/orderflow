@@ -3,10 +3,10 @@ import type { CvdDivergenceMarker, CvdPoint } from '@/lib/utils/delta';
 import type { CvdScale, DrawCvdOptions } from '../../types/cvd';
 import { DEFAULT_CANVAS_BG, DEFAULT_GRID_COLOR, DEFAULT_GRID_OPACITY, chartColorToRgba } from '@/lib/config/chartColors';
 
-const AXIS_FONT = 'bold 12px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+const AXIS_FONT = '11px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
 const MONO_FONT = '11px "JetBrains Mono", monospace';
 const AXIS_BG = DEFAULT_CANVAS_BG;
-const TEXT = '#909090';
+const TEXT = '#B2B5BE';
 const MUTED_TEXT = '#5F6368';
 
 
@@ -162,7 +162,7 @@ export function drawCvdCrosshairValueLabel(
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, chartWidth + 12, mouseY);
+  ctx.fillText(label, chartWidth + 10, Math.round(badgeY + rectHeight / 2));
 }
 
 function drawCvdGrid(
@@ -419,14 +419,16 @@ function drawCvdAxis(
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.strokeStyle = chartColorToRgba(borderColor, borderOpacity);
+  ctx.lineWidth = 1;
 
   for (let value = start; value <= scale.max; value += step) {
     const y = scale.valueToY(value);
+    const alignedY = Math.floor(y) + 0.5;
     ctx.beginPath();
-    ctx.moveTo(chartWidth, Math.round(y));
-    ctx.lineTo(chartWidth + 5, Math.round(y));
+    ctx.moveTo(chartWidth, alignedY);
+    ctx.lineTo(chartWidth + 5, alignedY);
     ctx.stroke();
-    ctx.fillText(formatCvdValue(value), chartWidth + 12, y);
+    ctx.fillText(formatCvdValue(value), chartWidth + 10, Math.round(y));
   }
 }
 

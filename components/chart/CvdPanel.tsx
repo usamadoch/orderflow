@@ -512,8 +512,10 @@ export function CvdPanel({
 
       if (isDragging.current) {
         canvas.style.cursor = dragMode.current === 'scale' ? 'ns-resize' : 'grabbing';
-      } else if (y <= chartHeight && x > chartWidth) {
+      } else if (x > chartWidth && y >= 0 && y <= height) {
         canvas.style.cursor = 'ns-resize';
+      } else if (y > chartHeight && x >= 0 && x <= chartWidth) {
+        canvas.style.cursor = 'ew-resize';
       } else if (y <= chartHeight && x >= 0 && x <= chartWidth) {
         canvas.style.cursor = 'grab';
       } else {
@@ -623,11 +625,23 @@ export function CvdPanel({
       const rect = canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
+      const chartWidth = rect.width - priceAxisWidth;
       const chartHeight = rect.height - timeAxisHeight;
 
-      if (x < 0 || x > rect.width || y < 0 || y > chartHeight) return;
+      if (x < 0 || x > rect.width || y < 0 || y > rect.height) return;
 
       event.preventDefault();
+
+      if (x > chartWidth) {
+        // Vertical scale zoom on CVD price axis
+        const currentScale = ensureManualScale(chartHeight);
+        const oldRange = Math.max(1, currentScale.max - currentScale.min);
+        const zoomFactor = Math.max(0.2, Math.min(5, 1 + event.deltaY * 0.002));
+        const newRange = Math.max(1, Math.min(1_000_000_000, oldRange * zoomFactor));
+        scaleRange.current = newRange;
+        redrawRef.current();
+        return;
+      }
       const currentScale = ensureManualScale(chartHeight);
       const oldRange = Math.max(1, currentScale.max - currentScale.min);
       const zoomFactor = Math.max(0.2, Math.min(5, 1 + event.deltaY * 0.002));

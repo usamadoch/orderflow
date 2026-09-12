@@ -1,5 +1,23 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-10] - Fix: Price & Time Axis Cursor Icons (ns/ew-resize) & Wheel Zoom
+- **What changed**:
+  - In `usePanZoom.ts` & `ChartCanvas.tsx`: added cursor detection setting `'ns-resize'` on price bar and `'ew-resize'` on time bar during hover/drag.
+  - In `usePanZoom.ts`: enabled vertical price scale zooming on mouse wheel over price bar (`x >= chartWidth`).
+  - Added double-click auto-fit scale reset on price axis and zoom reset on time axis.
+  - In `CvdPanel.tsx`: enabled `'ew-resize'` cursor over time axis and vertical scale wheel zoom over CVD price axis.
+- **Why it changed**: Cursor was stuck on `crosshair` over axes, and wheel scrolling over the price bar was blocked instead of zooming price.
+- **Impact summary**: TradingView-standard `ns-resize`/`ew-resize` cursors and smooth vertical wheel zoom on price bar; 0 tsc/lint errors.
+
+## [2026-09-10] - Fix: Price & Time Axis Blurriness and Low-Pixel Visuals
+- **What changed**:
+  - Replaced chunky bold font in `drawAxes.ts`, `drawCvd.ts`, and `drawCrosshair.ts` with TradingView standard 11px font stack (`-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`) and `#B2B5BE` contrast color.
+  - Aligned axis tick mark strokes to half-pixel coordinates (`+ 0.5`) with explicit 1px line width to prevent 2px boundary blurring.
+  - Aligned all price/time labels and badge text coordinates to exact integer pixels (`Math.round`), eliminating subpixel antialiasing blur.
+  - In `lib/utils/canvas.ts`, enabled `imageSmoothingQuality = 'high'` on canvas contexts.
+- **Why it changed**: Price and time axes appeared blurry and low-resolution due to heavy bold fonts, subpixel fractional text rendering, and unaligned strokes.
+- **Impact summary**: Razor-sharp, clean price and time axes matching TradingView clarity across all panels; 0 tsc and lint errors.
+
 ## [2026-09-10] - Fix: Tooltip Dark Overlay Removal & Position Offsets
 - **What changed**:
   - In `globals.css`: excluded `variant="tooltip"` from `dialog[is="fig-popup"]` 48px box-shadow; disabled `::backdrop` overlay on tooltips.

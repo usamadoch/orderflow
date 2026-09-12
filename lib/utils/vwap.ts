@@ -1,4 +1,5 @@
 import { Candle } from '@/types/candle';
+import { markStart, markEnd } from '../debug/perfInstrumentation';
 import { VwapPeriodMode, VwapSessionAnchor, VwapPriceSource, VwapEnvelopeMode } from '@/types/chart';
 
 export interface VwapPoint {
@@ -33,16 +34,11 @@ export type VwapResult =
 
 function getTypicalPrice(candle: Candle, source: VwapPriceSource): number {
   switch (source) {
-    case 'HLC3':
-      return (candle.high + candle.low + candle.close) / 3;
-    case 'HL2':
-      return (candle.high + candle.low) / 2;
-    case 'OHLC4':
-      return (candle.open + candle.high + candle.low + candle.close) / 4;
-    case 'Close':
-      return candle.close;
-    default:
-      return (candle.high + candle.low + candle.close) / 3;
+    case 'HLC3': return (candle.high + candle.low + candle.close) / 3;
+    case 'HL2': return (candle.high + candle.low) / 2;
+    case 'OHLC4': return (candle.open + candle.high + candle.low + candle.close) / 4;
+    case 'Close': return candle.close;
+    default: return (candle.high + candle.low + candle.close) / 3;
   }
 }
 
@@ -50,14 +46,11 @@ export function getVwapAnchorTime(timeSeconds: number, options: VwapCalculateOpt
   if (options.periodMode === 'Rolling') {
     return timeSeconds - options.rollingDays * 24 * 60 * 60;
   }
-
   const date = new Date(timeSeconds * 1000);
-  
   if (options.sessionAnchor === 'Day') {
     date.setUTCHours(0, 0, 0, 0);
     return Math.floor(date.getTime() / 1000);
   }
-  
   if (options.sessionAnchor === 'Week') {
     date.setUTCHours(0, 0, 0, 0);
     const day = date.getUTCDay(); // 0 is Sunday
@@ -65,46 +58,37 @@ export function getVwapAnchorTime(timeSeconds: number, options: VwapCalculateOpt
     date.setUTCDate(diff);
     return Math.floor(date.getTime() / 1000);
   }
-  
   if (options.sessionAnchor === 'Month') {
     date.setUTCHours(0, 0, 0, 0);
     date.setUTCDate(1);
     return Math.floor(date.getTime() / 1000);
   }
-
-  // Fallback
   date.setUTCHours(0, 0, 0, 0);
   return Math.floor(date.getTime() / 1000);
 }
 
-export function calculateVwapSeries(
+// --------------------------------------------------------------------------------
+// LEGACY IMPLEMENTATION FOR DUAL-RUN VERIFICATION
+// --------------------------------------------------------------------------------
+export function calculateVwapSeriesLegacy(
   displayCandles: Candle[],
   base1mCandles: Candle[],
   timeframeSeconds: number,
   options: VwapCalculateOptions,
   isHydrating: boolean
 ): VwapResult {
-  if (displayCandles.length === 0) {
-    return { status: 'success', series: [] };
-  }
+  if (displayCandles.length === 0) return { status: 'success', series: [] };
 
-  // Find the required anchor time for the FIRST display candle
   const firstDisplayCandleTime = displayCandles[0].time;
   const requiredAnchorTime = getVwapAnchorTime(firstDisplayCandleTime, options);
 
-  // Return pending ONLY if we are actively hydrating and we don't have the anchor yet.
-  // If we finished hydrating (or failed) and STILL don't have the anchor, we calculate with what we have.
   if (base1mCandles.length === 0 || (isHydrating && base1mCandles[0].time > requiredAnchorTime)) {
     return { status: 'pending' };
   }
 
   const series: VwapPoint[] = [];
   let baseIndex = 0;
-
-  // Track the rolling window for Rolling mode
   const rollingWindow: Candle[] = [];
-
-  // Track accumulators
   let currentAnchorTime = -1;
   let cumPV = 0;
   let cumV = 0;
@@ -118,14 +102,11 @@ export function calculateVwapSeries(
       const anchorTime = getVwapAnchorTime(displayCandle.time, options);
       if (anchorTime !== currentAnchorTime) {
         currentAnchorTime = anchorTime;
-        cumPV = 0;
-        cumV = 0;
-        cumPV2 = 0;
+        cumPV = 0; cumV = 0; cumPV2 = 0;
         rollingWindow.length = 0; 
       }
     }
 
-    // Process all 1m candles that fall before the END of this display candle
     while (baseIndex < base1mCandles.length && base1mCandles[baseIndex].time < displayEndTime) {
       const baseCandle = base1mCandles[baseIndex];
       const typicalPrice = getTypicalPrice(baseCandle, options.priceSource);
@@ -147,7 +128,6 @@ export function calculateVwapSeries(
 
     if (options.periodMode === 'Rolling') {
       const rollingAnchorTime = displayEndTime - options.rollingDays * 24 * 60 * 60;
-      // Remove expired candles from rolling window
       while (rollingWindow.length > 0 && rollingWindow[0].time < rollingAnchorTime) {
         const expiredCandle = rollingWindow.shift()!;
         const tp = getTypicalPrice(expiredCandle, options.priceSource);
@@ -155,11 +135,8 @@ export function calculateVwapSeries(
         cumV -= expiredCandle.volume;
         cumPV2 -= expiredCandle.volume * tp * tp;
       }
-      // Prevent negative drift due to float precision
       if (cumV < 1e-8) {
-        cumV = 0;
-        cumPV = 0;
-        cumPV2 = 0;
+        cumV = 0; cumPV = 0; cumPV2 = 0;
       }
     }
 
@@ -168,9 +145,7 @@ export function calculateVwapSeries(
 
     if (cumV > 0) {
       vwapValue = cumPV / cumV;
-      
       if (options.envelopeMode === 'Standard Deviation') {
-        // variance = E[X^2] - (E[X])^2
         const ex2 = cumPV2 / cumV;
         const ex = vwapValue;
         const variance = Math.max(0, ex2 - ex * ex);
@@ -179,57 +154,283 @@ export function calculateVwapSeries(
     }
 
     if (vwapValue === 0) {
-      series.push({
-        time: displayCandle.time,
-        value: null,
-        band1Up: null, band1Dw: null,
-        band2Up: null, band2Dw: null,
-        band3Up: null, band3Dw: null,
-      });
+      series.push({ time: displayCandle.time, value: null, band1Up: null, band1Dw: null, band2Up: null, band2Dw: null, band3Up: null, band3Dw: null });
       continue;
     }
 
-    const point: VwapPoint = {
-      time: displayCandle.time,
-      value: vwapValue,
-      band1Up: null,
-      band1Dw: null,
-      band2Up: null,
-      band2Dw: null,
-      band3Up: null,
-      band3Dw: null,
-    };
-
+    const point: VwapPoint = { time: displayCandle.time, value: vwapValue, band1Up: null, band1Dw: null, band2Up: null, band2Dw: null, band3Up: null, band3Dw: null };
     if (options.envelopeMode === 'Standard Deviation') {
-      if (options.band1Enabled) {
-        point.band1Up = vwapValue + stdDev * options.band1Value;
-        point.band1Dw = vwapValue - stdDev * options.band1Value;
-      }
-      if (options.band2Enabled) {
-        point.band2Up = vwapValue + stdDev * options.band2Value;
-        point.band2Dw = vwapValue - stdDev * options.band2Value;
-      }
-      if (options.band3Enabled) {
-        point.band3Up = vwapValue + stdDev * options.band3Value;
-        point.band3Dw = vwapValue - stdDev * options.band3Value;
-      }
+      if (options.band1Enabled) { point.band1Up = vwapValue + stdDev * options.band1Value; point.band1Dw = vwapValue - stdDev * options.band1Value; }
+      if (options.band2Enabled) { point.band2Up = vwapValue + stdDev * options.band2Value; point.band2Dw = vwapValue - stdDev * options.band2Value; }
+      if (options.band3Enabled) { point.band3Up = vwapValue + stdDev * options.band3Value; point.band3Dw = vwapValue - stdDev * options.band3Value; }
     } else if (options.envelopeMode === 'Percentage') {
-      if (options.band1Enabled) {
-        point.band1Up = vwapValue * (1 + options.band1Value / 100);
-        point.band1Dw = vwapValue * (1 - options.band1Value / 100);
+      if (options.band1Enabled) { point.band1Up = vwapValue * (1 + options.band1Value / 100); point.band1Dw = vwapValue * (1 - options.band1Value / 100); }
+      if (options.band2Enabled) { point.band2Up = vwapValue * (1 + options.band2Value / 100); point.band2Dw = vwapValue * (1 - options.band2Value / 100); }
+      if (options.band3Enabled) { point.band3Up = vwapValue * (1 + options.band3Value / 100); point.band3Dw = vwapValue * (1 - options.band3Value / 100); }
+    }
+    series.push(point);
+  }
+  return { status: 'success', series };
+}
+
+
+// --------------------------------------------------------------------------------
+// NEW INCREMENTAL IMPLEMENTATION
+// --------------------------------------------------------------------------------
+
+interface CandleContrib {
+  pv: number;
+  v: number;
+  pv2: number;
+}
+
+export class VwapCalculator {
+  private lastOptionsStr = '';
+  private lastTfSeconds = -1;
+  private lastFirstCandleTime = -1;
+  
+  private lastDisplayCandles: Candle[] = [];
+  private baseIndex = 0;
+  
+  private currentAnchorTime = -1;
+  private cumPV = 0;
+  private cumV = 0;
+  private cumPV2 = 0;
+  
+  private series: VwapPoint[] = [];
+  private contributions = new Map<number, CandleContrib>(); // time -> contrib
+  private rollingWindow: Candle[] = [];
+  
+  private closeCountSinceFull = 0;
+  
+  public calculate(
+    displayCandles: Candle[],
+    base1mCandles: Candle[],
+    timeframeSeconds: number,
+    options: VwapCalculateOptions,
+    isHydrating: boolean
+  ): VwapResult {
+    const optionsStr = JSON.stringify(options);
+    
+    if (displayCandles.length === 0) {
+      return { status: 'success', series: [] };
+    }
+
+    const firstDisplayCandleTime = displayCandles[0].time;
+    const requiredAnchorTime = getVwapAnchorTime(firstDisplayCandleTime, options);
+
+    if (base1mCandles.length === 0 || (isHydrating && base1mCandles[0].time > requiredAnchorTime)) {
+      return { status: 'pending' };
+    }
+
+    const isStructuralChange = 
+      this.lastOptionsStr !== optionsStr || 
+      this.lastTfSeconds !== timeframeSeconds ||
+      this.lastFirstCandleTime !== firstDisplayCandleTime ||
+      this.closeCountSinceFull >= 100 ||
+      displayCandles.length < this.lastDisplayCandles.length;
+
+    if (isStructuralChange) {
+      markStart('calculateVwapSeries_full');
+      this.fullRecompute(displayCandles, base1mCandles, timeframeSeconds, options);
+      this.lastOptionsStr = optionsStr;
+      this.lastTfSeconds = timeframeSeconds;
+      this.lastFirstCandleTime = firstDisplayCandleTime;
+      this.closeCountSinceFull = 0;
+      markEnd('calculateVwapSeries_full');
+    } else {
+      markStart('calculateVwapSeries_incremental');
+      this.incrementalCompute(displayCandles, base1mCandles, timeframeSeconds, options);
+      markEnd('calculateVwapSeries_incremental');
+    }
+
+    // Check if a candle actually closed
+    if (this.lastDisplayCandles.length > 0 && displayCandles.length > this.lastDisplayCandles.length) {
+      this.closeCountSinceFull += (displayCandles.length - this.lastDisplayCandles.length);
+    }
+    
+    this.lastDisplayCandles = displayCandles;
+    
+    return { status: 'success', series: this.series };
+  }
+  
+  private fullRecompute(
+    displayCandles: Candle[],
+    base1mCandles: Candle[],
+    timeframeSeconds: number,
+    options: VwapCalculateOptions
+  ) {
+    this.series = [];
+    this.contributions.clear();
+    this.rollingWindow = [];
+    this.baseIndex = 0;
+    this.currentAnchorTime = -1;
+    this.cumPV = 0;
+    this.cumV = 0;
+    this.cumPV2 = 0;
+    
+    for (let i = 0; i < displayCandles.length; i++) {
+      this.processDisplayCandle(displayCandles[i], base1mCandles, timeframeSeconds, options, i === displayCandles.length - 1);
+    }
+  }
+
+  private incrementalCompute(
+    displayCandles: Candle[],
+    base1mCandles: Candle[],
+    timeframeSeconds: number,
+    options: VwapCalculateOptions
+  ) {
+    // Find the first candle that changed
+    let firstChangedIdx = -1;
+    for (let i = Math.max(0, this.lastDisplayCandles.length - 2); i < displayCandles.length; i++) {
+      if (i >= this.lastDisplayCandles.length || 
+          displayCandles[i].volume !== this.lastDisplayCandles[i].volume ||
+          displayCandles[i].close !== this.lastDisplayCandles[i].close) {
+        firstChangedIdx = i;
+        break;
       }
-      if (options.band2Enabled) {
-        point.band2Up = vwapValue * (1 + options.band2Value / 100);
-        point.band2Dw = vwapValue * (1 - options.band2Value / 100);
+    }
+    
+    if (firstChangedIdx === -1) {
+      return; // No changes
+    }
+    
+    // We only support rolling back the very last display candle(s).
+    // If a historical candle changed (rare), doing a full recompute is safer.
+    if (firstChangedIdx < this.lastDisplayCandles.length - 1) {
+      this.fullRecompute(displayCandles, base1mCandles, timeframeSeconds, options);
+      return;
+    }
+    
+    // Incrementally update from firstChangedIdx
+    for (let i = firstChangedIdx; i < displayCandles.length; i++) {
+      const candle = displayCandles[i];
+      
+      // If we already processed this candle previously, rollback its contribution
+      if (i < this.lastDisplayCandles.length) {
+        const oldContrib = this.contributions.get(candle.time);
+        if (oldContrib) {
+          this.cumPV -= oldContrib.pv;
+          this.cumV -= oldContrib.v;
+          this.cumPV2 -= oldContrib.pv2;
+          
+          // Note: Rolling window rollback is complicated. But we only rollback the last open candle, 
+          // which hasn't expired out of the rolling window yet anyway.
+          // Wait, if it's the last open candle, any base candles added to it are just appended.
+          // We can just roll back `baseIndex` by inspecting the rollingWindow.
+          if (options.periodMode === 'Rolling') {
+            // Remove base candles from the end of rollingWindow that belong to this display candle
+            while (this.rollingWindow.length > 0 && this.rollingWindow[this.rollingWindow.length - 1].time >= candle.time) {
+               this.rollingWindow.pop();
+            }
+          }
+          
+          // Reset baseIndex back to the start of this display candle
+          while (this.baseIndex > 0 && base1mCandles[this.baseIndex - 1].time >= candle.time) {
+             this.baseIndex--;
+          }
+          
+          // We don't rollback currentAnchorTime because the last candle wouldn't change its anchor.
+        }
       }
-      if (options.band3Enabled) {
-        point.band3Up = vwapValue * (1 + options.band3Value / 100);
-        point.band3Dw = vwapValue * (1 - options.band3Value / 100);
+      
+      this.series[i] = this.processDisplayCandle(candle, base1mCandles, timeframeSeconds, options, i === displayCandles.length - 1);
+    }
+  }
+
+  private processDisplayCandle(
+    displayCandle: Candle,
+    base1mCandles: Candle[],
+    timeframeSeconds: number,
+    options: VwapCalculateOptions,
+    isLast: boolean
+  ): VwapPoint {
+    const displayEndTime = displayCandle.time + timeframeSeconds;
+    
+    let contribPV = 0;
+    let contribV = 0;
+    let contribPV2 = 0;
+
+    if (options.periodMode === 'Session') {
+      const anchorTime = getVwapAnchorTime(displayCandle.time, options);
+      if (anchorTime !== this.currentAnchorTime) {
+        // session boundary crossed!
+        this.currentAnchorTime = anchorTime;
+        this.cumPV = 0; this.cumV = 0; this.cumPV2 = 0;
+        this.rollingWindow.length = 0; 
       }
     }
 
-    series.push(point);
-  }
+    while (this.baseIndex < base1mCandles.length && base1mCandles[this.baseIndex].time < displayEndTime) {
+      const baseCandle = base1mCandles[this.baseIndex];
+      const typicalPrice = getTypicalPrice(baseCandle, options.priceSource);
+      
+      const pv = typicalPrice * baseCandle.volume;
+      const v = baseCandle.volume;
+      const pv2 = baseCandle.volume * typicalPrice * typicalPrice;
 
-  return { status: 'success', series };
+      if (options.periodMode === 'Rolling') {
+        this.rollingWindow.push(baseCandle);
+        contribPV += pv; contribV += v; contribPV2 += pv2;
+        this.cumPV += pv; this.cumV += v; this.cumPV2 += pv2;
+      } else {
+        if (baseCandle.time >= this.currentAnchorTime) {
+          contribPV += pv; contribV += v; contribPV2 += pv2;
+          this.cumPV += pv; this.cumV += v; this.cumPV2 += pv2;
+        }
+      }
+      this.baseIndex++;
+    }
+
+    if (options.periodMode === 'Rolling') {
+      const rollingAnchorTime = displayEndTime - options.rollingDays * 24 * 60 * 60;
+      while (this.rollingWindow.length > 0 && this.rollingWindow[0].time < rollingAnchorTime) {
+        const expiredCandle = this.rollingWindow.shift()!;
+        const tp = getTypicalPrice(expiredCandle, options.priceSource);
+        const pv = tp * expiredCandle.volume;
+        const v = expiredCandle.volume;
+        const pv2 = expiredCandle.volume * tp * tp;
+        
+        this.cumPV -= pv; this.cumV -= v; this.cumPV2 -= pv2;
+        // The expiration affects the global accumulators, but not this candle's specific base-candle contribution
+      }
+      if (this.cumV < 1e-8) {
+        this.cumV = 0; this.cumPV = 0; this.cumPV2 = 0;
+      }
+    }
+    
+    // Cache the exact contribution for rollback
+    this.contributions.set(displayCandle.time, { pv: contribPV, v: contribV, pv2: contribPV2 });
+
+    let vwapValue = 0;
+    let stdDev = 0;
+
+    if (this.cumV > 0) {
+      vwapValue = this.cumPV / this.cumV;
+      if (options.envelopeMode === 'Standard Deviation') {
+        const ex2 = this.cumPV2 / this.cumV;
+        const ex = vwapValue;
+        const variance = Math.max(0, ex2 - ex * ex);
+        stdDev = Math.sqrt(variance);
+      }
+    }
+
+    const point: VwapPoint = { time: displayCandle.time, value: vwapValue > 0 ? vwapValue : null, band1Up: null, band1Dw: null, band2Up: null, band2Dw: null, band3Up: null, band3Dw: null };
+    if (vwapValue > 0) {
+      if (options.envelopeMode === 'Standard Deviation') {
+        if (options.band1Enabled) { point.band1Up = vwapValue + stdDev * options.band1Value; point.band1Dw = vwapValue - stdDev * options.band1Value; }
+        if (options.band2Enabled) { point.band2Up = vwapValue + stdDev * options.band2Value; point.band2Dw = vwapValue - stdDev * options.band2Value; }
+        if (options.band3Enabled) { point.band3Up = vwapValue + stdDev * options.band3Value; point.band3Dw = vwapValue - stdDev * options.band3Value; }
+      } else if (options.envelopeMode === 'Percentage') {
+        if (options.band1Enabled) { point.band1Up = vwapValue * (1 + options.band1Value / 100); point.band1Dw = vwapValue * (1 - options.band1Value / 100); }
+        if (options.band2Enabled) { point.band2Up = vwapValue * (1 + options.band2Value / 100); point.band2Dw = vwapValue * (1 - options.band2Value / 100); }
+        if (options.band3Enabled) { point.band3Up = vwapValue * (1 + options.band3Value / 100); point.band3Dw = vwapValue * (1 - options.band3Value / 100); }
+      }
+    }
+    
+    if (isLast) {
+      this.series.push(point);
+    }
+    return point;
+  }
 }

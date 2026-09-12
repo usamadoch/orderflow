@@ -11,31 +11,31 @@ const FAVORITE_TOOLS: Array<{
   title: string;
   icon: React.ReactNode;
 }> = [
-  {
-    mode: 'horizontal',
-    title: 'Horizontal Line',
-    icon: <Minus size={16} strokeWidth={1.5} />,
-  },
-  {
-    mode: 'vertical',
-    title: 'Vertical Line',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <line x1="12" y1="4" x2="12" y2="20" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    mode: 'horizontal-ray',
-    title: 'Line',
-    icon: <MoveRight size={16} strokeWidth={1.5} />,
-  },
-  {
-    mode: 'box',
-    title: 'Box',
-    icon: <Square size={16} strokeWidth={1.5} />,
-  },
-];
+    {
+      mode: 'horizontal',
+      title: 'Horizontal Line',
+      icon: <Minus size={16} strokeWidth={1.5} />,
+    },
+    {
+      mode: 'vertical',
+      title: 'Vertical Line',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <line x1="12" y1="4" x2="12" y2="20" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      mode: 'horizontal-ray',
+      title: 'Line',
+      icon: <MoveRight size={16} strokeWidth={1.5} />,
+    },
+    {
+      mode: 'box',
+      title: 'Box',
+      icon: <Square size={16} strokeWidth={1.5} />,
+    },
+  ];
 
 interface DrawingFavoritesToolbarProps {
   panelId: PanelId;
@@ -138,32 +138,28 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   };
 
   const getButtonClass = (active: boolean) =>
-    `flex h-8 w-8 items-center justify-center p-1.5 rounded-md transition-colors m-0 border ${
-      active
-        ? 'border-[#3D7EFF] bg-[#262626] text-white shadow-sm shadow-[#3D7EFF]/20'
-        : 'border-transparent text-[#909090] hover:bg-white/10 hover:text-white'
+    `flex h-8 w-8 items-center justify-center p-1.5 rounded-md transition-colors m-0 border ${active
+      ? 'border-[#3D7EFF] bg-[#262626] text-white shadow-sm shadow-[#3D7EFF]/20'
+      : 'border-transparent text-[#909090] hover:bg-white/10 hover:text-white'
     }`;
 
   return (
     <div
       ref={toolbarRef}
-      className={`fixed z-[70] flex items-center p-0.5 border border-[#282828] bg-[#181818] shadow-2xl shadow-black/60 select-none ${
-        collapsed ? 'rounded-full' : 'rounded-lg'
-      }`}
+      className={`fixed z-[70] flex items-center p-0.5 border border-[#282828] bg-[#181818] shadow-2xl shadow-black/60 select-none ${collapsed ? 'rounded-full' : 'rounded-lg'
+        }`}
       style={{ left: position.x, top: position.y }}
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      <FigTooltip text="Drag toolbar">
-        <button
-          type="button"
-          onPointerDown={startDrag}
-          className="flex h-8 w-6 items-center justify-center p-1 rounded-md text-[#666666] transition-colors hover:bg-white/10 hover:text-white cursor-move m-0 border border-transparent"
-          aria-label="Drag drawing toolbar"
-        >
-          <GripVertical size={16} strokeWidth={1.5} />
-        </button>
-      </FigTooltip>
+      <button
+        type="button"
+        onPointerDown={startDrag}
+        className="flex h-8 w-6 items-center justify-center p-1 rounded-md text-[#666666] transition-colors hover:bg-white/10 hover:text-white cursor-move m-0 border border-transparent"
+        aria-label="Drag drawing toolbar"
+      >
+        <GripVertical size={16} strokeWidth={1.5} />
+      </button>
 
       {collapsed ? (
         <>

@@ -2,6 +2,7 @@ import { Trade } from '../../types/trade';
 import { FootprintCandle, FootprintCell } from '../../types/footprint';
 import { FineProfileRow } from '../../types/volumeProfile';
 import { AggregationWorkerRequest, AggregationWorkerResponse } from './aggregationWorker';
+import { markStart, markEnd } from '../debug/perfInstrumentation';
 
 export class AggregationWorkerClient {
   private worker: Worker | null = null;
@@ -24,6 +25,7 @@ export class AggregationWorkerClient {
   }
 
   private handleMessage(event: MessageEvent<AggregationWorkerResponse>) {
+    markStart('worker_postMessage_recv');
     const { type, payload } = event.data;
 
     if (type === 'FOOTPRINT_UPDATE') {
@@ -31,6 +33,7 @@ export class AggregationWorkerClient {
     } else if (type === 'PROFILE_UPDATE') {
       this.onProfileUpdate?.(payload.rows);
     }
+    markEnd('worker_postMessage_recv');
   }
 
   init(bucketSize: number, maxCandles?: number) {
@@ -40,7 +43,9 @@ export class AggregationWorkerClient {
 
   ingestTradeBatch(trades: Trade[], currentCandleTime: number) {
     if (typeof window === 'undefined' || trades.length === 0) return;
+    markStart('worker_postMessage_send');
     this.getWorker().postMessage({ type: 'INGEST_TRADE_BATCH', payload: { trades, currentCandleTime } } as AggregationWorkerRequest);
+    markEnd('worker_postMessage_send');
   }
 
   hydrateFootprints(time: number, cellsMap: Map<number, FootprintCell>) {

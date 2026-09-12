@@ -16,8 +16,8 @@ export function calculatePriceStep(priceRange: number, chartHeight: number, minS
   return magnitude * 10;
 }
 
-const AXIS_FONT = 'bold 12px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
-const AXIS_TEXT_COLOR = '#909090';
+const AXIS_FONT = '11px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
+const AXIS_TEXT_COLOR = '#B2B5BE';
 const AXIS_BORDER_COLOR = DEFAULT_GRID_COLOR;
 const AXIS_BG_COLOR = DEFAULT_CANVAS_BG;
 const PRICE_AXIS_BG_COLOR = DEFAULT_HEADER_SIDEBAR_BG;
@@ -155,20 +155,23 @@ export function drawPriceAxis(
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.strokeStyle = AXIS_BORDER_COLOR;
+  ctx.lineWidth = 1;
 
   for (let p = startPrice; p <= priceMax; p += step) {
     const y = priceToY(p);
     if (y < 8 || y > chartHeight - 8) continue;
 
-    // Tick mark
+    const alignedY = Math.floor(y) + 0.5;
+
+    // Tick mark (half-pixel offset for crisp 1px stroke)
     ctx.beginPath();
-    ctx.moveTo(chartWidth, Math.round(y));
-    ctx.lineTo(chartWidth + 5, Math.round(y));
+    ctx.moveTo(chartWidth, alignedY);
+    ctx.lineTo(chartWidth + 5, alignedY);
     ctx.stroke();
 
-    // Label with thousands separators
+    // Label with thousands separators (integer-aligned vertical position for sharp text)
     const label = formatPrice(p, precision);
-    ctx.fillText(label, chartWidth + 12, y);
+    ctx.fillText(label, chartWidth + 10, Math.round(y));
   }
 }
 
@@ -204,6 +207,7 @@ export function drawTimeAxis(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.strokeStyle = AXIS_BORDER_COLOR;
+  ctx.lineWidth = 1;
 
   ctx.save();
   ctx.beginPath();
@@ -215,10 +219,12 @@ export function drawTimeAxis(
       const x = indexToX(i);
       if (x < 0 || x > chartWidth) continue;
 
-      // Tick mark
+      const alignedX = Math.floor(x) + 0.5;
+
+      // Tick mark (half-pixel offset for crisp 1px stroke)
       ctx.beginPath();
-      ctx.moveTo(Math.round(x), chartHeight);
-      ctx.lineTo(Math.round(x), chartHeight + 4);
+      ctx.moveTo(alignedX, chartHeight);
+      ctx.lineTo(alignedX, chartHeight + 4);
       ctx.stroke();
 
       // Label (12h format)
@@ -235,7 +241,8 @@ export function drawTimeAxis(
       if (time > 0) {
         const state = useChartStore.getState();
         const label = formatTime(time, state.globalTimezone, state.globalTimeFormat);
-        ctx.fillText(label, x, chartHeight + 8);
+        // Integer-aligned coordinates for razor-sharp text
+        ctx.fillText(label, Math.round(x), Math.round(chartHeight + 6));
       }
     }
   }

@@ -1,7 +1,7 @@
 import { formatPrice, formatTime } from "@/lib/utils/format";
 import { useChartStore } from "@/lib/store/chart";
 
-const CROSSHAIR_FONT = '12px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+const CROSSHAIR_FONT = '11px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
 const CROSSHAIR_BG = '#1F1F1F';
 const CROSSHAIR_TEXT = '#FFFFFF';
 
@@ -94,7 +94,7 @@ export function drawCrosshairPriceLabel(
   ctx.fillStyle = CROSSHAIR_TEXT;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, chartWidth + 12, mouseY);
+  ctx.fillText(label, chartWidth + 10, Math.round(badgeY + rectHeight / 2));
 }
 
 export function drawCrosshairTimeLabel(
@@ -114,11 +114,11 @@ export function drawCrosshairTimeLabel(
   const textWidth = ctx.measureText(label).width;
   const padding = 8;
   const rectHeight = 20;
-  const rectWidth = textWidth + padding * 2;
-  const halfWidth = rectWidth / 2;
-  const clampedX = Math.max(halfWidth, Math.min(chartWidth - halfWidth, mouseX));
+  const rectWidth = Math.round(textWidth + padding * 2);
+  const halfWidth = Math.round(rectWidth / 2);
+  const clampedX = Math.round(Math.max(halfWidth, Math.min(chartWidth - halfWidth, mouseX)));
 
-  const badgeX = Math.round(clampedX - halfWidth);
+  const badgeX = clampedX - halfWidth;
   const badgeY = Math.round(timeAxisTop + Math.max(0, (timeAxisHeight - rectHeight) / 2));
 
   ctx.fillStyle = CROSSHAIR_BG;
@@ -133,5 +133,5 @@ export function drawCrosshairTimeLabel(
   ctx.fillStyle = CROSSHAIR_TEXT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, clampedX, badgeY + rectHeight / 2);
+  ctx.fillText(label, clampedX, Math.round(badgeY + rectHeight / 2));
 }

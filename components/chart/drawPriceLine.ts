@@ -2,8 +2,8 @@ import { Candle } from "@/types/candle";
 import { CHART_BEARISH_COLOR, CHART_BULLISH_COLOR } from "@/lib/config/chartColors";
 import { timeframeToSeconds, formatCountdown, formatPrice } from "@/lib/utils/format";
 
-const PRICE_LINE_FONT = 'bold 13px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
-const COUNTDOWN_FONT = '11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+const PRICE_LINE_FONT = 'bold 12px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
+const COUNTDOWN_FONT = '10px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
 
 export function drawPriceLine(
   ctx: CanvasRenderingContext2D,
@@ -15,21 +15,22 @@ export function drawPriceLine(
   timeframe: string,
   isHovered: boolean = false
 ) {
-  const y = Math.round(priceToY(lastCandle.close));
+  const rawY = priceToY(lastCandle.close);
+  const lineY = Math.floor(rawY) + 0.5;
   const price = lastCandle.close;
   
   const isBullish = lastCandle.close >= lastCandle.open;
   const color = isBullish ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
 
-  // 1. Draw Horizontal Line across the chart area
+  // 1. Draw Horizontal Line across the chart area (half-pixel offset for crisp 1px stroke)
   ctx.save();
   ctx.setLineDash(isHovered ? [] : [4, 4]);
   ctx.strokeStyle = color;
   ctx.globalAlpha = isHovered ? 0.9 : 0.6;
   ctx.lineWidth = isHovered ? 1.5 : 1;
   ctx.beginPath();
-  ctx.moveTo(0, y);
-  ctx.lineTo(chartWidth, y);
+  ctx.moveTo(0, lineY);
+  ctx.lineTo(chartWidth, lineY);
   ctx.stroke();
   ctx.restore();
 
@@ -41,10 +42,10 @@ export function drawPriceLine(
   const countdownText = formatCountdown(remaining);
 
   // 3. Draw Price Badge on the Price Axis
-  const badgeHeight = 30; // Increased height for better padding and larger font
+  const badgeHeight = 28;
   const badgeWidth = priceAxisWidth - 4;
   const badgeX = chartWidth + 2;
-  const badgeY = y - badgeHeight / 2;
+  const badgeY = Math.round(rawY - badgeHeight / 2);
 
   // Badge background
   ctx.fillStyle = color; 
@@ -56,22 +57,19 @@ export function drawPriceLine(
   }
   ctx.fill();
 
-  // Badge text (Price)
+  // Badge text (Price) - integer pixel alignment
   ctx.font = PRICE_LINE_FONT;
   ctx.fillStyle = '#FFFFFF';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   
   const priceLabel = formatPrice(price);
-  
-  // Adjusted positioning for better vertical separation
-  // Price at 30% of height, Countdown at 70% of height
-  ctx.fillText(priceLabel, badgeX + 8, badgeY + badgeHeight * 0.35);
+  ctx.fillText(priceLabel, badgeX + 8, Math.round(badgeY + badgeHeight * 0.35));
 
-  // Countdown at bottom half
+  // Countdown at bottom half - integer pixel alignment
   ctx.font = COUNTDOWN_FONT;
   ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.fillText(countdownText, badgeX + 8, badgeY + badgeHeight * 0.75);
+  ctx.fillText(countdownText, badgeX + 8, Math.round(badgeY + badgeHeight * 0.75));
 }
 
 

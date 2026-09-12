@@ -84,7 +84,8 @@ import { drawVolumeBars } from './drawVolumeBars';
 import { drawVolumeProfile } from './drawVolumeProfile';
 import { drawVwap } from './drawVwap';
 import { useVwapHydration } from './hooks/useVwapHydration';
-import { calculateVwapSeries } from '@/lib/utils/vwap';
+import { VwapCalculator } from '@/lib/utils/vwap';
+import { initLongTaskObserver, markStart, markEnd } from '@/lib/debug/perfInstrumentation';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
 import { computeHistoricalSessionRanges } from './chartPanelUtils';
 import { IcebergTooltip } from './IcebergTooltip';
@@ -352,7 +353,12 @@ export function ChartCanvas({
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const scheduledLayers = useRef(new Set<string>());
   const isRedrawScheduled = useRef(false);
-  
+
+  // INSTRUMENTATION: install the PerformanceObserver once per page lifetime
+  useEffect(() => {
+    initLongTaskObserver();
+  }, []);
+
   const lastCandlesLengthRef = useRef(0);
   const firstCandleTimeRef = useRef<number | null>(null);
 
@@ -390,7 +396,7 @@ export function ChartCanvas({
     slHandles: new Map(),
     tpHandles: new Map(),
   });
-  
+
   const coordsRef = useRef<CoordinateSystem | null>(null);
   const widthRef = useRef(0);
   const heightRef = useRef(0);
@@ -466,7 +472,7 @@ export function ChartCanvas({
 
   const getCandlesLength = useCallback(() => useChartRuntimeStore.getState().panels[panelId]?.candles?.length ?? 0, [panelId]);
   const displayCandles = useChartRuntimeStore(s => s.panels[panelId]?.candles ?? []);
-  
+
   const tfSeconds = useMemo(() => {
     const match = timeframe.match(/(\d+)([mhd])/);
     if (!match) return 60;
@@ -480,6 +486,14 @@ export function ChartCanvas({
 
   const { base1mCandles: vwap1mCandles, isHydrating: vwapIsHydrating } = useVwapHydration(panelId);
   const panel = useChartStore(s => s.panels[panelId]);
+
+  // Profile Throttling State
+  const lastProfileBuildTimeRef = useRef<{ default: number, custom: number, session: number }>({ default: 0, custom: 0, session: 0 });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cachedProfilesRef = useRef<{ default: any, custom: any, session: any }>({ default: null, custom: null, session: null });
+  const lastCandleCloseTimeRef = useRef<{ default: number, custom: number, session: number }>({ default: 0, custom: 0, session: 0 });
+
+  const vwapCalcRef = useRef<VwapCalculator | null>(null);
 
   const vwapSeries = useMemo(() => {
     if (!panel.vwapEnabled) return { status: 'success' as const, series: [] };
@@ -496,7 +510,12 @@ export function ChartCanvas({
       band3Enabled: panel.vwapBand3Enabled,
       band3Value: panel.vwapBand3Value,
     };
-    return calculateVwapSeries(displayCandles, vwap1mCandles, tfSeconds, vwapOptions, vwapIsHydrating);
+
+    if (!vwapCalcRef.current) {
+      vwapCalcRef.current = new VwapCalculator();
+    }
+
+    return vwapCalcRef.current.calculate(displayCandles, vwap1mCandles, tfSeconds, vwapOptions, vwapIsHydrating);
   }, [
     // eslint-disable-next-line react-hooks/exhaustive-deps
     displayCandles,
@@ -524,7 +543,7 @@ export function ChartCanvas({
   useEffect(() => {
     void refreshRiskStatus();
   }, [refreshRiskStatus]);
-  
+
   let profileWidth = defaultProfileEnabled ? baseProfileWidth : 0;
   if (liquidityHeatmapEnabled) {
     profileWidth += liquidityHeatmapWidth;
@@ -558,6 +577,8 @@ export function ChartCanvas({
 
     isRedrawScheduled.current = true;
     requestAnimationFrame(() => {
+      // INSTRUMENTATION: measure the full rAF redraw pass
+      markStart('rAF_redraw');
       isRedrawScheduled.current = false;
       const layersToDraw = new Set(scheduledLayers.current);
       scheduledLayers.current.clear();
@@ -606,7 +627,7 @@ export function ChartCanvas({
       const recentFills = runtimeState.tradingStatus.recentTrades ?? [];
       const bracketDrag = runtimeState.tradingStatus.bracketDrag ?? null;
       const marketOrderDrag = runtimeState.tradingStatus.marketOrderDrag ?? null;
-      
+
       const activeMeasurement = currentPanelRuntime.activeMeasurement ?? null;
       const measureToolActive = currentPanelRuntime.measureToolActive ?? false;
       const isProfileSelected = currentPanelRuntime.isProfileSelected ?? false;
@@ -702,20 +723,20 @@ export function ChartCanvas({
       const localProfileHitZone =
         isMouseOver.current && mouseX.current !== null && mouseY.current !== null
           ? getCustomProfileHitZone(
-              resolvedCustomProfileRange,
-              mouseX.current,
-              mouseY.current,
-              candles.length,
-              currentScrollOffset,
-              currentBarWidth,
-              chartWidth,
-              chartHeight,
-              profileWidth,
-              priceMin,
-              priceMax,
-              customProfileLocked,
-              useChartRuntimeStore.getState().panels[panelId]?.isProfileSelected ?? false
-            )
+            resolvedCustomProfileRange,
+            mouseX.current,
+            mouseY.current,
+            candles.length,
+            currentScrollOffset,
+            currentBarWidth,
+            chartWidth,
+            chartHeight,
+            profileWidth,
+            priceMin,
+            priceMax,
+            customProfileLocked,
+            useChartRuntimeStore.getState().panels[panelId]?.isProfileSelected ?? false
+          )
           : null;
 
       // Track coordinates for metric calculation
@@ -1121,22 +1142,39 @@ export function ChartCanvas({
             tickSize,
             bucketSize
           );
-          const customProfile = volumeProfileEngine.buildProfile({
-            candles: customCandles,
-            profileBucketSize: customProfileBucketSize,
-            priceHigh: resolvedCustomProfileRange.priceHigh,
-            priceLow: resolvedCustomProfileRange.priceLow,
-            nodeSensitivity: profileNodeSensitivity,
-            inputData: profileInputData,
-            filterMin: profileFilterMin,
-            filterMax: profileFilterMax,
-            debugContext: {
-              label: 'selected-custom-profile-render',
-              panelId,
-              selectedStartTime: customStartTime ?? undefined,
-              selectedEndTime: customEndTime ?? undefined,
-            },
-          });
+
+          // THROTTLED CUSTOM PROFILE BUILD
+          const latestCandleTime = candles.length > 0 ? candles[candles.length - 1].time : 0;
+          const isNewCandle = latestCandleTime !== lastCandleCloseTimeRef.current.custom;
+          const timeSinceLastBuild = performance.now() - lastProfileBuildTimeRef.current.custom;
+
+          let customProfile = cachedProfilesRef.current.custom;
+
+          if (!customProfile || isNewCandle || timeSinceLastBuild > 250) {
+            markStart('buildProfile');
+            customProfile = volumeProfileEngine.buildProfile({
+              candles: customCandles,
+              profileBucketSize: defaultProfileBucketSize,
+              priceHigh: resolvedCustomProfileRange.priceHigh,
+              priceLow: resolvedCustomProfileRange.priceLow,
+              debugContext: {
+                label: 'selected-custom-profile-render',
+                panelId,
+                selectedStartTime: customStartTime ?? undefined,
+                selectedEndTime: customEndTime ?? undefined,
+              },
+              nodeSensitivity: profileNodeSensitivity,
+              inputData: profileInputData,
+              filterMin: profileFilterMin,
+              filterMax: profileFilterMax,
+            });
+            markEnd('buildProfile');
+
+            cachedProfilesRef.current.custom = customProfile;
+            lastProfileBuildTimeRef.current.custom = performance.now();
+            if (isNewCandle) lastCandleCloseTimeRef.current.custom = latestCandleTime;
+          }
+
           drawCustomProfile(
             ctx,
             resolvedCustomProfileRange,
@@ -1202,13 +1240,14 @@ export function ChartCanvas({
           let profileCandles: typeof candles = [];
 
           if (defaultProfilePeriod === 'latest' && candles.length > 0) {
-            const targetTz = globalTimezone === 'local' ? Intl.DateTimeFormat().resolvedOptions().timeZone : globalTimezone;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const targetTz = globalTimezone === 'local' ? (window as any).Intl.DateTimeFormat().resolvedOptions().timeZone : globalTimezone;
             const formatter = new Intl.DateTimeFormat('en-US', { timeZone: targetTz, year: 'numeric', month: 'numeric', day: 'numeric' });
-            
+
             // Find the calendar day of the most recent candle
             const lastCandleTime = candles[candles.length - 1].time;
             const lastCandleDateStr = formatter.format(new Date(lastCandleTime * 1000));
-            
+
             // Walk backwards to find the first candle of this same calendar day
             let firstIdxOfLatestDay = candles.length - 1;
             while (firstIdxOfLatestDay > 0) {
@@ -1218,7 +1257,7 @@ export function ChartCanvas({
               }
               firstIdxOfLatestDay--;
             }
-            
+
             profileCandles = candles.slice(firstIdxOfLatestDay);
           } else if (defaultProfilePeriod === 'periodic' && candles.length > 0) {
             const val = profilePeriodValue || 4;
@@ -1230,7 +1269,7 @@ export function ChartCanvas({
 
             const lastCandleTime = candles[candles.length - 1].time;
             const boundaryTime = Math.floor(lastCandleTime / periodSeconds) * periodSeconds;
-            
+
             let lo = 0, hi = candles.length;
             while (lo < hi) {
               const mid = (lo + hi) >>> 1;
@@ -1244,15 +1283,31 @@ export function ChartCanvas({
             // 'visible' (default)
             profileCandles = candles.slice(Math.max(0, firstIndex), Math.min(candles.length, lastIndex + 1));
           }
-          
-          const profile = volumeProfileEngine.buildProfile({
-            candles: profileCandles,
-            profileBucketSize: defaultProfileBucketSize,
-            nodeSensitivity: profileNodeSensitivity,
-            inputData: profileInputData,
-            filterMin: profileFilterMin,
-            filterMax: profileFilterMax,
-          });
+
+          // THROTTLED DEFAULT PROFILE BUILD
+          const latestCandleTime = candles.length > 0 ? candles[candles.length - 1].time : 0;
+          const isNewCandle = latestCandleTime !== lastCandleCloseTimeRef.current.default;
+          const timeSinceLastBuild = performance.now() - lastProfileBuildTimeRef.current.default;
+
+          let profile = cachedProfilesRef.current.default;
+
+          if (!profile || isNewCandle || timeSinceLastBuild > 250) {
+            // INSTRUMENTATION: measure buildProfile cost
+            markStart('buildProfile');
+            profile = volumeProfileEngine.buildProfile({
+              candles: profileCandles,
+              profileBucketSize: defaultProfileBucketSize,
+              nodeSensitivity: profileNodeSensitivity,
+              inputData: profileInputData,
+              filterMin: profileFilterMin,
+              filterMax: profileFilterMax,
+            });
+            markEnd('buildProfile');
+
+            cachedProfilesRef.current.default = profile;
+            lastProfileBuildTimeRef.current.default = performance.now();
+            if (isNewCandle) lastCandleCloseTimeRef.current.default = latestCandleTime;
+          }
 
           if (profile) {
             drawVolumeProfile(
@@ -1299,7 +1354,7 @@ export function ChartCanvas({
             for (const segment of sessionRange.segments) {
               const startTime = segment.startTimeMs / 1000;
               const endTime = segment.endTimeMs / 1000;
-              
+
               let lo = 0, hi = candles.length;
               while (lo < hi) {
                 const mid = (lo + hi) >>> 1;
@@ -1334,7 +1389,7 @@ export function ChartCanvas({
               priceHigh: sHigh,
               priceLow: sLow,
             };
-            
+
             drawnSessionRangesRef.current.push({
               id: sessionRange.id,
               startX: indexToX(minFirstIndex),
@@ -1351,7 +1406,7 @@ export function ChartCanvas({
               tickSize,
               bucketSize
             );
-            
+
             const sessionProfile = volumeProfileEngine.buildProfile({
               candles: sessionCandles,
               profileBucketSize: sessionProfileBucketSize,
@@ -1368,7 +1423,7 @@ export function ChartCanvas({
                 selectedEndTime: sessionRange.segments[sessionRange.segments.length - 1].endTimeMs / 1000,
               },
             });
-            
+
             drawCustomProfile(
               liveCtx,
               sessionProfileRange,
@@ -1416,7 +1471,7 @@ export function ChartCanvas({
 
         liveCtx.restore();
       }
-      
+
       if (drawAll || layersToDraw.has('overlay')) {
         // Measurement Rect (on top of profiles, below axes)
         if (activeMeasurement) {
@@ -1433,40 +1488,40 @@ export function ChartCanvas({
             footprintMetrics: null
           }, currentBarWidth);
         } else if (lineDrawMode === 'box' && isDragging.current && dragStart.current && dragEnd.current) {
-        const firstIndex = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
-        const lastIndex = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
-        const priceHigh = Math.max(
-          yToPrice(dragStart.current.y, priceMin, priceMax, chartHeight),
-          yToPrice(dragEnd.current.y, priceMin, priceMax, chartHeight)
-        );
-        const priceLow = Math.min(
-          yToPrice(dragStart.current.y, priceMin, priceMax, chartHeight),
-          yToPrice(dragEnd.current.y, priceMin, priceMax, chartHeight)
-        );
+          const firstIndex = xToIndex(dragStart.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+          const lastIndex = xToIndex(dragEnd.current.x, candles, currentScrollOffset, currentBarWidth, chartWidth, profileWidth);
+          const priceHigh = Math.max(
+            yToPrice(dragStart.current.y, priceMin, priceMax, chartHeight),
+            yToPrice(dragEnd.current.y, priceMin, priceMax, chartHeight)
+          );
+          const priceLow = Math.min(
+            yToPrice(dragStart.current.y, priceMin, priceMax, chartHeight),
+            yToPrice(dragEnd.current.y, priceMin, priceMax, chartHeight)
+          );
 
-        drawLines(
-          ctx,
-          [{
-            id: 'active-box',
-            type: 'box',
-            value: priceHigh,
-            firstIndex,
-            lastIndex,
-            priceHigh,
-            priceLow,
-          }],
-          indexToX,
-          priceToY,
-          logicalWidth,
-          logicalHeight,
-          timeAxisHeight,
-          priceAxisWidth,
-          currentBarWidth,
-          'active-box',
-          null,
-          false
-        );
-      }
+          drawLines(
+            ctx,
+            [{
+              id: 'active-box',
+              type: 'box',
+              value: priceHigh,
+              firstIndex,
+              lastIndex,
+              priceHigh,
+              priceLow,
+            }],
+            indexToX,
+            priceToY,
+            logicalWidth,
+            logicalHeight,
+            timeAxisHeight,
+            priceAxisWidth,
+            currentBarWidth,
+            'active-box',
+            null,
+            false
+          );
+        }
       }
 
       if (drawAll || layersToDraw.has('background')) {
@@ -1532,19 +1587,19 @@ export function ChartCanvas({
 
         const binancePositions = tradingContractType === 'futures'
           ? positions.filter((p: Position) => p.side !== 'flat').map((p: Position) => ({
-              id: p.symbol,
-              status: 'open' as const,
-              symbol: p.symbol,
-              side: p.side as 'long' | 'short',
-              quantity: p.quantity,
-              entryPrice: p.entryPrice ?? 0,
-              unrealizedPnl: p.unrealizedPnl,
-              liquidationPrice: p.liquidationPrice,
-              openedAt: p.updatedAt ?? Date.now(),
-              fillIds: [],
-            }))
+            id: p.symbol,
+            status: 'open' as const,
+            symbol: p.symbol,
+            side: p.side as 'long' | 'short',
+            quantity: p.quantity,
+            entryPrice: p.entryPrice ?? 0,
+            unrealizedPnl: p.unrealizedPnl,
+            liquidationPrice: p.liquidationPrice,
+            openedAt: p.updatedAt ?? Date.now(),
+            fillIds: [],
+          }))
           : [];
-          
+
         const activePositions = [...binancePositions, ...virtualPositions];
 
         if (openOrders.length > 0 || activePositions.length > 0 || recentFills.length > 0 || marketOrderDrag) {
@@ -1634,6 +1689,9 @@ export function ChartCanvas({
           }
         }
       }
+
+      // INSTRUMENTATION: end full rAF redraw pass
+      markEnd('rAF_redraw');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, vwapSeries, candleUpColor, candleUpOpacity, candleDownColor, candleDownOpacity, candleUpWickColor, candleUpWickOpacity, candleDownWickColor, candleDownWickOpacity, chartBackgroundType, chartBackgroundColor, chartBackgroundOpacity, chartBackgroundGradientTop, chartBackgroundGradientTopOpacity, chartBackgroundGradientBottom, chartBackgroundGradientBottomOpacity, showVerticalGridLines, verticalGridLineColor, verticalGridLineOpacity, verticalGridLineStyle, showHorizontalGridLines, horizontalGridLineColor, horizontalGridLineOpacity, horizontalGridLineStyle, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle]);
@@ -1643,9 +1701,9 @@ export function ChartCanvas({
   const priceCenter = useRef<number | null>(null);
   const priceRange = useRef<number | null>(null);
 
-  const { 
-    mouseX, 
-    mouseY, 
+  const {
+    mouseX,
+    mouseY,
     isMouseOver,
     isDragging: isPanZoomDragging,
     dragMode: panZoomDragMode
@@ -1710,7 +1768,7 @@ export function ChartCanvas({
             return false;
           }
         }
-        
+
         const virtualPositions = useChartRuntimeStore.getState().tradingStatus.virtualPositions ?? [];
         for (const vp of virtualPositions) {
           if (vp.status !== 'open') continue;
@@ -1735,8 +1793,9 @@ export function ChartCanvas({
       const bottomLayout = getBottomLayout(canvas.clientHeight);
       const mainChartHeight = bottomLayout.mainChartHeight;
 
-      // Only update store if within canvas horizontal area and within total height
-      if (x < 0 || x > chartWidth || y < 0 || y > canvas.clientHeight) {
+      // Only update store if within canvas horizontal area and within main chart height
+      if (x < 0 || x > chartWidth || y < 0 || y > mainChartHeight) {
+        useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
         return;
       }
 
@@ -1769,7 +1828,7 @@ export function ChartCanvas({
 
       const price = y <= mainChartHeight ? yToPrice(y, priceMin, priceMax, mainChartHeight) : null;
       const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
-      
+
       let time = null;
       if (candles[index]) {
         time = candles[index].time;
@@ -1897,7 +1956,7 @@ export function ChartCanvas({
       dprMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
       dprMedia.addEventListener('change', onDprChange, { once: true });
     };
-    
+
     listenToDpr();
     window.addEventListener('resize', checkDprAndRescale);
 
@@ -1913,11 +1972,11 @@ export function ChartCanvas({
       (state) => state.panels[panelId]?.dataVersion,
       (version, prevVersion) => {
         if (version === prevVersion) return;
-        
+
         const prevLength = lastCandlesLengthRef.current;
         const prevFirstTime = firstCandleTimeRef.current;
         const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
-        
+
         lastCandlesLengthRef.current = candles.length;
         firstCandleTimeRef.current = candles.length > 0 ? candles[0].time : null;
 
@@ -2329,7 +2388,7 @@ export function ChartCanvas({
         }
         await new Promise(r => setTimeout(r, 200));
       }
-      
+
       setChartOrderMessage({ type: 'error', text: 'No response from EA' });
       setTradingStatus({ pendingMarketOrderId: null, marketOrderDrag: null });
     } catch (err: unknown) {
@@ -2340,14 +2399,14 @@ export function ChartCanvas({
 
   const handleConfirmBracketModify = useCallback(async () => {
     if (!pendingModifyBracket) return;
-    
+
     const requestId = crypto.randomUUID();
     const { positionId, sl, tp } = pendingModifyBracket;
-    
+
     // Set some loading state if needed, here we can use the same pattern
     // but there's no global modify loading for brackets yet, so we just await inline
     // In a full implementation we'd set a flag.
-    
+
     try {
       const res = await fetch('http://localhost:3001/modify', {
         method: 'POST',
@@ -2394,7 +2453,7 @@ export function ChartCanvas({
         }
         await new Promise(r => setTimeout(r, 200));
       }
-      
+
       setChartOrderMessage({ type: 'error', text: 'No response from EA' });
       setShowModifyBracketConfirm(false);
       setPendingModifyBracket(null);
@@ -2710,7 +2769,7 @@ export function ChartCanvas({
         dragStart.current = { x, y };
         dragEnd.current = { x, y };
         isDragging.current = true;
-        
+
         if (isDrawMode) {
           useChartStore.getState().setCustomProfileRange(panelId, null);
         } else {
@@ -2720,71 +2779,71 @@ export function ChartCanvas({
       }
 
 
-    const getUnifiedHitTarget = (x: number, y: number) => {
-      const runtimeState = useChartRuntimeStore.getState();
-      const candles = runtimeState.panels[panelId]?.candles ?? [];
-      const virtualPositions = runtimeState.tradingStatus.virtualPositions;
-      const bracketOrders = runtimeState.tradingStatus.bracketOrders;
-      const openOrders = runtimeState.tradingStatus.openOrders;
+      const getUnifiedHitTarget = (x: number, y: number) => {
+        const runtimeState = useChartRuntimeStore.getState();
+        const candles = runtimeState.panels[panelId]?.candles ?? [];
+        const virtualPositions = runtimeState.tradingStatus.virtualPositions;
+        const bracketOrders = runtimeState.tradingStatus.bracketOrders;
+        const openOrders = runtimeState.tradingStatus.openOrders;
 
-      const chartWidth = rect.width - priceAxisWidth;
-      const chartHeight = getBottomLayout(rect.height).mainChartHeight;
-      const pCenter = priceCenter.current ?? 0;
-      const pRange = priceRange.current ?? 100;
-      const priceMin = pCenter - pRange / 2;
-      const priceMax = pCenter + pRange / 2;
-      const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
-      const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+        const chartWidth = rect.width - priceAxisWidth;
+        const chartHeight = getBottomLayout(rect.height).mainChartHeight;
+        const pCenter = priceCenter.current ?? 0;
+        const pRange = priceRange.current ?? 100;
+        const priceMin = pCenter - pRange / 2;
+        const priceMax = pCenter + pRange / 2;
+        const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
+        const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
-      // 1. Bracket Handles
-      for (const vp of virtualPositions) {
-        if (vp.status !== 'open') continue;
-        const slBox = bracketHitZones.current.slHandles.get(vp.id);
-        const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
-        const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
-        const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
-        if (hitSL || hitTP) {
-          const bracket = bracketOrders.find((b) => b.positionId === vp.id);
-          const handle = hitSL ? 'sl' : 'tp';
-          const startPrice = hitSL ? (bracket?.stopLossPrice ?? vp.entryPrice) : (bracket?.takeProfitPrice ?? vp.entryPrice);
-          return { type: 'bracket' as const, positionId: vp.id, handle, startPrice, side: vp.side, entryPrice: vp.entryPrice };
+        // 1. Bracket Handles
+        for (const vp of virtualPositions) {
+          if (vp.status !== 'open') continue;
+          const slBox = bracketHitZones.current.slHandles.get(vp.id);
+          const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
+          const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
+          const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
+          if (hitSL || hitTP) {
+            const bracket = bracketOrders.find((b) => b.positionId === vp.id);
+            const handle = hitSL ? 'sl' : 'tp';
+            const startPrice = hitSL ? (bracket?.stopLossPrice ?? vp.entryPrice) : (bracket?.takeProfitPrice ?? vp.entryPrice);
+            return { type: 'bracket' as const, positionId: vp.id, handle, startPrice, side: vp.side, entryPrice: vp.entryPrice };
+          }
         }
-      }
 
-      // 2. Open Orders
-      for (const order of openOrders) {
-        if (getOrderHitZone(order, x, y, chartWidth, chartHeight, priceToY)) {
-          return { type: 'order' as const, order };
+        // 2. Open Orders
+        for (const order of openOrders) {
+          if (getOrderHitZone(order, x, y, chartWidth, chartHeight, priceToY)) {
+            return { type: 'order' as const, order };
+          }
         }
-      }
 
-      const storeState = useChartStore.getState();
-      const currentPanel = storeState.panels[panelId];
+        const storeState = useChartStore.getState();
+        const currentPanel = storeState.panels[panelId];
 
-      // 3. Custom Profile
-      if (currentPanel.customProfileRange) {
-        const resolvedRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
-        const isSelected = runtimeState.panels[panelId]?.isProfileSelected ?? false;
-        const hitZone = getCustomProfileHitZone(
-          resolvedRange, x, y, candles.length, scrollOffset.current, barWidth.current,
-          chartWidth, chartHeight, profileWidth, priceMin, priceMax, currentPanel.customProfileLocked, isSelected
-        );
-        if (hitZone) return { type: 'custom-profile' as const, hitZone, resolvedRange };
-      }
+        // 3. Custom Profile
+        if (currentPanel.customProfileRange) {
+          const resolvedRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
+          const isSelected = runtimeState.panels[panelId]?.isProfileSelected ?? false;
+          const hitZone = getCustomProfileHitZone(
+            resolvedRange, x, y, candles.length, scrollOffset.current, barWidth.current,
+            chartWidth, chartHeight, profileWidth, priceMin, priceMax, currentPanel.customProfileLocked, isSelected
+          );
+          if (hitZone) return { type: 'custom-profile' as const, hitZone, resolvedRange };
+        }
 
-      // 4. Drawing Tools (reverse creation order)
-      const currentSelectedId = selectedDrawingId;
-      const drawnLines = currentPanel.drawnLines;
-      const resolvedDrawnLines = drawnLines.map(l => resolveLineForRender(l, candles)).filter(Boolean) as DrawnLine[];
-      for (let i = resolvedDrawnLines.length - 1; i >= 0; i--) {
-        const line = resolvedDrawnLines[i];
-        const isSelected = line.id === currentSelectedId;
-        const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current, isSelected);
-        if (hitZone) return { type: 'drawing' as const, id: line.id, hitZone, line };
-      }
+        // 4. Drawing Tools (reverse creation order)
+        const currentSelectedId = selectedDrawingId;
+        const drawnLines = currentPanel.drawnLines;
+        const resolvedDrawnLines = drawnLines.map(l => resolveLineForRender(l, candles)).filter(Boolean) as DrawnLine[];
+        for (let i = resolvedDrawnLines.length - 1; i >= 0; i--) {
+          const line = resolvedDrawnLines[i];
+          const isSelected = line.id === currentSelectedId;
+          const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current, isSelected);
+          if (hitZone) return { type: 'drawing' as const, id: line.id, hitZone, line };
+        }
 
-      return null;
-    };
+        return null;
+      };
 
       const hitTarget = getUnifiedHitTarget(x, y);
 
@@ -2837,7 +2896,7 @@ export function ChartCanvas({
           const currentPanel = useChartStore.getState().panels[panelId];
           setSelectedDrawingId(null);
           useChartRuntimeStore.getState().setProfileSelected(panelId, true);
-          
+
           if (!currentPanel.customProfileLocked && hitTarget.resolvedRange) {
             dragAnchor.current = { x, y };
             profileSnapshot.current = hitTarget.resolvedRange;
@@ -2889,10 +2948,12 @@ export function ChartCanvas({
       const virtualPositions = runtimeState.tradingStatus.virtualPositions ?? [];
       const bracketOrders = runtimeState.tradingStatus.bracketOrders ?? [];
       const openOrders = runtimeState.tradingStatus.openOrders ?? [];
-      
+
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+      const chartWidth = rect.width - priceAxisWidth;
+      const chartHeight = getBottomLayout(rect.height).mainChartHeight;
 
       let cursor = 'crosshair';
 
@@ -2917,6 +2978,10 @@ export function ChartCanvas({
         if (panZoomDragMode.current === 'price') cursor = 'ns-resize';
         else if (panZoomDragMode.current === 'time') cursor = 'ew-resize';
         else cursor = 'grabbing';
+      } else if (x >= chartWidth && x <= rect.width && y >= 0 && y <= rect.height) {
+        cursor = 'ns-resize';
+      } else if (y >= chartHeight && y <= rect.height && x >= 0 && x <= chartWidth) {
+        cursor = 'ew-resize';
       } else {
         hoverZone.current = null;
         hoveredLineId.current = null;
@@ -2924,65 +2989,65 @@ export function ChartCanvas({
         isHoveringDeleteDot.current = false;
 
 
-    const getUnifiedHitTarget = (x: number, y: number) => {
-      const chartWidth = rect.width - priceAxisWidth;
-      const chartHeight = getBottomLayout(rect.height).mainChartHeight;
-      const pCenter = priceCenter.current ?? 0;
-      const pRange = priceRange.current ?? 100;
-      const priceMin = pCenter - pRange / 2;
-      const priceMax = pCenter + pRange / 2;
-      const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
-      const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
+        const getUnifiedHitTarget = (x: number, y: number) => {
+          const chartWidth = rect.width - priceAxisWidth;
+          const chartHeight = getBottomLayout(rect.height).mainChartHeight;
+          const pCenter = priceCenter.current ?? 0;
+          const pRange = priceRange.current ?? 100;
+          const priceMin = pCenter - pRange / 2;
+          const priceMax = pCenter + pRange / 2;
+          const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
+          const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
-      // 1. Bracket Handles
-      for (const vp of virtualPositions) {
-        if (vp.status !== 'open') continue;
-        const slBox = bracketHitZones.current.slHandles.get(vp.id);
-        const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
-        const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
-        const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
-        if (hitSL || hitTP) {
-          const bracket = bracketOrders.find((b) => b.positionId === vp.id);
-          const handle = hitSL ? 'sl' : 'tp';
-          const startPrice = hitSL ? (bracket?.stopLossPrice ?? vp.entryPrice) : (bracket?.takeProfitPrice ?? vp.entryPrice);
-          return { type: 'bracket' as const, positionId: vp.id, handle, startPrice, side: vp.side, entryPrice: vp.entryPrice };
-        }
-      }
+          // 1. Bracket Handles
+          for (const vp of virtualPositions) {
+            if (vp.status !== 'open') continue;
+            const slBox = bracketHitZones.current.slHandles.get(vp.id);
+            const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
+            const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
+            const hitTP = !hitSL && tpBox && x >= tpBox.x && x <= tpBox.x + tpBox.w && y >= tpBox.y && y <= tpBox.y + tpBox.h;
+            if (hitSL || hitTP) {
+              const bracket = bracketOrders.find((b) => b.positionId === vp.id);
+              const handle = hitSL ? 'sl' : 'tp';
+              const startPrice = hitSL ? (bracket?.stopLossPrice ?? vp.entryPrice) : (bracket?.takeProfitPrice ?? vp.entryPrice);
+              return { type: 'bracket' as const, positionId: vp.id, handle, startPrice, side: vp.side, entryPrice: vp.entryPrice };
+            }
+          }
 
-      // 2. Open Orders
-      for (const order of openOrders) {
-        if (getOrderHitZone(order, x, y, chartWidth, chartHeight, priceToY)) {
-          return { type: 'order' as const, order };
-        }
-      }
+          // 2. Open Orders
+          for (const order of openOrders) {
+            if (getOrderHitZone(order, x, y, chartWidth, chartHeight, priceToY)) {
+              return { type: 'order' as const, order };
+            }
+          }
 
-      const storeState = useChartStore.getState();
-      const currentPanel = storeState.panels[panelId];
+          const storeState = useChartStore.getState();
+          const currentPanel = storeState.panels[panelId];
 
-      // 3. Custom Profile
-      if (currentPanel.customProfileRange) {
-        const resolvedRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
-        const isSelected = runtimeState.panels[panelId]?.isProfileSelected ?? false;
-        const hitZone = getCustomProfileHitZone(
-          resolvedRange, x, y, candles.length, scrollOffset.current, barWidth.current,
-          chartWidth, chartHeight, profileWidth, priceMin, priceMax, currentPanel.customProfileLocked, isSelected
-        );
-        if (hitZone) return { type: 'custom-profile' as const, hitZone, resolvedRange };
-      }
+          // 3. Custom Profile
+          if (currentPanel.customProfileRange) {
+            const resolvedRange = resolveCustomProfileRange(currentPanel.customProfileRange, candles);
+            const isSelected = runtimeState.panels[panelId]?.isProfileSelected ?? false;
+            const hitZone = getCustomProfileHitZone(
+              resolvedRange, x, y, candles.length, scrollOffset.current, barWidth.current,
+              chartWidth, chartHeight, profileWidth, priceMin, priceMax, currentPanel.customProfileLocked, isSelected
+            );
+            if (hitZone) return { type: 'custom-profile' as const, hitZone, resolvedRange };
+          }
 
-      // 4. Drawing Tools (reverse creation order)
-      const currentSelectedId = selectedDrawingId;
-      const drawnLines = currentPanel.drawnLines;
-      const resolvedDrawnLines = drawnLines.map(l => resolveLineForRender(l, candles)).filter(Boolean) as DrawnLine[];
-      for (let i = resolvedDrawnLines.length - 1; i >= 0; i--) {
-        const line = resolvedDrawnLines[i];
-        const isSelected = line.id === currentSelectedId;
-        const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current, isSelected);
-        if (hitZone) return { type: 'drawing' as const, id: line.id, hitZone, line };
-      }
+          // 4. Drawing Tools (reverse creation order)
+          const currentSelectedId = selectedDrawingId;
+          const drawnLines = currentPanel.drawnLines;
+          const resolvedDrawnLines = drawnLines.map(l => resolveLineForRender(l, candles)).filter(Boolean) as DrawnLine[];
+          for (let i = resolvedDrawnLines.length - 1; i >= 0; i--) {
+            const line = resolvedDrawnLines[i];
+            const isSelected = line.id === currentSelectedId;
+            const hitZone = getDrawingHitZone(line, x, y, indexToX, priceToY, chartWidth, chartHeight, barWidth.current, isSelected);
+            if (hitZone) return { type: 'drawing' as const, id: line.id, hitZone, line };
+          }
 
-      return null;
-    };
+          return null;
+        };
 
         const hitTarget = getUnifiedHitTarget(x, y);
 
@@ -3034,7 +3099,7 @@ export function ChartCanvas({
 
             const isBuyer = result.direction === 'buyer';
             const rankOffset = result.rank === 'extreme' ? 5 : result.rank === 'strong' ? 4 : result.rank === 'moderate' ? 3 : 2;
-            const ey = isBuyer 
+            const ey = isBuyer
               ? priceToY(candle.high) - 6 - rankOffset
               : priceToY(candle.low) + 6 + rankOffset;
 
@@ -3097,12 +3162,12 @@ export function ChartCanvas({
       if (isDraggingBracket.current && bracketDragRef.current) {
         const chartHeight = getBottomLayout(rect.height).mainChartHeight;
         const pCenter = priceCenter.current ?? 0;
-        const pRange  = priceRange.current ?? 100;
+        const pRange = priceRange.current ?? 100;
         const priceMin = pCenter - pRange / 2;
         const priceMax = pCenter + pRange / 2;
-        const rawPrice   = yToPrice(Math.max(0, Math.min(chartHeight, y)), priceMin, priceMax, chartHeight);
+        const rawPrice = yToPrice(Math.max(0, Math.min(chartHeight, y)), priceMin, priceMax, chartHeight);
         const entryPrice = bracketDragEntryPrice.current ?? rawPrice;
-        const side       = bracketDragSide.current ?? 'long';
+        const side = bracketDragSide.current ?? 'long';
         const { handle, positionId } = bracketDragRef.current;
 
         let clampedPrice = rawPrice;
@@ -3432,7 +3497,7 @@ export function ChartCanvas({
           } else {
             // Revert the temporary drag visualization for confirmation flow
             store.setBracketDrag(null);
-            
+
             setPendingModifyBracket({
               positionId,
               sl: nextSl,
@@ -3445,10 +3510,10 @@ export function ChartCanvas({
         }
 
         // Reset bracket drag state
-        isDraggingBracket.current    = false;
-        bracketDragRef.current        = null;
+        isDraggingBracket.current = false;
+        bracketDragRef.current = null;
         bracketDragEntryPrice.current = null;
-        bracketDragSide.current       = null;
+        bracketDragSide.current = null;
         redraw();
         return;
       }
@@ -3536,7 +3601,7 @@ export function ChartCanvas({
 
       if (isDragging.current && measureToolActive && dragStart.current && dragEnd.current) {
         isDragging.current = false;
-        const dist = Math.sqrt((dragEnd.current.x - dragStart.current.x)**2 + (dragEnd.current.y - dragStart.current.y)**2);
+        const dist = Math.sqrt((dragEnd.current.x - dragStart.current.x) ** 2 + (dragEnd.current.y - dragStart.current.y) ** 2);
         if (dist < 4) {
           useChartRuntimeStore.getState().setActiveMeasurement(panelId, null);
         } else {
@@ -3894,10 +3959,10 @@ export function ChartCanvas({
         tabIndex={0}
       />
       {hoveredExhaustion && (
-        <ExhaustionTooltip 
-          result={hoveredExhaustion.result} 
-          x={hoveredExhaustion.x} 
-          y={hoveredExhaustion.y} 
+        <ExhaustionTooltip
+          result={hoveredExhaustion.result}
+          x={hoveredExhaustion.x}
+          y={hoveredExhaustion.y}
         />
       )}
       {hoveredIceberg && (
@@ -3911,11 +3976,11 @@ export function ChartCanvas({
       {sessionContextMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setSessionContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setSessionContextMenu(null); }} />
-          <div 
+          <div
             className="fixed z-50 bg-[#1F1F1F] border border-[#333] shadow-lg rounded py-1 w-48 text-[11px] font-bold text-main"
             style={{ left: sessionContextMenu.x, top: sessionContextMenu.y }}
           >
-            <button 
+            <button
               className="w-full text-left px-3 py-1.5 hover:bg-accent/10 hover:text-accent transition-colors"
               onClick={() => {
                 const state = useChartStore.getState();
@@ -3933,7 +3998,7 @@ export function ChartCanvas({
             >
               Merge With Next Session
             </button>
-            <button 
+            <button
               className="w-full text-left px-3 py-1.5 hover:bg-accent/10 hover:text-accent transition-colors"
               onClick={() => {
                 const state = useChartStore.getState();
@@ -3952,7 +4017,7 @@ export function ChartCanvas({
         </>
       )}
 
-      <MeasurementPanel 
+      <MeasurementPanel
         measurement={activeMeasurement}
         canvasRect={canvasRef.current?.getBoundingClientRect() || null}
       />
@@ -3970,11 +4035,10 @@ export function ChartCanvas({
               void handleCancelOrder(order);
             }}
             onMouseDown={(event) => event.stopPropagation()}
-            className={`absolute z-20 h-[22px] rounded border px-2 text-[10px] font-bold leading-none shadow-sm transition-colors disabled:cursor-wait disabled:opacity-70 ${
-              isConfirming
+            className={`absolute z-20 h-[22px] rounded border px-2 text-[10px] font-bold leading-none shadow-sm transition-colors disabled:cursor-wait disabled:opacity-70 ${isConfirming
                 ? 'border-[#f23645]/70 bg-[#f23645]/18 text-[#ffd7db] hover:bg-[#f23645]/26'
                 : 'border-[#333] bg-[#1F1F1F]/92 text-[#E8E8E8] hover:border-[#f23645]/60 hover:text-[#ffd7db]'
-            }`}
+              }`}
             style={{ top: `${top}px`, left: `${left}px` }}
             title={isConfirming ? 'Confirm cancel order' : 'Cancel order'}
             aria-label={isConfirming ? 'Confirm cancel order' : 'Cancel order'}
@@ -4049,11 +4113,10 @@ export function ChartCanvas({
               modifyError: null,
             });
           }}
-          className={`cursor-pointer absolute right-[92px] top-2 z-30 flex items-center gap-2 max-w-[320px] rounded border bg-[#1F1F1F]/95 px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur-sm transition-all hover:opacity-80 ${
-            (chartOrderMessage?.type === 'error' || orderActionError || modifyError)
+          className={`cursor-pointer absolute right-[92px] top-2 z-30 flex items-center gap-2 max-w-[320px] rounded border bg-[#1F1F1F]/95 px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur-sm transition-all hover:opacity-80 ${(chartOrderMessage?.type === 'error' || orderActionError || modifyError)
               ? 'border-[#f23645]/60 text-[#ffd7db]'
               : 'border-[#089981]/60 text-[#c8fff2]'
-          }`}
+            }`}
           title="Click to dismiss"
         >
           <span className="flex-1">{chartOrderMessage?.text ?? modifyError ?? orderActionError ?? modifySuccess ?? orderActionSuccess}</span>

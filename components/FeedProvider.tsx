@@ -53,6 +53,7 @@ import {
   BASE_FOOTPRINT_TIMEFRAME_SECONDS,
 } from '../lib/aggregation/engine';
 import { CandleHistoryRestoreResult, getSharedCandleCache } from '../lib/feeds/candleCache';
+import { markStart, markEnd } from '../lib/debug/perfInstrumentation';
 import { buildAbsorptionMap, scoreLatestCandle } from '../lib/absorption/engine';
 import { buildExhaustionMap, scoreLatestExhaustion } from '../lib/exhaustion/engine';
 
@@ -1047,46 +1048,57 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (candle.isClosed && candle.time !== lastScoredCandleTimeRef.current) {
         lastScoredCandleTimeRef.current = candle.time;
         const currentCandles = useChartRuntimeStore.getState().panels[panelId].candles || [];
-        const newMap = absorptionEnabled
-          ? scoreLatestCandle(currentCandles, engineRef.current, absorptionMapRef.current)
-          : new Map<number, AbsorptionResult>();
-        if (absorptionEnabled || absorptionMapRef.current.size > 0) {
-          absorptionMapRef.current = newMap;
-          setAbsorptionMap(panelId, newMap);
-        }
 
-        const newExhMap = exhaustionEnabled
-          ? scoreLatestExhaustion(currentCandles, engineRef.current, newMap, exhaustionMapRef.current, exhaustionLookback)
-          : new Map<number, ExhaustionResult>();
-        if (exhaustionEnabled || exhaustionMapRef.current.size > 0) {
-          exhaustionMapRef.current = newExhMap;
-          setExhaustionMap(panelId, newExhMap);
-        }
+        const snapshotCandles = [...currentCandles];
+        const snapshotAbsorption = absorptionMapRef.current;
+        const snapshotExhaustion = exhaustionMapRef.current;
+        const snapshotEngine = engineRef.current;
 
-        const icebergLevels = icebergEnabled
-          ? icebergEngineRef.current.update(currentCandles, engineRef.current).filter(level => level.score >= icebergMinScore).slice(0, 20)
-          : [];
-        if (icebergEnabled || icebergLevelsRef.current.length > 0) {
-          icebergLevelsRef.current = icebergLevels;
-          setIcebergLevels(panelId, icebergLevels);
-        }
-        rebuildLiquidityVacuumZones(currentCandles);
-        if (icebergEnabled) {
-          console.log(`--- Iceberg Levels (${panelId} panel) ---`);
-          if (icebergLevels.length === 0) {
-            console.log('No iceberg levels detected.');
-          } else {
-            console.table(icebergLevels.map(level => ({
-              price: level.price,
-              score: level.score,
-              rank: level.rank,
-              side: level.side,
-              totalVolume: level.totalVolume.toFixed(2),
-              candleCount: level.candleCount,
-              reasons: level.reasons.join('; '),
-            })));
+        setTimeout(() => {
+          markStart('closedCandleScoring');
+          const newMap = absorptionEnabled
+            ? scoreLatestCandle(snapshotCandles, snapshotEngine, snapshotAbsorption)
+            : new Map<number, AbsorptionResult>();
+          if (absorptionEnabled || snapshotAbsorption.size > 0) {
+            absorptionMapRef.current = newMap;
+            setAbsorptionMap(panelId, newMap);
           }
-        }
+
+          const newExhMap = exhaustionEnabled
+            ? scoreLatestExhaustion(snapshotCandles, snapshotEngine, newMap, snapshotExhaustion, exhaustionLookback)
+            : new Map<number, ExhaustionResult>();
+          if (exhaustionEnabled || snapshotExhaustion.size > 0) {
+            exhaustionMapRef.current = newExhMap;
+            setExhaustionMap(panelId, newExhMap);
+          }
+
+          const icebergLevels = icebergEnabled
+            ? icebergEngineRef.current.update(snapshotCandles, snapshotEngine).filter(level => level.score >= icebergMinScore).slice(0, 20)
+            : [];
+          if (icebergEnabled || icebergLevelsRef.current.length > 0) {
+            icebergLevelsRef.current = icebergLevels;
+            setIcebergLevels(panelId, icebergLevels);
+          }
+          rebuildLiquidityVacuumZones(snapshotCandles);
+          markEnd('closedCandleScoring');
+          
+          if (icebergEnabled) {
+            console.log(`--- Iceberg Levels (${panelId} panel) ---`);
+            if (icebergLevels.length === 0) {
+              console.log('No iceberg levels detected.');
+            } else {
+              console.table(icebergLevels.map(level => ({
+                price: level.price,
+                score: level.score,
+                rank: level.rank,
+                side: level.side,
+                totalVolume: level.totalVolume.toFixed(2),
+                candleCount: level.candleCount,
+                reasons: level.reasons.join('; '),
+              })));
+            }
+          }
+        }, 0);
 
         const panelState = useChartStore.getState().panels[panelId];
         if (panelState.liquidityHeatmapEnabled && panelState.liquidityHistoryEnabled) {

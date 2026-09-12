@@ -51,6 +51,8 @@ export function initCanvas(canvas: HTMLCanvasElement, width: number, height: num
     const scaleX = canvas.width / logicalWidth;
     const scaleY = canvas.height / logicalHeight;
     ctx.scale(scaleX, scaleY);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
   }
   return ctx;
 }

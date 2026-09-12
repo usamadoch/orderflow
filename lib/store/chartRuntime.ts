@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create, type StateCreator, type StoreApi, type UseBoundStore } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { Candle } from '../../types/candle';
 import { Trade } from '../../types/trade';
@@ -46,7 +46,7 @@ export interface MT5PositionPayload {
   volume: number;
 }
 
-interface ChartRuntimeState {
+export interface ChartRuntimeState {
   panels: Record<PanelId, PanelRuntimeState>;
   crosshair: GlobalCrosshair;
   tradingStatus: TradingRuntimeStatus;
@@ -101,6 +101,22 @@ interface ChartRuntimeState {
   drawingDrag: DrawingDragState | null;
   setDrawingDrag: (drag: DrawingDragState | null) => void;
 }
+
+export type ChartRuntimeStore = UseBoundStore<
+  Omit<StoreApi<ChartRuntimeState>, 'subscribe'> & {
+    subscribe: {
+      (listener: (state: ChartRuntimeState, prevState: ChartRuntimeState) => void): () => void;
+      <U>(
+        selector: (state: ChartRuntimeState) => U,
+        listener: (selectedState: U, previousSelectedState: U) => void,
+        options?: {
+          equalityFn?: (a: U, b: U) => boolean;
+          fireImmediately?: boolean;
+        }
+      ): () => void;
+    };
+  }
+>;
 
 function createDefaultRuntimePanel(): PanelRuntimeState {
   return {
@@ -267,8 +283,7 @@ function mergeAggregateBubbleEvents(existing: BubbleEvent[], incoming: BubbleEve
     .slice(-MAX_AGGREGATE_BUBBLE_EVENTS);
 }
 
-export const useChartRuntimeStore = create<ChartRuntimeState>()(
-  subscribeWithSelector((set, get) => ({
+const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
   panels: {
     left: createDefaultRuntimePanel(),
     right: createDefaultRuntimePanel(),
@@ -1012,6 +1027,8 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
       set((state) => ({
         tradingStatus: {
           ...state.tradingStatus,
+          modifyingOrderId: null,
+          dragPreviewPrice: null,
           modifyLoading: false,
           modifyError: message,
           modifySuccess: null,
@@ -1023,8 +1040,11 @@ export const useChartRuntimeStore = create<ChartRuntimeState>()(
       return result;
     }
   },
-  })),
-);
+});
+
+export const useChartRuntimeStore: ChartRuntimeStore = create<ChartRuntimeState>()(
+  subscribeWithSelector(createRuntimeStore) as unknown as StateCreator<ChartRuntimeState, []>
+) as unknown as ChartRuntimeStore;
 
 function getModeBadge(mode: TradingMode): TradingModeBadge {
   if (mode === 'binance_live') return 'live';

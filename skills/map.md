@@ -145,30 +145,30 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots for docked bottom indicators, treating volume bars as an on-canvas overlay.
 - `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, reordering controls, and quick toggles using FigButton.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas coordinator with integer DPR, strict chart area clipping, TradingView-standard drawing layering (unselected drawings & position tools rendered behind candles on liveCtx, selected tools elevated to overlay ctx with handles/toolbars), bracket drag, and position close popup.
+- `components/chart/ChartCanvas.tsx` → Main canvas coordinator with integer DPR, price/time axis cursor states (ns-resize, ew-resize), crosshair bounds, drawing layering, bracket drag, and position close popup.
 - `components/chart/chartCanvasUtils.ts` → Continuous fractional index interpolation (resolveIndexFromTime) from timestamps for multi-timeframe drawing sync, coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
 - `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (1px white defaults, FigUI tooltips, Trash2 delete, box border/fill, and position tool profit & stop loss color pickers) and custom profile controls with pointer/mouse event isolation.
-- `components/chart/CvdPanel.tsx` → Canvas panel rendering Cumulative Volume Delta with background DEFAULT_CANVAS_BG fill, unoccluded drawTimeAxis on bgCtx, global grid styling sync, overlay rendering of placed vertical lines and time badges extending down on top of CVD to the bottom time axis, candle-to-candle vertical crosshair snapping synchronized with the main chart, canvas-scoped mouse events, and live drawingDrag overlay sync.
+- `components/chart/CvdPanel.tsx` → Canvas panel rendering Cumulative Volume Delta with price/time axis resize cursors (ns-resize, ew-resize), vertical scale wheel zoom, time axis alignment, and synced crosshairs.
 - `components/chart/cvdPanelUtils.ts` → CVD panel scale calculations and viewport mapping.
 - `components/chart/drawStatsGrid.ts` → Canvas overlay rendering volume, delta, and CVD summary statistics grid with borders styled using global 28% grid opacity.
 - `components/chart/useCoordinates.ts` → Hook calculating price/time coordinate bounds, visible range mappings, and timeToIndex with boundary extrapolation.
 - `components/chart/hooks/useVwapHydration.ts` → Hook explicitly fetching and subscribing to historical 1m base candles to hydrate accurate VWAP state independent of active timeframe.
-- `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, crosshair interaction, canvas-scoped mouse movement with dynamic window drag listeners, and multi-canvas synchronization.
+- `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, axis drag/wheel zoom, ns-resize and ew-resize cursor states, and crosshair coordination.
 - `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry with half-pixel alignment for crisp high-definition lines and TradingView-standard hollow candle rendering.
-- `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with transparent background on liveCtx allowing bgCtx time axis to display, global 28% grid styling, borderless rounded crosshair badge, and divergence markers.
+- `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with crisp TradingView axis typography, half-pixel ticks, and divergence markers.
 - `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters, delta, or delta-volume profiles per price level.
 - `components/chart/drawBubbles.ts` → Volume bubble renderer visualizing trade volume, order clusters, and color modes with percentile scaling and 3D effects.
 - `components/chart/drawVolumeBars.ts` → On-canvas histogram overlay renderer for volume and trade counts layered behind candlesticks with moving average.
 - `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC line, developing POC trail, Value Area, and HVN/LVN levels with configurable cosmetics.
 - `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer.
-- `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools with evaluatePositionOutcome terminating arrow & darker shading upon TP/SL hit, vertical time-split shading, and dynamic contrast text.
+- `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools with crisp integer-aligned axis badges, dynamic contrast text, and SL/TP termination.
 - `lib/utils/format.ts` → Formatting helpers for price precision, time countdowns, elapsed duration, volume/delta abbreviations, and TradingView-style date-time badges (e.g. `Sat 05 Sep '26  12:05 AM`).
 - `components/chart/drawVwap.ts` → Canvas renderer for VWAP line, rolling window, and envelope bands.
-- `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer with price axis styled in #2C2C2C (DEFAULT_HEADER_SIDEBAR_BG), supporting configurable horizontal/vertical grid line toggles, colors, global 28% opacity time axis border, and boundary clipping/checking preventing labels from spilling into adjacent corners.
-- `components/chart/drawPriceLine.ts` → Current market price line, badge, and timer renderer.
+- `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer with crisp TradingView typography, half-pixel tick marks, integer-aligned text, and boundary clipping.
+- `components/chart/drawPriceLine.ts` → Current market price line, badge, and countdown renderer with crisp half-pixel line and integer-aligned typography.
 - `components/chart/drawTradingOverlays.ts` → Canvas overlay renderer for limit orders, SL/TP brackets, virtual positions, and fill markers.
-- `components/chart/drawCrosshair.ts` → Crosshair overlay and axis price/time label renderer with borderless 2px rounded badges, axis-aligned price coordinates, customizable color, opacity, thickness, line styles, verticalLineHeight extending through indicators, and clamped bottom time label.
+- `components/chart/drawCrosshair.ts` → Crosshair overlay and axis price/time label renderer with crisp TradingView typography, borderless 2px rounded badges, and integer-aligned text coordinates.
 - `components/chart/drawAbsorption.ts` → Marker renderer for absorption signals.
 - `components/chart/drawExhaustion.ts` → Marker renderer for exhaustion signals.
 - `components/chart/AbsorptionTooltip.tsx` → Hover tooltip displaying absorption signal details.
@@ -313,7 +313,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/validators/orderValidation.ts` → Order request payload reading, parameter normalization, validation, and error response builder.
 - `lib/validators/historyValidation.ts` → History API time parameter normalization, contract type resolution, and query parameter validation.
 - `lib/utils/tradingApiUtils.ts` → Shared symbol/limit normalizers and error snapshot/status builders for trading APIs.
-- `lib/utils/canvas.ts` → Low-level HTML5 Canvas drawing primitives and integer-aligned DPR canvas initializer.
+- `lib/utils/canvas.ts` → Low-level HTML5 Canvas drawing primitives and integer-aligned DPR canvas initializer with high-quality smoothing.
 - `lib/utils/chartUtils.ts` → General charting calculations and data helper functions.
 - `lib/utils/delta.ts` → Delta calculation and CVD series formatting utilities.
 - `lib/utils/format.ts` → Formatter functions for currency, numbers, volume, and timestamps.

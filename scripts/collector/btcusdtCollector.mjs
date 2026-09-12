@@ -1,5 +1,178 @@
 import pg from 'pg'
+import pino from 'pino'
 const { Pool } = pg
+
+// Standalone Pino Logger & Burst Collapsing (Self-contained for standalone EC2 deployment)
+const isProduction = process.env.NODE_ENV === 'production'
+
+let prettyTransport = undefined
+if (!isProduction) {
+  try {
+    if (typeof import.meta.resolve === 'function') {
+      import.meta.resolve('pino-pretty')
+    }
+    prettyTransport = {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:HH:MM:ss.l',
+        ignore: 'pid,hostname',
+      },
+    }
+  } catch {
+    prettyTransport = undefined
+  }
+}
+
+const pinoOptions = {
+  level: process.env.LOG_LEVEL || 'info',
+  hooks: {
+    logMethod(inputArgs, method) {
+      if (typeof inputArgs[0] === 'string' && typeof inputArgs[1] === 'object' && inputArgs[1] !== null) {
+        const [msg, obj, ...rest] = inputArgs
+        return method.call(this, obj, msg, ...rest)
+      }
+      return method.apply(this, inputArgs)
+    },
+  },
+  ...(prettyTransport ? { transport: prettyTransport } : {}),
+}
+
+export function createBurstCollapsingLogger(targetLogger, options = {}) {
+  const windowMs = options.windowMs ?? 200
+  const maxWaitMs = options.maxWaitMs ?? 1000
+  const activeBursts = new Map()
+
+  function extractKey(level, msg, details) {
+    const code =
+      details?.code ||
+      (details?.error && typeof details.error === 'object' && 'code' in details.error
+        ? details.error.code
+        : null) ||
+      details?.status ||
+      msg
+    const identity = details?.identity || details?.source || details?.contractType || 'default'
+    return `${level}:${String(code)}:${String(identity)}`
+  }
+
+  function handleBurstLog(level, arg1, arg2) {
+    let msg = ''
+    let details = {}
+
+    if (typeof arg1 === 'string') {
+      msg = arg1
+      details = typeof arg2 === 'object' && arg2 !== null ? { ...arg2 } : {}
+    } else if (typeof arg1 === 'object' && arg1 !== null) {
+      details = { ...arg1 }
+      msg = typeof arg2 === 'string' ? arg2 : ''
+    } else {
+      msg = String(arg1)
+    }
+
+    const key = extractKey(level, msg, details)
+    const existing = activeBursts.get(key)
+
+    if (!existing) {
+      targetLogger[level](details, msg)
+
+      const burst = {
+        level,
+        msg,
+        details,
+        count: 1,
+        firstAt: Date.now(),
+        lastAt: Date.now(),
+        slidingTimeout: null,
+        maxTimeout: null,
+      }
+
+      burst.slidingTimeout = setTimeout(() => {
+        if (burst.count > 1) {
+          targetLogger[level]({ ...burst.details, repeated: burst.count }, burst.msg)
+        }
+        if (burst.maxTimeout) clearTimeout(burst.maxTimeout)
+        activeBursts.delete(key)
+      }, windowMs)
+
+      burst.maxTimeout = setTimeout(() => {
+        if (burst.count > 1) {
+          targetLogger[level]({ ...burst.details, repeated: burst.count }, burst.msg)
+          burst.count = 0
+        }
+      }, maxWaitMs)
+
+      burst.slidingTimeout?.unref?.()
+      burst.maxTimeout?.unref?.()
+
+      activeBursts.set(key, burst)
+    } else {
+      existing.count += 1
+      existing.lastAt = Date.now()
+      existing.details = { ...existing.details, ...details }
+
+      if (existing.slidingTimeout) {
+        clearTimeout(existing.slidingTimeout)
+      }
+
+      existing.slidingTimeout = setTimeout(() => {
+        if (existing.count > 1) {
+          targetLogger[level]({ ...existing.details, repeated: existing.count }, existing.msg)
+        }
+        if (existing.maxTimeout) clearTimeout(existing.maxTimeout)
+        activeBursts.delete(key)
+      }, windowMs)
+
+      existing.slidingTimeout?.unref?.()
+    }
+  }
+
+  function flush() {
+    for (const burst of activeBursts.values()) {
+      if (burst.slidingTimeout) clearTimeout(burst.slidingTimeout)
+      if (burst.maxTimeout) clearTimeout(burst.maxTimeout)
+      if (burst.count > 1) {
+        targetLogger[burst.level]({ ...burst.details, repeated: burst.count }, burst.msg)
+      }
+    }
+    activeBursts.clear()
+  }
+
+  return {
+    info(arg1, arg2) {
+      if (typeof arg1 === 'string' && typeof arg2 === 'object' && arg2 !== null) {
+        targetLogger.info(arg2, arg1)
+      } else {
+        targetLogger.info(arg1, typeof arg2 === 'string' ? arg2 : undefined)
+      }
+    },
+    warn(arg1, arg2) {
+      handleBurstLog('warn', arg1, arg2)
+    },
+    error(arg1, arg2) {
+      handleBurstLog('error', arg1, arg2)
+    },
+    debug(arg1, arg2) {
+      if (typeof arg1 === 'string' && typeof arg2 === 'object' && arg2 !== null) {
+        targetLogger.debug(arg2, arg1)
+      } else {
+        targetLogger.debug(arg1, typeof arg2 === 'string' ? arg2 : undefined)
+      }
+    },
+    child(bindings) {
+      const childPino = targetLogger.child(bindings)
+      return createBurstCollapsingLogger(childPino, options)
+    },
+    flush,
+    raw: targetLogger,
+  }
+}
+
+export const baseLogger = pino(pinoOptions)
+export const logger = createBurstCollapsingLogger(baseLogger)
+
+export function createSourceLogger(source) {
+  return logger.child({ source })
+}
 
 const SYMBOL = 'BTCUSDT'
 const BASE_TIMEFRAME = '1m'
@@ -14,10 +187,15 @@ const DEFAULT_MAX_DEDUPE_KEYS = 100000
 const DEFAULT_RECONNECT_MIN_MS = 1000
 const DEFAULT_RECONNECT_MAX_MS = 30000
 const DEFAULT_HEARTBEAT_MS = 30000
+const DEFAULT_EXPECTED_IDLE_THRESHOLD_MS = 90000
+const DEFAULT_MAX_QUEUED_BUBBLE_EVENTS = 50000
+const DEFAULT_MAX_BUFFERED_SLICES = 120
 const DEFAULT_AGG_BUBBLE_MIN_VOLUME_BTC = 15
 const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT = 75
 const DEFAULT_AGG_BUBBLE_MIN_TRADE_COUNT_VOLUME_BTC = 3
 const DEFAULT_AGG_BUBBLE_FLUSH_SIZE = 1000
+// Warn if any in-memory slice has been pending for longer than this before the hard buffer cap is hit
+const PERSISTENCE_WARN_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
 
 // No longer using MongoDB collections
 
@@ -32,7 +210,10 @@ const TARGETS = [
 ]
 
 const config = loadConfig()
-const logger = createLogger(config.logLevel)
+const sourceLoggers = {
+  spot: createSourceLogger('spot'),
+  futures: createSourceLogger('futures'),
+}
 process.stdout.on('error', handlePipeError)
 process.stderr.on('error', handlePipeError)
 const metrics = {
@@ -74,8 +255,8 @@ const queuedAggregateBubbleEvents = []
 const queuedAggregateBubbleKeys = new Set()
 
 const sourceState = {
-  spot: { connected: false, isBackfilling: false, lastTradeTimeMs: null },
-  futures: { connected: false, isBackfilling: false, lastTradeTimeMs: null },
+  spot: { connected: false, isBackfilling: false, lastTradeTimeMs: null, lastMessageAtMs: null },
+  futures: { connected: false, isBackfilling: false, lastTradeTimeMs: null, lastMessageAtMs: null },
 }
 
 if (process.env.NODE_ENV !== 'test') {
@@ -145,7 +326,7 @@ function loadConfig() {
   const tickSize = DEFAULT_TICK_SIZE
 
   return {
-    timescaleUrl: 'postgres://tsdbadmin:p9n9i8cp16mol92v@cq4mtid05l.sa5cunrc6u.tsdb.cloud.timescale.com:34945/tsdb?sslmode=no-verify',
+    timescaleUrl: process.env.TIMESCALEDB_URL || process.env.PG_URL || '',
     retentionSeconds: Math.floor(DEFAULT_RETENTION_DAYS * 24 * 60 * 60),
     flushIntervalMs: DEFAULT_FLUSH_INTERVAL_MS,
     statusIntervalMs: DEFAULT_STATUS_INTERVAL_MS,
@@ -157,6 +338,9 @@ function loadConfig() {
     reconnectMinMs: DEFAULT_RECONNECT_MIN_MS,
     reconnectMaxMs: DEFAULT_RECONNECT_MAX_MS,
     heartbeatMs: DEFAULT_HEARTBEAT_MS,
+    expectedIdleThresholdMs: process.env.COLLECTOR_EXPECTED_IDLE_THRESHOLD_MS ? Number(process.env.COLLECTOR_EXPECTED_IDLE_THRESHOLD_MS) : DEFAULT_EXPECTED_IDLE_THRESHOLD_MS,
+    maxQueuedBubbleEvents: process.env.COLLECTOR_MAX_QUEUED_BUBBLES ? Number(process.env.COLLECTOR_MAX_QUEUED_BUBBLES) : DEFAULT_MAX_QUEUED_BUBBLE_EVENTS,
+    maxBufferedSlices: process.env.COLLECTOR_MAX_BUFFERED_SLICES ? Number(process.env.COLLECTOR_MAX_BUFFERED_SLICES) : DEFAULT_MAX_BUFFERED_SLICES,
     exitAfterMs: 0,
     tickSize,
     profileBaseBucketSize: Math.max(MIN_PROFILE_BASE_BUCKET_SIZE, tickSize),
@@ -208,6 +392,8 @@ function createRuntime(target) {
     profileBaseBucketSize: config.profileBaseBucketSize,
     firstFullyCoveredBaseTimeBySource: { spot: null, futures: null },
     latestBaseTimeBySource: { spot: null, futures: null },
+    taintedRangesBySource: { spot: [], futures: [] },
+    firstWriteFailureAtMs: null,
     processedTradeKeys: new BoundedSet(config.maxDedupeKeys),
     persistedSlices: new BoundedSet(config.maxDedupeKeys),
     footprintSlices: new Map(),
@@ -216,6 +402,7 @@ function createRuntime(target) {
 }
 
 function createBinanceStreamClient(source) {
+  const log = sourceLoggers[source] || logger
   const lowerSymbol = SYMBOL.toLowerCase()
   const baseUrl = source === 'spot'
     ? 'wss://data-stream.binance.vision/stream'
@@ -245,48 +432,57 @@ function createBinanceStreamClient(source) {
 
     ws.onopen = () => {
       reconnectAttempts = 0
-      logger.info('stream connected', { source, streams })
+      log.info('stream connected', { source, streams })
       sourceState[source].connected = true
+      sourceState[source].lastMessageAtMs = Date.now()
       
       const gapStart = sourceState[source].lastTradeTimeMs
       if (gapStart) {
-        const gapEnd = Date.now()
         sourceState[source].isBackfilling = true
-        runBackfill(source, gapStart, gapEnd).catch(error => {
-          logger.error('backfill fatal error', { source, error: getErrorMessage(error) })
-        }).finally(() => {
-          sourceState[source].isBackfilling = false
-        })
+        runBackfillUntilComplete(source, gapStart)
+          .then((result) => {
+            if (!result.ok) {
+              markSourceGap(source, result.cursor, Date.now())
+            }
+          })
+          .catch((error) => {
+            log.error('backfill fatal error', { source, error: getErrorMessage(error) })
+            markSourceGap(source, gapStart, Date.now())
+          })
+          .finally(() => {
+            sourceState[source].isBackfilling = false
+          })
       } else {
         sourceState[source].isBackfilling = false
       }
 
       heartbeatTimer = setInterval(() => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return
-        try {
-          ws.ping?.()
-        } catch {
-          // Browser-compatible WebSocket implementations do not expose ping.
+        const lastMsg = sourceState[source].lastMessageAtMs ?? Date.now()
+        const idleMs = Date.now() - lastMsg
+        if (idleMs > config.expectedIdleThresholdMs) {
+          log.warn('stream appears stalled, forcing reconnect', { source, idleMs, thresholdMs: config.expectedIdleThresholdMs })
+          ws.close()
         }
       }, config.heartbeatMs)
     }
 
     ws.onmessage = (event) => {
-      sourceState[source].lastTradeTimeMs = Date.now()
+      sourceState[source].lastMessageAtMs = Date.now()
       handleStreamMessage(source, String(event.data)).catch((error) => {
-        logger.error('stream message handling failed', { source, error: getErrorMessage(error) })
+        log.error('stream message handling failed', { source, error: getErrorMessage(error) })
       })
     }
 
     ws.onerror = (event) => {
-      logger.error('stream error', { source, error: describeWebSocketEvent(event) })
+      log.error('stream error', { source, error: describeWebSocketEvent(event) })
     }
 
     ws.onclose = (event) => {
       clearTimers()
       sourceState[source].connected = false
       if (shuttingDown) return
-      logger.warn('stream closed', { source, code: event.code, reason: event.reason })
+      log.warn('stream closed', { source, code: event.code, reason: event.reason })
       scheduleReconnect()
     }
   }
@@ -297,7 +493,7 @@ function createBinanceStreamClient(source) {
       config.reconnectMaxMs,
       config.reconnectMinMs * 2 ** Math.min(reconnectAttempts - 1, 10),
     )
-    logger.warn('stream reconnect scheduled', { source, attempt: reconnectAttempts, delayMs: delay })
+    log.warn('stream reconnect scheduled', { source, attempt: reconnectAttempts, delayMs: delay })
     reconnectTimer = setTimeout(connect, delay)
   }
 
@@ -325,7 +521,8 @@ async function handleStreamMessage(source, raw) {
     const close = Number(data.k?.c)
     if (Number.isFinite(close) && close > 0) {
       priceReferences[source] = close
-      logger.debug('contract price reference updated', { source, price: close })
+      const log = sourceLoggers[source] || logger
+      log.debug('contract price reference updated', { source, price: close })
     }
     return
   }
@@ -345,6 +542,7 @@ async function handleStreamMessage(source, raw) {
 
   if (!isValidTrade(trade)) return
 
+  sourceState[source].lastTradeTimeMs = Date.now()
   metrics.tradesReceived[source] += 1
   queueAggregateBubbleCandidate(trade)
   for (const runtime of runtimes) {
@@ -365,6 +563,7 @@ function getAggregateTradeCount(trade) {
 }
 
 function queueAggregateBubbleCandidate(trade) {
+  const log = sourceLoggers[trade.source] || logger
   if (config.enableWrites && !config.dryRun && !config.aggregateBubbleWritesEnabled) {
     metrics.aggregateBubbles.skippedPersistenceDisabled += 1
     return
@@ -386,6 +585,7 @@ function queueAggregateBubbleCandidate(trade) {
   const key = `${SYMBOL}:${trade.source}:${trade.id}`
   if (queuedAggregateBubbleKeys.has(key)) {
     metrics.aggregateBubbles.duplicatesSkipped += 1
+    log.warn('duplicate aggregate bubble candidate skipped', { key })
     return
   }
   rememberBoundedSet(queuedAggregateBubbleKeys, key, config.maxDedupeKeys)
@@ -404,6 +604,16 @@ function queueAggregateBubbleCandidate(trade) {
   if (qualifiedBy.length === 0) {
     metrics.aggregateBubbles.skippedBelowThreshold += 1
     return
+  }
+
+  if (queuedAggregateBubbleEvents.length >= config.maxQueuedBubbleEvents) {
+    const dropCount = queuedAggregateBubbleEvents.length - config.maxQueuedBubbleEvents + 1
+    queuedAggregateBubbleEvents.splice(0, dropCount)
+    log.error('DATA_LOSS bubble queue cap exceeded, dropped oldest events', {
+      droppedCount: dropCount,
+      remainingCount: queuedAggregateBubbleEvents.length,
+      maxCap: config.maxQueuedBubbleEvents,
+    })
   }
 
   queuedAggregateBubbleEvents.push({
@@ -428,9 +638,11 @@ function queueAggregateBubbleCandidate(trade) {
 }
 
 function ingestTrade(runtime, trade) {
+  const log = sourceLoggers[trade.source] || logger
   const tradeKey = getTradeKey(trade)
   if (runtime.processedTradeKeys.has(tradeKey)) {
     metrics.tradesSkippedDuplicate += 1
+    log.warn('duplicate trade skipped', { identity: runtime.identity, tradeKey })
     return
   }
   runtime.processedTradeKeys.add(tradeKey)
@@ -438,6 +650,13 @@ function ingestTrade(runtime, trade) {
   const alignedPrice = getAlignedPrice(runtime.contractType, trade)
   if (!Number.isFinite(alignedPrice)) {
     metrics.tradesSkippedMissingReference += 1
+    log.error('DATA_LOSS trade skipped due to missing price reference', {
+      identity: runtime.identity,
+      contractType: runtime.contractType,
+      source: trade.source,
+      tradeId: trade.id,
+      tradePrice: trade.price,
+    })
     return
   }
 
@@ -449,6 +668,14 @@ function ingestTrade(runtime, trade) {
     runtime.latestBaseTimeBySource[trade.source] ?? baseTime,
     baseTime,
   )
+
+  const openRanges = runtime.taintedRangesBySource[trade.source]
+  if (openRanges && openRanges.length > 0) {
+    const lastRange = openRanges[openRanges.length - 1]
+    if (lastRange && lastRange.end === null) {
+      lastRange.end = baseTime
+    }
+  }
 
   aggregateFootprint(runtime, baseTime, alignedPrice, trade)
   aggregateProfile(runtime, baseTime, alignedPrice, trade)
@@ -567,12 +794,14 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
       const result = await writeClosedSlice(runtime, sliceTime, footprintRows, profileRows)
       runtime.persistedSlices.add(persistedKey)
       deleteSlice(runtime, sliceTime)
+      runtime.firstWriteFailureAtMs = null
       metrics.slicesPersisted += 1
       metrics.footprintRowsInserted += result.footprint.inserted
       metrics.footprintRowsSkipped += result.footprint.skipped
       metrics.profileRowsInserted += result.profile.inserted
       metrics.profileRowsSkipped += result.profile.skipped
-      logger.info('closed 1m slice persisted', {
+      const log = sourceLoggers[runtime.contractType] || logger
+      log.info('closed 1m slice persisted', {
         reason,
         identity: runtime.identity,
         candleTime: sliceTime,
@@ -583,12 +812,31 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
         baseBucketSize: runtime.profileBaseBucketSize,
       })
     } catch (error) {
+      if (runtime.firstWriteFailureAtMs === null) {
+        runtime.firstWriteFailureAtMs = Date.now()
+      }
       metrics.writeFailures += 1
-      logger.error('closed 1m slice persist failed', {
+      const pendingSlices = getSortedSliceTimes(runtime).length
+      const log = sourceLoggers[runtime.contractType] || logger
+      log.error('closed 1m slice persist failed', {
         identity: runtime.identity,
         candleTime: sliceTime,
+        pendingSlices,
         error: getErrorMessage(error),
       })
+
+      const currentSlices = getSortedSliceTimes(runtime)
+      if (currentSlices.length > config.maxBufferedSlices) {
+        const oldestSlice = currentSlices[0]
+        deleteSlice(runtime, oldestSlice)
+        log.error('DATA_LOSS slice buffer cap exceeded due to persistent write failures, dropped oldest slice', {
+          identity: runtime.identity,
+          droppedSliceTime: oldestSlice,
+          remainingSlices: getSortedSliceTimes(runtime).length,
+          maxCap: config.maxBufferedSlices,
+          failureDurationMs: Date.now() - runtime.firstWriteFailureAtMs,
+        })
+      }
       return
     }
   }
@@ -596,11 +844,12 @@ async function persistRuntimeEligibleSlices(runtime, reason) {
 
 
 async function writeClosedSlice(runtime, sliceTime, footprintRows, profileRows) {
+  const log = sourceLoggers[runtime.contractType] || logger
   const footprintDocuments = toFootprintDocuments(runtime, sliceTime, footprintRows)
   const profileDocuments = toProfileDocuments(runtime, sliceTime, profileRows)
 
   if (config.dryRun || !config.enableWrites) {
-    logger.info('dry-run closed slice write', {
+    log.info('dry-run closed slice write', {
       identity: runtime.identity,
       candleTime: sliceTime,
       footprintRows: footprintDocuments.length,
@@ -618,7 +867,7 @@ async function writeClosedSlice(runtime, sliceTime, footprintRows, profileRows) 
   try {
     return await executeSliceWrite(runtime, sliceTime, footprintDocuments, profileDocuments)
   } catch (firstError) {
-    logger.warn('slice write failed, data remains in memory to retry on next interval', {
+    log.warn('slice write failed, data remains in memory to retry on next interval', {
       identity: runtime.identity,
       candleTime: sliceTime,
       error: getErrorMessage(firstError),
@@ -704,6 +953,7 @@ async function persistAggregateBubbleEvents(reason) {
     logger.error('aggregate bubble candidate persist failed', {
       reason,
       rows: batch.length,
+      pendingRows: queuedAggregateBubbleEvents.length,
       error: getErrorMessage(error),
     })
   }
@@ -914,18 +1164,73 @@ async function updateCollectorMeta(values) {
   await Promise.all(updates)
 }
 
-function markSourceGap(source) {
+function markSourceGap(source, start = null, end = null) {
+  const log = sourceLoggers[source] || logger
   for (const runtime of runtimes) {
     if (!runtime.activeSources.includes(source)) continue
     
-    const gapStart = runtime.latestBaseTimeBySource[source]
-    if (gapStart !== null) {
-       runtime.taintedRangesBySource[source].push({ start: gapStart, end: null })
-    }
+    const rangeStart = start ?? runtime.latestBaseTimeBySource[source] ?? Date.now()
+    const rangeEnd = end ?? null
+    runtime.taintedRangesBySource[source].push({ start: rangeStart, end: rangeEnd })
     runtime.latestBaseTimeBySource[source] = null
   }
   priceReferences[source] = null
-  logger.warn('source marked partial after stream gap', { source })
+  log.error('DATA_GAP backfill exhausted retries, range marked tainted', {
+    source,
+    rangeStart: start ?? 'unspecified',
+    rangeEnd: end ?? 'open',
+  })
+
+  if (config.enableWrites && !config.dryRun && pgPool) {
+    const rangeStart = start ?? null
+    const rangeEnd = end ?? null
+    // Write both the JSON blob (existing) and a structured row in collector_gaps (new)
+    updateCollectorMeta({
+      tainted_ranges: JSON.stringify(getAllTaintedRanges()),
+    }).catch((err) => {
+      logger.error('failed to record tainted ranges to collector_meta', { error: getErrorMessage(err) })
+    })
+    insertGapRecord(source, rangeStart, rangeEnd, 'backfill_exhausted').catch((err) => {
+      logger.error('failed to insert gap record into collector_gaps', { error: getErrorMessage(err) })
+    })
+  }
+}
+
+/**
+ * Insert a structured gap record into the collector_gaps audit table.
+ * Requires migration: scripts/collector/migrations/001_collector_gaps.sql
+ */
+async function insertGapRecord(source, gapStart, gapEnd, reason) {
+  if (!pgPool) return
+  await pgPool.query(
+    `INSERT INTO collector_gaps (source, gap_start, gap_end, reason)
+     VALUES ($1, $2, $3, $4)`,
+    [source, gapStart, gapEnd, reason]
+  )
+}
+
+function hasActiveTaintedRanges() {
+  for (const runtime of runtimes) {
+    for (const source of runtime.activeSources) {
+      if (runtime.taintedRangesBySource[source]?.length > 0) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function getAllTaintedRanges() {
+  const ranges = {}
+  for (const source of SOURCES) {
+    ranges[source] = []
+    for (const runtime of runtimes) {
+      if (runtime.taintedRangesBySource[source]) {
+        ranges[source].push(...runtime.taintedRangesBySource[source])
+      }
+    }
+  }
+  return ranges
 }
 
 function getCoverageStart(runtime) {
@@ -958,22 +1263,124 @@ function deleteSlice(runtime, sliceTime) {
   runtime.profileSlices.delete(sliceTime)
 }
 
+let lastStatusMetrics = {
+  tradesReceived: { spot: 0, futures: 0 },
+  tradesAccepted: 0,
+  tradesSkippedDuplicate: 0,
+  tradesSkippedMissingReference: 0,
+  slicesPersisted: 0,
+  writeFailures: 0,
+  bubblesQualified: 0,
+  bubblesInserted: 0,
+}
+
+/**
+ * Returns 'degraded' if any runtime has an active unresolved write failure,
+ * or if any pending slice is older than PERSISTENCE_WARN_THRESHOLD_MS.
+ * This is separate from 'health' (which reflects tainted/gap ranges).
+ */
+function getPersistenceHealth() {
+  const nowMs = Date.now()
+  for (const runtime of runtimes) {
+    if (runtime.firstWriteFailureAtMs !== null) {
+      return 'degraded'
+    }
+    const sliceTimes = getSortedSliceTimes(runtime)
+    if (sliceTimes.length > 0) {
+      const oldestSliceMs = sliceTimes[0] * 1000
+      if (nowMs - oldestSliceMs > PERSISTENCE_WARN_THRESHOLD_MS) {
+        return 'degraded'
+      }
+    }
+  }
+  return 'ok'
+}
+
+/**
+ * Returns the age in ms of the oldest in-memory slice across all runtimes,
+ * or null if there are no pending slices.
+ */
+function getOldestPendingSliceAgeMs() {
+  const nowMs = Date.now()
+  let oldest = null
+  for (const runtime of runtimes) {
+    const sliceTimes = getSortedSliceTimes(runtime)
+    if (sliceTimes.length > 0) {
+      const ageMs = nowMs - sliceTimes[0] * 1000
+      if (oldest === null || ageMs > oldest) {
+        oldest = ageMs
+      }
+    }
+  }
+  return oldest
+}
+
 async function logStatus() {
   const pendingSlices = runtimes.reduce((total, runtime) => total + getSortedSliceTimes(runtime).length, 0)
-  const conciseStatus = {
-    pendingSlices,
-    pendingBubbles: queuedAggregateBubbleEvents.length,
-    trades: metrics.tradesReceived,
-    fails: metrics.writeFailures
+  const health = hasActiveTaintedRanges() ? 'DEGRADED' : 'ok'
+  const persistenceHealth = getPersistenceHealth()
+  const oldestPendingSliceAgeMs = getOldestPendingSliceAgeMs()
+
+  // Warn early if slices are aging dangerously — before the hard drop cap hits
+  if (persistenceHealth === 'degraded' && oldestPendingSliceAgeMs !== null) {
+    logger.warn('PERSISTENCE_DEGRADED oldest pending slice is aging, data loss risk increasing', {
+      oldestPendingSliceAgeMs,
+      warnThresholdMs: PERSISTENCE_WARN_THRESHOLD_MS,
+      pendingSlices,
+    })
   }
 
-  logger.info('collector status', conciseStatus)
+  const sinceLastInterval = {
+    tradesReceived: {
+      spot: metrics.tradesReceived.spot - lastStatusMetrics.tradesReceived.spot,
+      futures: metrics.tradesReceived.futures - lastStatusMetrics.tradesReceived.futures,
+    },
+    tradesAccepted: metrics.tradesAccepted - lastStatusMetrics.tradesAccepted,
+    tradesSkippedDuplicate: metrics.tradesSkippedDuplicate - lastStatusMetrics.tradesSkippedDuplicate,
+    tradesSkippedMissingReference: metrics.tradesSkippedMissingReference - lastStatusMetrics.tradesSkippedMissingReference,
+    slicesPersisted: metrics.slicesPersisted - lastStatusMetrics.slicesPersisted,
+    writeFailures: metrics.writeFailures - lastStatusMetrics.writeFailures,
+    bubblesQualified: metrics.aggregateBubbles.qualified - lastStatusMetrics.bubblesQualified,
+    bubblesInserted: metrics.aggregateBubbles.inserted - lastStatusMetrics.bubblesInserted,
+  }
 
-  if (config.enableWrites && !config.dryRun) {
+  lastStatusMetrics = {
+    tradesReceived: { ...metrics.tradesReceived },
+    tradesAccepted: metrics.tradesAccepted,
+    tradesSkippedDuplicate: metrics.tradesSkippedDuplicate,
+    tradesSkippedMissingReference: metrics.tradesSkippedMissingReference,
+    slicesPersisted: metrics.slicesPersisted,
+    writeFailures: metrics.writeFailures,
+    bubblesQualified: metrics.aggregateBubbles.qualified,
+    bubblesInserted: metrics.aggregateBubbles.inserted,
+  }
+
+  logger.info('collector status', {
+    health,
+    persistenceHealth,
+    oldestPendingSliceAgeMs,
+    pendingSlices,
+    pendingBubbles: queuedAggregateBubbleEvents.length,
+    sinceLastInterval,
+    cumulative: {
+      tradesReceived: metrics.tradesReceived,
+      tradesAccepted: metrics.tradesAccepted,
+      tradesSkippedDuplicate: metrics.tradesSkippedDuplicate,
+      tradesSkippedMissingReference: metrics.tradesSkippedMissingReference,
+      slicesPersisted: metrics.slicesPersisted,
+      writeFailures: metrics.writeFailures,
+      aggregateBubbles: metrics.aggregateBubbles,
+    },
+  })
+
+  if (config.enableWrites && !config.dryRun && pgPool) {
     await updateCollectorMeta({
       last_collector_heartbeat: new Date().toISOString(),
       collector_status: JSON.stringify({
         symbol: SYMBOL,
+        health,
+        persistenceHealth,
+        oldestPendingSliceAgeMs,
         pendingSlices,
         pendingAggregateBubbleEvents: queuedAggregateBubbleEvents.length,
         tradesReceived: metrics.tradesReceived,
@@ -1018,6 +1425,9 @@ async function shutdown(signal, flushTimer, statusTimer) {
   if (pgPool) {
     await pgPool.end()
   }
+  sourceLoggers.spot.flush?.()
+  sourceLoggers.futures.flush?.()
+  logger.flush?.()
   logger.info('collector stopped')
   process.exit(0)
 }
@@ -1065,9 +1475,12 @@ function isValidTrade(trade) {
 // }
 
 async function runBackfill(source, startTime, endTime) {
-  if (endTime - startTime < 1000) return // Ignore gaps under 1s
+  const log = sourceLoggers[source] || logger
+  if (endTime - startTime < 1000) {
+    return { ok: true, cursor: endTime }
+  }
   
-  logger.info('starting auto-backfill for gap', { source, gapMs: endTime - startTime })
+  log.info('starting auto-backfill for gap', { source, gapMs: endTime - startTime })
   
   const isSpot = source === 'spot'
   const baseUrl = isSpot ? 'https://api.binance.com/api/v3' : 'https://fapi.binance.com/fapi/v1'
@@ -1081,12 +1494,15 @@ async function runBackfill(source, startTime, endTime) {
     try {
       const response = await fetch(url)
       if (!response.ok) {
-        logger.error('backfill request failed', { source, status: response.status, statusText: response.statusText })
+        log.error('backfill request failed', { source, status: response.status, statusText: response.statusText })
         break
       }
       
       const trades = await response.json()
-      if (trades.length === 0) break
+      if (trades.length === 0) {
+        currentStartTime = endTime
+        break
+      }
 
       for (const data of trades) {
         const trade = {
@@ -1112,82 +1528,61 @@ async function runBackfill(source, startTime, endTime) {
       totalFetched += trades.length
       
       const lastTradeTime = trades[trades.length - 1].T
-      if (trades.length < 1000) break
+      if (trades.length < 1000) {
+        currentStartTime = endTime
+        break
+      }
       
       currentStartTime = lastTradeTime + 1
       await new Promise(resolve => setTimeout(resolve, 100))
     } catch (error) {
-      logger.error('backfill network error', { source, error: getErrorMessage(error) })
+      log.error('backfill network error', { source, error: getErrorMessage(error) })
       break
     }
   }
   
-  logger.info('auto-backfill completed', { source, totalFetched })
+  const completed = currentStartTime >= endTime
+  if (completed) {
+    log.info('auto-backfill completed', { source, totalFetched })
+  }
+  return { ok: completed, cursor: currentStartTime }
 }
 
-function createLogger(level) {
-  const debugEnabled = level === 'debug'
-  const useJson = config.logFormat === 'json'
-  const useColors = !useJson && Boolean(process.stdout?.isTTY)
-  const levelStyles = {
-    debug: useColors ? '\x1b[36mDEBUG\x1b[0m' : 'DEBUG',
-    info: useColors ? '\x1b[32mINFO \x1b[0m' : 'INFO ',
-    warn: useColors ? '\x1b[33mWARN \x1b[0m' : 'WARN ',
-    error: useColors ? '\x1b[31mERROR\x1b[0m' : 'ERROR',
-  }
+async function runBackfillUntilComplete(source, startTime) {
+  const log = sourceLoggers[source] || logger
+  let cursor = startTime
+  let attempt = 0
+  const maxAttempts = 20
 
-  const log = (severity, message, details) => {
-    const timestamp = new Date().toISOString().replace('T', ' ').replace('Z', ' UTC')
-
-    if (useJson) {
-      const payload = {
-        ts: new Date().toISOString(),
-        level: severity,
-        message,
-        ...(details ? { details } : {}),
-      }
-      console.log(JSON.stringify(payload))
-      return
+  while (!shuttingDown) {
+    const endTime = Date.now()
+    const result = await runBackfill(source, cursor, endTime)
+    if (result.ok) {
+      return { ok: true, cursor: endTime }
     }
 
-    const isSerious = severity === 'error' || severity === 'warn'
-    const hr = useColors ? '\x1b[90m' + '─'.repeat(80) + '\x1b[0m' : '─'.repeat(80)
-
-    if (isSerious) console.log(hr)
-
-    let detailsStr = ''
-    if (details !== undefined) {
-      if (typeof details === 'string') {
-        detailsStr = ` [${details}]`
-      } else {
-        try {
-          detailsStr = ' ' + JSON.stringify(details)
-        } catch {
-          detailsStr = ' [Object]'
-        }
-      }
+    cursor = result.cursor
+    attempt += 1
+    if (attempt > maxAttempts) {
+      return { ok: false, cursor }
     }
 
-    console.log(`[${timestamp}] ${levelStyles[severity]} ${message}${detailsStr}`)
-
-    if (isSerious) console.log(hr)
+    const delay = Math.min(
+      config.reconnectMaxMs,
+      config.reconnectMinMs * 2 ** Math.min(attempt - 1, 10),
+    )
+    log.warn('backfill incomplete, retrying', {
+      source,
+      attempt,
+      delayMs: delay,
+      cursor,
+    })
+    await new Promise((r) => setTimeout(r, delay))
   }
-
-  return {
-    debug(message, details) {
-      if (debugEnabled) log('debug', message, details)
-    },
-    info(message, details) {
-      log('info', message, details)
-    },
-    warn(message, details) {
-      log('warn', message, details)
-    },
-    error(message, details) {
-      log('error', message, details)
-    },
-  }
+  return { ok: false, cursor }
 }
+
+
 
 function describeWebSocketEvent(event) {
   if (!event) return 'unknown websocket error'
@@ -1239,17 +1634,32 @@ export const _test = {
   config,
   runtimes,
   metrics,
+  sourceState,
+  sourceLoggers,
+  logger,
+  createBurstCollapsingLogger,
+  createSourceLogger,
   queuedAggregateBubbleEvents,
   queuedAggregateBubbleKeys,
   priceReferences,
   createRuntime,
   markSourceGap,
+  hasActiveTaintedRanges,
+  getAllTaintedRanges,
   getCoverageStart,
   getClosedBeforeTime,
   getSortedSliceTimes,
   deleteSlice,
   ingestTrade,
+  handleStreamMessage,
+  queueAggregateBubbleCandidate,
+  runBackfill,
+  runBackfillUntilComplete,
   persistRuntimeEligibleSlices,
+  logStatus,
+  getPersistenceHealth,
+  getOldestPendingSliceAgeMs,
+  insertGapRecord,
   setPgPool: (p) => { pgPool = p },
   setShuttingDown: (val) => { shuttingDown = val },
   setPersistPromise: (val) => { persistPromise = val },

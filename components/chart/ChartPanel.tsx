@@ -20,6 +20,29 @@ import { CvdPanel } from './CvdPanel';
 import { formatCvdValue } from './drawCvd';
 import { IndicatorLabels } from './IndicatorLabels';
 
+function onRenderCallback(
+  id: string,
+  phase: "mount" | "update" | "nested-update",
+  actualDuration: number,
+  baseDuration: number,
+  startTime: number
+) {
+  if (actualDuration >= 10 && typeof window !== 'undefined') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const markBuf = (window as any).__markBuf;
+    if (markBuf) {
+      markBuf.push({
+        type: 'mark',
+        label: `ReactRender(${phase})`,
+        startTime,
+        duration: actualDuration,
+        wallTime: new Date((performance.timeOrigin || 0) + startTime).toISOString().split('T')[1].replace('Z', '')
+      });
+      if (markBuf.length > 200) markBuf.shift();
+    }
+  }
+}
+
 interface ChartPanelProps {
   panelId: PanelId;
 }
@@ -175,121 +198,127 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
           className={`relative min-h-0 ${isCvdCompact ? 'flex-1' : ''}`}
           style={{ height: isCvdExpanded ? `${100 - panel.cvdPanelHeightPct}%` : panel.cvdEnabled ? '100%' : '100%' }}
         >
-          <ChartCanvas
-            panelId={panelId}
-            chartMode={panel.chartMode}
-            footprintMode={panel.footprintMode}
-            bucketSize={panel.bucketSize}
-            barWidth={panel.barWidth}
-            scrollOffset={panel.scrollOffset}
-            timeframe={panel.timeframe}
-            isLoadingHistory={panel.isLoadingHistory}
-            engine={engine}
-            volumeProfileEngine={volumeProfileEngine}
-            volumeProfileRevision={volumeProfileRevision}
-            tickSize={tickSize}
-            absorptionEnabled={panel.absorptionEnabled}
-            absorptionMinScore={panel.absorptionMinScore}
-            absorptionSide={panel.absorptionSide}
-            absorptionShowLabels={panel.absorptionShowLabels}
-            bubblesEnabled={panel.bubblesEnabled}
-            bubbleFilterRender={panel.bubbleFilterRender}
-            bubbleStdDevVal={panel.bubbleStdDevVal}
-            bubbleOutStdDevPerc={panel.bubbleOutStdDevPerc}
-            bubbleSizeBy={panel.bubbleSizeBy}
-            aggregateBubbleMarketSource={flowSource}
-            bubbleThreshold={panel.bubbleThreshold}
-            bubbleThresholdMode={panel.bubbleThresholdMode}
-            bubbleMinOrders={panel.bubbleMinOrders}
-            bubbleSide={panel.bubbleSide}
-            bubbleScaleMode={panel.bubbleScaleMode}
-            bubbleColorMode={panel.bubbleColorMode}
-            bubbleVolumeColorMode={panel.bubbleVolumeColorMode}
-            bubbleDisplayMode={panel.bubbleDisplayMode}
-            bubbleBidColor={panel.bubbleBidColor}
-            bubbleAskColor={panel.bubbleAskColor}
-            bubbleLineWidth={panel.bubbleLineWidth}
-            bubbleOpacity={panel.bubbleOpacity}
-            activeChartContractType={panel.contractType}
-            activeDataSourceMode={panel.dataSourceMode}
-            tradingSymbol={panelSymbol}
-            tradingContractType={panel.contractType}
-            activeIndicators={panel.activeIndicators}
-            volumeBarsEnabled={panel.volumeBarsEnabled}
-            volumeBarsInputData={panel.volumeBarsInputData}
-            volumeBarsMarketSource={volumeFlowSource}
-            volumeBarsFilterMode={panel.volumeBarsFilterMode}
-            volumeBarsMovingAverageLength={panel.volumeBarsMovingAverageLength}
-            volumeBarsFilterMin={panel.volumeBarsFilterMin}
-            volumeBarsFilterMax={panel.volumeBarsFilterMax}
-            volumeBarsColorMode={panel.volumeBarsColorMode}
-            volumeBarsOpacity={panel.volumeBarsOpacity}
-            volumeBarsHeightPct={panel.volumeBarsHeightPct}
-            volumeBarsShowValueText={panel.volumeBarsShowValueText}
-            volumeBarsTextSize={panel.volumeBarsTextSize}
-            volumeBarsAverageLineEnabled={panel.volumeBarsAverageLineEnabled}
-            volumeBarsAverageLength={panel.volumeBarsAverageLength}
-            isDrawMode={panel.isDrawMode}
-            customProfileRange={panel.customProfileRange}
-            customProfileLocked={panel.customProfileLocked}
-            drawnLines={panel.drawnLines}
-            lineDrawMode={panel.lineDrawMode}
-            exhaustionEnabled={panel.exhaustionEnabled}
-            exhaustionMinScore={panel.exhaustionMinScore}
-            exhaustionSide={panel.exhaustionSide}
-            exhaustionShowProvisional={panel.exhaustionShowProvisional}
-            icebergEnabled={panel.icebergEnabled}
-            icebergMinScore={panel.icebergMinScore}
-            icebergLookback={panel.icebergLookback}
-            icebergShowSuspected={panel.icebergShowSuspected}
-            icebergShowLabels={panel.icebergShowLabels}
-            icebergShowTint={panel.icebergShowTint}
-            liquidityVacuumEnabled={panel.liquidityVacuumEnabled}
-            liquidityVacuumMinScore={panel.liquidityVacuumMinScore}
-            liquidityVacuumShowLabels={panel.liquidityVacuumShowLabels}
-            liquidityVacuumOpacity={panel.liquidityVacuumOpacity}
-            profileWidthPct={panel.profileWidthPct}
-            defaultProfileEnabled={panel.defaultProfileEnabled}
-            defaultProfilePeriod={panel.defaultProfilePeriod}
-            profileResolutionTicks={panel.profileResolutionTicks}
-            profileMinRowHeight={panel.profileMinRowHeight}
-            profileOpacity={panel.profileOpacity}
-            profileMinRowWidth={panel.profileMinRowWidth}
-            profileScaleMode={panel.profileScaleMode}
-            profileShowPocHighlight={panel.profileShowPocHighlight}
-            profileShowVaFill={panel.profileShowVaFill}
-            profileShowPocLine={panel.profileShowPocLine}
-            profileShowVaLines={panel.profileShowVaLines}
-            profileType={panel.profileType}
-            profileInputData={panel.profileInputData}
-            profileFilterMin={panel.profileFilterMin}
-            profileFilterMax={panel.profileFilterMax}
-            profileNodeSensitivity={panel.profileNodeSensitivity}
-            historicalSessionProfileEnabled={panel.historicalSessionProfileEnabled}
-            deltaProfileWidth={panel.deltaProfileWidth}
-            sessionsEnabled={panel.sessionsEnabled}
-            sessions={panel.sessions}
-            liquidityEnabled={panel.liquidityEnabled}
-            liquidityOpacity={panel.liquidityOpacity}
-            liquidityBucketSize={panel.liquidityBucketSize}
-            liquidityHistory={liquidityHistory}
-            liquidityHeatmapEnabled={panel.liquidityHeatmapEnabled}
-            liquidityHeatmapOpacity={panel.liquidityHeatmapOpacity}
-            liquidityHeatmapAgeFade={panel.liquidityHeatmapAgeFade}
-            liquidityHeatmapWidth={panel.liquidityHeatmapWidth}
-            liquidityHeatmapShowPulled={panel.liquidityHeatmapShowPulled}
-            liquidityHeatmapShowConsumed={panel.liquidityHeatmapShowConsumed}
-            liquidityHeatmapShowPersistence={panel.liquidityHeatmapShowPersistence}
-            liquidityHeatmapShowCurrentLabel={panel.liquidityHeatmapShowCurrentLabel}
-            liquidityHeatmapProfileSync={panel.liquidityHeatmapProfileSync}
-            statsIndicatorEnabled={panel.statsIndicatorEnabled}
-            statsIndicatorItems={panel.statsIndicatorItems}
-            globalTimezone={globalTimezone}
-            globalTimeFormat={globalTimeFormat}
-            showTimeAxis={!panel.cvdEnabled || panel.cvdMinimized}
-            onBarWidthChange={(v) => setBarWidth(panelId, v)}
-            onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
-          />
+          <React.Profiler id="ChartCanvas" onRender={onRenderCallback}>
+            <ChartCanvas
+              panelId={panelId}
+              chartMode={panel.chartMode}
+              footprintMode={panel.footprintMode}
+              bucketSize={panel.bucketSize}
+              barWidth={panel.barWidth}
+              scrollOffset={panel.scrollOffset}
+              timeframe={panel.timeframe}
+              isLoadingHistory={panel.isLoadingHistory}
+              engine={engine}
+              volumeProfileEngine={volumeProfileEngine}
+              volumeProfileRevision={volumeProfileRevision}
+              tickSize={tickSize}
+              absorptionEnabled={panel.absorptionEnabled}
+              absorptionMinScore={panel.absorptionMinScore}
+              absorptionSide={panel.absorptionSide}
+              absorptionShowLabels={panel.absorptionShowLabels}
+              bubblesEnabled={panel.bubblesEnabled}
+              bubbleFilterRender={panel.bubbleFilterRender}
+              bubbleStdDevVal={panel.bubbleStdDevVal}
+              bubbleOutStdDevPerc={panel.bubbleOutStdDevPerc}
+              bubbleSizeBy={panel.bubbleSizeBy}
+              aggregateBubbleMarketSource={flowSource}
+              bubbleThreshold={panel.bubbleThreshold}
+              bubbleThresholdMode={panel.bubbleThresholdMode}
+              bubbleMinOrders={panel.bubbleMinOrders}
+              bubbleSide={panel.bubbleSide}
+              bubbleScaleMode={panel.bubbleScaleMode}
+              bubbleColorMode={panel.bubbleColorMode}
+              bubbleVolumeColorMode={panel.bubbleVolumeColorMode}
+              bubbleDisplayMode={panel.bubbleDisplayMode}
+              bubbleBidColor={panel.bubbleBidColor}
+              bubbleAskColor={panel.bubbleAskColor}
+              bubbleLineWidth={panel.bubbleLineWidth}
+              bubbleOpacity={panel.bubbleOpacity}
+              activeChartContractType={panel.contractType}
+              activeDataSourceMode={panel.dataSourceMode}
+              tradingSymbol={panelSymbol}
+              tradingContractType={panel.contractType}
+              activeIndicators={panel.activeIndicators}
+              volumeBarsEnabled={panel.volumeBarsEnabled}
+              volumeBarsInputData={panel.volumeBarsInputData}
+              volumeBarsMarketSource={volumeFlowSource}
+              volumeBarsFilterMode={panel.volumeBarsFilterMode}
+              volumeBarsMovingAverageLength={panel.volumeBarsMovingAverageLength}
+              volumeBarsFilterMin={panel.volumeBarsFilterMin}
+              volumeBarsFilterMax={panel.volumeBarsFilterMax}
+              volumeBarsColorMode={panel.volumeBarsColorMode}
+              volumeBarsOpacity={panel.volumeBarsOpacity}
+              volumeBarsHeightPct={panel.volumeBarsHeightPct}
+              volumeBarsShowValueText={panel.volumeBarsShowValueText}
+              volumeBarsTextSize={panel.volumeBarsTextSize}
+              volumeBarsAverageLineEnabled={panel.volumeBarsAverageLineEnabled}
+              volumeBarsAverageLength={panel.volumeBarsAverageLength}
+              isDrawMode={panel.isDrawMode}
+              customProfileRange={panel.customProfileRange}
+              customProfileLocked={panel.customProfileLocked}
+              drawnLines={panel.drawnLines}
+              lineDrawMode={panel.lineDrawMode}
+              exhaustionEnabled={panel.exhaustionEnabled}
+              exhaustionMinScore={panel.exhaustionMinScore}
+              exhaustionSide={panel.exhaustionSide}
+              exhaustionShowProvisional={panel.exhaustionShowProvisional}
+              icebergEnabled={panel.icebergEnabled}
+              icebergMinScore={panel.icebergMinScore}
+              icebergLookback={panel.icebergLookback}
+              icebergShowSuspected={panel.icebergShowSuspected}
+              icebergShowLabels={panel.icebergShowLabels}
+              icebergShowTint={panel.icebergShowTint}
+              liquidityVacuumEnabled={panel.liquidityVacuumEnabled}
+              liquidityVacuumMinScore={panel.liquidityVacuumMinScore}
+              liquidityVacuumShowLabels={panel.liquidityVacuumShowLabels}
+              liquidityVacuumOpacity={panel.liquidityVacuumOpacity}
+              profileWidthPct={panel.profileWidthPct}
+              defaultProfileEnabled={panel.defaultProfileEnabled}
+              defaultProfilePeriod={panel.defaultProfilePeriod}
+              profileResolutionTicks={panel.profileResolutionTicks}
+              profileMinRowHeight={panel.profileMinRowHeight}
+              profileOpacity={panel.profileOpacity}
+              profileMinRowWidth={panel.profileMinRowWidth}
+              profileScaleMode={panel.profileScaleMode}
+              profileShowPocHighlight={panel.profileShowPocHighlight}
+              profileShowVaFill={panel.profileShowVaFill}
+              profileShowPocLine={panel.profileShowPocLine}
+              profileShowVaLines={panel.profileShowVaLines}
+              profileType={panel.profileType}
+              profileInputData={panel.profileInputData}
+              profilePocColor={panel.profilePocColor}
+              profileHvnColor={panel.profileHvnColor}
+              profileLvnColor={panel.profileLvnColor}
+              profilePocWidth={panel.profilePocWidth}
+              profileFilterMin={panel.profileFilterMin}
+              profileFilterMax={panel.profileFilterMax}
+              historicalSessionProfileEnabled={panel.historicalSessionProfileEnabled}
+              profileNodeSensitivity={panel.profileNodeSensitivity}
+              deltaProfileWidth={panel.deltaProfileWidth}
+              sessionsEnabled={panel.sessionsEnabled}
+              sessions={panel.sessions}
+              liquidityEnabled={panel.liquidityEnabled}
+              liquidityOpacity={panel.liquidityOpacity}
+              liquidityBucketSize={panel.liquidityBucketSize}
+              liquidityHistory={liquidityHistory}
+              liquidityHeatmapEnabled={panel.liquidityHeatmapEnabled}
+              liquidityHeatmapOpacity={panel.liquidityHeatmapOpacity}
+              liquidityHeatmapAgeFade={panel.liquidityHeatmapAgeFade}
+              liquidityHeatmapWidth={panel.liquidityHeatmapWidth}
+              liquidityHeatmapShowPulled={panel.liquidityHeatmapShowPulled}
+              liquidityHeatmapShowConsumed={panel.liquidityHeatmapShowConsumed}
+              liquidityHeatmapShowPersistence={panel.liquidityHeatmapShowPersistence}
+              liquidityHeatmapShowCurrentLabel={panel.liquidityHeatmapShowCurrentLabel}
+              liquidityHeatmapProfileSync={panel.liquidityHeatmapProfileSync}
+              statsIndicatorEnabled={panel.statsIndicatorEnabled}
+              statsIndicatorItems={panel.statsIndicatorItems}
+              globalTimezone={globalTimezone}
+              globalTimeFormat={globalTimeFormat}
+              showTimeAxis={!panel.cvdEnabled || panel.cvdMinimized}
+              onBarWidthChange={(v) => setBarWidth(panelId, v)}
+              onScrollOffsetChange={(v) => setScrollOffset(panelId, v)}
+            />
+          </React.Profiler>
           <IndicatorLabels panelId={panelId} isLoading={isPanelLoading} />
           {process.env.NEXT_PUBLIC_DISABLE_TRADING !== 'true' && <OrderTicket panelId={panelId} />}
           {isCvdCompact && (

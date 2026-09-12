@@ -485,14 +485,14 @@ function drawPriceAxisBadge(
   ctx.fill();
 
   const priceLabel = formatPrice(price);
-  ctx.font = 'bold 12px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+  ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
   if (ctx.measureText(priceLabel).width > badgeWidth - 4) {
-    ctx.font = 'bold 11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
   }
   ctx.fillStyle = getContrastTextColor(accentColor);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(priceLabel, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
+  ctx.fillText(priceLabel, Math.round(badgeX + badgeWidth / 2), Math.round(badgeY + badgeHeight / 2));
   ctx.restore();
 }
 
@@ -510,7 +510,7 @@ function drawTimeAxisBadge(
 
   ctx.save();
   ctx.globalAlpha = 1;
-  ctx.font = 'bold 11px "BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+  ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
   const paddingX = 8;
   const textWidth = ctx.measureText(timeText).width;
   const badgeWidth = textWidth + paddingX * 2;
@@ -529,7 +529,7 @@ function drawTimeAxisBadge(
   ctx.fillStyle = getContrastTextColor(accentColor);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(timeText, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2);
+  ctx.fillText(timeText, Math.round(badgeX + badgeWidth / 2), Math.round(badgeY + badgeHeight / 2));
   ctx.restore();
 }
 
