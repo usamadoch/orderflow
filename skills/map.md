@@ -41,7 +41,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 │
 ├── types/                       # Shared TypeScript types
 ├── artifacts/                   # Audits, reports, and design documents
-├── skills/                      # Project map and change log
+├── skills/                      # Project map, change log, and large-file section maps
+│   └── maps/                    # Fast context and navigation maps for 800+ line files
 ├── data/                        # Local generated database files
 ├── scripts/                     # Local verification scripts
 ├── package.json                 # Scripts and dependencies
@@ -135,7 +136,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Feed / Engine Context
 
-- `components/FeedProvider.tsx` → Panel feed orchestrator managing WebSocket streaming, throttled history hydration (candles, footprint, profile, bubbles), depth synchronization, and store writes.
+- `components/FeedProvider.tsx` → Panel feed orchestrator and WebSocket lifecycle ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/FeedProvider.map.md)).
 - `components/ChartEngineContext.tsx` → React context providing panel aggregation engine, footprint/profile caches, orderbook heatmap, and redraw triggers.
 
 ### Chart Rendering
@@ -145,7 +146,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots for docked bottom indicators, treating volume bars as an on-canvas overlay.
 - `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, reordering controls, and quick toggles using FigButton.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas coordinator with integer DPR, price/time axis cursor states (ns-resize, ew-resize), crosshair bounds, drawing layering, bracket drag, and position close popup.
+- `components/chart/ChartCanvas.tsx` → Main canvas coordinator and multi-layer rendering pipeline ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
 - `components/chart/chartCanvasUtils.ts` → Continuous fractional index interpolation (resolveIndexFromTime) from timestamps for multi-timeframe drawing sync, coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
 - `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (1px white defaults, FigUI tooltips, Trash2 delete, box border/fill, and position tool profit & stop loss color pickers) and custom profile controls with pointer/mouse event isolation.
@@ -162,7 +163,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawVolumeBars.ts` → On-canvas histogram overlay renderer for volume and trade counts layered behind candlesticks with moving average.
 - `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC line, developing POC trail, Value Area, and HVN/LVN levels with configurable cosmetics.
 - `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer.
-- `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools with crisp integer-aligned axis badges, dynamic contrast text, and SL/TP termination.
+- `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/drawLines.map.md)).
 - `lib/utils/format.ts` → Formatting helpers for price precision, time countdowns, elapsed duration, volume/delta abbreviations, and TradingView-style date-time badges (e.g. `Sat 05 Sep '26  12:05 AM`).
 - `components/chart/drawVwap.ts` → Canvas renderer for VWAP line, rolling window, and envelope bands.
 - `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer with crisp TradingView typography, half-pixel tick marks, integer-aligned text, and boundary clipping.
@@ -189,8 +190,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Persisted Zustand store (v38) for chart preferences, indicator settings, default 28% grid opacity, drawings, UI state, layout sync preferences (crosshairSyncEnabled, drawingsSyncEnabled), and tab-aware storage isolation.
-- `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, trades, signals, trading account data, active drag state, optimistic bracket sync, and real-time drawingDrag stream.
+- `lib/store/chart.ts` → Persisted Zustand store (v38) for chart preferences, indicator settings, and themes ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartStore.map.md)).
+- `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, signals, brackets, and trades ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartRuntimeStore.map.md)).
 - `hooks/useKeyboardShortcuts.ts` → Keyboard shortcut handler for chart tools, modes, and navigation.
 - `types/chart.ts` → TypeScript definitions for chart configurations, panels, indicator options, and DrawnLine properties (including position profit/stop colors).
 
@@ -289,7 +290,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Scripts
 
-- `scripts/collector/btcusdtCollector.mjs` → Standalone Node.js collector fetching and storing BTCUSDT market data to TimescaleDB.
+- `scripts/collector/btcusdtCollector.mjs` → Standalone Node.js collector fetching and storing BTCUSDT market data to TimescaleDB ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/btcusdtCollector.map.md)).
 - `scripts/collector/runBackfill.mjs` → Data backfill script fetching historical market feeds to populate storage.
 
 ### Local Market Order Bridge
@@ -345,6 +346,18 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `artifacts/large_profile_bug_diagnosis.md` → Root cause diagnosis for custom profile cache eviction behavior.
 - `skills/map.md` → Source-of-truth file responsibility map.
 - `skills/log.md` → Chronological log of codebase changes, features, and fixes.
+- `skills/maps/` → Dedicated section maps for large source files (>800 lines).
+
+### Large File Section Maps (800+ Lines)
+
+Fast navigation for files exceeding 800 lines to avoid loading full source files:
+
+- `skills/maps/ChartCanvas.map.md` → [ChartCanvas.tsx Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md) (4,336 lines, 8 logical sections)
+- `skills/maps/FeedProvider.map.md` → [FeedProvider.tsx Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/FeedProvider.map.md) (2,905 lines, 14 logical sections)
+- `skills/maps/chartStore.map.md` → [chart.ts Store Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartStore.map.md) (2,129 lines, 8 logical sections)
+- `skills/maps/btcusdtCollector.map.md` → [btcusdtCollector.mjs Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/btcusdtCollector.map.md) (1,669 lines, 14 logical sections)
+- `skills/maps/drawLines.map.md` → [drawLines.ts Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/drawLines.map.md) (1,106 lines, 6 logical sections)
+- `skills/maps/chartRuntimeStore.map.md` → [chartRuntime.ts Store Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartRuntimeStore.map.md) (1,107 lines, 7 logical sections)
 
 ## Architecture & Tech Stack
 

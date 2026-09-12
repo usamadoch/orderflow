@@ -723,3 +723,16 @@
 - **Impact summary**:
   - Consistent switch and icon button design language across all panels and toolbars.
   - Passes all ESLint checks and `npx tsc --noEmit` with 0 errors.
+
+## [2026-09-12] - Docs: 800+ Line Source Files Section Maps
+
+- **What changed**:
+  - Audited codebase and mapped all 6 source files exceeding 800 lines into `skills/maps/`.
+  - Created detailed section maps for ChartCanvas, FeedProvider, chartStore, btcusdtCollector, drawLines, and chartRuntimeStore.
+  - Updated `skills/map.md` with direct section map navigation links for all 6 files.
+- **Why it changed**:
+  - Reduce LLM context/token consumption by enabling section-targeted inspection without loading entire multi-thousand-line files.
+- **Impact summary**:
+  - Establishes `map.md → relevant file map → relevant section → exact source lines` workflow.
+  - Zero source code changes or behavior alterations.
+
