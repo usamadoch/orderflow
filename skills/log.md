@@ -795,3 +795,36 @@
   - Establishes `map.md → relevant file map → relevant section → exact source lines` workflow.
   - Zero source code changes or behavior alterations.
 
+## [2026-09-13] - Feature: Chart Keyboard Controls & History System
+- **What changed**:
+  - Implemented 50-step undo/redo (`Ctrl+Z`/`Ctrl+Y`) for drawings/profiles in `chart.ts` with drag/keystroke throttling.
+  - Added arrow-key chart scroll (`←`/`→`) and 1-bar/1-tick object movement with priority gates in `useKeyboardShortcuts.ts`.
+  - Built `TimeframeInputModal.tsx` allowing instant interval typing (1, 5, 15, 60, 240, 1h, 4h) with Enter apply.
+  - Added `/` (indicators), `Ctrl+K` (symbol search), `Alt+R` (reset/autoscale), `Ctrl+↑`/`↓` (zoom), `Alt+S` (split layout).
+  - Enforced strict input/modal context safety and connected `selectedDrawingId` in `chartRuntime.ts`.
+- **Why it changed**: Fulfill keyboard navigation specification with senior-level architecture and zero conflicts.
+- **Impact summary**: Seamless keyboard control; zero regressions; `tsc` and `next lint` pass with 0 errors.
+
+## [2026-09-13] - Feature: Keyboard Shortcuts & Utilities Dropdown in Header
+- **What changed**:
+  - Created `KeyboardShortcutsDropdown.tsx` with categorized shortcuts (Navigation, Objects, Intervals, Tools).
+  - Mounted dropdown trigger in `Header.tsx` with FigTooltip and anchored FigPopup dropdown.
+- **Why it changed**: Provide users with instant, compact in-app cheat sheet for all chart shortcuts.
+- **Impact summary**: Seamless shortcut discovery; dark-theme aesthetics; passes tsc and next lint with 0 errors.
+
+## [2026-09-13] - Fix: Eliminate Arrow Key Lag & De-duplicate Shortcut Keys
+- **What changed**:
+  - Added reactive redraw effects in `ChartCanvas.tsx` for `scrollOffset`, `barWidth`, and drawings.
+  - Debounced storage persistence in `chart.ts` to prevent synchronous I/O blocking during key repeat.
+  - Consolidated keys in `KeyboardShortcutsDropdown.tsx` to eliminate duplicate arrow listings.
+- **Why it changed**: Fix arrow key freeze/lag and streamline shortcut presentation per feedback.
+- **Impact summary**: 60fps smooth arrow navigation; zero frame drops; `tsc` and `next lint` clean.
+
+## [2026-09-13] - Refactor: Custom Volume Profile Shortcut & Indicator Key Cleanup
+- **What changed**:
+  - Removed `Q`, `K`, `I`, `L` shortcuts for iceberg and liquidity maps/zones.
+  - Assigned `V` (and `P`) to select/toggle Custom Volume Profile directly from the toolbar.
+  - Updated toolbar tooltip and header dropdown to reflect Custom Volume Profile (V).
+- **Why it changed**: Prioritize Custom Volume Profile tool over niche indicator toggles per user request.
+- **Impact summary**: Instant Custom Volume Profile selection via keyboard; `tsc` and `next lint` clean.
+

@@ -270,3 +270,109 @@ export function distanceToSegment(px: number, py: number, x1: number, y1: number
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
 }
+
+function roundPrice(price: number): number {
+  return Number(price.toFixed(8));
+}
+
+export function moveDrawnLine(
+  line: DrawnLine,
+  deltaBars: number,
+  deltaPrice: number,
+  candles: Candle[]
+): Partial<DrawnLine> {
+  const updates: Partial<DrawnLine> = {};
+
+  if (deltaBars !== 0) {
+    if (line.type === 'vertical') {
+      const currentIdx = line.value ?? 0;
+      const newIdx = currentIdx + deltaBars;
+      updates.value = newIdx;
+      const newTime = candleTimeAt(newIdx, candles);
+      if (newTime !== undefined) updates.time = newTime;
+    } else if (line.type === 'horizontal-ray') {
+      const currentIdx = line.startIndex ?? 0;
+      const newIdx = currentIdx + deltaBars;
+      updates.startIndex = newIdx;
+      const newTime = candleTimeAt(newIdx, candles);
+      if (newTime !== undefined) updates.startTime = newTime;
+    } else if (line.type === 'box' || line.type === 'long-position' || line.type === 'short-position') {
+      const fIdx = (line.firstIndex ?? 0) + deltaBars;
+      const lIdx = (line.lastIndex ?? 0) + deltaBars;
+      updates.firstIndex = fIdx;
+      updates.lastIndex = lIdx;
+      const fTime = candleTimeAt(fIdx, candles);
+      const lTime = candleTimeAt(lIdx, candles);
+      if (fTime !== undefined) updates.firstTime = fTime;
+      if (lTime !== undefined) updates.lastTime = lTime;
+    }
+  }
+
+  if (deltaPrice !== 0) {
+    if (line.type === 'horizontal' || line.type === 'horizontal-ray') {
+      updates.value = roundPrice(line.value + deltaPrice);
+    } else if (line.type === 'box') {
+      if (line.priceHigh !== undefined) updates.priceHigh = roundPrice(line.priceHigh + deltaPrice);
+      if (line.priceLow !== undefined) updates.priceLow = roundPrice(line.priceLow + deltaPrice);
+      if (line.value !== undefined) updates.value = roundPrice(line.value + deltaPrice);
+    } else if (line.type === 'long-position' || line.type === 'short-position') {
+      updates.value = roundPrice(line.value + deltaPrice);
+      if (line.priceHigh !== undefined) updates.priceHigh = roundPrice(line.priceHigh + deltaPrice);
+      if (line.priceLow !== undefined) updates.priceLow = roundPrice(line.priceLow + deltaPrice);
+      if (line.stopPrice !== undefined) updates.stopPrice = roundPrice(line.stopPrice + deltaPrice);
+      if (line.targetPrice !== undefined) updates.targetPrice = roundPrice(line.targetPrice + deltaPrice);
+    }
+  }
+
+  return updates;
+}
+
+export function moveCustomProfileRange(
+  range: NonNullable<PanelState['customProfileRange']>,
+  deltaBars: number,
+  deltaPrice: number,
+  candles: Candle[]
+): NonNullable<PanelState['customProfileRange']> {
+  const updated = { ...range };
+
+  if (deltaBars !== 0) {
+    updated.firstIndex = Math.max(0, range.firstIndex + deltaBars);
+    updated.lastIndex = Math.max(0, range.lastIndex + deltaBars);
+    const fTime = candleTimeAt(updated.firstIndex, candles);
+    const lTime = candleTimeAt(updated.lastIndex, candles);
+    if (fTime !== undefined) updated.firstTime = fTime;
+    if (lTime !== undefined) updated.lastTime = lTime;
+  }
+
+  if (deltaPrice !== 0) {
+    updated.priceHigh = roundPrice(range.priceHigh + deltaPrice);
+    updated.priceLow = roundPrice(range.priceLow + deltaPrice);
+  }
+
+  return updated;
+}
+
+export function parseTimeframeInput(buffer: string): string | null {
+  const raw = buffer.trim().toLowerCase();
+  if (!raw) return null;
+
+  if (['1m', '5m', '15m', '1h', '4h'].includes(raw)) {
+    return raw;
+  }
+
+  if (/^\d+$/.test(raw)) {
+    const num = parseInt(raw, 10);
+    if (num === 1) return '1m';
+    if (num === 5) return '5m';
+    if (num === 15) return '15m';
+    if (num === 60) return '1h';
+    if (num === 240) return '4h';
+    return null;
+  }
+
+  if (raw === '60m') return '1h';
+  if (raw === '240m') return '4h';
+
+  return null;
+}
+

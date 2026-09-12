@@ -58,6 +58,12 @@ export function DrawingToolbar({
   const [activePicker, setActivePicker] = useState<'color' | 'border' | 'fill' | 'profit' | 'stop' | null>(null);
   const isPosition = selectedDrawing.type === 'long-position' || selectedDrawing.type === 'short-position';
 
+  const updateDrawingWithHistory = (updates: Partial<DrawnLine>) => {
+    useChartStore.getState().pushHistory(panelId);
+    useChartStore.getState().updateLine(panelId, selectedDrawing.id, updates);
+    onRedraw();
+  };
+
   return (
     <div
       className="popup-contrast absolute flex items-center gap-1 rounded border border-[#282828] bg-[#181818] p-1 shadow-2xl z-30"
@@ -74,8 +80,7 @@ export function DrawingToolbar({
           variant="ghost"
           icon
           onClick={() => {
-            useChartStore.getState().updateLine(panelId, selectedDrawing.id, { locked: !selectedDrawing.locked });
-            onRedraw();
+            updateDrawingWithHistory({ locked: !selectedDrawing.locked });
           }}
           aria-label={selectedDrawing.locked ? 'Unlock drawing' : 'Lock drawing'}
         >
@@ -87,10 +92,9 @@ export function DrawingToolbar({
       <select
         value={selectedDrawing.strokeWidth ?? DEFAULT_DRAWING_STROKE_WIDTH}
         onChange={(event) => {
-          useChartStore.getState().updateLine(panelId, selectedDrawing.id, {
+          updateDrawingWithHistory({
             strokeWidth: Number(event.target.value) as DrawingStrokeWidth,
           });
-          onRedraw();
         }}
         disabled={selectedDrawing.locked}
         className="h-7 rounded border border-[#333] bg-[#1F1F1F] px-1 text-[11px] font-bold text-[#E8E8E8] outline-none transition-colors hover:border-[#555] disabled:cursor-not-allowed disabled:opacity-45"
@@ -132,12 +136,10 @@ export function DrawingToolbar({
                 color={selectedDrawing.color ?? DEFAULT_DRAWING_COLOR}
                 opacity={selectedDrawing.opacity ?? 1}
                 onColorChange={(color) => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { color });
-                  onRedraw();
+                  updateDrawingWithHistory({ color });
                 }}
                 onOpacityChange={(opacity) => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { opacity });
-                  onRedraw();
+                  updateDrawingWithHistory({ opacity });
                 }}
                 onClose={() => setActivePicker(null)}
                 chartBounds={chartBounds}
@@ -157,8 +159,7 @@ export function DrawingToolbar({
               size="compact"
               onClick={() => {
                 const currentShowFill = selectedDrawing.showFill !== false;
-                useChartStore.getState().updateLine(panelId, selectedDrawing.id, { showFill: !currentShowFill });
-                onRedraw();
+                updateDrawingWithHistory({ showFill: !currentShowFill });
               }}
               disabled={selectedDrawing.locked}
               className={selectedDrawing.showFill !== false ? 'text-[#3D7EFF]' : 'text-gray-500'}
@@ -191,12 +192,10 @@ export function DrawingToolbar({
                 color={selectedDrawing.fillColor ?? (selectedDrawing.color ?? '#3D7EFF')}
                 opacity={selectedDrawing.fillOpacity ?? selectedDrawing.opacity ?? 1}
                 onColorChange={(fillColor) => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { fillColor });
-                  onRedraw();
+                  updateDrawingWithHistory({ fillColor });
                 }}
                 onOpacityChange={(fillOpacity) => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { fillOpacity });
-                  onRedraw();
+                  updateDrawingWithHistory({ fillOpacity });
                 }}
                 onClose={() => setActivePicker(null)}
                 chartBounds={chartBounds}
@@ -234,12 +233,10 @@ export function DrawingToolbar({
                 color={selectedDrawing.profitColor ?? CHART_BULLISH_COLOR}
                 opacity={selectedDrawing.profitOpacity ?? 0.28}
                 onColorChange={(profitColor) => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { profitColor });
-                  onRedraw();
+                  updateDrawingWithHistory({ profitColor });
                 }}
                 onOpacityChange={(profitOpacity) => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { profitOpacity });
-                  onRedraw();
+                  updateDrawingWithHistory({ profitOpacity });
                 }}
                 onClose={() => setActivePicker(null)}
                 chartBounds={chartBounds}
@@ -277,12 +274,10 @@ export function DrawingToolbar({
                 color={selectedDrawing.stopColor ?? CHART_BEARISH_COLOR}
                 opacity={selectedDrawing.stopOpacity ?? 0.28}
                 onColorChange={(stopColor) => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { stopColor });
-                  onRedraw();
+                  updateDrawingWithHistory({ stopColor });
                 }}
                 onOpacityChange={(stopOpacity) => {
-                  useChartStore.getState().updateLine(panelId, selectedDrawing.id, { stopOpacity });
-                  onRedraw();
+                  updateDrawingWithHistory({ stopOpacity });
                 }}
                 onClose={() => setActivePicker(null)}
                 chartBounds={chartBounds}
@@ -317,12 +312,10 @@ export function DrawingToolbar({
               color={selectedDrawing.color ?? DEFAULT_DRAWING_COLOR}
               opacity={selectedDrawing.opacity ?? 1}
               onColorChange={(color) => {
-                useChartStore.getState().updateLine(panelId, selectedDrawing.id, { color });
-                onRedraw();
+                updateDrawingWithHistory({ color });
               }}
               onOpacityChange={(opacity) => {
-                useChartStore.getState().updateLine(panelId, selectedDrawing.id, { opacity });
-                onRedraw();
+                updateDrawingWithHistory({ opacity });
               }}
               onClose={() => setActivePicker(null)}
               chartBounds={chartBounds}

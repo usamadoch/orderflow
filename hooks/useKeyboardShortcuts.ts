@@ -1,202 +1,413 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useChartStore } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
+import {
+  moveDrawnLine,
+  moveCustomProfileRange,
+  parseTimeframeInput,
+} from '@/components/chart/chartCanvasUtils';
 
-const TIMEFRAME_KEYS: Record<string, string> = {
-  '1': '1m',
-  '2': '5m',
-  '3': '15m',
-  '4': '1h',
-  '5': '4h',
-};
+function isTypingOrInModal(e: KeyboardEvent): boolean {
+  const target = e.target as HTMLElement | null;
+  if (!target) return false;
+
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target.isContentEditable ||
+    target.getAttribute?.('contenteditable') === 'true'
+  ) {
+    return true;
+  }
+
+  const dialog = target.closest('[role="dialog"], dialog, .modal-content, [data-modal="true"]');
+  if (dialog && dialog.getAttribute('aria-label') !== 'Change Interval') {
+    return true;
+  }
+
+  return false;
+}
 
 export function useKeyboardShortcuts() {
-  const setTimeframe = useChartStore(s => s.setTimeframe);
-  const setChartMode = useChartStore(s => s.setChartMode);
-  const setBarWidth = useChartStore(s => s.setBarWidth);
-  const setScrollOffset = useChartStore(s => s.setScrollOffset);
-  const setBucketSize = useChartStore(s => s.setBucketSize);
-  const setFocusMode = useChartStore(s => s.setFocusMode);
+  const isFirstArrowInSequence = useRef(true);
+  const arrowMoveHistoryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        target?.isContentEditable
-      ) {
+      // 1. Context safety: never trigger when typing in inputs/modals (except timeframe modal)
+      if (isTypingOrInModal(e)) {
         return;
       }
 
-      const key = e.key.toLowerCase();
-      const activePanel = useChartStore.getState().activePanel;
-      const panel = useChartStore.getState().panels[activePanel];
-      const runtimePanel = useChartRuntimeStore.getState().panels[activePanel];
+      const rawKey = e.key;
+      const lowerKey = rawKey.toLowerCase();
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
-      if (e.altKey && e.shiftKey && key === 'z') {
-        e.preventDefault();
-        setFocusMode(!useChartStore.getState().focusMode);
-        return;
-      }
+      const chartStore = useChartStore.getState();
+      const runtimeStore = useChartRuntimeStore.getState();
+      const activePanel = chartStore.activePanel;
+      const panel = chartStore.panels[activePanel];
+      const runtimePanel = runtimeStore.panels[activePanel];
+      const timeframeInputState = runtimeStore.timeframeInputState;
 
-      // 1-5: Timeframe shortcuts
-      if (TIMEFRAME_KEYS[key]) {
-        e.preventDefault();
-        setTimeframe(activePanel, TIMEFRAME_KEYS[key]);
-        return;
-      }
+      // ── 2. Timeframe Modal Input Interception ─────────────────────────────
+      if (timeframeInputState?.isOpen) {
+        if (rawKey === 'Enter') {
+          e.preventDefault();
+          const resolved = parseTimeframeInput(timeframeInputState.buffer);
+          if (resolved && timeframeInputState.panelId) {
+            chartStore.setTimeframe(timeframeInputState.panelId, resolved);
+          }
+          runtimeStore.setTimeframeInputState(null);
+          return;
+        }
 
-      // C: Candle mode
-      if (key === 'c') {
-        e.preventDefault();
-        setChartMode(activePanel, 'candle');
-        return;
-      }
+        if (rawKey === 'Escape') {
+          e.preventDefault();
+          runtimeStore.setTimeframeInputState(null);
+          return;
+        }
 
-      // F: Footprint mode
-      if (key === 'f') {
-        e.preventDefault();
-        setChartMode(activePanel, 'footprint');
-        return;
-      }
-
-      // R: Reset zoom/scroll
-      if (key === 'r') {
-        e.preventDefault();
-        setBarWidth(activePanel, 12);
-        setScrollOffset(activePanel, 0);
-        return;
-      }
-
-      // [ / ]: Adjust bucket size
-      if (key === '[') {
-        e.preventDefault();
-        const newSize = Math.max(1, panel.bucketSize - 1);
-        setBucketSize(activePanel, newSize);
-        return;
-      }
-      if (key === ']') {
-        e.preventDefault();
-        setBucketSize(activePanel, panel.bucketSize + 1);
-        return;
-      }
-
-      // E: Log exhaustion map (Verification)
-      if (key === 'e') {
-        e.preventDefault();
-        console.log(`--- Exhaustion Map (${activePanel} panel) ---`);
-        if (runtimePanel.exhaustionMap.size === 0) {
-          console.log('No exhaustion signals detected.');
-        } else {
-          runtimePanel.exhaustionMap.forEach((res, time) => {
-            console.log(`[${new Date(time * 1000).toLocaleTimeString()}] Score: ${res.score} (${res.rank}) Dir: ${res.direction}`);
-            console.log(`   Reasons: ${res.reasons.join(', ')}`);
+        if (rawKey === 'Backspace') {
+          e.preventDefault();
+          const nextBuffer = timeframeInputState.buffer.slice(0, -1);
+          runtimeStore.setTimeframeInputState({
+            ...timeframeInputState,
+            buffer: nextBuffer,
           });
+          return;
         }
+
+        if (/^[0-9mhdMHD]$/.test(rawKey)) {
+          e.preventDefault();
+          if (timeframeInputState.buffer.length < 8) {
+            runtimeStore.setTimeframeInputState({
+              ...timeframeInputState,
+              buffer: timeframeInputState.buffer + lowerKey,
+            });
+          }
+          return;
+        }
+
+        // Swallow any other key while timeframe modal is open
+        e.preventDefault();
         return;
       }
 
-      // I: Log iceberg levels (Verification)
-      if (key === 'i') {
+      // ── 3. Undo / Redo Shortcuts ──────────────────────────────────────────
+      // Undo: Ctrl+Z / Cmd+Z (without Shift)
+      if (isCtrlOrCmd && !e.shiftKey && lowerKey === 'z') {
         e.preventDefault();
-        console.log(`--- Iceberg Levels (${activePanel} panel) ---`);
-        if (runtimePanel.icebergLevels.length === 0) {
-          console.log('No iceberg levels detected.');
+        chartStore.undo(activePanel);
+        return;
+      }
+
+      // Redo: Ctrl+Y / Cmd+Shift+Z / Ctrl+Shift+Z
+      if (
+        (isCtrlOrCmd && lowerKey === 'y') ||
+        (isCtrlOrCmd && e.shiftKey && lowerKey === 'z')
+      ) {
+        e.preventDefault();
+        chartStore.redo(activePanel);
+        return;
+      }
+
+      // ── 4. Utility / Dialog Shortcuts ─────────────────────────────────────
+      // Pair / Symbol Search: Ctrl+K / Cmd+K
+      if (isCtrlOrCmd && lowerKey === 'k') {
+        e.preventDefault();
+        const trigger = document.getElementById(`pair-selector-trigger-${activePanel}`);
+        trigger?.click();
+        return;
+      }
+
+      // Split Layout Toggle: Alt+S
+      if (e.altKey && !e.shiftKey && !isCtrlOrCmd && lowerKey === 's') {
+        e.preventDefault();
+        const currentMode = chartStore.layoutMode;
+        chartStore.setLayoutMode(currentMode === 'dual' ? 'single' : 'dual');
+        return;
+      }
+
+      // Reset Chart Zoom, Scroll & Auto-scale: Alt+R
+      if (e.altKey && !e.shiftKey && !isCtrlOrCmd && lowerKey === 'r') {
+        e.preventDefault();
+        chartStore.setBarWidth(activePanel, 12);
+        chartStore.setScrollOffset(activePanel, 0);
+        runtimeStore.triggerPanelRefresh(activePanel);
+        return;
+      }
+
+      // Focus Mode: Alt+Shift+Z
+      if (e.altKey && e.shiftKey && lowerKey === 'z') {
+        e.preventDefault();
+        chartStore.setFocusMode(!chartStore.focusMode);
+        return;
+      }
+
+      // Indicators Modal: / (when no modifiers)
+      if (!isCtrlOrCmd && !e.altKey && !e.shiftKey && rawKey === '/') {
+        e.preventDefault();
+        const trigger = document.getElementById(`panel-indicators-trigger-${activePanel}`);
+        trigger?.click();
+        return;
+      }
+
+      // ── 5. Zoom In / Out with Keyboard: Ctrl+Up / Ctrl+Down ────────────────
+      if (isCtrlOrCmd && (rawKey === 'ArrowUp' || rawKey === 'ArrowDown')) {
+        e.preventDefault();
+        const currentBarWidth = panel?.barWidth ?? 12;
+        if (rawKey === 'ArrowUp') {
+          chartStore.setBarWidth(activePanel, Math.min(60, currentBarWidth + 2));
         } else {
-          console.table(runtimePanel.icebergLevels.map(level => ({
-            price: level.price,
-            score: level.score,
-            rank: level.rank,
-            side: level.side,
-            totalVolume: level.totalVolume.toFixed(2),
-            candleCount: level.candleCount,
-            avgVolumePerCandle: level.avgVolumePerCandle.toFixed(2),
-            cumulativeDelta: level.cumulativeDelta.toFixed(2),
-            reasons: level.reasons.join('; '),
-          })));
+          chartStore.setBarWidth(activePanel, Math.max(4, currentBarWidth - 2));
         }
         return;
       }
 
-      // M: Toggle measurement tool
-      if (key === 'm') {
-        e.preventDefault();
-        const nextActive = !runtimePanel.measureToolActive;
-        if (nextActive) {
-          useChartStore.getState().setDrawMode(activePanel, false);
-          useChartStore.getState().setLineDrawMode(activePanel, 'none');
+      // ── 6. Selection Deletion: Delete / Backspace ──────────────────────────
+      if (rawKey === 'Delete' || rawKey === 'Backspace') {
+        const selectedDrawingId = runtimePanel?.selectedDrawingId;
+        if (selectedDrawingId) {
+          e.preventDefault();
+          chartStore.removeLine(activePanel, selectedDrawingId);
+          runtimeStore.setSelectedDrawingId(activePanel, null);
+          return;
         }
-        useChartRuntimeStore.getState().setMeasureToolActive(activePanel, nextActive);
-        return;
+
+        if (runtimePanel?.isProfileSelected && panel?.customProfileRange) {
+          e.preventDefault();
+          chartStore.setCustomProfileRange(activePanel, null);
+          runtimeStore.setProfileSelected(activePanel, false);
+          return;
+        }
       }
 
-      // S: Toggle sessions
-      if (key === 's') {
+      // ── 7. Escape: Deselect / Cancel Active Operations ─────────────────────
+      if (rawKey === 'Escape') {
         e.preventDefault();
-        useChartStore.getState().setSessionsEnabled(activePanel, !panel.sessionsEnabled);
-        return;
-      }
-
-      // Q: Toggle liquidity map
-      if (key === 'q') {
-        e.preventDefault();
-        useChartStore.getState().setLiquidityEnabled(activePanel, !panel.liquidityEnabled);
-        return;
-      }
-
-      // K: Toggle iceberg levels
-      if (key === 'k') {
-        e.preventDefault();
-        useChartStore.getState().setIcebergEnabled(activePanel, !panel.icebergEnabled);
-        return;
-      }
-
-      // V: Toggle liquidity vacuum zones
-      if (key === 'v') {
-        e.preventDefault();
-        useChartStore.getState().setLiquidityVacuumEnabled(activePanel, !panel.liquidityVacuumEnabled);
-        return;
-      }
-
-      // L: Log liquidity zones (verification)
-      if (key === 'l') {
-        e.preventDefault();
-        console.log(`--- Liquidity Zones (${activePanel} panel) ---`);
-        const zones = runtimePanel.liquidityZones;
-        if (zones.length === 0) {
-          console.log('No liquidity zones available.');
-        } else {
-          console.log(`${zones.length} zones:`);
-          console.table(zones.map(z => ({
-            price: z.price,
-            totalQty: z.totalQty.toFixed(2),
-            side: z.side,
-            intensity: z.intensity.toFixed(2),
-            levelCount: z.levelCount,
-          })));
+        if (runtimePanel?.selectedDrawingId) {
+          runtimeStore.setSelectedDrawingId(activePanel, null);
+          return;
+        }
+        if (runtimePanel?.isProfileSelected) {
+          runtimeStore.setProfileSelected(activePanel, false);
+          return;
+        }
+        if (runtimePanel?.activeMeasurement) {
+          runtimeStore.setActiveMeasurement(activePanel, null);
+          return;
+        }
+        if (panel?.isDrawMode) {
+          chartStore.setDrawMode(activePanel, false);
+          return;
+        }
+        if (panel?.lineDrawMode && panel.lineDrawMode !== 'none') {
+          chartStore.setLineDrawMode(activePanel, 'none');
+          return;
         }
         return;
       }
 
-      // Escape: Clear active measurement
-      if (key === 'escape') {
-        e.preventDefault();
-        if (runtimePanel.activeMeasurement) {
-          useChartRuntimeStore.getState().setActiveMeasurement(activePanel, null);
-        } else if (panel.isDrawMode) {
-          useChartStore.getState().setDrawMode(activePanel, false);
-        } else if (panel.lineDrawMode !== 'none') {
-          useChartStore.getState().setLineDrawMode(activePanel, 'none');
+      // ── 8. Arrow Keys Navigation & Object Movement ─────────────────────────
+      if (
+        rawKey === 'ArrowLeft' ||
+        rawKey === 'ArrowRight' ||
+        rawKey === 'ArrowUp' ||
+        rawKey === 'ArrowDown'
+      ) {
+        const selectedDrawingId = runtimePanel?.selectedDrawingId;
+        const isProfileSelected = runtimePanel?.isProfileSelected;
+        const candles = runtimePanel?.candles ?? [];
+        const tickStep = panel?.bucketSize && panel.bucketSize > 0 ? panel.bucketSize : 0.1;
+
+        // Case A: Drawing is selected -> move drawing (never move chart viewport)
+        if (selectedDrawingId) {
+          e.preventDefault();
+          const line = panel?.drawnLines.find((l) => l.id === selectedDrawingId);
+          if (line && !line.locked) {
+            let deltaBars = 0;
+            let deltaPrice = 0;
+
+            if (rawKey === 'ArrowLeft') deltaBars = -1;
+            if (rawKey === 'ArrowRight') deltaBars = 1;
+            if (rawKey === 'ArrowUp') deltaPrice = tickStep;
+            if (rawKey === 'ArrowDown') deltaPrice = -tickStep;
+
+            // Aggregated history snapshot on continuous arrow presses
+            if (isFirstArrowInSequence.current) {
+              chartStore.pushHistory(activePanel);
+              isFirstArrowInSequence.current = false;
+            }
+            if (arrowMoveHistoryTimer.current) clearTimeout(arrowMoveHistoryTimer.current);
+            arrowMoveHistoryTimer.current = setTimeout(() => {
+              isFirstArrowInSequence.current = true;
+            }, 600);
+
+            const updates = moveDrawnLine(line, deltaBars, deltaPrice, candles);
+            chartStore.updateLine(activePanel, selectedDrawingId, updates);
+            runtimeStore.triggerFootprintRedraw(activePanel);
+          }
+          return;
         }
+
+        // Case B: Profile is selected -> move profile (never move chart viewport)
+        if (isProfileSelected && panel?.customProfileRange) {
+          e.preventDefault();
+          if (!panel.customProfileLocked) {
+            let deltaBars = 0;
+            let deltaPrice = 0;
+
+            if (rawKey === 'ArrowLeft') deltaBars = -1;
+            if (rawKey === 'ArrowRight') deltaBars = 1;
+            if (rawKey === 'ArrowUp') deltaPrice = tickStep;
+            if (rawKey === 'ArrowDown') deltaPrice = -tickStep;
+
+            if (isFirstArrowInSequence.current) {
+              chartStore.pushHistory(activePanel);
+              isFirstArrowInSequence.current = false;
+            }
+            if (arrowMoveHistoryTimer.current) clearTimeout(arrowMoveHistoryTimer.current);
+            arrowMoveHistoryTimer.current = setTimeout(() => {
+              isFirstArrowInSequence.current = true;
+            }, 600);
+
+            const newRange = moveCustomProfileRange(panel.customProfileRange, deltaBars, deltaPrice, candles);
+            chartStore.setCustomProfileRange(activePanel, newRange, true);
+            runtimeStore.triggerFootprintRedraw(activePanel);
+          }
+          return;
+        }
+
+        // Case C: Nothing selected -> move chart viewport
+        if (rawKey === 'ArrowLeft') {
+          e.preventDefault();
+          const currentPanel = useChartStore.getState().panels[activePanel];
+          const currentOffset = currentPanel?.scrollOffset ?? 0;
+          const barWidth = currentPanel?.barWidth ?? 12;
+          const step = isCtrlOrCmd ? 10 * barWidth : barWidth;
+          chartStore.setScrollOffset(activePanel, currentOffset + step);
+          return;
+        }
+
+        if (rawKey === 'ArrowRight') {
+          e.preventDefault();
+          const currentPanel = useChartStore.getState().panels[activePanel];
+          const currentOffset = currentPanel?.scrollOffset ?? 0;
+          const barWidth = currentPanel?.barWidth ?? 12;
+          const step = isCtrlOrCmd ? 10 * barWidth : barWidth;
+          chartStore.setScrollOffset(activePanel, Math.max(0, currentOffset - step));
+          return;
+        }
+      }
+
+      // ── 9. Timeframe Typing Initialization (digits 1-9) ───────────────────
+      if (!isCtrlOrCmd && !e.altKey && /^[1-9]$/.test(rawKey)) {
+        e.preventDefault();
+        runtimeStore.setTimeframeInputState({
+          isOpen: true,
+          buffer: rawKey,
+          panelId: activePanel,
+        });
         return;
+      }
+
+      // ── 10. Existing Single-Key Shortcuts (No Modifiers) ──────────────────
+      if (!isCtrlOrCmd && !e.altKey && !e.shiftKey) {
+        // C: Candle mode
+        if (lowerKey === 'c') {
+          e.preventDefault();
+          chartStore.setChartMode(activePanel, 'candle');
+          return;
+        }
+
+        // F: Footprint mode
+        if (lowerKey === 'f') {
+          e.preventDefault();
+          chartStore.setChartMode(activePanel, 'footprint');
+          return;
+        }
+
+        // R: Reset zoom/scroll
+        if (lowerKey === 'r') {
+          e.preventDefault();
+          chartStore.setBarWidth(activePanel, 12);
+          chartStore.setScrollOffset(activePanel, 0);
+          return;
+        }
+
+        // [ / ]: Adjust bucket size
+        if (rawKey === '[') {
+          e.preventDefault();
+          const newSize = Math.max(1, (panel?.bucketSize ?? 1) - 1);
+          chartStore.setBucketSize(activePanel, newSize);
+          return;
+        }
+        if (rawKey === ']') {
+          e.preventDefault();
+          chartStore.setBucketSize(activePanel, (panel?.bucketSize ?? 1) + 1);
+          return;
+        }
+
+        // M: Toggle measurement tool
+        if (lowerKey === 'm') {
+          e.preventDefault();
+          const nextActive = !runtimePanel?.measureToolActive;
+          if (nextActive) {
+            chartStore.setDrawMode(activePanel, false);
+            chartStore.setLineDrawMode(activePanel, 'none');
+          }
+          runtimeStore.setMeasureToolActive(activePanel, nextActive);
+          return;
+        }
+
+        // S: Toggle sessions
+        if (lowerKey === 's') {
+          e.preventDefault();
+          chartStore.setSessionsEnabled(activePanel, !panel?.sessionsEnabled);
+          return;
+        }
+
+        // V / P: Toggle / select Custom Volume Profile from toolbar
+        if (lowerKey === 'v' || lowerKey === 'p') {
+          e.preventDefault();
+          const nextActive = !panel?.isDrawMode;
+          if (nextActive) {
+            chartStore.setLineDrawMode(activePanel, 'none');
+            runtimeStore.setMeasureToolActive(activePanel, false);
+          }
+          chartStore.setDrawMode(activePanel, nextActive);
+          return;
+        }
+
+        // E: Log exhaustion map (verification)
+        if (lowerKey === 'e') {
+          e.preventDefault();
+          console.log(`--- Exhaustion Map (${activePanel} panel) ---`);
+          if (!runtimePanel || runtimePanel.exhaustionMap.size === 0) {
+            console.log('No exhaustion signals detected.');
+          } else {
+            runtimePanel.exhaustionMap.forEach((res, time) => {
+              console.log(
+                `[${new Date(time * 1000).toLocaleTimeString()}] Score: ${res.score} (${res.rank}) Dir: ${res.direction}`
+              );
+              console.log(`   Reasons: ${res.reasons.join(', ')}`);
+            });
+          }
+          return;
+        }
       }
     };
 
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [setTimeframe, setChartMode, setBarWidth, setScrollOffset, setBucketSize, setFocusMode]);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      if (arrowMoveHistoryTimer.current) {
+        clearTimeout(arrowMoveHistoryTimer.current);
+      }
+    };
+  }, []);
 }

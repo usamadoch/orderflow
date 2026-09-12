@@ -11,6 +11,7 @@ import { useChartStore } from '../lib/store/chart';
 import { useChartRuntimeStore } from '../lib/store/chartRuntime';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useTradingSync } from '../hooks/useTradingSync';
+import { TimeframeInputModal } from '../components/ui/TimeframeInputModal';
 
 export default function Home() {
   const layoutMode = useChartStore(s => s.layoutMode);
@@ -130,6 +131,7 @@ export default function Home() {
         </main>
       </div>
 
+      <TimeframeInputModal />
       <DebugPanel />
     </div>
   );

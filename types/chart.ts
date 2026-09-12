@@ -293,6 +293,18 @@ export interface DrawnLine {
   targetPrice?: number;
 }
 
+export interface HistorySnapshot {
+  panelId: PanelId;
+  drawnLines: DrawnLine[];
+  customProfileRange: PanelState['customProfileRange'];
+}
+
+export interface TimeframeInputState {
+  isOpen: boolean;
+  buffer: string;
+  panelId: PanelId;
+}
+
 export interface PanelState {
   id: PanelId;
   activeIndicators?: IndicatorId[];
@@ -485,6 +497,7 @@ export interface PanelRuntimeState {
   exhaustionMap: Map<number, ExhaustionResult>;
   aggregateBubbleEvents: BubbleEvent[];
   isProfileSelected: boolean;
+  selectedDrawingId: string | null;
   icebergLevels: IcebergLevel[];
   liquidityVacuumZones: LiquidityVacuumZone[];
   liquidityZones: LiquidityZone[];

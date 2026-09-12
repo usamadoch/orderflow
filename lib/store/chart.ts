@@ -44,6 +44,7 @@ import type {
   TimeframeSettings,
   Measurement,
   DrawnLine,
+  HistorySnapshot,
   PanelState,
 } from '../../types/chart';
 
@@ -189,8 +190,15 @@ export interface ChartState {
   setBubbleTickCount: (panelId: PanelId, count: number) => void;
   setBubbleTimeWindowMs: (panelId: PanelId, ms: number) => void;
   setDrawMode: (panelId: PanelId, enabled: boolean) => void;
-  setCustomProfileRange: (panelId: PanelId, range: PanelState['customProfileRange']) => void;
+  setCustomProfileRange: (panelId: PanelId, range: PanelState['customProfileRange'], skipHistory?: boolean) => void;
   setCustomProfileLocked: (panelId: PanelId, locked: boolean) => void;
+  historyPast: Record<PanelId, HistorySnapshot[]>;
+  historyFuture: Record<PanelId, HistorySnapshot[]>;
+  pushHistory: (panelId: PanelId, snapshot?: HistorySnapshot) => void;
+  undo: (panelId: PanelId) => void;
+  redo: (panelId: PanelId) => void;
+  canUndo: (panelId: PanelId) => boolean;
+  canRedo: (panelId: PanelId) => boolean;
   addLine: (panelId: PanelId, line: DrawnLine) => void;
   updateLine: (panelId: PanelId, id: string, updates: Partial<DrawnLine>) => void;
   removeLine: (panelId: PanelId, id: string) => void;
@@ -795,10 +803,36 @@ const tabAwareStorage: StateStorage = {
   },
   setItem: (name, value) => {
     if (typeof window === 'undefined') return;
+    pendingStorageName = name;
+    pendingStorageValue = value;
+    if (pendingStorageTimer) clearTimeout(pendingStorageTimer);
+    pendingStorageTimer = setTimeout(flushStorage, 250);
+  },
+  removeItem: (name) => {
+    if (typeof window !== 'undefined') {
+      if (pendingStorageTimer) clearTimeout(pendingStorageTimer);
+      pendingStorageName = null;
+      pendingStorageValue = null;
+      localStorage.removeItem(name);
+      sessionStorage.removeItem(name);
+    }
+  }
+};
 
+let pendingStorageTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingStorageName: string | null = null;
+let pendingStorageValue: string | null = null;
+
+function flushStorage() {
+  if (typeof window === 'undefined' || !pendingStorageName || !pendingStorageValue) return;
+  const name = pendingStorageName;
+  const value = pendingStorageValue;
+  pendingStorageName = null;
+  pendingStorageValue = null;
+
+  try {
     const data = JSON.parse(value);
     const state = data.state || {};
-
     const tabKeys = ['panels', 'layoutMode', 'splitDirection', 'activePanel', 'splitRatio'];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -816,18 +850,29 @@ const tabAwareStorage: StateStorage = {
 
     localStorage.setItem(name, JSON.stringify({ ...data, state: localState }));
     sessionStorage.setItem(name, JSON.stringify({ ...data, state: sessionState }));
-  },
-  removeItem: (name) => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(name);
-      sessionStorage.removeItem(name);
-    }
+  } catch (e) {
+    console.error('Failed to flush storage', e);
   }
-};
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushStorage);
+}
+
+function createHistorySnapshot(state: ChartState, panelId: PanelId): HistorySnapshot {
+  const panel = state.panels[panelId];
+  return {
+    panelId,
+    drawnLines: (panel?.drawnLines || []).map((l) => ({ ...l })),
+    customProfileRange: panel?.customProfileRange ? { ...panel.customProfileRange } : null,
+  };
+}
 
 export const useChartStore = create<ChartState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
+      historyPast: { left: [], right: [] },
+      historyFuture: { left: [], right: [] },
       panels: {
         left: createDefaultPanel('left'),
         right: createDefaultPanel('right'),
@@ -1061,7 +1106,111 @@ export const useChartStore = create<ChartState>()(
           return updatePanel(state, panelId, updates);
         }),
 
-      setCustomProfileRange: (panelId, customProfileRange) =>
+      pushHistory: (panelId, customSnapshot) =>
+        set((state) => {
+          const snapshot = customSnapshot ?? createHistorySnapshot(state, panelId);
+          const past = state.historyPast[panelId] || [];
+          const newPast = [...past.slice(-49), snapshot];
+          return {
+            historyPast: {
+              ...state.historyPast,
+              [panelId]: newPast,
+            },
+            historyFuture: {
+              ...state.historyFuture,
+              [panelId]: [],
+            },
+          };
+        }),
+
+      undo: (panelId) =>
+        set((state) => {
+          const past = state.historyPast[panelId] || [];
+          if (past.length === 0) return state;
+
+          const previousSnapshot = past[past.length - 1];
+          const newPast = past.slice(0, -1);
+          const currentSnapshot = createHistorySnapshot(state, panelId);
+          const future = state.historyFuture[panelId] || [];
+          const newFuture = [...future.slice(-49), currentSnapshot];
+
+          let updatedState = updatePanel(state, panelId, {
+            drawnLines: previousSnapshot.drawnLines.map((l) => ({ ...l })),
+            customProfileRange: previousSnapshot.customProfileRange ? { ...previousSnapshot.customProfileRange } : null,
+          });
+
+          if (state.drawingsSyncEnabled) {
+            const otherPanelId = panelId === 'left' ? 'right' : 'left';
+            updatedState = updatePanel(updatedState as ChartState, otherPanelId, {
+              drawnLines: previousSnapshot.drawnLines.map((l) => ({ ...l })),
+              customProfileRange: previousSnapshot.customProfileRange ? { ...previousSnapshot.customProfileRange } : null,
+            });
+          }
+
+          return {
+            ...(updatedState as ChartState),
+            historyPast: {
+              ...state.historyPast,
+              [panelId]: newPast,
+            },
+            historyFuture: {
+              ...state.historyFuture,
+              [panelId]: newFuture,
+            },
+          };
+        }),
+
+      redo: (panelId) =>
+        set((state) => {
+          const future = state.historyFuture[panelId] || [];
+          if (future.length === 0) return state;
+
+          const nextSnapshot = future[future.length - 1];
+          const newFuture = future.slice(0, -1);
+          const currentSnapshot = createHistorySnapshot(state, panelId);
+          const past = state.historyPast[panelId] || [];
+          const newPast = [...past.slice(-49), currentSnapshot];
+
+          let updatedState = updatePanel(state, panelId, {
+            drawnLines: nextSnapshot.drawnLines.map((l) => ({ ...l })),
+            customProfileRange: nextSnapshot.customProfileRange ? { ...nextSnapshot.customProfileRange } : null,
+          });
+
+          if (state.drawingsSyncEnabled) {
+            const otherPanelId = panelId === 'left' ? 'right' : 'left';
+            updatedState = updatePanel(updatedState as ChartState, otherPanelId, {
+              drawnLines: nextSnapshot.drawnLines.map((l) => ({ ...l })),
+              customProfileRange: nextSnapshot.customProfileRange ? { ...nextSnapshot.customProfileRange } : null,
+            });
+          }
+
+          return {
+            ...(updatedState as ChartState),
+            historyPast: {
+              ...state.historyPast,
+              [panelId]: newPast,
+            },
+            historyFuture: {
+              ...state.historyFuture,
+              [panelId]: newFuture,
+            },
+          };
+        }),
+
+      canUndo: (panelId) => {
+        const past = get().historyPast[panelId] || [];
+        return past.length > 0;
+      },
+
+      canRedo: (panelId) => {
+        const future = get().historyFuture[panelId] || [];
+        return future.length > 0;
+      },
+
+      setCustomProfileRange: (panelId, customProfileRange, skipHistory) => {
+        if (!skipHistory) {
+          get().pushHistory(panelId);
+        }
         set((state) => {
           let updatedState: ChartState = { ...state, ...updatePanel(state, panelId, { customProfileRange }) };
           if (state.drawingsSyncEnabled) {
@@ -1069,7 +1218,8 @@ export const useChartStore = create<ChartState>()(
             updatedState = { ...updatedState, ...updatePanel(updatedState, otherPanelId, { customProfileRange }) };
           }
           return updatedState;
-        }),
+        });
+      },
 
       setCustomProfileLocked: (panelId, customProfileLocked) =>
         set((state) => {
@@ -1081,7 +1231,8 @@ export const useChartStore = create<ChartState>()(
           return updatedState;
         }),
 
-      addLine: (panelId, line) =>
+      addLine: (panelId, line) => {
+        get().pushHistory(panelId);
         set((state) => {
           const panel = state.panels[panelId];
           let updatedState = updatePanel(state, panelId, { drawnLines: [...panel.drawnLines, line] });
@@ -1091,7 +1242,8 @@ export const useChartStore = create<ChartState>()(
             updatedState = updatePanel(updatedState as ChartState, otherPanelId, { drawnLines: [...otherPanel.drawnLines, line] });
           }
           return updatedState as ChartState;
-        }),
+        });
+      },
 
       updateLine: (panelId, id, updates) =>
         set((state) => {
@@ -1109,7 +1261,8 @@ export const useChartStore = create<ChartState>()(
           return updatedState as ChartState;
         }),
 
-      removeLine: (panelId, id) =>
+      removeLine: (panelId, id) => {
+        get().pushHistory(panelId);
         set((state) => {
           const panel = state.panels[panelId];
           let updatedState = updatePanel(state, panelId, { drawnLines: panel.drawnLines.filter((l) => l.id !== id) });
@@ -1119,7 +1272,8 @@ export const useChartStore = create<ChartState>()(
             updatedState = updatePanel(updatedState as ChartState, otherPanelId, { drawnLines: otherPanel.drawnLines.filter((l) => l.id !== id) });
           }
           return updatedState as ChartState;
-        }),
+        });
+      },
 
       setLineDrawMode: (panelId, lineDrawMode) =>
         set((state) => {

@@ -84,7 +84,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Layout / UI Components
 
-- `components/layout/Header.tsx` → Top toolbar styled with dark #0F0F0F background and border tokens, housing connection status indicator, auth-gated storage access, and symbol/settings controls with FigTooltip triggers.
+- `components/layout/Header.tsx` → Top toolbar styled with dark #0F0F0F background and border tokens, housing keyboard shortcuts dropdown, connection status, auth-gated storage, and account widgets.
 - `components/layout/Sidebar.tsx` → Thin icon-rail sidebar (kept intact in codebase, hidden from view per UI requirements).
 - `components/ui/ChartLayoutDropdown.tsx` → Layout selector dropdown using FigPopup with mode="dropdown", stable bottom-right positioning without jumping, p-3.5 padding, rounded-xl corners, 1.5x larger layout buttons (h-10 w-12), FigUI3 trigger tooltip, and "Sync In Layout" toggles for independent Crosshair and Drawings synchronization.
 - `components/ui/ConnectionStatus.tsx` → Combined live connection status indicator with FigTooltip for connection state and manual connect trigger.
@@ -110,6 +110,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/chart-settings/SignalSettings.tsx` → Microstructure signal detection settings (absorption, exhaustion, iceberg, liquidity vacuum) using FigButton toggles and PropsKit controls.
 - `components/ui/chart-settings/VwapSettings.tsx` → VWAP indicator configuration (mode, anchor, lookback, envelopes, bands) using FigUI3 and PropsKit components.
 - `components/ui/fig/` → Reusable React wrappers for FigUI3 and PropsKit web components (`FigSwitch`, `FigButton`, `FigSegmentedControl`, `FigSelect`, `PropskitSlider`, `PropskitNumber`, `FigPopup`, `FigDialog`, `FigTooltip`).
+- `components/ui/TimeframeInputModal.tsx` → Floating interval input modal allowing quick timeframe selection by typing numbers/intervals with preview and keyboard commit.
+- `components/ui/KeyboardShortcutsDropdown.tsx` → Compact header dropdown displaying categorized keyboard navigation, tool, and modal shortcuts with key badge styling.
 - `components/ui/IndicatorsModal.tsx` → Indicator picker popup using FigPopup with mode="dropdown", generous p-2.5 padding, rounded-xl corners, +50% taller rows (min-h-[38px]), left-aligned text, and persistent active button styling matching FigUI3 tokens.
 - `components/ui/ColorPickerPopover.tsx` → Shared TradingView-style color picker popover (80-swatch matrix, custom color '+' button, 3/6/8-digit hex parser, native eyedropper, and opacity slider) used by drawing tools and indicator settings.
 - `components/ui/TimeInput.tsx` → Reusable time input control supporting 12-hour (with FigButton AM/PM toggle) and 24-hour modes matching global settings.
@@ -192,7 +194,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 - `lib/store/chart.ts` → Persisted Zustand store (v39) for chart preferences, balanced mid-size zoom defaults, indicator settings, and themes ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartStore.map.md)).
 - `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, signals, brackets, and trades ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartRuntimeStore.map.md)).
-- `hooks/useKeyboardShortcuts.ts` → Keyboard shortcut handler for chart tools, modes, and navigation.
+- `hooks/useKeyboardShortcuts.ts` → Unified keyboard navigation engine handling arrow navigation, drawing/profile nudging, 50-step undo/redo, interval input, and utility shortcuts with context safety.
 - `types/chart.ts` → TypeScript definitions for chart configurations, panels, indicator options, and DrawnLine properties (including position profit/stop colors).
 
 ### Feeds / Shared Live Data

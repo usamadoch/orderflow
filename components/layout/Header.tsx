@@ -5,6 +5,7 @@ import { useChartStore } from '../../lib/store/chart';
 import { ConnectionStatus } from '../ui/ConnectionStatus';
 import { AccountBalanceWidget } from '../ui/AccountBalanceWidget';
 import { StorageManager } from '../ui/StorageManager';
+import { KeyboardShortcutsDropdown } from '../ui/KeyboardShortcutsDropdown';
 import { Database } from 'lucide-react';
 import { FigButton, FigTooltip } from '../ui/fig';
 import { useChartRuntimeStore } from '../../lib/store/chartRuntime';
@@ -36,6 +37,8 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
+        <KeyboardShortcutsDropdown />
+
         {isAuthenticated && (
           <FigTooltip text="Manage Storage">
             <FigButton

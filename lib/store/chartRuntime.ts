@@ -25,7 +25,7 @@ import type {
   VirtualPosition,
 } from '../../types/trading';
 import { MAX_AGGREGATE_BUBBLE_EVENTS } from './chart';
-import type { PanelRuntimeState, TradingRuntimeStatus, GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId, DrawnLine } from '../../types/chart';
+import type { PanelRuntimeState, TradingRuntimeStatus, GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId, DrawnLine, TimeframeInputState } from '../../types/chart';
 
 export type { PanelRuntimeState, TradingRuntimeStatus };
 
@@ -64,6 +64,9 @@ export interface ChartRuntimeState {
   appendAggregateBubbleEvents: (panelId: PanelId, events: BubbleEvent[]) => void;
   clearAggregateBubbleEvents: (panelId: PanelId) => void;
   setProfileSelected: (panelId: PanelId, selected: boolean) => void;
+  setSelectedDrawingId: (panelId: PanelId, id: string | null) => void;
+  timeframeInputState: TimeframeInputState | null;
+  setTimeframeInputState: (state: TimeframeInputState | null) => void;
   setIcebergLevels: (panelId: PanelId, levels: IcebergLevel[]) => void;
   setLiquidityVacuumZones: (panelId: PanelId, zones: LiquidityVacuumZone[]) => void;
   setLiquidityZones: (panelId: PanelId, zones: LiquidityZone[]) => void;
@@ -130,6 +133,7 @@ function createDefaultRuntimePanel(): PanelRuntimeState {
     exhaustionMap: new Map(),
     aggregateBubbleEvents: [],
     isProfileSelected: false,
+    selectedDrawingId: null,
     icebergLevels: [],
     liquidityVacuumZones: [],
     liquidityZones: [],
@@ -292,6 +296,8 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
   tradingStatus: createDefaultTradingStatus(),
   drawingDrag: null,
   setDrawingDrag: (drawingDrag) => set({ drawingDrag }),
+  timeframeInputState: null,
+  setTimeframeInputState: (timeframeInputState) => set({ timeframeInputState }),
 
   resetPanelRuntime: (panelId) =>
     set((state) => updateRuntimePanel(state, panelId, createDefaultRuntimePanel())),
@@ -354,6 +360,9 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
 
   setProfileSelected: (panelId, isProfileSelected) =>
     set((state) => updateRuntimePanel(state, panelId, { isProfileSelected })),
+
+  setSelectedDrawingId: (panelId, selectedDrawingId) =>
+    set((state) => updateRuntimePanel(state, panelId, { selectedDrawingId })),
 
   setIcebergLevels: (panelId, icebergLevels) =>
     set((state) => updateRuntimePanel(state, panelId, { icebergLevels })),

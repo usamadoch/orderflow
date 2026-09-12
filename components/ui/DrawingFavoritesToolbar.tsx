@@ -204,12 +204,12 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
         </>
       ) : (
         <>
-          <FigTooltip text="Volume Profile">
+          <FigTooltip text="Custom Volume Profile (V)">
             <button
               type="button"
               onClick={selectProfile}
               aria-pressed={panel.isDrawMode}
-              aria-label="Volume Profile"
+              aria-label="Custom Volume Profile"
               className={getButtonClass(panel.isDrawMode)}
             >
               <AlignLeft size={16} strokeWidth={1.5} />

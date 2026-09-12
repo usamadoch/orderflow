@@ -418,7 +418,11 @@ export function ChartCanvas({
 
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
   const [hoveredIceberg, setHoveredIceberg] = React.useState<{ level: IcebergLevel, x: number, y: number } | null>(null);
-  const [selectedDrawingId, setSelectedDrawingId] = React.useState<string | null>(null);
+  const selectedDrawingId = useChartRuntimeStore((s) => s.panels[panelId]?.selectedDrawingId ?? null);
+  const setSelectedDrawingId = React.useCallback(
+    (id: string | null) => useChartRuntimeStore.getState().setSelectedDrawingId(panelId, id),
+    [panelId]
+  );
   const [confirmingCancelOrderId, setConfirmingCancelOrderId] = React.useState<string | null>(null);
   const [pendingModifyBracket, setPendingModifyBracket] = React.useState<{
     positionId: string;
@@ -1924,6 +1928,28 @@ export function ChartCanvas({
     prevLoadingHistory.current = isLoadingHistory;
   }, [isLoadingHistory]);
 
+  const refreshKey = useChartRuntimeStore((s) => s.panels[panelId]?.refreshKey ?? 0);
+  useEffect(() => {
+    isAutoScaled.current = true;
+    priceCenter.current = null;
+    priceRange.current = null;
+    redrawRef.current('all');
+  }, [refreshKey]);
+
+  // Instantly sync viewport and redraw when scroll offset or bar width changes from keyboard or controls
+  useEffect(() => {
+    scrollOffset.current = scrollOffsetProp;
+    barWidth.current = barWidthProp;
+    if (!isPanZoomDragging.current) {
+      redrawRef.current('all');
+    }
+  }, [scrollOffsetProp, barWidthProp, isPanZoomDragging]);
+
+  // Immediately redraw when drawings or custom profile ranges update
+  useEffect(() => {
+    redrawRef.current('all');
+  }, [drawnLines, customProfileRange]);
+
   // Subscribe to crosshair changes for sync rendering
   useEffect(() => {
     const unsubscribeCrosshair = useChartRuntimeStore.subscribe((state) => state.crosshair, (crosshair, previousCrosshair) => {
@@ -2119,7 +2145,7 @@ export function ChartCanvas({
     if (selectedDrawingId && !drawnLines.some((line) => line.id === selectedDrawingId)) {
       setSelectedDrawingId(null);
     }
-  }, [drawnLines, selectedDrawingId]);
+  }, [drawnLines, selectedDrawingId, setSelectedDrawingId]);
 
   // Reactive profile settings listener to invalidate cache and trigger immediate redraw
   useEffect(() => {
@@ -3498,7 +3524,7 @@ export function ChartCanvas({
           lastTime: candleTimeAt(newRange.lastIndex, candles),
         };
 
-        useChartStore.getState().setCustomProfileRange(panelId, nextRange);
+        useChartStore.getState().setCustomProfileRange(panelId, nextRange, true);
         redraw();
       } else if (isDraggingResize.current && dragAnchor.current && profileSnapshot.current) {
         const chartWidth = rect.width - priceAxisWidth;
@@ -3537,7 +3563,7 @@ export function ChartCanvas({
         const bucketSizeVal = useChartStore.getState().panels[panelId].bucketSize;
         if (Math.abs(updatedRange.lastIndex - updatedRange.firstIndex) >= 2 &&
           Math.abs(updatedRange.priceHigh - updatedRange.priceLow) >= bucketSizeVal) {
-          useChartStore.getState().setCustomProfileRange(panelId, updatedRange);
+          useChartStore.getState().setCustomProfileRange(panelId, updatedRange, true);
           redraw();
         }
       }
@@ -3688,7 +3714,19 @@ export function ChartCanvas({
       if (isDraggingDrawing.current) {
         isDraggingDrawing.current = false;
         if (activeDrawingUpdates.current && drawingSnapshot.current) {
-          useChartStore.getState().updateLine(panelId, drawingSnapshot.current.id, activeDrawingUpdates.current);
+          const store = useChartStore.getState();
+          const currentLines = store.panels[panelId]?.drawnLines || [];
+          const preDragLines = currentLines.map((l) =>
+            l.id === drawingSnapshot.current?.id ? { ...drawingSnapshot.current } : l
+          );
+          store.pushHistory(panelId, {
+            panelId,
+            drawnLines: preDragLines,
+            customProfileRange: store.panels[panelId]?.customProfileRange
+              ? { ...store.panels[panelId].customProfileRange }
+              : null,
+          });
+          store.updateLine(panelId, drawingSnapshot.current.id, activeDrawingUpdates.current);
           activeDrawingUpdates.current = null;
         }
         useChartRuntimeStore.getState().setDrawingDrag(null);
@@ -3846,6 +3884,14 @@ export function ChartCanvas({
         isDraggingProfile.current = false;
         isDraggingResize.current = false;
         dragAnchor.current = null;
+        if (profileSnapshot.current) {
+          const store = useChartStore.getState();
+          store.pushHistory(panelId, {
+            panelId,
+            drawnLines: (store.panels[panelId]?.drawnLines || []).map((l) => ({ ...l })),
+            customProfileRange: { ...profileSnapshot.current },
+          });
+        }
         profileSnapshot.current = null;
         resizeEdge.current = null;
         redraw();
@@ -3918,7 +3964,7 @@ export function ChartCanvas({
         drawingSnapshot.current = null;
         drawingDragZone.current = null;
         setSelectedDrawingId(null);
-        useChartStore.getState().setCustomProfileRange(panelId, null);
+        useChartRuntimeStore.getState().setProfileSelected(panelId, false);
         redraw();
       }
     };
@@ -4028,7 +4074,7 @@ export function ChartCanvas({
       window.removeEventListener('mousemove', onWindowMouseMove);
       window.removeEventListener('mouseup', onWindowMouseUp);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect, getCandlesLength, isMouseOver, mouseX, mouseY]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, setSelectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect, getCandlesLength, isMouseOver, mouseX, mouseY]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({
