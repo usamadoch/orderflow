@@ -6,6 +6,7 @@ export interface PanZoomRefs {
   barWidth: React.MutableRefObject<number>;
   priceCenter: React.MutableRefObject<number | null>;
   priceRange: React.MutableRefObject<number | null>;
+  isAutoScaled?: React.MutableRefObject<boolean>;
 }
 
 export function usePanZoom(
@@ -30,11 +31,13 @@ export function usePanZoom(
   const localBarWidth = useRef(initialBarWidth);
   const localPriceCenter = useRef<number | null>(null);
   const localPriceRange = useRef<number | null>(null);
+  const localIsAutoScaled = useRef(true);
 
   const scrollOffset = externalRefs?.scrollOffset || localScrollOffset;
   const barWidth = externalRefs?.barWidth || localBarWidth;
   const priceCenter = externalRefs?.priceCenter || localPriceCenter;
   const priceRange = externalRefs?.priceRange || localPriceRange;
+  const isAutoScaled = externalRefs?.isAutoScaled || localIsAutoScaled;
 
   // Store callbacks in refs to avoid re-binding event listeners on every render
   const callbacksRef = useRef({
@@ -110,12 +113,16 @@ export function usePanZoom(
         callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
         
         // Panning in price
-        if (priceCenter.current !== null && priceRange.current !== null) {
-          const pricePerPixel = priceRange.current / Math.max(1, rect.height - timeAxisHeight - bottomPanelsHeight);
-          priceCenter.current += deltaY * pricePerPixel;
+        if (Math.abs(deltaY) > 0) {
+          isAutoScaled.current = false;
+          if (priceCenter.current !== null && priceRange.current !== null) {
+            const pricePerPixel = priceRange.current / Math.max(1, rect.height - timeAxisHeight - bottomPanelsHeight);
+            priceCenter.current += deltaY * pricePerPixel;
+          }
         }
       } else if (dragMode.current === 'price') {
         canvas.style.cursor = 'ns-resize';
+        isAutoScaled.current = false;
         // Vertical zoom
         if (priceRange.current !== null) {
           const sensitivity = 0.005;
@@ -246,6 +253,7 @@ export function usePanZoom(
       // Price Axis Wheel Zoom: When mouse wheel is used over the vertical price bar
       if (x >= chartWidth && x <= rect.width) {
         if (priceRange.current !== null) {
+          isAutoScaled.current = false;
           const zoomSensitivity = 0.002;
           const zoomFactor = 1 + e.deltaY * zoomSensitivity;
           priceRange.current = Math.max(0.0001, priceRange.current * zoomFactor);
@@ -301,6 +309,7 @@ export function usePanZoom(
 
       // Double-click on price axis auto-fits price
       if (x >= chartWidth) {
+        isAutoScaled.current = true;
         priceCenter.current = null;
         priceRange.current = null;
         callbacksRef.current.onRedraw();

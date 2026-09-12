@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 // Types
 import type { PanelId, HistoryRestoreStatus } from '../lib/store/chart';
@@ -85,7 +85,10 @@ import {
   getFineProfileRestoreChunks,
   getAggregateBubbleEventKey,
   getAggregateBubbleRestoreRange,
-  parseAggregateBubbleThresholds
+  parseAggregateBubbleThresholds,
+  isQualifiedLiveBubbleTrade,
+  DEFAULT_AGGREGATE_BUBBLE_STORAGE_THRESHOLDS,
+  type AggregateBubbleStorageThresholds
 } from '../lib/utils/feedUtils';
 
 // Feeds & Storage
@@ -180,6 +183,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   } = useFeedAggregation(bucketSize, liquidityBucketSize, liquidityHistoryDepth);
   const aggregateBubbleMarketSource = dataSourceMode;
   const volumeBarsMarketSource = dataSourceMode;
+  const storageThresholdsRef = useRef<AggregateBubbleStorageThresholds>(DEFAULT_AGGREGATE_BUBBLE_STORAGE_THRESHOLDS);
 
   // --- Signal refs & callbacks (extracted to useSignalEngine) ---
   const {
@@ -235,6 +239,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const unsubscribers = aggregateOnlySources.map((source) => (
       subscribeTradeStream(source, pair, (trade) => {
         if (!markProcessedTrade(trade, source)) return;
+        if (!isQualifiedLiveBubbleTrade(trade, storageThresholdsRef.current)) return;
         const event = createAggregateBubbleEvent(trade, source, pair);
         if (event) {
           pendingAggregateBubbleEventsRef.current.push(event);
@@ -1111,9 +1116,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (!markProcessedTrade(trade, source)) return;
       markLiveConnected();
       if (aggregateEventsNeededRef.current) {
-        const event = createAggregateBubbleEvent(trade, source, pair);
-        if (event) {
-          pendingAggregateBubbleEventsRef.current.push(event);
+        if (isQualifiedLiveBubbleTrade(trade, storageThresholdsRef.current)) {
+          const event = createAggregateBubbleEvent(trade, source, pair);
+          if (event) {
+            pendingAggregateBubbleEventsRef.current.push(event);
+          }
         }
       }
       const alignedTrade = getContractAlignedTrade(trade, source);
@@ -1406,6 +1413,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         });
 
         stats.thresholds = parseAggregateBubbleThresholds(response);
+        if (stats.thresholds) {
+          storageThresholdsRef.current = stats.thresholds;
+        }
 
         if (!response.ok) {
           console.warn(`[HistoryRestore:${panelId}] Aggregate bubble restore failed with ${response.status}`);

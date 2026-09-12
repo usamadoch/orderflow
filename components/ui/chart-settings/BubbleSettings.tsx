@@ -10,7 +10,10 @@ import {
   BubbleVolumeColorMode, 
   BubbleSide, 
   BubbleSizeBy, 
-  BubbleDisplayMode 
+  BubbleDisplayMode,
+  BubbleGroupingMode,
+  BubblePriceAggrMode,
+  BubbleTickGroupingMode
 } from '../../../lib/store/chart';
 
 interface BubbleSettingsProps {
@@ -37,6 +40,11 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
   const setBubbleAskColor = useChartStore(s => s.setBubbleAskColor);
   const setBubbleLineWidth = useChartStore(s => s.setBubbleLineWidth);
   const setBubbleOpacity = useChartStore(s => s.setBubbleOpacity);
+  const setBubbleGroupingMode = useChartStore(s => s.setBubbleGroupingMode);
+  const setBubblePriceAggrMode = useChartStore(s => s.setBubblePriceAggrMode);
+  const setBubbleTickGroupingMode = useChartStore(s => s.setBubbleTickGroupingMode);
+  const setBubbleTickCount = useChartStore(s => s.setBubbleTickCount);
+  const setBubbleTimeWindowMs = useChartStore(s => s.setBubbleTimeWindowMs);
 
 
 
@@ -67,6 +75,19 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
     { label: '2D (Flat)', value: '2d' },
     { label: '3D (Spheres)', value: '3d' },
   ];
+  const bubbleGroupingModes: { label: string; value: BubbleGroupingMode }[] = [
+    { label: 'Automatic', value: 'automatic' },
+    { label: 'Time', value: 'time' },
+    { label: 'Price', value: 'price' },
+  ];
+  const bubblePriceAggrModes: { label: string; value: BubblePriceAggrMode }[] = [
+    { label: 'Extension', value: 'extension' },
+    { label: 'Ext + Retrace', value: 'extensionRetracement' },
+  ];
+  const bubbleTickGroupingModes: { label: string; value: BubbleTickGroupingMode }[] = [
+    { label: 'Auto', value: 'automatic' },
+    { label: 'Fixed', value: 'fixed' },
+  ];
   const showOrderBubbleControls = panel.bubbleSizeBy === 'orders';
 
   return (
@@ -92,7 +113,7 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
       {panel.bubblesEnabled && (
         <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="text-[10px] text-yellow-500/80 bg-yellow-500/10 p-2 rounded border border-yellow-500/20 leading-relaxed font-medium">
-            Note: Minimum thresholds are strictly enforced by the server-side collector. Setting UI limits below those thresholds will have no effect.
+            Note: Minimum thresholds are strictly enforced by the server-side collector. Historical data below collector floors (15 BTC / 75 orders) will not be present.
           </div>
           <div className="space-y-3">
             <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
@@ -120,6 +141,74 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
                     onChange={(val) => setBubbleVolumeColorMode(panelId, val as BubbleVolumeColorMode)}
                     options={bubbleVolumeColorModes.map(({ label, value }) => ({ label, value }))}
                   />
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+              <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide mb-1">Grouping</label>
+              <FigSegmentedControl
+                full
+                value={panel.bubbleGroupingMode}
+                onChange={(val) => setBubbleGroupingMode(panelId, val as BubbleGroupingMode)}
+                options={bubbleGroupingModes}
+              />
+
+              {panel.bubbleGroupingMode === 'time' && (
+                <div className="mt-2">
+                  <PropskitSlider
+                    label="Time Window"
+                    value={panel.bubbleTimeWindowMs}
+                    min={50}
+                    max={2000}
+                    step={25}
+                    units="ms"
+                    onChange={(val) => setBubbleTimeWindowMs(panelId, val)}
+                    onInput={(val) => setBubbleTimeWindowMs(panelId, val)}
+                    title="Execution burst window for grouping trades"
+                  />
+                </div>
+              )}
+
+              {(panel.bubbleGroupingMode === 'price' || panel.bubbleGroupingMode === 'automatic') && (
+                <div className="mt-2 space-y-3 pt-2 border-t border-[#2A2A2A]">
+                  <div>
+                    <label className="text-[9px] font-bold text-text-dim uppercase tracking-wide mb-1 block">Price Aggregation</label>
+                    <FigSegmentedControl
+                      full
+                      value={panel.bubblePriceAggrMode}
+                      onChange={(val) => setBubblePriceAggrMode(panelId, val as BubblePriceAggrMode)}
+                      options={bubblePriceAggrModes}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-bold text-text-dim uppercase tracking-wide mb-1 block">Tick Grouping</label>
+                    <FigSegmentedControl
+                      full
+                      value={panel.bubbleTickGroupingMode}
+                      onChange={(val) => setBubbleTickGroupingMode(panelId, val as BubbleTickGroupingMode)}
+                      options={bubbleTickGroupingModes}
+                    />
+                  </div>
+
+                  {panel.bubbleTickGroupingMode === 'fixed' && (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] text-text-dim/70">Tick Count</span>
+                      <PropskitNumber
+                        value={panel.bubbleTickCount}
+                        onChange={(val) => {
+                          if (val >= 1) {
+                            setBubbleTickCount(panelId, Math.max(1, Math.min(100, Math.round(val))));
+                          }
+                        }}
+                        step={1}
+                        min={1}
+                        max={100}
+                        className="w-24"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -154,9 +243,9 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
                   className="w-24"
                 />
               </div>
-              {panel.bubbleThresholdMode === 'absolute' && Number(panel.bubbleThreshold) < 1 && (
+              {panel.bubbleThresholdMode === 'absolute' && Number(panel.bubbleThreshold) < 15 && (
                 <div className="text-[10px] text-orange-400 mt-1 font-medium">
-                  ⚠ Collector floor is 1 BTC — history below this won&apos;t have data
+                  ⚠ Collector floor is 15 BTC — history below this threshold won&apos;t have data
                 </div>
               )}
             </div>
@@ -210,6 +299,11 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
                 onChange={(val) => setBubbleMinOrders(panelId, val)}
                 onInput={(val) => setBubbleMinOrders(panelId, val)}
               />
+              {Number(panel.bubbleMinOrders) < 75 && (
+                <div className="text-[10px] text-orange-400 mt-1 font-medium">
+                  ⚠ Collector floor is 75 orders (≥ 3 BTC) — history below this threshold won&apos;t have data
+                </div>
+              )}
             </div>
           )}
 

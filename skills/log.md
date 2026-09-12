@@ -1,5 +1,43 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-12] - Fix: Bubble Snowball Expansion, Zoom Stability & Live Storage Parity
+- **What changed**:
+  - In `drawBubbles.ts`: clamped cluster vertical span in price grouping to `effectivePriceBucket`, preventing runaway snowball expansion across candles.
+  - Stabilized automatic tick grouping against zoom by decoupling `effectiveTickCount` from pixel `barWidth`.
+  - In `FeedProvider.tsx` & `feedUtils.ts`: gated live aggregate bubble events using collector storage qualification thresholds (`isQualifiedLiveBubbleTrade`).
+  - In `bubbleGrouping.test.ts`: added test coverage for snowball prevention and zoom stability (15/15 tests passing).
+- **Why it changed**: Fixed bug where price bubbles swallowed entire candles, shifted coordinates on zoom, and vanished upon browser reload.
+- **Impact summary**: Distinct localized price bubbles form on trending candles, bubble coordinates remain locked on zoom, and live bubbles match reload history 100%.
+
+## [2026-09-12] - Fix: Chart Auto-Scale & Precision, Center-Top Toolbar & Visible Indicator Icons
+- **What changed**:
+  - In `useCoordinates.ts` & `ChartCanvas.tsx`: added auto-scaling with minimum range floor & 8% vertical padding.
+  - In `drawAxes.ts`: clamped price precision to prevent micro-decimals on high-value assets.
+  - In `usePanZoom.ts`: integrated `isAutoScaled` tracking with double-click reset and manual drag exit.
+  - In `DrawingFavoritesToolbar.tsx` & `chart.ts` (v39): moved default position to center top, preserving dragged position.
+  - In `IndicatorLabels.tsx`: removed hover-only hiding, making settings, remove, and view icons always visible.
+- **Why it changed**: Chart opened with vertically stretched candles, micro-decimals, top-left toolbar, and hidden indicator icons.
+- **Impact summary**: Crisp mid-size proportional candles, clean price axis, center-top toolbar, and visible controls; 0 errors.
+
+## [2026-09-12] - Feature: Volume Bubbles Tier 4 Grouping (Auto, Time, Price, Extension & Retracement)
+- **What changed**:
+  - In `types/bubble.ts` & `types/chart.ts`: added `BubbleGroupingMode`, `BubblePriceAggrMode`, `BubbleTickGroupingMode` union types and fields.
+  - In `lib/store/chart.ts`: added defaults, setters, normalization, `timeframeSettingsKeys`, and store persistence in `partialize` & restore path.
+  - In `drawBubbles.ts`: implemented `clusterEvents` grouping engine with `automatic` (zoom-scaled), `time` burst window, and `price` candle bucketing.
+  - Supported `extension` and `extensionRetracement` absorption; calculated volume-weighted cluster execution price & timestamp.
+  - In `BubbleSettings.tsx`: added Grouping section with conditional sub-controls and updated collector threshold floor notes.
+- **Why it changed**: Implemented reference model Tier 4 clustering turning rapid ticks into structured, readable bubbles by time burst or price zone.
+- **Impact summary**: Seamless multi-strategy bubble grouping with persistence and full type safety; 0 tsc/lint errors.
+
+## [2026-09-12] - Fix: Volume Bubbles Cluster Delta Netting, Size-By Orders & Visual Modes
+- **What changed**:
+  - In `drawBubbles.ts`: implemented execution burst clustering across sides in Delta & Volume modes (`buy - sell` net delta & `(delta/total)%`).
+  - Preserved side separation in Ask/Bid Split mode; moved `bubbleSide` filtering to cluster evaluation to avoid skewed net deltas.
+  - Sized & filtered bubbles by `tradeCount` & `bubbleMinOrders`; unified canvas font with codebase `BlinkMacSystemFont` stack.
+  - In `lib/store/chart.ts`: persisted all bubble visual modes and color settings in store `partialize` and hydration merge.
+- **Why it changed**: Delta mode previously displayed single-side counts with +/- prefixes without netting opposite aggressive trades in the cluster.
+- **Impact summary**: Bubble counts now correctly net in Delta mode, volume percentages calculate accurately, and settings persist; 0 tsc/lint errors.
+
 ## [2026-09-12] - Fix: VWAP Visual Rendering & Incremental Array Truncation
 - **What changed**:
   - In `lib/utils/vwap.ts`: enabled fallback to `displayCandles` when `base1mCandles` is empty; eliminated blocking `pending` state on missing 1m storage.

@@ -27,6 +27,8 @@ import type {
   AggregateBubbleStorageThresholds,
 } from '../../types/feed';
 
+export type { AggregateBubbleStorageThresholds };
+
 export const queuedRawTradeStorageKeys = new Set<string>();
 export const closedCandleStorageKeys = new Set<string>();
 export const queuedFineProfileCandleKeys = new Set<string>();
@@ -398,6 +400,22 @@ export function getAggregateBubbleRestoreRange(candles: Candle[], timeframeSecon
     startTime: restoreStartSeconds * 1000,
     endTime: restoreEndSeconds * 1000,
   };
+}
+
+export const DEFAULT_AGGREGATE_BUBBLE_STORAGE_THRESHOLDS: AggregateBubbleStorageThresholds = {
+  minVolume: 1,
+  minTradeCount: 25,
+  minTradeCountVolume: 0.5,
+};
+
+export function isQualifiedLiveBubbleTrade(
+  trade: Trade,
+  thresholds: AggregateBubbleStorageThresholds = DEFAULT_AGGREGATE_BUBBLE_STORAGE_THRESHOLDS
+): boolean {
+  if (!Number.isFinite(trade.quantity) || trade.quantity <= 0) return false;
+  if (trade.quantity >= thresholds.minVolume) return true;
+  const tradeCount = getAggregateTradeCount(trade) ?? 1;
+  return tradeCount >= thresholds.minTradeCount && trade.quantity >= thresholds.minTradeCountVolume;
 }
 
 export function parseAggregateBubbleThresholds(response: Response): AggregateBubbleStorageThresholds | null {

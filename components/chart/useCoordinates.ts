@@ -40,7 +40,14 @@ export function getVisiblePriceRange(
   let priceMin = Infinity;
   let priceMax = -Infinity;
 
-  for (let i = firstIndex; i <= lastIndex; i++) {
+  if (candles.length === 0) {
+    return { priceMin: 0, priceMax: 100 };
+  }
+
+  const validFirst = Math.max(0, Math.min(candles.length - 1, firstIndex));
+  const validLast = Math.max(0, Math.min(candles.length - 1, lastIndex));
+
+  for (let i = validFirst; i <= validLast; i++) {
     const c = candles[i];
     if (!c) continue;
     if (c.high > priceMax) priceMax = c.high;
@@ -48,12 +55,22 @@ export function getVisiblePriceRange(
   }
 
   if (priceMin !== Infinity && priceMax !== -Infinity && priceMin !== priceMax) {
-    const range = priceMax - priceMin;
-    priceMax += range * 0.05;
-    priceMin -= range * 0.05;
+    let range = priceMax - priceMin;
+    // Enforce a sensible minimum range (at least 0.3% of price) so small price moves never stretch vertically across the full canvas
+    const minRange = Math.max(1, priceMax * 0.003);
+    if (range < minRange) {
+      const mid = (priceMax + priceMin) / 2;
+      priceMax = mid + minRange / 2;
+      priceMin = mid - minRange / 2;
+      range = minRange;
+    }
+    // 8% vertical padding on top and bottom for spacious, beautiful candles
+    priceMax += range * 0.08;
+    priceMin -= range * 0.08;
   } else if (priceMin !== Infinity && priceMin === priceMax) {
-    priceMax = priceMin * 1.05;
-    priceMin = priceMin * 0.95;
+    const spread = Math.max(1, priceMin * 0.005);
+    priceMax = priceMin + spread;
+    priceMin = priceMin - spread;
   } else {
     priceMin = 0;
     priceMax = 100;

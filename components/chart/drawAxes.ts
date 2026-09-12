@@ -147,8 +147,13 @@ export function drawPriceAxis(
   const step = calculatePriceStep(priceRange, chartHeight);
   const startPrice = Math.floor(priceMin / step) * step;
 
-  // Calculate precision based on step
-  const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
+  // Calculate precision based on step with upper bounds for high-value assets
+  let precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
+  if (priceMax >= 1000) {
+    precision = Math.min(1, precision);
+  } else if (priceMax >= 100) {
+    precision = Math.min(2, precision);
+  }
 
   ctx.font = AXIS_FONT;
   ctx.fillStyle = AXIS_TEXT_COLOR;

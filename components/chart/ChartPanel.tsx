@@ -234,6 +234,11 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
               bubbleAskColor={panel.bubbleAskColor}
               bubbleLineWidth={panel.bubbleLineWidth}
               bubbleOpacity={panel.bubbleOpacity}
+              bubbleGroupingMode={panel.bubbleGroupingMode}
+              bubblePriceAggrMode={panel.bubblePriceAggrMode}
+              bubbleTickGroupingMode={panel.bubbleTickGroupingMode}
+              bubbleTickCount={panel.bubbleTickCount}
+              bubbleTimeWindowMs={panel.bubbleTimeWindowMs}
               activeChartContractType={panel.contractType}
               activeDataSourceMode={panel.dataSourceMode}
               tradingSymbol={panelSymbol}

@@ -153,12 +153,12 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
               return (
                 <div
                   key={id}
-                  className={`group flex h-6 items-center rounded px-1.5 text-[12px] font-black uppercase tracking-[0.14em] text-[#E8E8E8] transition-all duration-150 hover:bg-[#1F1F1F] hover:shadow-[0_4px_18px_rgba(0,0,0,0.32)] ${
+                  className={`flex h-6 items-center rounded px-1.5 text-[12px] font-black uppercase tracking-[0.14em] text-[#E8E8E8] transition-all duration-150 hover:bg-[#1F1F1F] hover:shadow-[0_4px_18px_rgba(0,0,0,0.32)] ${
                     config.enabled ? 'opacity-100' : 'opacity-45'
                   }`}
                 >
                   <span className="whitespace-nowrap">{config.label}</span>
-                  <div className="ml-1.5 flex w-0 translate-x-[-4px] items-center gap-0.5 overflow-hidden opacity-0 transition-all duration-180 group-hover:w-[115px] group-hover:translate-x-0 group-hover:opacity-100 [--spacer-4:20px] [--spacer-3:20px]">
+                  <div className="ml-1.5 flex items-center gap-0.5 [--spacer-4:20px] [--spacer-3:20px]">
                     <FigTooltip text={`Move ${config.label} up`}>
                       <FigButton
                         variant="ghost"

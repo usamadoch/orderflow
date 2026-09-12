@@ -27,6 +27,11 @@ export type BubbleColorMode = 'askBidSplit' | 'delta' | 'volume';
 export type BubbleVolumeColorMode = 'deltaAbsolute' | 'deltaPercentual';
 export type BubbleDisplayMode = '2d' | '3d';
 
+// Tier 4 — Grouping
+export type BubbleGroupingMode = 'automatic' | 'time' | 'price';
+export type BubblePriceAggrMode = 'extension' | 'extensionRetracement';
+export type BubbleTickGroupingMode = 'automatic' | 'fixed';
+
 export interface BubbleSettings {
   bubbleSizeBy?: BubbleSizeBy;
   aggregateBubbleMarketSource?: AggregateBubbleMarketSource;
@@ -47,6 +52,13 @@ export interface BubbleSettings {
   bubbleAskColor?: string;
   bubbleLineWidth?: number;
   bubbleOpacity?: number;
+  bucketSize?: number;
+  // Tier 4 — Grouping
+  bubbleGroupingMode?: BubbleGroupingMode;
+  bubblePriceAggrMode?: BubblePriceAggrMode;
+  bubbleTickGroupingMode?: BubbleTickGroupingMode;
+  bubbleTickCount?: number;
+  bubbleTimeWindowMs?: number;
 }
 
 export interface AggregateBubbleDebugContext {

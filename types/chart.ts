@@ -1,5 +1,5 @@
 import { FootprintMode } from './footprint';
-import { BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleDisplayMode, BubbleSide, AggregateBubbleMarketSource, BubbleSizeBy, BubbleEvent } from './bubble';
+import { BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleDisplayMode, BubbleSide, AggregateBubbleMarketSource, BubbleSizeBy, BubbleEvent, BubbleGroupingMode, BubblePriceAggrMode, BubbleTickGroupingMode } from './bubble';
 import { MeasurementMetrics, FootprintMeasurementMetrics } from './measurement';
 import { Candle } from './candle';
 import { Trade } from './trade';
@@ -138,6 +138,11 @@ export interface TimeframeSettings {
   bubbleAskColor: string;
   bubbleLineWidth: number;
   bubbleOpacity: number;
+  bubbleGroupingMode: BubbleGroupingMode;
+  bubblePriceAggrMode: BubblePriceAggrMode;
+  bubbleTickGroupingMode: BubbleTickGroupingMode;
+  bubbleTickCount: number;
+  bubbleTimeWindowMs: number;
   absorptionMinScore: number;
   exhaustionMinScore: number;
   exhaustionLookback: number;
@@ -324,6 +329,11 @@ export interface PanelState {
   bubbleAskColor: string;
   bubbleLineWidth: number;
   bubbleOpacity: number;
+  bubbleGroupingMode: BubbleGroupingMode;
+  bubblePriceAggrMode: BubblePriceAggrMode;
+  bubbleTickGroupingMode: BubbleTickGroupingMode;
+  bubbleTickCount: number;
+  bubbleTimeWindowMs: number;
   isDrawMode: boolean;
   customProfileRange: {
     firstTime?: number;

@@ -8,6 +8,7 @@
     "start": "next start",
     "collector:btc": "node --env-file=.env.local scripts/collector/btcusdtCollector.mjs",
     "test:collector": "node --test --env-file=.env.local scripts/collector/btcusdtCollector.test.mjs",
+    "test:bubbles": "npx tsx --test scripts/tests/bubbleGrouping.test.ts",
     "db:migrate": "ts-node lib/db/timescale/migrations.ts",
     "lint": "next lint"
   },

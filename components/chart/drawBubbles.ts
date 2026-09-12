@@ -2,7 +2,7 @@ import { Candle } from '@/types/candle';
 import { AggregationEngine } from '@/lib/aggregation/engine';
 import { chartColorToRgba } from '@/lib/config/chartColors';
 import { recordAggregateBubbleDebug } from '@/lib/debug/marketMetrics';
-import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleScaleMode, BubbleSettings, AggregateBubbleDebugContext, SourceCountMap } from '@/types/bubble';
+import type { AggregateBubbleMarketSource, BubbleEvent, BubbleEventContractType, BubbleSizeBy, BubbleScaleMode, BubbleColorMode, BubbleSettings, AggregateBubbleDebugContext, SourceCountMap } from '@/types/bubble';
 
 
 
@@ -34,35 +34,71 @@ function abbreviateVol(vol: number): string {
 
 
 
-function getAggregateBubbleSizingValue(event: BubbleEvent, bubbleSizeBy: BubbleSizeBy) {
-  if (bubbleSizeBy === 'volume') {
-    return {
-      value: event.volume,
-      tradeCountFallback: false,
-    };
-  }
-
-  const tradeCount = typeof event.tradeCount === 'number' && Number.isFinite(event.tradeCount)
-    ? event.tradeCount
-    : null;
-  if (tradeCount !== null && tradeCount > 0) {
-    return {
-      value: Math.max(1, Math.round(tradeCount)),
-      tradeCountFallback: false,
-    };
-  }
-
-  // Some aggregate events lack first/last raw trade ids, so tradeCount is unknown.
-  // Use 1 as a conservative lower bound; Min Orders > 1 will filter these out.
-  return {
-    value: 1,
-    tradeCountFallback: true,
-  };
-}
-
 function formatAggregateBubbleLabel(value: number, bubbleSizeBy: BubbleSizeBy) {
   if (bubbleSizeBy === 'orders') return abbreviateVol(Math.round(value));
   return abbreviateVol(value);
+}
+
+const BUBBLE_FONT_FAMILY = '"BlinkMacSystemFont", -apple-system, system-ui, sans-serif';
+
+function getBubbleFont(radius: number): string {
+  if (radius >= 28) return `700 12px ${BUBBLE_FONT_FAMILY}`;
+  if (radius >= 20) return `700 11px ${BUBBLE_FONT_FAMILY}`;
+  if (radius >= 15) return `600 10px ${BUBBLE_FONT_FAMILY}`;
+  return `600 9px ${BUBBLE_FONT_FAMILY}`;
+}
+
+interface ClusterBubble extends BubbleEvent {
+  buyVolume: number;
+  sellVolume: number;
+  buyTradeCount: number;
+  sellTradeCount: number;
+  tradeCountFallback: boolean;
+  minPrice?: number;
+  maxPrice?: number;
+  candleIndex?: number;
+}
+
+function getClusterSizingValue(
+  cluster: ClusterBubble,
+  bubbleSizeBy: BubbleSizeBy,
+  bubbleColorMode: BubbleColorMode
+) {
+  const isOrders = bubbleSizeBy === 'orders';
+  const buyVal = isOrders ? cluster.buyTradeCount : cluster.buyVolume;
+  const sellVal = isOrders ? cluster.sellTradeCount : cluster.sellVolume;
+  const delta = buyVal - sellVal;
+  const total = buyVal + sellVal;
+
+  if (bubbleColorMode === 'delta') {
+    return {
+      value: Math.max(1, Math.abs(delta)),
+      delta,
+      total,
+      side: delta >= 0 ? ('buy' as const) : ('sell' as const),
+      tradeCountFallback: cluster.tradeCountFallback,
+    };
+  }
+
+  if (bubbleColorMode === 'volume') {
+    return {
+      value: Math.max(1, total),
+      delta,
+      total,
+      side: delta >= 0 ? ('buy' as const) : ('sell' as const),
+      tradeCountFallback: cluster.tradeCountFallback,
+    };
+  }
+
+  // askBidSplit: returns the active side volume/count
+  const sideVal = cluster.side === 'buy' ? buyVal : sellVal;
+  return {
+    value: Math.max(1, sideVal),
+    delta,
+    total,
+    side: cluster.side,
+    tradeCountFallback: cluster.tradeCountFallback,
+  };
 }
 
 function normalizeEventSeconds(time: number) {
@@ -209,6 +245,174 @@ function isEventIncludedByMarketSource(
   return resolvedMarketSource === 'both' || event.contractType === resolvedMarketSource;
 }
 
+function clusterEvents(
+  visibleEvents: BubbleEvent[],
+  candles: Candle[],
+  firstIndex: number,
+  lastIndex: number,
+  barWidth: number,
+  settings: BubbleSettings,
+  debugContext?: AggregateBubbleDebugContext
+): ClusterBubble[] {
+  const {
+    bubbleColorMode = 'askBidSplit',
+    bubbleGroupingMode = 'automatic',
+    bubblePriceAggrMode = 'extension',
+    bubbleTickGroupingMode = 'automatic',
+    bubbleTickCount = 3,
+    bubbleTimeWindowMs = 250,
+    bucketSize,
+  } = settings;
+
+  const effectiveGroupingMode = bubbleGroupingMode === 'automatic'
+    ? (barWidth >= 8 ? 'price' : 'time')
+    : bubbleGroupingMode;
+
+  const baseTickSize = (bucketSize && Number.isFinite(bucketSize) && bucketSize > 0)
+    ? bucketSize
+    : (debugContext?.bucketSize && Number.isFinite(debugContext.bucketSize) && debugContext.bucketSize > 0)
+      ? debugContext.bucketSize
+      : 10;
+
+  const effectiveTickCount = bubbleTickGroupingMode === 'fixed'
+    ? Math.max(1, Math.round(bubbleTickCount || 3))
+    : 3;
+
+  const effectivePriceBucket = effectiveTickCount * baseTickSize;
+  const clusterTimeWindowSec = Math.max(0.05, (bubbleTimeWindowMs || 250) / 1000);
+
+  const clusters: ClusterBubble[] = [];
+
+  for (const event of visibleEvents) {
+    const eventSec = normalizeEventSeconds(event.time);
+    const rawTradeCount = typeof event.tradeCount === 'number' && Number.isFinite(event.tradeCount) && event.tradeCount > 0
+      ? Math.max(1, Math.round(event.tradeCount))
+      : 1;
+    const isFallback = !(typeof event.tradeCount === 'number' && Number.isFinite(event.tradeCount) && event.tradeCount > 0);
+
+    let matchedCluster: ClusterBubble | null = null;
+
+    if (effectiveGroupingMode === 'price') {
+      const candleIndex = findCandleIndexForEvent(candles, eventSec, firstIndex, lastIndex);
+
+      let bestDist = Infinity;
+      for (let i = clusters.length - 1; i >= 0; i--) {
+        const candidate = clusters[i];
+        if (candidate.candleIndex !== candleIndex) {
+          if (candidate.candleIndex !== undefined && candleIndex !== undefined && candleIndex - candidate.candleIndex > 1) {
+            break;
+          }
+          continue;
+        }
+
+        if (candidate.contractType !== event.contractType) {
+          continue;
+        }
+
+        // In askBidSplit mode:
+        // - 'extension' mode keeps buy and sell separate
+        // - 'extensionRetracement' absorbs opposing trades into the cluster
+        if (bubbleColorMode === 'askBidSplit' && bubblePriceAggrMode === 'extension' && candidate.side !== event.side) {
+          continue;
+        }
+
+        const cMin = candidate.minPrice ?? candidate.price;
+        const cMax = candidate.maxPrice ?? candidate.price;
+        
+        // Strict cluster vertical span cap: cluster cannot exceed effectivePriceBucket height
+        const prospectiveMin = Math.min(cMin, event.price);
+        const prospectiveMax = Math.max(cMax, event.price);
+        const withinBucketSpan = (prospectiveMax - prospectiveMin) <= effectivePriceBucket;
+
+        if (withinBucketSpan) {
+          const dist = Math.abs(event.price - candidate.price);
+          if (dist < bestDist) {
+            bestDist = dist;
+            matchedCluster = candidate;
+          }
+        }
+      }
+
+      if (matchedCluster) {
+        matchedCluster.minPrice = Math.min(matchedCluster.minPrice ?? matchedCluster.price, event.price);
+        matchedCluster.maxPrice = Math.max(matchedCluster.maxPrice ?? matchedCluster.price, event.price);
+      }
+    } else {
+      // 'time' mode
+      for (let i = clusters.length - 1; i >= 0; i--) {
+        const candidate = clusters[i];
+        const timeDiff = eventSec - normalizeEventSeconds(candidate.time);
+        if (timeDiff > clusterTimeWindowSec * 2) {
+          break;
+        }
+
+        if (candidate.contractType !== event.contractType) {
+          continue;
+        }
+
+        if (timeDiff < 0 || timeDiff > clusterTimeWindowSec) {
+          continue;
+        }
+
+        if (bubbleColorMode === 'askBidSplit' && candidate.side !== event.side) {
+          continue;
+        }
+
+        const maxPriceDiff = effectivePriceBucket ? effectivePriceBucket * 1.5 : candidate.price * 0.0005;
+        if (Math.abs(event.price - candidate.price) > maxPriceDiff) {
+          continue;
+        }
+
+        matchedCluster = candidate;
+        break;
+      }
+    }
+
+    if (matchedCluster) {
+      const totalVolBefore = matchedCluster.buyVolume + matchedCluster.sellVolume;
+      const combinedVol = totalVolBefore + event.volume;
+      if (combinedVol > 0) {
+        matchedCluster.price = (matchedCluster.price * totalVolBefore + event.price * event.volume) / combinedVol;
+        matchedCluster.time = (matchedCluster.time * totalVolBefore + event.time * event.volume) / combinedVol;
+      }
+      matchedCluster.volume = combinedVol;
+
+      if (event.side === 'buy') {
+        matchedCluster.buyVolume += event.volume;
+        matchedCluster.buyTradeCount += rawTradeCount;
+      } else {
+        matchedCluster.sellVolume += event.volume;
+        matchedCluster.sellTradeCount += rawTradeCount;
+      }
+
+      matchedCluster.tradeCount = matchedCluster.buyTradeCount + matchedCluster.sellTradeCount;
+      if (isFallback) {
+        matchedCluster.tradeCountFallback = true;
+      }
+
+      if (bubbleColorMode !== 'askBidSplit' || (effectiveGroupingMode === 'price' && bubblePriceAggrMode === 'extensionRetracement')) {
+        const netDelta = matchedCluster.buyVolume - matchedCluster.sellVolume;
+        matchedCluster.side = netDelta >= 0 ? 'buy' : 'sell';
+      }
+    } else {
+      const candleIndex = findCandleIndexForEvent(candles, eventSec, firstIndex, lastIndex);
+      clusters.push({
+        ...event,
+        buyVolume: event.side === 'buy' ? event.volume : 0,
+        sellVolume: event.side === 'sell' ? event.volume : 0,
+        buyTradeCount: event.side === 'buy' ? rawTradeCount : 0,
+        sellTradeCount: event.side === 'sell' ? rawTradeCount : 0,
+        tradeCountFallback: isFallback,
+        minPrice: event.price,
+        maxPrice: event.price,
+        candleIndex,
+      });
+    }
+  }
+
+  return clusters;
+}
+
 export function drawAggregateTradeBubbles(
   ctx: CanvasRenderingContext2D,
   events: BubbleEvent[],
@@ -231,8 +435,10 @@ export function drawAggregateTradeBubbles(
     bubbleFilterRender,
     bubbleStdDevVal,
     bubbleOutStdDevPerc,
-    bubbleSide,
+    bubbleSide = 'both',
     bubbleScaleMode = 'sqrt',
+    bubbleColorMode = 'askBidSplit',
+    bubbleVolumeColorMode = 'deltaAbsolute',
     bubbleMinOrders = 10,
     bubbleDisplayMode = '2d',
     bubbleBidColor = '#4ade80',
@@ -307,12 +513,18 @@ export function drawAggregateTradeBubbles(
       totalEventCountBySource,
       visibleEventCountBySource,
       renderedCountBySource,
-      visibleEventCountBySizeMode: { volume: visibleEventCount, orders: 0 },
-      renderedCountBySizeMode: { volume: renderedCount, orders: 0 },
+      visibleEventCountBySizeMode: {
+        volume: bubbleSizeBy === 'volume' ? visibleEventCount : 0,
+        orders: bubbleSizeBy === 'orders' ? visibleEventCount : 0,
+      },
+      renderedCountBySizeMode: {
+        volume: bubbleSizeBy === 'volume' ? renderedCount : 0,
+        orders: bubbleSizeBy === 'orders' ? renderedCount : 0,
+      },
       filteredCount: Object.values(filterReasons).reduce((sum, count) => sum + count, 0),
       filterReasons,
       tradeCountFallbackCount,
-      tradeCountFallbackPolicy: null,
+      tradeCountFallbackPolicy: bubbleSizeBy === 'orders' ? 'fallback-to-1' : null,
       latestEvent: latestEvent ? summarizeEvent(latestEvent) : null,
       latestRendered,
       latestFiltered,
@@ -330,7 +542,7 @@ export function drawAggregateTradeBubbles(
         stdDevVal: bubbleStdDevVal,
         outlierPerc: bubbleOutStdDevPerc,
         actualThreshold,
-        actualThresholdMode: null,
+        actualThresholdMode: bubbleSizeBy,
       },
     });
   };
@@ -368,6 +580,7 @@ export function drawAggregateTradeBubbles(
 
     if (event.source !== 'aggregateTrade') reason = 'not-aggregate-trade';
     else if (!isEventIncludedByMarketSource(event, resolvedMarketSource)) reason = 'excluded-by-market-source';
+    else if (bubbleColorMode === 'askBidSplit' && bubbleSide !== 'both' && event.side !== bubbleSide) reason = 'excluded-by-side-filter';
     else if (!Number.isFinite(event.price)) reason = 'invalid-price';
     else if (!Number.isFinite(event.volume) || event.volume <= 0) reason = 'invalid-volume';
     else if (eventSeconds === null || !Number.isFinite(eventSeconds)) reason = 'invalid-time';
@@ -392,71 +605,66 @@ export function drawAggregateTradeBubbles(
     return;
   }
 
-  const groupedEvents: BubbleEvent[] = [];
-  let currentGroup: BubbleEvent | null = null;
-  
-  for (const event of visibleEvents) {
-    if (!currentGroup) {
-      currentGroup = { ...event };
-      continue;
-    }
-    
-    const timeDiffSec = normalizeEventSeconds(event.time) - normalizeEventSeconds(currentGroup.time);
-    
-    if (
-      event.side === currentGroup.side &&
-      event.contractType === currentGroup.contractType &&
-      timeDiffSec >= 0 && timeDiffSec <= 0.05
-    ) {
-      const combinedVolume = currentGroup.volume + event.volume;
-      if (combinedVolume > 0) {
-        currentGroup.price = (currentGroup.price * currentGroup.volume + event.price * event.volume) / combinedVolume;
-      }
-      currentGroup.volume = combinedVolume;
-      
-      if (typeof event.tradeCount === 'number' && typeof currentGroup.tradeCount === 'number') {
-        currentGroup.tradeCount += event.tradeCount;
-      } else {
-        currentGroup.tradeCount = undefined;
-      }
-    } else {
-      groupedEvents.push(currentGroup);
-      currentGroup = { ...event };
-    }
-  }
-  if (currentGroup) {
-    groupedEvents.push(currentGroup);
-  }
+  // Ensure chronological order for grouping
+  visibleEvents.sort((a, b) => normalizeEventSeconds(a.time) - normalizeEventSeconds(b.time));
+
+  const clusters = clusterEvents(
+    visibleEvents,
+    candles,
+    firstIndex,
+    lastIndex,
+    barWidth,
+    settings,
+    debugContext
+  );
 
   if (bubbleSizeBy === 'orders') {
-    tradeCountFallbackCount = groupedEvents.reduce((count, event) => (
-      count + (getAggregateBubbleSizingValue(event, bubbleSizeBy).tradeCountFallback ? 1 : 0)
+    tradeCountFallbackCount = clusters.reduce((count, cluster) => (
+      count + (cluster.tradeCountFallback ? 1 : 0)
     ), 0);
   }
 
-  let actualThreshold = bubbleThreshold;
-  if (bubbleThresholdMode === 'relative') {
-    const avgEventVol = groupedEvents.reduce((sum, event) => sum + event.volume, 0) / groupedEvents.length;
-    actualThreshold = bubbleThreshold * avgEventVol;
+  const actualMinOrders = Math.max(1, Math.round(bubbleMinOrders));
+  let actualThreshold = bubbleSizeBy === 'orders' ? actualMinOrders : bubbleThreshold;
+  if (bubbleSizeBy === 'volume' && bubbleThresholdMode === 'relative') {
+    const avgClusterVol = clusters.reduce((sum, c) => sum + (c.buyVolume + c.sellVolume), 0) / (clusters.length || 1);
+    actualThreshold = bubbleThreshold * avgClusterVol;
   }
 
-  const qualifiedEvents = groupedEvents.filter((event) => {
-    if (event.volume >= actualThreshold) return true;
-    incrementReason(filterReasons, 'below-min-volume');
-    latestFiltered = {
-      ...summarizeEvent(event),
-      reason: 'below-min-volume',
-      eventSeconds: normalizeEventSeconds(event.time),
-    };
-    return false;
+  const qualifiedEvents = clusters.filter((cluster) => {
+    const sizing = getClusterSizingValue(cluster, bubbleSizeBy, bubbleColorMode);
+
+    if (bubbleSide !== 'both' && sizing.side !== bubbleSide) {
+      incrementReason(filterReasons, 'excluded-by-side-filter');
+      latestFiltered = {
+        ...summarizeEvent(cluster),
+        reason: 'excluded-by-side-filter',
+        eventSeconds: normalizeEventSeconds(cluster.time),
+      };
+      return false;
+    }
+
+    if (sizing.value < actualThreshold) {
+      const reason = bubbleSizeBy === 'orders' ? 'below-min-orders' : 'below-min-volume';
+      incrementReason(filterReasons, reason);
+      latestFiltered = {
+        ...summarizeEvent(cluster),
+        reason,
+        eventSeconds: normalizeEventSeconds(cluster.time),
+      };
+      return false;
+    }
+
+    return true;
   });
+
   if (qualifiedEvents.length === 0) {
     publishDebug(visibleEvents.length, 0, actualThreshold, visibleWindow);
     return;
   }
 
   const scaleValues = qualifiedEvents
-    .map((event) => event.volume)
+    .map((cluster) => getClusterSizingValue(cluster, bubbleSizeBy, bubbleColorMode).value)
     .filter((value) => Number.isFinite(value) && value > 0);
 
   let mean = 1;
@@ -479,43 +687,64 @@ export function drawAggregateTradeBubbles(
 
 
   let renderedCount = 0;
-  for (const event of qualifiedEvents) {
-    const placement = getAggregateEventPlacement(event, candles, firstIndex, lastIndex, indexToX, barWidth);
+  for (const cluster of qualifiedEvents) {
+    const placement = getAggregateEventPlacement(cluster, candles, firstIndex, lastIndex, indexToX, barWidth);
     if (placement === null || !Number.isFinite(placement.x)) {
       incrementReason(filterReasons, 'x-placement-failed');
       latestFiltered = {
-        ...summarizeEvent(event),
+        ...summarizeEvent(cluster),
         reason: 'x-placement-failed',
-        eventSeconds: Number.isFinite(event.time) ? normalizeEventSeconds(event.time) : null,
+        eventSeconds: Number.isFinite(cluster.time) ? normalizeEventSeconds(cluster.time) : null,
       };
       continue;
     }
 
-    const y = priceToY(event.price);
+    const y = priceToY(cluster.price);
     if (!Number.isFinite(y)) {
       incrementReason(filterReasons, 'y-placement-failed');
       latestFiltered = {
-        ...summarizeEvent(event),
+        ...summarizeEvent(cluster),
         reason: 'y-placement-failed',
         eventSeconds: placement.eventSeconds,
       };
       continue;
     }
 
-    const sizing = { value: event.volume, tradeCountFallback: false };
+    const sizing = getClusterSizingValue(cluster, bubbleSizeBy, bubbleColorMode);
     const t = scaleBubbleValue(sizing.value, actualThreshold, maxValue, bubbleScaleMode);
     const radius = t * 60; // Max radius internally clamped to 60px
-    const opacity = (0.4 + t * 0.5) * (bubbleOpacity / 0.5);
-
-    const isBuy = event.side === 'buy';
     if (radius < bubbleFilterRender) continue;
-    
-    // In Tier 3, since we don't have price level grouping yet (Tier 4), 
-    // each bubble is a single raw event (either pure buy or pure sell).
-    // Therefore, for 'delta' and 'volume' modes, it is equivalent to 'askBidSplit' 
-    // (100% buy or 100% sell delta). The color logic will be expanded in Tier 4.
-    const colorStr = isBuy ? bubbleBidColor : bubbleAskColor;
-    
+
+    const isBuy = sizing.side === 'buy';
+    const baseColor = isBuy ? bubbleBidColor : bubbleAskColor;
+
+    let opacity = (0.4 + t * 0.5) * (bubbleOpacity / 0.5);
+    let label = formatAggregateBubbleLabel(sizing.value, bubbleSizeBy);
+    let isDashedBorder = false;
+    let hasInnerAccentRing = false;
+
+    if (bubbleColorMode === 'delta') {
+      // In Delta mode: signed delta label (+/-) with actual net delta
+      const sign = sizing.delta >= 0 ? '+' : '-';
+      label = `${sign}${formatAggregateBubbleLabel(Math.abs(sizing.delta), bubbleSizeBy)}`;
+      const deltaIntensity = 0.35 + t * 0.65;
+      opacity = deltaIntensity * (bubbleOpacity / 0.5);
+    } else if (bubbleColorMode === 'volume') {
+      if (bubbleVolumeColorMode === 'deltaPercentual') {
+        // Delta Percentual mode: display directional aggression percentage with dashed perimeter
+        const deltaPerc = sizing.total > 0 ? Math.round((sizing.delta / sizing.total) * 100) : 0;
+        const sign = deltaPerc > 0 ? '+' : '';
+        label = `${sign}${deltaPerc}%`;
+        isDashedBorder = true;
+      } else {
+        // Delta Absolute mode: standard volume with double-ring volume boundary
+        label = formatAggregateBubbleLabel(sizing.total, bubbleSizeBy);
+        hasInnerAccentRing = true;
+      }
+    } else {
+      label = formatAggregateBubbleLabel(sizing.value, bubbleSizeBy);
+    }
+
     ctx.beginPath();
     ctx.arc(placement.x, y, radius, 0, Math.PI * 2);
 
@@ -524,32 +753,46 @@ export function drawAggregateTradeBubbles(
         placement.x - radius * 0.3, y - radius * 0.3, radius * 0.1,
         placement.x, y, radius
       );
-      gradient.addColorStop(0, chartColorToRgba(colorStr, Math.min(1, opacity + 0.4)));
-      gradient.addColorStop(0.7, chartColorToRgba(colorStr, opacity));
-      gradient.addColorStop(1, chartColorToRgba(colorStr, opacity * 0.4));
+      gradient.addColorStop(0, chartColorToRgba(baseColor, Math.min(1, opacity + 0.4)));
+      gradient.addColorStop(0.7, chartColorToRgba(baseColor, opacity));
+      gradient.addColorStop(1, chartColorToRgba(baseColor, opacity * 0.4));
       ctx.fillStyle = gradient;
     } else {
-      ctx.fillStyle = chartColorToRgba(colorStr, opacity);
+      ctx.fillStyle = chartColorToRgba(baseColor, opacity);
     }
     
     ctx.fill();
 
     const distinguishMarketSource = resolvedMarketSource === 'both';
-    ctx.strokeStyle = chartColorToRgba(colorStr, Math.min(1, opacity + 0.2));
-    ctx.lineWidth = distinguishMarketSource && event.contractType === 'futures' ? Math.max(1.5, bubbleLineWidth * 1.5) : bubbleLineWidth;
-    ctx.setLineDash(distinguishMarketSource && event.contractType === 'futures' ? [3, 2] : []);
+    ctx.strokeStyle = chartColorToRgba(baseColor, Math.min(1, opacity + 0.2));
+    ctx.lineWidth = distinguishMarketSource && cluster.contractType === 'futures' ? Math.max(1.5, bubbleLineWidth * 1.5) : bubbleLineWidth;
+    
+    if (isDashedBorder) {
+      ctx.setLineDash([4, 2]);
+    } else if (distinguishMarketSource && cluster.contractType === 'futures') {
+      ctx.setLineDash([3, 2]);
+    } else {
+      ctx.setLineDash([]);
+    }
     
     if (bubbleLineWidth > 0) {
       ctx.stroke();
     }
     ctx.setLineDash([]);
 
-    if (radius >= 12) {
-      const label = formatAggregateBubbleLabel(sizing.value, 'volume');
-      ctx.font = '500 9px "JetBrains Mono"';
+    if (hasInnerAccentRing && radius >= 14 && bubbleLineWidth > 0) {
+      ctx.beginPath();
+      ctx.arc(placement.x, y, radius * 0.8, 0, Math.PI * 2);
+      ctx.strokeStyle = chartColorToRgba(baseColor, Math.min(1, opacity * 0.6));
+      ctx.lineWidth = Math.max(0.5, bubbleLineWidth * 0.75);
+      ctx.stroke();
+    }
+
+    if (radius >= 11) {
+      ctx.font = getBubbleFont(radius);
       const textWidth = ctx.measureText(label).width;
       if (radius * 1.6 >= textWidth) {
-        ctx.fillStyle = '#E8E8E8';
+        ctx.fillStyle = '#FFFFFF';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(label, placement.x, y);
@@ -557,18 +800,18 @@ export function drawAggregateTradeBubbles(
     }
 
     renderedCount += 1;
-    countEventSource(renderedCountBySource, event);
+    countEventSource(renderedCountBySource, cluster);
 
     if (debugContext) {
       const candle = candles[placement.index];
       const nearestFootprintBucket = candle
-        ? getNearestFootprintBucket(debugContext.engine, candle.time, event.price, debugContext.bucketSize)
+        ? getNearestFootprintBucket(debugContext.engine, candle.time, cluster.price, debugContext.bucketSize)
         : null;
 
       latestRendered = {
-        ...summarizeEvent(event),
+        ...summarizeEvent(cluster),
         renderedValue: sizing.value,
-        renderedValueSource: 'volume' as const,
+        renderedValueSource: bubbleSizeBy,
         tradeCountFallback: sizing.tradeCountFallback,
         renderedX: placement.x,
         renderedY: y,
@@ -585,4 +828,4 @@ export function drawAggregateTradeBubbles(
   publishDebug(visibleEvents.length, renderedCount, actualThreshold, visibleWindow);
 }
 
-
+export { clusterEvents, getClusterSizingValue };

@@ -49,8 +49,9 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   const setDrawMode = useChartStore(s => s.setDrawMode);
   const setMeasureToolActive = useChartRuntimeStore(s => s.setMeasureToolActive);
   const setDrawingToolbarPosition = useChartStore(s => s.setDrawingToolbarPosition);
-  const [position, setPosition] = React.useState(panel.drawingToolbarPosition);
-  const [collapsed, setCollapsed] = React.useState(false);
+  const isDefaultPosition = React.useCallback((pos: { x: number; y: number }) => {
+    return pos.x < 0 || (pos.x === 16 && (pos.y === 48 || pos.y === 16));
+  }, []);
 
   const clampPosition = React.useCallback((nextPosition: { x: number; y: number }) => {
     const toolbar = toolbarRef.current;
@@ -77,17 +78,43 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
     };
   }, [panelId]);
 
-  React.useEffect(() => {
-    setPosition(panel.drawingToolbarPosition);
-  }, [panel.drawingToolbarPosition]);
+  const getDefaultPosition = React.useCallback(() => {
+    const toolbar = toolbarRef.current;
+    const panelElement = toolbar?.closest(`[data-chart-panel-id="${panelId}"]`) as HTMLElement | null;
+    const toolbarWidth = toolbar?.offsetWidth || 260;
+    const panelRect = panelElement?.getBoundingClientRect();
+    const panelLeft = panelRect ? panelRect.left : 0;
+    const panelWidth = panelRect ? panelRect.width : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+    const panelTop = panelRect ? panelRect.top : 40;
+
+    const x = Math.round(panelLeft + (panelWidth - toolbarWidth) / 2);
+    const y = Math.max(8, Math.round(panelTop + 4));
+    return clampPosition({ x, y });
+  }, [clampPosition, panelId]);
+
+  const [position, setPosition] = React.useState(() => {
+    if (panel.drawingToolbarPosition.x < 0 || (panel.drawingToolbarPosition.x === 16 && (panel.drawingToolbarPosition.y === 48 || panel.drawingToolbarPosition.y === 16))) {
+      return { x: 500, y: 44 };
+    }
+    return panel.drawingToolbarPosition;
+  });
+  const [collapsed, setCollapsed] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    if (isDefaultPosition(panel.drawingToolbarPosition)) {
+      setPosition(getDefaultPosition());
+    } else {
+      setPosition(panel.drawingToolbarPosition);
+    }
+  }, [getDefaultPosition, isDefaultPosition, panel.drawingToolbarPosition]);
 
   React.useEffect(() => {
     const handleResize = () => {
-      setPosition(prev => clampPosition(prev));
+      setPosition(prev => (isDefaultPosition(prev) ? getDefaultPosition() : clampPosition(prev)));
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [clampPosition]);
+  }, [clampPosition, getDefaultPosition, isDefaultPosition]);
 
   const selectTool = (mode: Exclude<LineDrawMode, 'none'>) => {
     setMeasureToolActive(panelId, false);

@@ -84,9 +84,9 @@ export type {
   PanelState,
 };
 
-import { AggregateBubbleMarketSource, BubbleSizeBy, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleSide, BubbleDisplayMode } from '../../types/bubble';
+import { AggregateBubbleMarketSource, BubbleSizeBy, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleSide, BubbleDisplayMode, BubbleGroupingMode, BubblePriceAggrMode, BubbleTickGroupingMode } from '../../types/bubble';
 
-export type { AggregateBubbleMarketSource, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleSide, BubbleSizeBy, BubbleDisplayMode };
+export type { AggregateBubbleMarketSource, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleSide, BubbleSizeBy, BubbleDisplayMode, BubbleGroupingMode, BubblePriceAggrMode, BubbleTickGroupingMode };
 
 export const MAX_AGGREGATE_BUBBLE_EVENTS = 20000;
 
@@ -183,6 +183,11 @@ export interface ChartState {
   setBubbleAskColor: (panelId: PanelId, color: string) => void;
   setBubbleLineWidth: (panelId: PanelId, width: number) => void;
   setBubbleOpacity: (panelId: PanelId, opacity: number) => void;
+  setBubbleGroupingMode: (panelId: PanelId, mode: BubbleGroupingMode) => void;
+  setBubblePriceAggrMode: (panelId: PanelId, mode: BubblePriceAggrMode) => void;
+  setBubbleTickGroupingMode: (panelId: PanelId, mode: BubbleTickGroupingMode) => void;
+  setBubbleTickCount: (panelId: PanelId, count: number) => void;
+  setBubbleTimeWindowMs: (panelId: PanelId, ms: number) => void;
   setDrawMode: (panelId: PanelId, enabled: boolean) => void;
   setCustomProfileRange: (panelId: PanelId, range: PanelState['customProfileRange']) => void;
   setCustomProfileLocked: (panelId: PanelId, locked: boolean) => void;
@@ -364,8 +369,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     footprintMode: 'bid-ask',
     bucketSize: 10,
     autoBucketSize: false,
-    barWidth: 12,
-    scrollOffset: 0,
+    barWidth: 16,
+    scrollOffset: -80,
     contractType: 'futures',
     dataSourceMode: 'futures',
     absorptionEnabled: true,
@@ -390,12 +395,17 @@ function createDefaultPanel(id: PanelId): PanelState {
     bubbleAskColor: '#f87171',
     bubbleLineWidth: 1,
     bubbleOpacity: 0.5,
+    bubbleGroupingMode: 'automatic' as BubbleGroupingMode,
+    bubblePriceAggrMode: 'extension' as BubblePriceAggrMode,
+    bubbleTickGroupingMode: 'automatic' as BubbleTickGroupingMode,
+    bubbleTickCount: 3,
+    bubbleTimeWindowMs: 250,
     isDrawMode: false,
     customProfileRange: null,
     customProfileLocked: false,
     drawnLines: [],
     lineDrawMode: 'none',
-    drawingToolbarPosition: { x: 16, y: 48 },
+    drawingToolbarPosition: { x: -1, y: 44 },
     exhaustionEnabled: true,
     exhaustionMinScore: 40,
     exhaustionSide: 'both' as ExhaustionSide,
@@ -560,6 +570,21 @@ function clampTimeframeSettings(settings: Partial<TimeframeSettings>, tickSize: 
     ...(settings.bubbleScaleMode === undefined
       ? {}
       : { bubbleScaleMode: normalizeBubbleScaleMode(settings.bubbleScaleMode) }),
+    ...(settings.bubbleGroupingMode === undefined
+      ? {}
+      : { bubbleGroupingMode: normalizeBubbleGroupingMode(settings.bubbleGroupingMode) }),
+    ...(settings.bubblePriceAggrMode === undefined
+      ? {}
+      : { bubblePriceAggrMode: normalizeBubblePriceAggrMode(settings.bubblePriceAggrMode) }),
+    ...(settings.bubbleTickGroupingMode === undefined
+      ? {}
+      : { bubbleTickGroupingMode: normalizeBubbleTickGroupingMode(settings.bubbleTickGroupingMode) }),
+    ...(settings.bubbleTickCount === undefined
+      ? {}
+      : { bubbleTickCount: Math.max(1, Math.min(100, Math.round(Number(settings.bubbleTickCount) || 3))) }),
+    ...(settings.bubbleTimeWindowMs === undefined
+      ? {}
+      : { bubbleTimeWindowMs: Math.max(50, Math.min(5000, Math.round(Number(settings.bubbleTimeWindowMs) || 250))) }),
     ...(settings.volumeBarsInputData === undefined
       ? {}
       : { volumeBarsInputData: normalizeVolumeBarsInputData(settings.volumeBarsInputData) }),
@@ -614,6 +639,18 @@ function normalizeBubbleScaleMode(scaleMode: unknown): BubbleScaleMode {
   return scaleMode === 'linear' || scaleMode === 'sqrt' || scaleMode === 'log'
     ? scaleMode
     : 'sqrt';
+}
+
+function normalizeBubbleGroupingMode(mode: unknown): BubbleGroupingMode {
+  return mode === 'automatic' || mode === 'time' || mode === 'price' ? mode : 'automatic';
+}
+
+function normalizeBubblePriceAggrMode(mode: unknown): BubblePriceAggrMode {
+  return mode === 'extension' || mode === 'extensionRetracement' ? mode : 'extension';
+}
+
+function normalizeBubbleTickGroupingMode(mode: unknown): BubbleTickGroupingMode {
+  return mode === 'automatic' || mode === 'fixed' ? mode : 'automatic';
 }
 
 
@@ -683,6 +720,7 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
   const timeframeSettingsKeys: (keyof TimeframeSettings)[] = [
     'bucketSize', 'autoBucketSize', 'bubbleThreshold', 'bubbleThresholdMode',
     'bubbleSizeBy', 'aggregateBubbleMarketSource', 'bubbleFilterRender', 'bubbleStdDevVal', 'bubbleOutStdDevPerc', 'bubbleScaleMode', 'bubbleColorMode', 'bubbleVolumeColorMode', 'bubbleDisplayMode', 'bubbleBidColor', 'bubbleAskColor', 'bubbleLineWidth', 'bubbleOpacity',
+    'bubbleGroupingMode', 'bubblePriceAggrMode', 'bubbleTickGroupingMode', 'bubbleTickCount', 'bubbleTimeWindowMs',
     'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
     'icebergMinScore', 'icebergLookback', 'icebergShowSuspected',
     'icebergShowLabels', 'icebergShowTint', 'liquidityVacuumMinScore',
@@ -998,6 +1036,21 @@ export const useChartStore = create<ChartState>()(
 
       setBubbleOpacity: (panelId, bubbleOpacity) =>
         set((state) => updatePanel(state, panelId, { bubbleOpacity })),
+
+      setBubbleGroupingMode: (panelId, bubbleGroupingMode) =>
+        set((state) => updatePanel(state, panelId, { bubbleGroupingMode })),
+
+      setBubblePriceAggrMode: (panelId, bubblePriceAggrMode) =>
+        set((state) => updatePanel(state, panelId, { bubblePriceAggrMode })),
+
+      setBubbleTickGroupingMode: (panelId, bubbleTickGroupingMode) =>
+        set((state) => updatePanel(state, panelId, { bubbleTickGroupingMode })),
+
+      setBubbleTickCount: (panelId, bubbleTickCount) =>
+        set((state) => updatePanel(state, panelId, { bubbleTickCount: Math.max(1, Math.min(100, Math.round(bubbleTickCount))) })),
+
+      setBubbleTimeWindowMs: (panelId, bubbleTimeWindowMs) =>
+        set((state) => updatePanel(state, panelId, { bubbleTimeWindowMs: Math.max(50, Math.min(5000, Math.round(bubbleTimeWindowMs))) })),
 
       setDrawMode: (panelId, isDrawMode) =>
         set((state) => {
@@ -1528,7 +1581,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 38,
+      version: 39,
       storage: createJSONStorage(() => tabAwareStorage),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
@@ -1545,10 +1598,12 @@ export const useChartStore = create<ChartState>()(
         const ensureDrawingToolbarPosition = (position: any): DrawingToolbarPosition => {
           const x = Number(position?.x);
           const y = Number(position?.y);
-          const panelHeaderOffset = version < 28 ? 32 : 0;
+          if (version < 39 && (x === 16 || !Number.isFinite(x))) {
+            return { x: -1, y: 44 };
+          }
           return {
-            x: Number.isFinite(x) ? Math.max(0, Math.round(x)) : 16,
-            y: Number.isFinite(y) ? Math.max(0, Math.round(y + panelHeaderOffset)) : 48,
+            x: Number.isFinite(x) ? Math.round(x) : -1,
+            y: Number.isFinite(y) ? Math.max(0, Math.round(y)) : 44,
           };
         };
 
@@ -1574,6 +1629,8 @@ export const useChartStore = create<ChartState>()(
           delete panelRest.activeMeasurement;
           return {
             ...panelRest,
+            barWidth: version < 39 && p.barWidth === 12 ? 16 : (p.barWidth ?? 16),
+            scrollOffset: version < 39 && (p.scrollOffset === 0 || !p.scrollOffset) ? -80 : (p.scrollOffset ?? -80),
             footprintMode: p.footprintMode || 'bid-ask',
             autoBucketSize: p.autoBucketSize ?? false,
             contractType: ensureContractType(p.contractType),
@@ -1586,6 +1643,18 @@ export const useChartStore = create<ChartState>()(
             bubbleThreshold: p.bubbleThreshold ?? 100,
             bubbleThresholdMode: p.bubbleThresholdMode || 'absolute',
             bubbleMinOrders: clampBubbleMinOrders(p.bubbleMinOrders),            bubbleMaxRadius: p.bubbleMaxRadius ?? 20,            bubbleScaleMode: normalizeBubbleScaleMode(p.bubbleScaleMode),
+            bubbleColorMode: p.bubbleColorMode || 'askBidSplit',
+            bubbleVolumeColorMode: p.bubbleVolumeColorMode || 'deltaAbsolute',
+            bubbleDisplayMode: p.bubbleDisplayMode || '2d',
+            bubbleBidColor: p.bubbleBidColor || '#4ade80',
+            bubbleAskColor: p.bubbleAskColor || '#f87171',
+            bubbleLineWidth: p.bubbleLineWidth ?? 1,
+            bubbleOpacity: p.bubbleOpacity ?? 0.5,
+            bubbleGroupingMode: normalizeBubbleGroupingMode(p.bubbleGroupingMode),
+            bubblePriceAggrMode: normalizeBubblePriceAggrMode(p.bubblePriceAggrMode),
+            bubbleTickGroupingMode: normalizeBubbleTickGroupingMode(p.bubbleTickGroupingMode),
+            bubbleTickCount: p.bubbleTickCount ?? 3,
+            bubbleTimeWindowMs: p.bubbleTimeWindowMs ?? 250,
             isDrawMode: p.isDrawMode ?? false,
             customProfileRange: p.customProfileRange ?? null,
             customProfileLocked: p.customProfileLocked ?? false,
@@ -1758,6 +1827,13 @@ export const useChartStore = create<ChartState>()(
               bubbleScaleMode: normalizeBubbleScaleMode(
                 persistedLeft.bubbleScaleMode ?? currentState.panels.left.bubbleScaleMode,
               ),
+              bubbleColorMode: persistedLeft.bubbleColorMode ?? currentState.panels.left.bubbleColorMode,
+              bubbleVolumeColorMode: persistedLeft.bubbleVolumeColorMode ?? currentState.panels.left.bubbleVolumeColorMode,
+              bubbleDisplayMode: persistedLeft.bubbleDisplayMode ?? currentState.panels.left.bubbleDisplayMode,
+              bubbleBidColor: persistedLeft.bubbleBidColor ?? currentState.panels.left.bubbleBidColor,
+              bubbleAskColor: persistedLeft.bubbleAskColor ?? currentState.panels.left.bubbleAskColor,
+              bubbleLineWidth: persistedLeft.bubbleLineWidth ?? currentState.panels.left.bubbleLineWidth,
+              bubbleOpacity: persistedLeft.bubbleOpacity ?? currentState.panels.left.bubbleOpacity,
               volumeBarsInputData: normalizeVolumeBarsInputData(
                 persistedLeft.volumeBarsInputData ?? currentState.panels.left.volumeBarsInputData,
               ),
@@ -1791,6 +1867,13 @@ export const useChartStore = create<ChartState>()(
               bubbleScaleMode: normalizeBubbleScaleMode(
                 persistedRight.bubbleScaleMode ?? currentState.panels.right.bubbleScaleMode,
               ),
+              bubbleColorMode: persistedRight.bubbleColorMode ?? currentState.panels.right.bubbleColorMode,
+              bubbleVolumeColorMode: persistedRight.bubbleVolumeColorMode ?? currentState.panels.right.bubbleVolumeColorMode,
+              bubbleDisplayMode: persistedRight.bubbleDisplayMode ?? currentState.panels.right.bubbleDisplayMode,
+              bubbleBidColor: persistedRight.bubbleBidColor ?? currentState.panels.right.bubbleBidColor,
+              bubbleAskColor: persistedRight.bubbleAskColor ?? currentState.panels.right.bubbleAskColor,
+              bubbleLineWidth: persistedRight.bubbleLineWidth ?? currentState.panels.right.bubbleLineWidth,
+              bubbleOpacity: persistedRight.bubbleOpacity ?? currentState.panels.right.bubbleOpacity,
               volumeBarsInputData: normalizeVolumeBarsInputData(
                 persistedRight.volumeBarsInputData ?? currentState.panels.right.volumeBarsInputData,
               ),
@@ -1836,6 +1919,18 @@ export const useChartStore = create<ChartState>()(
             bubbleOutStdDevPerc: state.panels.left.bubbleOutStdDevPerc,
             bubbleSide: state.panels.left.bubbleSide,
             bubbleScaleMode: state.panels.left.bubbleScaleMode,
+            bubbleColorMode: state.panels.left.bubbleColorMode,
+            bubbleVolumeColorMode: state.panels.left.bubbleVolumeColorMode,
+            bubbleDisplayMode: state.panels.left.bubbleDisplayMode,
+            bubbleBidColor: state.panels.left.bubbleBidColor,
+            bubbleAskColor: state.panels.left.bubbleAskColor,
+            bubbleLineWidth: state.panels.left.bubbleLineWidth,
+            bubbleOpacity: state.panels.left.bubbleOpacity,
+            bubbleGroupingMode: state.panels.left.bubbleGroupingMode,
+            bubblePriceAggrMode: state.panels.left.bubblePriceAggrMode,
+            bubbleTickGroupingMode: state.panels.left.bubbleTickGroupingMode,
+            bubbleTickCount: state.panels.left.bubbleTickCount,
+            bubbleTimeWindowMs: state.panels.left.bubbleTimeWindowMs,
             isDrawMode: state.panels.left.isDrawMode,
             customProfileRange: state.panels.left.customProfileRange,
             customProfileLocked: state.panels.left.customProfileLocked,
@@ -1972,6 +2067,18 @@ export const useChartStore = create<ChartState>()(
             bubbleOutStdDevPerc: state.panels.right.bubbleOutStdDevPerc,
             bubbleSide: state.panels.right.bubbleSide,
             bubbleScaleMode: state.panels.right.bubbleScaleMode,
+            bubbleColorMode: state.panels.right.bubbleColorMode,
+            bubbleVolumeColorMode: state.panels.right.bubbleVolumeColorMode,
+            bubbleDisplayMode: state.panels.right.bubbleDisplayMode,
+            bubbleBidColor: state.panels.right.bubbleBidColor,
+            bubbleAskColor: state.panels.right.bubbleAskColor,
+            bubbleLineWidth: state.panels.right.bubbleLineWidth,
+            bubbleOpacity: state.panels.right.bubbleOpacity,
+            bubbleGroupingMode: state.panels.right.bubbleGroupingMode,
+            bubblePriceAggrMode: state.panels.right.bubblePriceAggrMode,
+            bubbleTickGroupingMode: state.panels.right.bubbleTickGroupingMode,
+            bubbleTickCount: state.panels.right.bubbleTickCount,
+            bubbleTimeWindowMs: state.panels.right.bubbleTimeWindowMs,
             isDrawMode: state.panels.right.isDrawMode,
             customProfileRange: state.panels.right.customProfileRange,
             customProfileLocked: state.panels.right.customProfileLocked,
