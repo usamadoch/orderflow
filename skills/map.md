@@ -146,7 +146,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots for docked bottom indicators, treating volume bars as an on-canvas overlay.
 - `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, reordering controls, and always-visible action icons without hover requirement.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas coordinator and multi-layer rendering pipeline with continuous auto-scaling and timeframe/symbol/history reset triggers ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
+- `components/chart/ChartCanvas.tsx` → Main canvas coordinator and multi-layer rendering pipeline with reactive profile settings cache invalidation, continuous auto-scaling, and timeframe/symbol/history reset triggers ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
 - `components/chart/chartCanvasUtils.ts` → Continuous fractional index interpolation (resolveIndexFromTime) from timestamps for multi-timeframe drawing sync, coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
 - `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (1px white defaults, FigUI tooltips, Trash2 delete, box border/fill, and position tool profit & stop loss color pickers) and custom profile controls with pointer/mouse event isolation.
@@ -161,8 +161,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters, delta, or delta-volume profiles per price level.
 - `components/chart/drawBubbles.ts` → Volume bubble renderer with bounded price grouping, zoom-stable tick grouping, and multi-tier color/display modes.
 - `components/chart/drawVolumeBars.ts` → On-canvas histogram overlay renderer for volume and trade counts layered behind candlesticks with moving average.
-- `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC line, developing POC trail, Value Area, and HVN/LVN levels with configurable cosmetics.
-- `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer.
+- `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC bar highlight with configurable fill and internal label, developing POC trail, Value Area, and bar-colored HVN/LVN nodes.
+- `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer with bar-colored HVN/LVN nodes and configurable POC fill.
 - `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/drawLines.map.md)).
 - `lib/utils/format.ts` → Formatting helpers for price precision, time countdowns, elapsed duration, volume/delta abbreviations, and TradingView-style date-time badges (e.g. `Sat 05 Sep '26  12:05 AM`).
 - `components/chart/drawVwap.ts` → Canvas renderer for VWAP line, rolling window, and envelope bands.

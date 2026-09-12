@@ -1,5 +1,18 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-13] - Fix: Volume Profile UI Refinement - Removed POC Lines & Dotted Lines, Solid Profile Border
+- **What changed**:
+  - In `components/chart/drawSelectionRect.ts` & `components/chart/drawVolumeProfile.ts`:
+    - Removed all dotted lines for the POC / Value Area (VAH and VAL dotted lines) and all histogram separator lines.
+    - Removed the POC orange line across candles and the developing POC orange trail (`developingPoc`), eliminating all lines cutting across candles.
+    - Added explicit `ctx.setLineDash([])` before drawing the overall volume profile border to ensure it is crisp and solid (preventing any inherited dash pattern).
+    - Fixed canvas context save/restore balance in `drawSelectionRect.ts` by scoping `ctx.save()` / `ctx.restore()` to the active drag box and eliminating the dangling context pop.
+    - Maintained direct bar coloring: Value Area (POC area between VAH and VAL) bars are blue (`#3D7EFF`), outside bars are muted amber, and POC row has configurable `pocColor` fill with internal white "POC" label.
+  - In `ChartCanvas.tsx`:
+    - Added cache invalidation and reactive redraw on profile settings changes, ensuring instant updates.
+- **Why it changed**: User requested removing the dotted lines for the POC area and the orange POC line because the direct bar colors already clearly demarcate the POC and Value Area without needing lines cluttering the candles.
+- **Impact summary**: Visual presentation is completely clean with zero dotted or orange lines across the candles; Value Area is immediately recognizable from bar colors; profile border is clean and solid; TypeScript check passes with 0 errors.
+
 ## [2026-09-12] - Fix: Bubble Snowball Expansion, Zoom Stability & Live Storage Parity
 - **What changed**:
   - In `drawBubbles.ts`: clamped cluster vertical span in price grouping to `effectivePriceBucket`, preventing runaway snowball expansion across candles.

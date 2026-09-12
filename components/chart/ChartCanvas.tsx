@@ -502,6 +502,10 @@ export function ChartCanvas({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cachedProfilesRef = useRef<{ default: any, custom: any, session: any }>({ default: null, custom: null, session: null });
   const lastCandleCloseTimeRef = useRef<{ default: number, custom: number, session: number }>({ default: 0, custom: 0, session: 0 });
+  const lastProfileInputDataRef = useRef<VolumeBarsInputData>(profileInputData);
+  const lastProfileNodeSensitivityRef = useRef<number>(profileNodeSensitivity);
+  const lastProfileFilterMinRef = useRef<number | undefined>(profileFilterMin);
+  const lastProfileFilterMaxRef = useRef<number | undefined>(profileFilterMax);
 
   const vwapCalcRef = useRef<VwapCalculator | null>(null);
 
@@ -1160,6 +1164,21 @@ export function ChartCanvas({
           );
 
           // THROTTLED CUSTOM PROFILE BUILD
+          if (
+            profileInputData !== lastProfileInputDataRef.current ||
+            profileNodeSensitivity !== lastProfileNodeSensitivityRef.current ||
+            profileFilterMin !== lastProfileFilterMinRef.current ||
+            profileFilterMax !== lastProfileFilterMaxRef.current
+          ) {
+            cachedProfilesRef.current.default = null;
+            cachedProfilesRef.current.custom = null;
+            cachedProfilesRef.current.session = null;
+            lastProfileInputDataRef.current = profileInputData;
+            lastProfileNodeSensitivityRef.current = profileNodeSensitivity;
+            lastProfileFilterMinRef.current = profileFilterMin;
+            lastProfileFilterMaxRef.current = profileFilterMax;
+          }
+
           const latestCandleTime = candles.length > 0 ? candles[candles.length - 1].time : 0;
           const isNewCandle = latestCandleTime !== lastCandleCloseTimeRef.current.custom;
           const timeSinceLastBuild = performance.now() - lastProfileBuildTimeRef.current.custom;
@@ -1301,6 +1320,21 @@ export function ChartCanvas({
           }
 
           // THROTTLED DEFAULT PROFILE BUILD
+          if (
+            profileInputData !== lastProfileInputDataRef.current ||
+            profileNodeSensitivity !== lastProfileNodeSensitivityRef.current ||
+            profileFilterMin !== lastProfileFilterMinRef.current ||
+            profileFilterMax !== lastProfileFilterMaxRef.current
+          ) {
+            cachedProfilesRef.current.default = null;
+            cachedProfilesRef.current.custom = null;
+            cachedProfilesRef.current.session = null;
+            lastProfileInputDataRef.current = profileInputData;
+            lastProfileNodeSensitivityRef.current = profileNodeSensitivity;
+            lastProfileFilterMinRef.current = profileFilterMin;
+            lastProfileFilterMaxRef.current = profileFilterMax;
+          }
+
           const latestCandleTime = candles.length > 0 ? candles[candles.length - 1].time : 0;
           const isNewCandle = latestCandleTime !== lastCandleCloseTimeRef.current.default;
           const timeSinceLastBuild = performance.now() - lastProfileBuildTimeRef.current.default;
@@ -1710,7 +1744,7 @@ export function ChartCanvas({
       markEnd('rAF_redraw');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, bubbleColorMode, bubbleVolumeColorMode, bubbleDisplayMode, bubbleBidColor, bubbleAskColor, bubbleLineWidth, bubbleOpacity, bubbleGroupingMode, bubblePriceAggrMode, bubbleTickGroupingMode, bubbleTickCount, bubbleTimeWindowMs, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, vwapSeries, candleUpColor, candleUpOpacity, candleDownColor, candleDownOpacity, candleUpWickColor, candleUpWickOpacity, candleDownWickColor, candleDownWickOpacity, chartBackgroundType, chartBackgroundColor, chartBackgroundOpacity, chartBackgroundGradientTop, chartBackgroundGradientTopOpacity, chartBackgroundGradientBottom, chartBackgroundGradientBottomOpacity, showVerticalGridLines, verticalGridLineColor, verticalGridLineOpacity, verticalGridLineStyle, showHorizontalGridLines, horizontalGridLineColor, horizontalGridLineOpacity, horizontalGridLineStyle, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, bubbleColorMode, bubbleVolumeColorMode, bubbleDisplayMode, bubbleBidColor, bubbleAskColor, bubbleLineWidth, bubbleOpacity, bubbleGroupingMode, bubblePriceAggrMode, bubbleTickGroupingMode, bubbleTickCount, bubbleTimeWindowMs, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, profileInputData, profilePocColor, profileHvnColor, profileLvnColor, profilePocWidth, profileFilterMin, profileFilterMax, profileNodeSensitivity, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, vwapSeries, candleUpColor, candleUpOpacity, candleDownColor, candleDownOpacity, candleUpWickColor, candleUpWickOpacity, candleDownWickColor, candleDownWickOpacity, chartBackgroundType, chartBackgroundColor, chartBackgroundOpacity, chartBackgroundGradientTop, chartBackgroundGradientTopOpacity, chartBackgroundGradientBottom, chartBackgroundGradientBottomOpacity, showVerticalGridLines, verticalGridLineColor, verticalGridLineOpacity, verticalGridLineStyle, showHorizontalGridLines, horizontalGridLineColor, horizontalGridLineOpacity, horizontalGridLineStyle, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -2086,6 +2120,35 @@ export function ChartCanvas({
       setSelectedDrawingId(null);
     }
   }, [drawnLines, selectedDrawingId]);
+
+  // Reactive profile settings listener to invalidate cache and trigger immediate redraw
+  useEffect(() => {
+    cachedProfilesRef.current.default = null;
+    cachedProfilesRef.current.custom = null;
+    cachedProfilesRef.current.session = null;
+    redrawRef.current('all');
+  }, [
+    profileInputData,
+    profileType,
+    profileNodeSensitivity,
+    profileFilterMin,
+    profileFilterMax,
+    profilePocColor,
+    profileHvnColor,
+    profileLvnColor,
+    profilePocWidth,
+    profileScaleMode,
+    profileOpacity,
+    profileWidthPct,
+    profileMinRowWidth,
+    profileMinRowHeight,
+    profileShowPocHighlight,
+    profileShowVaFill,
+    profileShowPocLine,
+    profileShowVaLines,
+    defaultProfileEnabled,
+    customProfileRange,
+  ]);
 
   useEffect(() => {
     redraw();
@@ -4073,8 +4136,8 @@ export function ChartCanvas({
             }}
             onMouseDown={(event) => event.stopPropagation()}
             className={`absolute z-20 h-[22px] rounded border px-2 text-[10px] font-bold leading-none shadow-sm transition-colors disabled:cursor-wait disabled:opacity-70 ${isConfirming
-                ? 'border-[#f23645]/70 bg-[#f23645]/18 text-[#ffd7db] hover:bg-[#f23645]/26'
-                : 'border-[#333] bg-[#1F1F1F]/92 text-[#E8E8E8] hover:border-[#f23645]/60 hover:text-[#ffd7db]'
+              ? 'border-[#f23645]/70 bg-[#f23645]/18 text-[#ffd7db] hover:bg-[#f23645]/26'
+              : 'border-[#333] bg-[#1F1F1F]/92 text-[#E8E8E8] hover:border-[#f23645]/60 hover:text-[#ffd7db]'
               }`}
             style={{ top: `${top}px`, left: `${left}px` }}
             title={isConfirming ? 'Confirm cancel order' : 'Cancel order'}
@@ -4151,8 +4214,8 @@ export function ChartCanvas({
             });
           }}
           className={`cursor-pointer absolute right-[92px] top-2 z-30 flex items-center gap-2 max-w-[320px] rounded border bg-[#1F1F1F]/95 px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur-sm transition-all hover:opacity-80 ${(chartOrderMessage?.type === 'error' || orderActionError || modifyError)
-              ? 'border-[#f23645]/60 text-[#ffd7db]'
-              : 'border-[#089981]/60 text-[#c8fff2]'
+            ? 'border-[#f23645]/60 text-[#ffd7db]'
+            : 'border-[#089981]/60 text-[#c8fff2]'
             }`}
           title="Click to dismiss"
         >

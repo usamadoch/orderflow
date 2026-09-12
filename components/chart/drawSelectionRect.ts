@@ -49,12 +49,13 @@ export function drawSelectionRect(
 
   // If we are actively dragging, draw a subtle solid border
   if (dragStart && dragEnd) {
+    ctx.save();
+    ctx.setLineDash([]);
     ctx.strokeStyle = 'rgba(61, 126, 255, 0.4)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, width, height);
+    ctx.restore();
   }
-
-  ctx.restore();
 }
 
 /**
@@ -110,31 +111,24 @@ export function drawCustomProfile(
   const rectHeight = Math.abs(y2 - y1);
 
   ctx.save();
+  ctx.setLineDash([]); // Ensure crisp solid border (never dotted/dashed)
 
-  // 1. Border (Subtle and solid)
-  if (isSelected || isHovered) {
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
-  }
+  // 1. Overall Volume Profile Border (Always rendered, solid)
+  ctx.strokeStyle = isSelected
+    ? 'rgba(255, 255, 255, 0.35)'
+    : isHovered
+    ? 'rgba(255, 255, 255, 0.22)'
+    : 'rgba(255, 255, 255, 0.16)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
 
   // 2. Profile Bars
   if (profile) {
     const barAnchorX = Math.min(x1, x2);
     const barMaxWidth = Math.max(0, rectWidth * (profileWidthPct / 100));
     const sortedRows = [...profile.rows].sort((a, b) => b.price - a.price);
-
-    // VA Area Fill
-    if (showVaFill) {
-      const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
-      const vaLowY = priceToY(profile.vaLow);
-      const fillTop = Math.max(vaHighY, rectY);
-      const fillBot = Math.min(vaLowY, rectY + rectHeight);
-      if (fillBot > fillTop) {
-        ctx.fillStyle = 'rgba(61, 126, 255, 0.08)';
-        ctx.fillRect(barAnchorX, fillTop, barMaxWidth, fillBot - fillTop);
-      }
-    }
+    const hvnSet = new Set(profile.hvns ?? []);
+    const lvnSet = new Set(profile.lvns ?? []);
 
     for (let i = 0; i < sortedRows.length; i += 1) {
       const row = sortedRows[i];
@@ -160,6 +154,8 @@ export function drawCustomProfile(
       if (barWidthPx < 0.5) continue;
 
       const rowOpacity = getProfileRowOpacity(row.totalVol, profile.maxVol);
+      const isHvn = hvnSet.has(row.price);
+      const isLvn = lvnSet.has(row.price);
 
       if (profileType === 'bidAsk') {
         const askVol = row.askVol || 0;
@@ -180,8 +176,37 @@ export function drawCustomProfile(
           ctx.fillRect(barAnchorX + bidWidth, drawTopY, askWidth, drawHeight);
         }
       } else if (profileType !== 'delta') {
-        ctx.fillStyle = `rgba(217, 119, 6, ${rowOpacity})`;
+        const isInsideVa = row.price >= profile.vaLow && row.price <= profile.vaHigh + profileBucketSize * 0.5;
+        let fillColor: string;
+        if (isHvn) {
+          fillColor = chartColorToRgba(hvnColor, Math.max(rowOpacity, 0.85));
+        } else if (isLvn) {
+          fillColor = chartColorToRgba(lvnColor, Math.max(rowOpacity, 0.85));
+        } else if (showVaFill && isInsideVa) {
+          // Color bars inside the Value Area (POC area) with distinct blue matching VA lines (#3D7EFF)
+          fillColor = chartColorToRgba('#3D7EFF', Math.max(rowOpacity, 0.75));
+        } else {
+          // Bars outside Value Area: muted amber
+          fillColor = showVaFill
+            ? `rgba(217, 119, 6, ${rowOpacity * 0.75})`
+            : `rgba(217, 119, 6, ${rowOpacity})`;
+        }
+        ctx.fillStyle = fillColor;
         ctx.fillRect(barAnchorX, drawTopY, barWidthPx, drawHeight);
+
+        if (isHvn && drawHeight >= 9 && barWidthPx >= 18) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 8px "JetBrains Mono", BlinkMacSystemFont, sans-serif';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('HVN', barAnchorX + barWidthPx - 2, drawTopY + drawHeight / 2);
+        } else if (isLvn && drawHeight >= 9) {
+          ctx.fillStyle = lvnColor;
+          ctx.font = 'bold 8px "JetBrains Mono", BlinkMacSystemFont, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('LVN', barAnchorX + barWidthPx + 3, drawTopY + drawHeight / 2);
+        }
       }
     }
 
@@ -201,144 +226,29 @@ export function drawCustomProfile(
 
           if (barW >= 0.5) {
             const highlightOpacity = Math.max(getProfileRowOpacity(pocRow.totalVol, profile.maxVol), profileOpacity);
-            ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
+            ctx.fillStyle = chartColorToRgba(pocColor, highlightOpacity);
             ctx.fillRect(barAnchorX, drawTopY, barW, drawHeight);
 
-            ctx.strokeStyle = pocColor;
-            ctx.lineWidth = pocWidth;
-            ctx.strokeRect(barAnchorX, drawTopY, barW, drawHeight);
-
-            if (drawHeight >= 10 && barW >= 20) {
-              ctx.fillStyle = pocColor;
-              ctx.font = '8px "JetBrains Mono"';
+            if (drawHeight >= 9 && barW >= 18) {
+              ctx.fillStyle = '#FFFFFF';
+              ctx.font = 'bold 8px "JetBrains Mono", BlinkMacSystemFont, sans-serif';
               ctx.textAlign = 'left';
               ctx.textBaseline = 'middle';
-              ctx.fillText('POC', barAnchorX + 3, drawTopY + drawHeight / 2 + 1);
+              ctx.fillText('POC', barAnchorX + 3, drawTopY + drawHeight / 2);
             }
           }
         }
       }
     }
 
-    // 3. POC Line
-    if (showPocLine) {
-      const pocY = priceToY(profile.poc + profileBucketSize / 2);
-      if (pocY >= rectY && pocY <= rectY + rectHeight) {
-        ctx.strokeStyle = pocColor;
-        ctx.lineWidth = Math.max(1.5, pocWidth);
-        ctx.setLineDash([6, 3]);
-        ctx.beginPath();
-        ctx.moveTo(rectX, Math.round(pocY) + 0.5);
-        ctx.lineTo(rectX + rectWidth, Math.round(pocY) + 0.5);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+    // 3. POC line & developing POC trail removed (as requested, bar colors identify POC/VA)
+    void showPocLine;
+    void profileShowVaLines;
+    void pocWidth;
+    void candles;
+    void indexToXGlobal;
 
-      // Developing POC trail for custom profile
-      if (profile.developingPoc && profile.developingPoc.length > 0 && candles && indexToXGlobal) {
-        ctx.save();
-        ctx.strokeStyle = pocColor;
-        ctx.lineWidth = Math.max(2, pocWidth + 1);
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        
-        let started = false;
-        for (const point of profile.developingPoc) {
-          const timeSeconds = Math.floor(point.time / 1000);
-          let lo = 0, hi = candles.length;
-          while (lo < hi) {
-            const mid = (lo + hi) >>> 1;
-            if (candles[mid].time < timeSeconds) lo = mid + 1;
-            else hi = mid;
-          }
-          const index = Math.min(lo, candles.length - 1);
-          const x = indexToXGlobal(index);
-          const y = priceToY(point.price + profileBucketSize / 2);
-
-          if (x >= rectX && x <= rectX + rectWidth && y >= rectY && y <= rectY + rectHeight) {
-            if (!started) {
-              ctx.moveTo(x, Math.round(y) + 0.5);
-              started = true;
-            } else {
-              ctx.lineTo(x, Math.round(y) + 0.5);
-            }
-          } else {
-             // If point moves out of bounds, break the line
-             started = false;
-          }
-        }
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-
-    // 4. VA Lines
-    if (profileShowVaLines) {
-      const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
-      const vaLowY = priceToY(profile.vaLow);
-
-      ctx.strokeStyle = '#3D7EFF';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
-
-      if (vaHighY >= rectY && vaHighY <= rectY + rectHeight) {
-        ctx.beginPath();
-        ctx.moveTo(rectX, Math.round(vaHighY) + 0.5);
-        ctx.lineTo(rectX + rectWidth, Math.round(vaHighY) + 0.5);
-        ctx.stroke();
-      }
-      if (vaLowY >= rectY && vaLowY <= rectY + rectHeight) {
-        ctx.beginPath();
-        ctx.moveTo(rectX, Math.round(vaLowY) + 0.5);
-        ctx.lineTo(rectX + rectWidth, Math.round(vaLowY) + 0.5);
-        ctx.stroke();
-      }
-    }
-
-    // 5. LVN Lines
-    if (profile.lvns.length > 0) {
-      ctx.save();
-      ctx.strokeStyle = lvnColor;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([2, 4]);
-      ctx.fillStyle = lvnColor;
-      ctx.font = 'bold 9px "JetBrains Mono"';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'bottom';
-
-      for (const lvn of profile.lvns) {
-        const lvnY = priceToY(lvn + profileBucketSize / 2);
-        if (lvnY < rectY || lvnY > rectY + rectHeight) continue;
-
-        ctx.beginPath();
-        ctx.moveTo(rectX, Math.round(lvnY) + 0.5);
-        ctx.lineTo(rectX + rectWidth, Math.round(lvnY) + 0.5);
-        ctx.stroke();
-        ctx.fillText('LVN', rectX + 3, lvnY - 2);
-      }
-      ctx.restore();
-    }
-
-    if (profile.hvns && profile.hvns.length > 0) {
-      ctx.save();
-      ctx.strokeStyle = hvnColor;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([2, 4]);
-      ctx.fillStyle = hvnColor;
-      ctx.font = 'bold 9px "JetBrains Mono"';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'bottom';
-
-      for (const hvn of profile.hvns) {
-        const hvnY = priceToY(hvn + profileBucketSize / 2);
-        ctx.beginPath();
-        ctx.moveTo(rectX, Math.round(hvnY) + 0.5);
-        ctx.lineTo(rectX + rectWidth, Math.round(hvnY) + 0.5);
-        ctx.stroke();
-        ctx.fillText('HVN', rectX + rectWidth - 4, hvnY - 2);
-      }
-      ctx.restore();
-    }
+    // 4. LVN and HVN are rendered directly as colored bar segments in the profile bars loop above
   }
 
   // 6. Interaction Buttons (Moved to React overlay in ChartCanvas.tsx)

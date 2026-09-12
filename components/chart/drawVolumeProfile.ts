@@ -42,18 +42,25 @@ export function drawVolumeProfile(
 
   const profileStartX = chartRight - effectiveWidth;
 
-  const lineOpacity = isCustomActive ? 0.3 : 1;
+  void isCustomActive;
   const sortedRows = [...profile.rows].sort((a, b) => b.price - a.price);
 
-  // ── Step 0: VA Background Fill ──
-  if (showVaFill) {
-    const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
-    const vaLowY = priceToY(profile.vaLow);
-    ctx.fillStyle = 'rgba(61, 126, 255, 0.06)';
-    ctx.fillRect(profileStartX, vaHighY, effectiveWidth, vaLowY - vaHighY);
+  // ── Step 0: Overall Profile Border ──
+  if (sortedRows.length > 0) {
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = 1;
+    const topY = priceToY(sortedRows[0].price + profileBucketSize);
+    const botY = priceToY(sortedRows[sortedRows.length - 1].price);
+    ctx.strokeRect(profileStartX, topY, effectiveWidth, botY - topY);
+    ctx.restore();
   }
 
   // ── Step 1: Profile Bars ──
+  const hvnSet = new Set(profile.hvns ?? []);
+  const lvnSet = new Set(profile.lvns ?? []);
+
   for (let i = 0; i < sortedRows.length; i += 1) {
     const row = sortedRows[i];
     const yRange = getProfileRowYRange(sortedRows, i, profileBucketSize, priceToY, profileMinRowHeight);
@@ -80,6 +87,8 @@ export function drawVolumeProfile(
 
     const barX = chartRight - calculatedBarWidth;
     const rowOpacity = getProfileRowOpacity(row.totalVol, profile.maxVol);
+    const isHvn = hvnSet.has(row.price);
+    const isLvn = lvnSet.has(row.price);
 
     if (profileType === 'bidAsk') {
       // Split the bar horizontally into Ask (buy/bullish) and Bid (sell/bearish)
@@ -104,9 +113,37 @@ export function drawVolumeProfile(
         ctx.fillRect(barX + bidWidth, yTop, askWidth, rowHeight);
       }
     } else if (profileType !== 'delta') {
-      // Unified muted amber/orange color for institutional look
-      ctx.fillStyle = `rgba(217, 119, 6, ${rowOpacity})`;
+      const isInsideVa = row.price >= profile.vaLow && row.price <= profile.vaHigh + profileBucketSize * 0.5;
+      let fillColor: string;
+      if (isHvn) {
+        fillColor = chartColorToRgba(hvnColor, Math.max(rowOpacity, 0.85));
+      } else if (isLvn) {
+        fillColor = chartColorToRgba(lvnColor, Math.max(rowOpacity, 0.85));
+      } else if (showVaFill && isInsideVa) {
+        // Color bars inside the Value Area (POC area) with distinct blue matching VA lines (#3D7EFF)
+        fillColor = chartColorToRgba('#3D7EFF', Math.max(rowOpacity, 0.75));
+      } else {
+        // Bars outside Value Area: muted amber
+        fillColor = showVaFill 
+          ? `rgba(217, 119, 6, ${rowOpacity * 0.75})` 
+          : `rgba(217, 119, 6, ${rowOpacity})`;
+      }
+      ctx.fillStyle = fillColor;
       ctx.fillRect(barX, yTop, calculatedBarWidth, rowHeight);
+
+      if (isHvn && rowHeight >= 9 && calculatedBarWidth >= 18) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 8px "JetBrains Mono", BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('HVN', chartRight - 3, yTop + rowHeight / 2);
+      } else if (isLvn && rowHeight >= 9) {
+        ctx.fillStyle = lvnColor;
+        ctx.font = 'bold 8px "JetBrains Mono", BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('LVN', barX - 3, yTop + rowHeight / 2);
+      }
     }
   }
 
@@ -128,22 +165,17 @@ export function drawVolumeProfile(
           const barX = chartRight - barW;
           const highlightOpacity = Math.max(getProfileRowOpacity(pocRow.totalVol, profile.maxVol), profileOpacity);
 
-          // Re-draw with higher brightness
-          ctx.fillStyle = `rgba(217, 119, 6, ${highlightOpacity})`;
+          // Fill with configurable pocColor
+          ctx.fillStyle = chartColorToRgba(pocColor, highlightOpacity);
           ctx.fillRect(barX, yTop, barW, rowHeight);
 
-          // POC outline
-          ctx.strokeStyle = pocColor;
-          ctx.lineWidth = pocWidth;
-          ctx.strokeRect(barX, yTop, barW, rowHeight);
-
           // Internal POC label
-          if (rowHeight >= 10 && barW >= 20) {
-            ctx.fillStyle = pocColor;
-            ctx.font = '8px "JetBrains Mono"';
+          if (rowHeight >= 9 && barW >= 18) {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 8px "JetBrains Mono", BlinkMacSystemFont, sans-serif';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText('POC', barX + 3, yTop + rowHeight / 2 + 1);
+            ctx.fillText('POC', barX + 3, yTop + rowHeight / 2);
           }
 
           // Optional Enrichment: POC Glow from Heatmap
@@ -164,147 +196,16 @@ export function drawVolumeProfile(
     }
   }
 
-  // ── Step 2: POC Line ──
-  if (showPocLine) {
-    const pocY = priceToY(profile.poc + profileBucketSize / 2);
+  // ── Step 2 & 3: POC Line and VA Lines removed (POC and Value Area are identified directly by bar coloring) ──
+  void showVaLines;
+  void showPocLine;
+  void pocWidth;
+  void candles;
+  void indexToX;
 
-    ctx.save();
-    ctx.globalAlpha = lineOpacity;
-    ctx.strokeStyle = pocColor;
-    ctx.lineWidth = Math.max(1.5, pocWidth);
-    ctx.setLineDash([6, 3]);
-    ctx.beginPath();
-    ctx.moveTo(0, Math.round(pocY) + 0.5);
-    ctx.lineTo(chartRight, Math.round(pocY) + 0.5);
-    ctx.stroke();
+  // ── Step 4 & 5: LVN and HVN are rendered directly as colored bar segments in Step 1 above ──
 
-    // POC label on left
-    ctx.fillStyle = pocColor;
-    ctx.font = 'bold 9px "JetBrains Mono"';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('POC', 4, pocY - 2);
-    ctx.restore();
-  }
-
-  // ── Step 3: VA High / VA Low Lines ──
-  if (showVaLines) {
-    const vaHighY = priceToY(profile.vaHigh + profileBucketSize);
-    const vaLowY = priceToY(profile.vaLow);
-
-    ctx.save();
-    ctx.globalAlpha = lineOpacity;
-    ctx.strokeStyle = '#3D7EFF';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 3]);
-
-    ctx.beginPath();
-    ctx.moveTo(0, Math.round(vaHighY) + 0.5);
-    ctx.lineTo(chartRight, Math.round(vaHighY) + 0.5);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(0, Math.round(vaLowY) + 0.5);
-    ctx.lineTo(chartRight, Math.round(vaLowY) + 0.5);
-    ctx.stroke();
-
-    // VA labels on left
-    const vaDistance = Math.abs(vaLowY - vaHighY);
-    if (vaDistance >= 16) {
-      ctx.fillStyle = '#3D7EFF';
-      ctx.font = '9px "JetBrains Mono"';
-      ctx.textAlign = 'left';
-      
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('VAH', 4, vaHighY - 2);
-      
-      ctx.textBaseline = 'top';
-      ctx.fillText('VAL', 4, vaLowY + 2);
-    }
-    ctx.restore();
-  }
-
-  // ── Step 4: LVN Lines ──
-  if (profile.lvns.length > 0) {
-    ctx.save();
-    ctx.globalAlpha = lineOpacity;
-    ctx.strokeStyle = lvnColor;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([2, 4]);
-    ctx.fillStyle = lvnColor;
-    ctx.font = 'bold 9px "JetBrains Mono"';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'bottom';
-
-    for (const lvn of profile.lvns) {
-      const lvnY = priceToY(lvn + profileBucketSize / 2);
-      ctx.beginPath();
-      ctx.moveTo(profileStartX, Math.round(lvnY) + 0.5);
-      ctx.lineTo(chartRight, Math.round(lvnY) + 0.5);
-      ctx.stroke();
-      ctx.fillText('LVN', profileStartX + 3, lvnY - 2);
-    }
-    ctx.restore();
-  }
-
-  // ── Step 5: HVN Lines ──
-  if (profile.hvns && profile.hvns.length > 0) {
-    ctx.save();
-    ctx.globalAlpha = lineOpacity;
-    ctx.strokeStyle = hvnColor;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([2, 4]);
-    ctx.fillStyle = hvnColor;
-    ctx.font = 'bold 9px "JetBrains Mono"';
-    ctx.textAlign = 'right'; // align right for HVN to distinguish from LVN
-    ctx.textBaseline = 'bottom';
-
-    for (const hvn of profile.hvns) {
-      const hvnY = priceToY(hvn + profileBucketSize / 2);
-      ctx.beginPath();
-      ctx.moveTo(profileStartX, Math.round(hvnY) + 0.5);
-      ctx.lineTo(chartRight, Math.round(hvnY) + 0.5);
-      ctx.stroke();
-      ctx.fillText('HVN', chartRight - 4, hvnY - 2);
-    }
-    ctx.restore();
-  }
-
-  // ── Step 6: Developing POC Trail ──
-  if (showPocLine && profile.developingPoc && profile.developingPoc.length > 0 && candles && indexToX) {
-    ctx.save();
-    ctx.globalAlpha = lineOpacity;
-    ctx.strokeStyle = pocColor;
-    ctx.lineWidth = Math.max(2, pocWidth + 1);
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-
-    let started = false;
-    for (const point of profile.developingPoc) {
-      // Find candle index for this time (point.time is in ms, candle.time is in s)
-      const timeSeconds = Math.floor(point.time / 1000);
-      
-      let lo = 0, hi = candles.length;
-      while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (candles[mid].time < timeSeconds) lo = mid + 1;
-        else hi = mid;
-      }
-      const index = Math.min(lo, candles.length - 1);
-      
-      const x = indexToX(index);
-      const y = priceToY(point.price + profileBucketSize / 2);
-
-      if (!started) {
-        ctx.moveTo(x, Math.round(y) + 0.5);
-        started = true;
-      } else {
-        ctx.lineTo(x, Math.round(y) + 0.5);
-      }
-    }
-    ctx.stroke();
-    ctx.restore();
-  }
+  // ── Step 6: Developing POC Trail removed (as requested, bar colors identify POC/VA) ──
 }
 
 function getProfileRowYRange(
