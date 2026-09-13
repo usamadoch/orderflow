@@ -84,7 +84,7 @@ import { drawVolumeBars } from './drawVolumeBars';
 import { drawVolumeProfile } from './drawVolumeProfile';
 import { drawVwap } from './drawVwap';
 import { useVwapHydration } from './hooks/useVwapHydration';
-import { VwapCalculator } from '@/lib/utils/vwap';
+import { VwapCalculator, VwapCalculateOptions } from '@/lib/utils/vwap';
 import { initLongTaskObserver, markStart, markEnd } from '@/lib/debug/perfInstrumentation';
 import { ExhaustionTooltip } from './ExhaustionTooltip';
 import { computeHistoricalSessionRanges } from './chartPanelUtils';
@@ -485,8 +485,6 @@ export function ChartCanvas({
   const activeMeasurement = useChartRuntimeStore(s => s.panels[panelId]?.activeMeasurement ?? null);
 
   const getCandlesLength = useCallback(() => useChartRuntimeStore.getState().panels[panelId]?.candles?.length ?? 0, [panelId]);
-  const displayCandles = useChartRuntimeStore(s => s.panels[panelId]?.candles ?? []);
-
   const tfSeconds = useMemo(() => {
     const match = timeframe.match(/(\d+)([mhd])/);
     if (!match) return 60;
@@ -499,7 +497,6 @@ export function ChartCanvas({
   }, [timeframe]);
 
   const { base1mCandles: vwap1mCandles, isHydrating: vwapIsHydrating } = useVwapHydration(panelId);
-  const panel = useChartStore(s => s.panels[panelId]);
 
   // Profile Throttling State
   const lastProfileBuildTimeRef = useRef<{ default: number, custom: number, session: number }>({ default: 0, custom: 0, session: 0 });
@@ -512,47 +509,6 @@ export function ChartCanvas({
   const lastProfileFilterMaxRef = useRef<number | undefined>(profileFilterMax);
 
   const vwapCalcRef = useRef<VwapCalculator | null>(null);
-
-  const vwapSeries = useMemo(() => {
-    if (!panel.vwapEnabled) return { status: 'success' as const, series: [] };
-    const vwapOptions = {
-      periodMode: panel.vwapPeriodMode,
-      sessionAnchor: panel.vwapSessionAnchor,
-      rollingDays: panel.vwapRollingDays,
-      priceSource: panel.vwapPriceSource,
-      envelopeMode: panel.vwapEnvelopeMode,
-      band1Enabled: panel.vwapBand1Enabled,
-      band1Value: panel.vwapBand1Value,
-      band2Enabled: panel.vwapBand2Enabled,
-      band2Value: panel.vwapBand2Value,
-      band3Enabled: panel.vwapBand3Enabled,
-      band3Value: panel.vwapBand3Value,
-    };
-
-    if (!vwapCalcRef.current) {
-      vwapCalcRef.current = new VwapCalculator();
-    }
-
-    return vwapCalcRef.current.calculate(displayCandles, vwap1mCandles, tfSeconds, vwapOptions, vwapIsHydrating);
-  }, [
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    displayCandles,
-    vwap1mCandles,
-    vwapIsHydrating,
-    tfSeconds,
-    panel.vwapEnabled,
-    panel.vwapPeriodMode,
-    panel.vwapSessionAnchor,
-    panel.vwapRollingDays,
-    panel.vwapPriceSource,
-    panel.vwapEnvelopeMode,
-    panel.vwapBand1Enabled,
-    panel.vwapBand1Value,
-    panel.vwapBand2Enabled,
-    panel.vwapBand2Value,
-    panel.vwapBand3Enabled,
-    panel.vwapBand3Value,
-  ]);
 
   const priceAxisWidth = 85;
   const timeAxisHeight = showTimeAxis ? 24 : 0;
@@ -1097,9 +1053,32 @@ export function ChartCanvas({
 
         // 5e. VWAP (rendered over candles, under volume profile)
         if (panelState.vwapEnabled) {
+          if (!vwapCalcRef.current) {
+            vwapCalcRef.current = new VwapCalculator();
+          }
+          const activeVwapOptions: VwapCalculateOptions = {
+            periodMode: panelState.vwapPeriodMode,
+            sessionAnchor: panelState.vwapSessionAnchor,
+            rollingDays: panelState.vwapRollingDays,
+            priceSource: panelState.vwapPriceSource,
+            envelopeMode: panelState.vwapEnvelopeMode,
+            band1Enabled: panelState.vwapBand1Enabled,
+            band1Value: panelState.vwapBand1Value,
+            band2Enabled: panelState.vwapBand2Enabled,
+            band2Value: panelState.vwapBand2Value,
+            band3Enabled: panelState.vwapBand3Enabled,
+            band3Value: panelState.vwapBand3Value,
+          };
+          const activeVwapSeries = vwapCalcRef.current.calculate(
+            candles,
+            vwap1mCandles,
+            tfSeconds,
+            activeVwapOptions,
+            vwapIsHydrating
+          );
           drawVwap(liveCtx, {
             panel: panelState,
-            series: vwapSeries,
+            series: activeVwapSeries,
             firstIndex,
             lastIndex,
             indexToX,
@@ -1748,7 +1727,7 @@ export function ChartCanvas({
       markEnd('rAF_redraw');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, bubbleColorMode, bubbleVolumeColorMode, bubbleDisplayMode, bubbleBidColor, bubbleAskColor, bubbleLineWidth, bubbleOpacity, bubbleGroupingMode, bubblePriceAggrMode, bubbleTickGroupingMode, bubbleTickCount, bubbleTimeWindowMs, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, profileInputData, profilePocColor, profileHvnColor, profileLvnColor, profilePocWidth, profileFilterMin, profileFilterMax, profileNodeSensitivity, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, vwapSeries, candleUpColor, candleUpOpacity, candleDownColor, candleDownOpacity, candleUpWickColor, candleUpWickOpacity, candleDownWickColor, candleDownWickOpacity, chartBackgroundType, chartBackgroundColor, chartBackgroundOpacity, chartBackgroundGradientTop, chartBackgroundGradientTopOpacity, chartBackgroundGradientBottom, chartBackgroundGradientBottomOpacity, showVerticalGridLines, verticalGridLineColor, verticalGridLineOpacity, verticalGridLineStyle, showHorizontalGridLines, horizontalGridLineColor, horizontalGridLineOpacity, horizontalGridLineStyle, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, bubbleColorMode, bubbleVolumeColorMode, bubbleDisplayMode, bubbleBidColor, bubbleAskColor, bubbleLineWidth, bubbleOpacity, bubbleGroupingMode, bubblePriceAggrMode, bubbleTickGroupingMode, bubbleTickCount, bubbleTimeWindowMs, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, profileInputData, profilePocColor, profileHvnColor, profileLvnColor, profilePocWidth, profileFilterMin, profileFilterMax, profileNodeSensitivity, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, candleUpColor, candleUpOpacity, candleDownColor, candleDownOpacity, candleUpWickColor, candleUpWickOpacity, candleDownWickColor, candleDownWickOpacity, chartBackgroundType, chartBackgroundColor, chartBackgroundOpacity, chartBackgroundGradientTop, chartBackgroundGradientTopOpacity, chartBackgroundGradientBottom, chartBackgroundGradientBottomOpacity, showVerticalGridLines, verticalGridLineColor, verticalGridLineOpacity, verticalGridLineStyle, showHorizontalGridLines, horizontalGridLineColor, horizontalGridLineOpacity, horizontalGridLineStyle, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);

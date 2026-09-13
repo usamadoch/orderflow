@@ -80,7 +80,12 @@ export function calculateVwapSeriesLegacy(
   void _isHydrating;
   if (displayCandles.length === 0) return { status: 'success', series: [] };
 
-  const baseCandles = (base1mCandles && base1mCandles.length > 0) ? base1mCandles : displayCandles;
+  const hasSufficientBaseCandles = Boolean(
+    base1mCandles &&
+    base1mCandles.length > 0 &&
+    base1mCandles[0].time <= displayCandles[0].time
+  );
+  const baseCandles = hasSufficientBaseCandles ? base1mCandles : displayCandles;
   if (baseCandles.length === 0) {
     return { status: 'pending' };
   }
@@ -187,6 +192,7 @@ export class VwapCalculator {
   private lastOptionsStr = '';
   private lastTfSeconds = -1;
   private lastFirstCandleTime = -1;
+  private lastUsedBaseCandles: Candle[] = [];
   
   private lastDisplayCandles: Candle[] = [];
   private baseIndex = 0;
@@ -216,7 +222,12 @@ export class VwapCalculator {
       return { status: 'success', series: [] };
     }
 
-    const baseCandles = (base1mCandles && base1mCandles.length > 0) ? base1mCandles : displayCandles;
+    const hasSufficientBaseCandles = Boolean(
+      base1mCandles &&
+      base1mCandles.length > 0 &&
+      base1mCandles[0].time <= displayCandles[0].time
+    );
+    const baseCandles = hasSufficientBaseCandles ? base1mCandles : displayCandles;
     if (baseCandles.length === 0) {
       return { status: 'pending' };
     }
@@ -227,6 +238,7 @@ export class VwapCalculator {
       this.lastOptionsStr !== optionsStr || 
       this.lastTfSeconds !== timeframeSeconds ||
       this.lastFirstCandleTime !== firstDisplayCandleTime ||
+      this.lastUsedBaseCandles !== baseCandles ||
       this.closeCountSinceFull >= 100 ||
       displayCandles.length < this.lastDisplayCandles.length ||
       this.series.length !== displayCandles.length;
@@ -237,6 +249,7 @@ export class VwapCalculator {
       this.lastOptionsStr = optionsStr;
       this.lastTfSeconds = timeframeSeconds;
       this.lastFirstCandleTime = firstDisplayCandleTime;
+      this.lastUsedBaseCandles = baseCandles;
       this.closeCountSinceFull = 0;
       markEnd('calculateVwapSeries_full');
     } else {

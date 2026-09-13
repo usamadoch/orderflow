@@ -539,11 +539,11 @@ function createDefaultPanel(id: PanelId): PanelState {
     vwapRollingDays: 7,
     vwapPriceSource: 'HLC3',
     vwapEnvelopeMode: 'Standard Deviation',
-    vwapBand1Enabled: true,
+    vwapBand1Enabled: false,
     vwapBand1Value: 1.0,
-    vwapBand2Enabled: true,
+    vwapBand2Enabled: false,
     vwapBand2Value: 2.0,
-    vwapBand3Enabled: true,
+    vwapBand3Enabled: false,
     vwapBand3Value: 3.0,
     vwapLineColor: '#F59E0B',
     vwapBand1Color: '#34D399',
@@ -1750,7 +1750,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 40,
+      version: 41,
       storage: createJSONStorage(() => tabAwareStorage),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
@@ -1968,6 +1968,18 @@ export const useChartStore = create<ChartState>()(
         if (version < 40) {
           persisted.globalTimezone = persisted.globalTimezone ?? 'local';
           persisted.globalTimeFormat = persisted.globalTimeFormat ?? '12h';
+        }
+        if (version < 41) {
+          if (persisted.panels?.left) {
+            persisted.panels.left.vwapBand1Enabled = false;
+            persisted.panels.left.vwapBand2Enabled = false;
+            persisted.panels.left.vwapBand3Enabled = false;
+          }
+          if (persisted.panels?.right) {
+            persisted.panels.right.vwapBand1Enabled = false;
+            persisted.panels.right.vwapBand2Enabled = false;
+            persisted.panels.right.vwapBand3Enabled = false;
+          }
         }
         return persisted;
       },

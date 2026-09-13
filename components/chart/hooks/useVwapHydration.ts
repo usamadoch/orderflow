@@ -67,7 +67,11 @@ export function useVwapHydration(panelId: PanelId) {
     });
 
     const unsubscribe = cache.subscribe((snapshot: CandleCacheSnapshot) => {
-      setBase1mCandles(snapshot.candles);
+      if (snapshot.candles.length > 0 && snapshot.candles[0].time <= firstDisplayTime) {
+        setBase1mCandles(snapshot.candles);
+      } else if (snapshot.candles.length === 0) {
+        setBase1mCandles([]);
+      }
     });
 
     // Check if we need to hydrate

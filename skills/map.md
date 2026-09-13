@@ -156,7 +156,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/cvdPanelUtils.ts` → CVD panel scale calculations and viewport mapping.
 - `components/chart/drawStatsGrid.ts` → Canvas overlay rendering volume, delta, and CVD summary statistics grid with borders styled using global 28% grid opacity.
 - `components/chart/useCoordinates.ts` → Hook calculating price/time coordinate bounds, visible range mappings with minimum price range floor and 8% padding, and timeToIndex with boundary extrapolation.
-- `components/chart/hooks/useVwapHydration.ts` → Hook explicitly fetching and subscribing to historical 1m base candles to hydrate accurate VWAP state independent of active timeframe.
+- `components/chart/hooks/useVwapHydration.ts` → Hook fetching and subscribing to historical 1m base candles with display-range validation to hydrate accurate VWAP state.
 - `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, axis drag/wheel zoom, auto-scale state tracking, and double-click scale auto-fit.
 - `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry with half-pixel alignment for crisp high-definition lines and TradingView-standard hollow candle rendering.
 - `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with crisp TradingView axis typography, half-pixel ticks, and divergence markers.
@@ -167,7 +167,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer with bar-colored HVN/LVN nodes and configurable POC fill.
 - `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools with exported `drawTimeAxisBadge` for time axis badge rendering ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/drawLines.map.md)).
 - `lib/utils/format.ts` → Formatting helpers for price precision, dynamic instrument decimal resolution (`getInstrumentPrecision`), TradingView date-time formatting (`formatTradingViewDateTime`), countdowns, and axis badges.
-- `components/chart/drawVwap.ts` → Canvas renderer for VWAP line, rolling window, and envelope bands.
+- `components/chart/drawVwap.ts` → Canvas renderer for VWAP lines, rolling windows, envelope bands, and session boundary path segment breaks.
 - `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer with price precision bounds for high-value assets, crisp TradingView typography, half-pixel tick marks, and boundary clipping.
 - `components/chart/drawPriceLine.ts` → Current market price line, badge, and countdown renderer with crisp half-pixel line and integer-aligned typography.
 - `components/chart/drawTradingOverlays.ts` → Canvas overlay renderer for limit orders, SL/TP brackets, virtual positions, and fill markers.
@@ -192,7 +192,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Persisted Zustand store (v40) for chart preferences, independent drawing and volume profile synchronization, bubble indicator defaults, session times/opacity, and themes ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartStore.map.md)).
+- `lib/store/chart.ts` → Persisted Zustand store (v41) for chart preferences, independent drawing/profile sync, bubble defaults, disabled-by-default VWAP bands, and themes ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartStore.map.md)).
 - `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, signals, brackets, and trades ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartRuntimeStore.map.md)).
 - `hooks/useKeyboardShortcuts.ts` → Unified keyboard navigation engine handling arrow navigation, drawing/profile nudging, 50-step undo/redo, interval input, and utility shortcuts with context safety.
 - `types/chart.ts` → TypeScript definitions for chart configurations, panels, indicator options, and DrawnLine properties (including position profit/stop colors).

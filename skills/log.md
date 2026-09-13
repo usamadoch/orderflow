@@ -1,5 +1,22 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-13] - Refinement: Disabled-by-Default VWAP Bands & Verified Standard Presets
+- **What changed**:
+  - In `lib/store/chart.ts`: Set default `vwapBand1Enabled`, `vwapBand2Enabled`, and `vwapBand3Enabled` to `false` in `createDefaultPanel`.
+  - Preserved standard industry defaults: `vwapPeriodMode: 'Session'`, `vwapSessionAnchor: 'Day'`, `vwapEnvelopeMode: 'Standard Deviation'`.
+  - Bumped store version to `41` with migration turning off bands by default for existing stores.
+- **Why it changed**: User requested that all three VWAP bands be off by default while retaining standard industry mode, anchor, and envelope presets.
+- **Impact summary**: Adding VWAP renders a clean, focused single benchmark line without cluttered bands unless explicitly enabled; 0 tsc/lint errors.
+
+## [2026-09-13] - Fix: Isolated VWAP Indicator Rendering & Base Candle Fallback
+- **What changed**:
+  - In `lib/utils/vwap.ts`: Fallback to `displayCandles` when `base1mCandles` lacks historical range; added base-switch recompute trigger.
+  - In `components/chart/hooks/useVwapHydration.ts`: Prevented adopting orphaned live ticks unless 1m history starts <= display start.
+  - In `components/chart/ChartCanvas.tsx`: Eliminated stale `useMemo` by evaluating active VWAP series directly in `redraw`.
+  - In `components/chart/drawVwap.ts`: Added session anchor resolver to break line paths and band fills across session boundaries.
+- **Why it changed**: VWAP collapsed onto current candles because orphaned live 1m ticks caused historical bars to evaluate to null, paired with stale canvas memoization.
+- **Impact summary**: VWAP lines and bands render continuously across historical and live candles; zero TypeScript/ESLint errors.
+
 ## [2026-09-13] - Refinement: Clean Session Boxes (Removed Dotted/Dashed Lines & Metrics), 15% Default Opacity & Local PC Time Presets
 - **What changed**:
   - In `lib/draw/drawSessions.ts`:
