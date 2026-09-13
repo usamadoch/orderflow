@@ -23,8 +23,6 @@ export const GeneralChartSettings = forwardRef<HTMLDivElement, GeneralChartSetti
   const globalTimeFormat = useChartStore(s => s.globalTimeFormat);
   const setGlobalTimeFormat = useChartStore(s => s.setGlobalTimeFormat);
   
-  const drawingsSyncEnabled = useChartStore(s => s.drawingsSyncEnabled);
-  const setDrawingsSyncEnabled = useChartStore(s => s.setDrawingsSyncEnabled);
   const bracketDragConfirmEnabled = useChartStore(s => s.bracketDragConfirmEnabled);
   const setBracketDragConfirmEnabled = useChartStore(s => s.setBracketDragConfirmEnabled);
 
@@ -118,19 +116,6 @@ export const GeneralChartSettings = forwardRef<HTMLDivElement, GeneralChartSetti
           <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">Interaction</div>
         </div>
 
-        <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
-          <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Sync Drawings</label>
-          <div className="flex items-center gap-3">
-            <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
-              {drawingsSyncEnabled ? 'Enabled' : 'Disabled'}
-            </span>
-            <FigSwitch
-              checked={drawingsSyncEnabled}
-              onChange={(checked) => setDrawingsSyncEnabled(checked)}
-              aria-label="Sync Drawings"
-            />
-          </div>
-        </div>
 
         <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
           <div>

@@ -1,5 +1,59 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-13] - Refinement: Clean Session Boxes (Removed Dotted/Dashed Lines & Metrics), 15% Default Opacity & Local PC Time Presets
+- **What changed**:
+  - In `lib/draw/drawSessions.ts`:
+    - Removed all top, bottom, and mid dashed/dotted lines (high line, low line, open line, avg midpoint line) to produce a clean, unobstructed highlighted session box.
+    - Removed `Range: ...` and `Avg: ...` metrics from the bottom of the box, keeping only the session identification name (`Tokyo`, `London`, `New York`) rendered in bold font at the bottom of the box.
+    - Set default session fill opacity fallback to `0.15` (15%).
+  - In `types/chart.ts`:
+    - Documented `SessionConfig.opacity` default as `0.15` (15%).
+  - In `components/ui/chart-settings/SessionsSettings.tsx`:
+    - Updated session color button and `ColorPickerPopover` opacity fallback to `0.15` so the opacity slider is preset to 15% by default.
+  - In `lib/store/chart.ts`:
+    - Updated default session times in `createDefaultPanel` based on local PC timeframe:
+      - Tokyo: 5:00 AM to 11:00 AM (`startHour: 5, startMin: 0, endHour: 11, endMin: 0`)
+      - London: 12:30 PM to 8:30 PM (`startHour: 12, startMin: 30, endHour: 20, endMin: 30`)
+      - New York: 6:00 PM to 1:00 AM (`startHour: 18, startMin: 0, endHour: 1, endMin: 0`)
+      - Default session opacity: `0.15` (15%).
+    - Bumped store version to `40` with migration ensuring `version < 40` stores receive the updated default session times, 15% opacity, `globalTimezone: 'local'`, and `globalTimeFormat: '12h'`.
+- **Why it changed**: User requested a cleaner session box presentation without dotted/dashed lines or range/avg metrics cluttering the chart, leaving only session identification names ("Tokyo", "London", "New York"), default 15% opacity in the color picker, and local PC default session times (Tokyo: 5am–11am, London: 12:30pm–8:30pm, NY: 6pm–1am).
+- **Impact summary**: Session boxes are completely clean solid/translucent fills at 15% opacity with crisp bottom identification labels; default times and timezone match local PC 12h settings; all unit tests pass; 0 TypeScript and ESLint errors.
+
+## [2026-09-13] - Feature: TradingView Session Indicator Box, Default 12h Format & Enhanced Crosshair Labels
+- **What changed**:
+  - In `lib/draw/drawSessions.ts`:
+    - Completely updated session highlight rendering to match the TradingView visual reference screenshot: replaced full-height vertical stripe columns with clean highlighted session boxes bounded strictly by the session's candle `sessionHigh` and `sessionLow` prices.
+    - Added dashed benchmark lines for High, Low, and Open levels (`[5, 5]`) and a dotted line for Midpoint / Average (`[2, 4]`).
+    - Added multi-line text metrics below the session box: `Range: ...`, `Avg: ...`, and `${Session}` (e.g. `Tokyo`, `London`, `New York`) using the session's theme color.
+    - Maintained layer ordering strictly behind the candlesticks on `bgCtx` (z-0), keeping candles, wicks, and footprint clusters 100% visible and crisp on top.
+    - Added backward-compatible signature support for both new (`priceToY`) and legacy invocation patterns.
+  - In `lib/utils/sessions.ts`:
+    - Added multi-hour gap guard (`> 12h`) in `getSessionOccurrences` to prevent weekend or multi-day gaps from merging separate daily sessions into one block.
+  - In `lib/store/chart.ts`:
+    - Changed default `globalTimeFormat` from `'24h'` to `'12h'` while fully preserving the user's ability to switch back to `'24h'` and persist the choice.
+    - Updated session indicator default theme colors to match the TradingView screenshot: Tokyo (`#2962FF`), London (`#FF9800`), New York (`#4CAF50`).
+  - In `components/chart/ChartCanvas.tsx` & `components/chart/CvdPanel.tsx`:
+    - Passed `priceToY` to `drawSessions` so vertical price bounds are computed accurately.
+    - Updated default prop `globalTimeFormat = '12h'`.
+    - In `ChartCanvas.tsx`, replaced the grid-step precision calculation for the crosshair price axis label with `getInstrumentPrecision(candles, tickSize, price)`, ensuring full instrument decimal precision (e.g. `76530.25` instead of `76530`) without forcing arbitrary fixed decimals on symbols with differing precision.
+  - In `components/chart/drawLines.ts`:
+    - Exported `drawTimeAxisBadge(ctx, x, chartHeight, timeAxisHeight, timeText, chartWidth, accentColor)` so the exact time axis badge styling can be shared by both drawing vertical lines and the crosshair time label.
+  - In `lib/utils/format.ts`:
+    - Utilized existing `formatTradingViewDateTime(time, timezone, format)` (e.g. `Sat 05 Sep '26  12:05 AM`) for consistent date/time representation.
+    - Added `getInstrumentPrecision` to dynamically inspect candle price decimals and tick size.
+  - In `components/chart/drawCrosshair.ts`:
+    - Refactored `drawCrosshairTimeLabel` to delegate directly to `drawTimeAxisBadge` from `drawLines.ts` using the base crosshair color (`#1F1F1F` background, `#FFFFFF` text), eliminating code duplication and ensuring 100% visual consistency with the vertical drawing tool's time badge.
+- **Why it changed**: User requested replacing the previous full-height vertical session blocks with a clean highlighted TradingView session box matching the reference screenshot, switching global time format default to 12h, enriching crosshair labels with authentic instrument decimal precision, and reusing the existing drawing tool's vertical line time badge renderer with base crosshair styling instead of creating an independent implementation from scratch.
+- **Impact summary**: Session boxes match TradingView with high/low bounds, benchmark levels, and range metrics; 12h format is now default; crosshair price labels preserve full instrument precision; crosshair time badge directly reuses `drawTimeAxisBadge` with dark base styling; 100% tests passing; 0 TypeScript errors.
+- **What changed**:
+  - In `lib/store/chart.ts`: added `volumeProfileSyncEnabled` (default `false`), decoupled `setCustomProfileRange`, `setCustomProfileLocked`, `undo`, and `redo` from `drawingsSyncEnabled`, and set bubble defaults (`bubbleThreshold: 15`, `bubbleMinOrders: 100`, `bubbleOpacity: 0.15`).
+  - In `ChartLayoutDropdown.tsx`: added "Sync Volume Profile" switch under "Sync In Layout" and expanded container width to `w-64`.
+  - In `GeneralChartSettings.tsx`: removed obsolete "Sync Drawings" setting from Global Settings → General.
+  - In `drawBubbles.ts`: updated parameter fallback defaults to 15 BTC, 100 orders, and 0.15 opacity.
+- **Why it changed**: User requested independent synchronization between custom volume profiles and drawings, cleanup of the obsolete global drawing sync toggle, and updated Bubble indicator defaults matching realistic sizing floors.
+- **Impact summary**: Volume profile and drawing sync are completely decoupled; clean UI settings layout; bubble defaults reflect 15 BTC / 100 orders / 15% opacity; 15/15 tests passing; 0 tsc and lint errors.
+
 ## [2026-09-13] - Fix: Volume Profile UI Refinement - Removed POC Lines & Dotted Lines, Solid Profile Border
 - **What changed**:
   - In `components/chart/drawSelectionRect.ts` & `components/chart/drawVolumeProfile.ts`:

@@ -1,5 +1,6 @@
-import { formatPrice, formatTime } from "@/lib/utils/format";
+import { formatPrice, formatTradingViewDateTime } from "@/lib/utils/format";
 import { useChartStore } from "@/lib/store/chart";
+import { drawTimeAxisBadge } from "./drawLines";
 
 const CROSSHAIR_FONT = '11px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
 const CROSSHAIR_BG = '#1F1F1F';
@@ -108,30 +109,8 @@ export function drawCrosshairTimeLabel(
   if (mouseX < 0 || mouseX > chartWidth) return;
 
   const state = useChartStore.getState();
-  const label = formatTime(time, state.globalTimezone, state.globalTimeFormat);
+  const timeText = formatTradingViewDateTime(time, state.globalTimezone, state.globalTimeFormat);
 
-  ctx.font = CROSSHAIR_FONT;
-  const textWidth = ctx.measureText(label).width;
-  const padding = 8;
-  const rectHeight = 20;
-  const rectWidth = Math.round(textWidth + padding * 2);
-  const halfWidth = Math.round(rectWidth / 2);
-  const clampedX = Math.round(Math.max(halfWidth, Math.min(chartWidth - halfWidth, mouseX)));
-
-  const badgeX = clampedX - halfWidth;
-  const badgeY = Math.round(timeAxisTop + Math.max(0, (timeAxisHeight - rectHeight) / 2));
-
-  ctx.fillStyle = CROSSHAIR_BG;
-  ctx.beginPath();
-  if (typeof ctx.roundRect === 'function') {
-    ctx.roundRect(badgeX, badgeY, rectWidth, rectHeight, 2);
-  } else {
-    ctx.fillRect(badgeX, badgeY, rectWidth, rectHeight);
-  }
-  ctx.fill();
-
-  ctx.fillStyle = CROSSHAIR_TEXT;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, clampedX, Math.round(badgeY + rectHeight / 2));
+  // Directly reuse the time axis badge renderer from drawings with base crosshair color (#1F1F1F)
+  drawTimeAxisBadge(ctx, mouseX, timeAxisTop, timeAxisHeight, timeText, chartWidth, CROSSHAIR_BG);
 }

@@ -496,15 +496,16 @@ function drawPriceAxisBadge(
   ctx.restore();
 }
 
-function drawTimeAxisBadge(
+export function drawTimeAxisBadge(
   ctx: CanvasRenderingContext2D,
   x: number,
   chartHeight: number,
   timeAxisHeight: number,
   timeText: string,
   chartWidth: number,
-  accentColor: string
+  accentColor: string = '#1F1F1F'
 ) {
+  if (timeAxisHeight <= 0) return;
   const badgeHeight = Math.min(22, Math.max(18, timeAxisHeight - 2));
   const badgeY = chartHeight + 1;
 

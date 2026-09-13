@@ -109,6 +109,7 @@ export interface ChartState {
   settingsOpenRequest: SettingsOpenRequest | null;
   crosshairSyncEnabled: boolean;
   drawingsSyncEnabled: boolean;
+  volumeProfileSyncEnabled: boolean;
   bracketDragConfirmEnabled: boolean;
   globalTimezone: string;
   globalTimeFormat: '12h' | '24h';
@@ -326,6 +327,7 @@ export interface ChartState {
   openIndicatorSettings: (panelId: PanelId, section: SettingsFocusSection) => void;
   setCrosshairSyncEnabled: (enabled: boolean) => void;
   setDrawingsSyncEnabled: (enabled: boolean) => void;
+  setVolumeProfileSyncEnabled: (enabled: boolean) => void;
   setBracketDragConfirmEnabled: (enabled: boolean) => void;
 
   setCandleUpColor: (color: string) => void;
@@ -388,8 +390,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     bubblesEnabled: false,
     bubbleSizeBy: 'volume' as BubbleSizeBy,
     aggregateBubbleMarketSource: 'active',
-    bubbleThreshold: 100,
-    bubbleMinOrders: 10,
+    bubbleThreshold: 15,
+    bubbleMinOrders: 100,
     bubbleThresholdMode: 'absolute',
     bubbleFilterRender: 2,
     bubbleStdDevVal: 2.0,
@@ -402,7 +404,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     bubbleBidColor: '#4ade80',
     bubbleAskColor: '#f87171',
     bubbleLineWidth: 1,
-    bubbleOpacity: 0.5,
+    bubbleOpacity: 0.15,
     bubbleGroupingMode: 'automatic' as BubbleGroupingMode,
     bubblePriceAggrMode: 'extension' as BubblePriceAggrMode,
     bubbleTickGroupingMode: 'automatic' as BubbleTickGroupingMode,
@@ -481,21 +483,24 @@ function createDefaultPanel(id: PanelId): PanelState {
     sessions: {
       tokyo: {
         enabled: true,
-        startHour: 0, startMin: 0,
-        endHour: 6, endMin: 0,
-        color: '#B39DDB',
+        startHour: 5, startMin: 0,
+        endHour: 11, endMin: 0,
+        color: '#2962FF',
+        opacity: 0.15,
       },
       london: {
         enabled: true,
-        startHour: 7, startMin: 0,
-        endHour: 16, endMin: 0,
-        color: '#4FC3F7',
+        startHour: 12, startMin: 30,
+        endHour: 20, endMin: 30,
+        color: '#FF9800',
+        opacity: 0.15,
       },
       newYork: {
         enabled: true,
-        startHour: 13, startMin: 0,
-        endHour: 22, endMin: 0,
-        color: '#81C784',
+        startHour: 18, startMin: 0,
+        endHour: 1, endMin: 0,
+        color: '#4CAF50',
+        opacity: 0.15,
       },
     },
     historicalSessionProfileEnabled: false,
@@ -716,7 +721,7 @@ function clampVolumeBarsAverageLength(length: unknown) {
 
 function clampBubbleMinOrders(minOrders: unknown) {
   const value = Number(minOrders);
-  if (!Number.isFinite(value)) return 1;
+  if (!Number.isFinite(value)) return 100;
   return Math.max(1, Math.min(1000, Math.round(value)));
 }
 
@@ -726,7 +731,7 @@ function updatePanel(state: ChartState, panelId: PanelId, updates: Partial<Panel
 
   // If any timeframe setting is updated, save it to settingsByTimeframe for the CURRENT timeframe
   const timeframeSettingsKeys: (keyof TimeframeSettings)[] = [
-    'bucketSize', 'autoBucketSize', 'bubbleThreshold', 'bubbleThresholdMode',
+    'bucketSize', 'autoBucketSize', 'bubbleThreshold', 'bubbleThresholdMode', 'bubbleMinOrders',
     'bubbleSizeBy', 'aggregateBubbleMarketSource', 'bubbleFilterRender', 'bubbleStdDevVal', 'bubbleOutStdDevPerc', 'bubbleScaleMode', 'bubbleColorMode', 'bubbleVolumeColorMode', 'bubbleDisplayMode', 'bubbleBidColor', 'bubbleAskColor', 'bubbleLineWidth', 'bubbleOpacity',
     'bubbleGroupingMode', 'bubblePriceAggrMode', 'bubbleTickGroupingMode', 'bubbleTickCount', 'bubbleTimeWindowMs',
     'absorptionMinScore', 'exhaustionMinScore', 'exhaustionLookback',
@@ -888,9 +893,10 @@ export const useChartStore = create<ChartState>()(
       settingsOpenRequest: null,
       crosshairSyncEnabled: true,
       drawingsSyncEnabled: true,
+      volumeProfileSyncEnabled: false,
       bracketDragConfirmEnabled: false,
       globalTimezone: 'local',
-      globalTimeFormat: '24h',
+      globalTimeFormat: '12h',
       candleUpColor: '#089981',
       candleUpOpacity: 1,
       candleDownColor: '#F23645',
@@ -1139,12 +1145,16 @@ export const useChartStore = create<ChartState>()(
             customProfileRange: previousSnapshot.customProfileRange ? { ...previousSnapshot.customProfileRange } : null,
           });
 
-          if (state.drawingsSyncEnabled) {
+          if (state.drawingsSyncEnabled || state.volumeProfileSyncEnabled) {
             const otherPanelId = panelId === 'left' ? 'right' : 'left';
-            updatedState = updatePanel(updatedState as ChartState, otherPanelId, {
-              drawnLines: previousSnapshot.drawnLines.map((l) => ({ ...l })),
-              customProfileRange: previousSnapshot.customProfileRange ? { ...previousSnapshot.customProfileRange } : null,
-            });
+            const otherUpdates: Partial<PanelState> = {};
+            if (state.drawingsSyncEnabled) {
+              otherUpdates.drawnLines = previousSnapshot.drawnLines.map((l) => ({ ...l }));
+            }
+            if (state.volumeProfileSyncEnabled) {
+              otherUpdates.customProfileRange = previousSnapshot.customProfileRange ? { ...previousSnapshot.customProfileRange } : null;
+            }
+            updatedState = updatePanel(updatedState as ChartState, otherPanelId, otherUpdates);
           }
 
           return {
@@ -1176,12 +1186,16 @@ export const useChartStore = create<ChartState>()(
             customProfileRange: nextSnapshot.customProfileRange ? { ...nextSnapshot.customProfileRange } : null,
           });
 
-          if (state.drawingsSyncEnabled) {
+          if (state.drawingsSyncEnabled || state.volumeProfileSyncEnabled) {
             const otherPanelId = panelId === 'left' ? 'right' : 'left';
-            updatedState = updatePanel(updatedState as ChartState, otherPanelId, {
-              drawnLines: nextSnapshot.drawnLines.map((l) => ({ ...l })),
-              customProfileRange: nextSnapshot.customProfileRange ? { ...nextSnapshot.customProfileRange } : null,
-            });
+            const otherUpdates: Partial<PanelState> = {};
+            if (state.drawingsSyncEnabled) {
+              otherUpdates.drawnLines = nextSnapshot.drawnLines.map((l) => ({ ...l }));
+            }
+            if (state.volumeProfileSyncEnabled) {
+              otherUpdates.customProfileRange = nextSnapshot.customProfileRange ? { ...nextSnapshot.customProfileRange } : null;
+            }
+            updatedState = updatePanel(updatedState as ChartState, otherPanelId, otherUpdates);
           }
 
           return {
@@ -1213,7 +1227,7 @@ export const useChartStore = create<ChartState>()(
         }
         set((state) => {
           let updatedState: ChartState = { ...state, ...updatePanel(state, panelId, { customProfileRange }) };
-          if (state.drawingsSyncEnabled) {
+          if (state.volumeProfileSyncEnabled) {
             const otherPanelId = panelId === 'left' ? 'right' : 'left';
             updatedState = { ...updatedState, ...updatePanel(updatedState, otherPanelId, { customProfileRange }) };
           }
@@ -1224,7 +1238,7 @@ export const useChartStore = create<ChartState>()(
       setCustomProfileLocked: (panelId, customProfileLocked) =>
         set((state) => {
           let updatedState: ChartState = { ...state, ...updatePanel(state, panelId, { customProfileLocked }) };
-          if (state.drawingsSyncEnabled) {
+          if (state.volumeProfileSyncEnabled) {
             const otherPanelId = panelId === 'left' ? 'right' : 'left';
             updatedState = { ...updatedState, ...updatePanel(updatedState, otherPanelId, { customProfileLocked }) };
           }
@@ -1689,6 +1703,7 @@ export const useChartStore = create<ChartState>()(
         })),
       setCrosshairSyncEnabled: (crosshairSyncEnabled) => set({ crosshairSyncEnabled }),
       setDrawingsSyncEnabled: (drawingsSyncEnabled) => set({ drawingsSyncEnabled }),
+      setVolumeProfileSyncEnabled: (volumeProfileSyncEnabled) => set({ volumeProfileSyncEnabled }),
       setBracketDragConfirmEnabled: (bracketDragConfirmEnabled) => set({ bracketDragConfirmEnabled }),
 
       setCandleUpColor: (candleUpColor) => set({ candleUpColor }),
@@ -1735,7 +1750,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'orderflow-settings',
-      version: 39,
+      version: 40,
       storage: createJSONStorage(() => tabAwareStorage),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       migrate: (persisted: any, version: number) => {
@@ -1794,16 +1809,16 @@ export const useChartStore = create<ChartState>()(
             absorptionSide: p.absorptionSide || 'both',
             absorptionShowLabels: p.absorptionShowLabels ?? true,
             bubblesEnabled: p.bubblesEnabled ?? false,            aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(p.aggregateBubbleMarketSource),
-            bubbleThreshold: p.bubbleThreshold ?? 100,
+            bubbleThreshold: p.bubbleThreshold ?? 15,
             bubbleThresholdMode: p.bubbleThresholdMode || 'absolute',
-            bubbleMinOrders: clampBubbleMinOrders(p.bubbleMinOrders),            bubbleMaxRadius: p.bubbleMaxRadius ?? 20,            bubbleScaleMode: normalizeBubbleScaleMode(p.bubbleScaleMode),
+            bubbleMinOrders: clampBubbleMinOrders(p.bubbleMinOrders ?? 100),            bubbleMaxRadius: p.bubbleMaxRadius ?? 20,            bubbleScaleMode: normalizeBubbleScaleMode(p.bubbleScaleMode),
             bubbleColorMode: p.bubbleColorMode || 'askBidSplit',
             bubbleVolumeColorMode: p.bubbleVolumeColorMode || 'deltaAbsolute',
             bubbleDisplayMode: p.bubbleDisplayMode || '2d',
             bubbleBidColor: p.bubbleBidColor || '#4ade80',
             bubbleAskColor: p.bubbleAskColor || '#f87171',
             bubbleLineWidth: p.bubbleLineWidth ?? 1,
-            bubbleOpacity: p.bubbleOpacity ?? 0.5,
+            bubbleOpacity: p.bubbleOpacity ?? 0.15,
             bubbleGroupingMode: normalizeBubbleGroupingMode(p.bubbleGroupingMode),
             bubblePriceAggrMode: normalizeBubblePriceAggrMode(p.bubblePriceAggrMode),
             bubbleTickGroupingMode: normalizeBubbleTickGroupingMode(p.bubbleTickGroupingMode),
@@ -1879,11 +1894,17 @@ export const useChartStore = create<ChartState>()(
             volumeBarsAverageLineEnabled: p.volumeBarsAverageLineEnabled ?? false,
             volumeBarsAverageLength: clampVolumeBarsAverageLength(p.volumeBarsAverageLength),
             sessionsEnabled: p.sessionsEnabled ?? false,
-            sessions: p.sessions ?? {
-              tokyo: { enabled: true, startHour: 0, startMin: 0, endHour: 6, endMin: 0, color: '#B39DDB' },
-              london: { enabled: true, startHour: 7, startMin: 0, endHour: 16, endMin: 0, color: '#4FC3F7' },
-              newYork: { enabled: true, startHour: 13, startMin: 0, endHour: 22, endMin: 0, color: '#81C784' },
-            },
+            sessions: (version < 40 || !p.sessions)
+              ? {
+                  tokyo: { enabled: true, startHour: 5, startMin: 0, endHour: 11, endMin: 0, color: '#2962FF', opacity: 0.15 },
+                  london: { enabled: true, startHour: 12, startMin: 30, endHour: 20, endMin: 30, color: '#FF9800', opacity: 0.15 },
+                  newYork: { enabled: true, startHour: 18, startMin: 0, endHour: 1, endMin: 0, color: '#4CAF50', opacity: 0.15 },
+                }
+              : {
+                  tokyo: { enabled: true, startHour: 5, startMin: 0, endHour: 11, endMin: 0, color: '#2962FF', opacity: 0.15, ...p.sessions.tokyo },
+                  london: { enabled: true, startHour: 12, startMin: 30, endHour: 20, endMin: 30, color: '#FF9800', opacity: 0.15, ...p.sessions.london },
+                  newYork: { enabled: true, startHour: 18, startMin: 0, endHour: 1, endMin: 0, color: '#4CAF50', opacity: 0.15, ...p.sessions.newYork },
+                },
             historicalSessionProfileEnabled: p.historicalSessionProfileEnabled ?? true,
             historicalSessionProfileSession: p.historicalSessionProfileSession ?? 'newYork',
             historicalSessionProfileSessions: p.historicalSessionProfileSessions ?? ['newYork'],
@@ -1944,6 +1965,10 @@ export const useChartStore = create<ChartState>()(
             persisted.horizontalGridLineOpacity = DEFAULT_GRID_OPACITY;
           }
         }
+        if (version < 40) {
+          persisted.globalTimezone = persisted.globalTimezone ?? 'local';
+          persisted.globalTimeFormat = persisted.globalTimeFormat ?? '12h';
+        }
         return persisted;
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1959,6 +1984,9 @@ export const useChartStore = create<ChartState>()(
         return {
           ...currentState,
           ...persistedSettings,
+          volumeProfileSyncEnabled: typeof persistedSettings.volumeProfileSyncEnabled === 'boolean'
+            ? persistedSettings.volumeProfileSyncEnabled
+            : false,
           panels: {
             left: {
               ...currentState.panels.left,
@@ -2350,6 +2378,7 @@ export const useChartStore = create<ChartState>()(
         settingsDropdownHeight: state.settingsDropdownHeight,
         crosshairSyncEnabled: state.crosshairSyncEnabled,
         drawingsSyncEnabled: state.drawingsSyncEnabled,
+        volumeProfileSyncEnabled: state.volumeProfileSyncEnabled,
         bracketDragConfirmEnabled: state.bracketDragConfirmEnabled,
         globalTimezone: state.globalTimezone,
         globalTimeFormat: state.globalTimeFormat,

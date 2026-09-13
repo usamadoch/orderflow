@@ -272,6 +272,54 @@ export function formatTradingViewDateTime(
 }
 
 /**
+ * Calculates instrument precision (decimal places) dynamically based on recent candles and tickSize.
+ * Preserves the instrument's authentic precision (e.g. 76530.25 for BTCUSDT) without forcing an arbitrary fixed decimal count.
+ */
+export function getInstrumentPrecision(
+  candles?: { open?: number; high?: number; low?: number; close?: number }[],
+  tickSize?: number,
+  fallbackPrice?: number
+): number {
+  let maxDecimals = 0;
+  if (candles && candles.length > 0) {
+    const checkCount = Math.min(25, candles.length);
+    for (let i = candles.length - 1; i >= candles.length - checkCount; i--) {
+      const c = candles[i];
+      if (!c) continue;
+      for (const val of [c.close, c.open, c.high, c.low]) {
+        if (typeof val === 'number' && Number.isFinite(val)) {
+          const s = val.toString();
+          const dot = s.indexOf('.');
+          if (dot !== -1) {
+            maxDecimals = Math.max(maxDecimals, s.length - dot - 1);
+          }
+        }
+      }
+    }
+    if (maxDecimals > 0) {
+      return maxDecimals;
+    }
+  }
+
+  if (typeof tickSize === 'number' && Number.isFinite(tickSize) && tickSize > 0 && tickSize < 1) {
+    const s = tickSize.toString();
+    const dot = s.indexOf('.');
+    if (dot !== -1) {
+      return s.length - dot - 1;
+    }
+  }
+
+  if (typeof fallbackPrice === 'number' && Number.isFinite(fallbackPrice)) {
+    if (fallbackPrice < 1) return 6;
+    if (fallbackPrice < 10) return 4;
+    if (fallbackPrice < 100) return 3;
+    return 2;
+  }
+
+  return 2;
+}
+
+/**
  * Converts a 24-hour hour (0..23) into 12-hour components (1..12 and 'AM' | 'PM').
  */
 export function to12Hour(hour24: number): { hour12: number; period: 'AM' | 'PM' } {

@@ -1,4 +1,5 @@
 import { drawLines, drawDrawingPriceLabels } from '../components/chart/drawLines';
+import { drawCrosshairTimeLabel } from '../components/chart/drawCrosshair';
 import { formatTradingViewDateTime } from '../lib/utils/format';
 import type { DrawnLine } from '../types/chart';
 import type { Candle } from '../types/candle';
@@ -394,6 +395,22 @@ function testDrawLines() {
     console.log(`  ✓ formatTradingViewDateTime 12h UTC: "${tv12h}" === "Sat 05 Sep '26  12:05 AM": ${tv12h === "Sat 05 Sep '26  12:05 AM"}`);
     console.log(`  ✓ formatTradingViewDateTime 24h UTC: "${tv24h}" === "Sat 05 Sep '26  00:05": ${tv24h === "Sat 05 Sep '26  00:05"}`);
     if (tv12h !== "Sat 05 Sep '26  12:05 AM" || tv24h !== "Sat 05 Sep '26  00:05") process.exit(1);
+  }
+
+  // Test 10: drawCrosshairTimeLabel reuses drawTimeAxisBadge styling with base color (#1F1F1F)
+  {
+    const ts = 1788566700; // 2026-09-05T00:05:00Z
+    const ctx = createMockCtx();
+    drawCrosshairTimeLabel(ctx as unknown as CanvasRenderingContext2D, 200, ts, 576, 24, 800);
+
+    const timeFillOp = ctx.operations.find(op => op.includes('fill(alpha=1, fill=#1F1F1F)'));
+    const textOp = ctx.operations.find(op => op.includes('fillText("Sat 05 Sep \'26'));
+    const textWhite = ctx.operations.find(op => op.includes('set fillStyle = #FFFFFF'));
+
+    console.log(`  ✓ drawCrosshairTimeLabel uses base background color (#1F1F1F): ${!!timeFillOp}`);
+    console.log(`  ✓ drawCrosshairTimeLabel renders formatted TradingView date/time text: ${!!textOp}`);
+    console.log(`  ✓ drawCrosshairTimeLabel uses high-contrast white text (#FFFFFF): ${!!textWhite}`);
+    if (!timeFillOp || !textOp || !textWhite) process.exit(1);
   }
 
   console.log('\nAll canvas rendering tests passed successfully!\n');

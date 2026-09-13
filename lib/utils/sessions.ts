@@ -50,7 +50,13 @@ export function getSessionOccurrences(
       if (!currentBlock) {
         currentBlock = { firstIndex: i, lastIndex: i };
       } else {
-        currentBlock.lastIndex = i;
+        // Guard against bridging across multi-hour/weekend gaps
+        if (i > startIdx && candle.time - candles[i - 1].time > 12 * 3600) {
+          occurrences.push(currentBlock);
+          currentBlock = { firstIndex: i, lastIndex: i };
+        } else {
+          currentBlock.lastIndex = i;
+        }
       }
     } else {
       if (currentBlock) {

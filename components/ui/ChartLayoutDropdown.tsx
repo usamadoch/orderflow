@@ -42,6 +42,8 @@ export function ChartLayoutDropdown({ panelId }: { panelId?: PanelId } = {}) {
   const setCrosshairSyncEnabled = useChartStore((s) => s.setCrosshairSyncEnabled);
   const drawingsSyncEnabled = useChartStore((s) => s.drawingsSyncEnabled);
   const setDrawingsSyncEnabled = useChartStore((s) => s.setDrawingsSyncEnabled);
+  const volumeProfileSyncEnabled = useChartStore((s) => s.volumeProfileSyncEnabled);
+  const setVolumeProfileSyncEnabled = useChartStore((s) => s.setVolumeProfileSyncEnabled);
 
   const [isOpen, setIsOpen] = useState(false);
 
@@ -87,7 +89,7 @@ export function ChartLayoutDropdown({ panelId }: { panelId?: PanelId } = {}) {
         offset="0 4"
         mode="dropdown"
         onClose={() => setIsOpen(false)}
-        className="z-50 w-60 rounded-xl border border-[#282828] bg-[#181818] p-3.5 shadow-2xl select-none"
+        className="z-50 w-64 rounded-xl border border-[#282828] bg-[#181818] p-3.5 shadow-2xl select-none"
       >
         <div className='p-1'>
 
@@ -183,6 +185,21 @@ export function ChartLayoutDropdown({ panelId }: { panelId?: PanelId } = {}) {
                   checked={drawingsSyncEnabled}
                   onChange={(checked) => setDrawingsSyncEnabled(checked)}
                   aria-label="Synchronize drawings"
+                />
+              </div>
+            </div>
+            <div
+              onClick={() => setVolumeProfileSyncEnabled(!volumeProfileSyncEnabled)}
+              className="flex items-center justify-between px-3 py-2.5 min-h-[38px] rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
+            >
+              <span className="text-[12px] font-bold text-[#CCCCCC] group-hover:text-white transition-colors whitespace-nowrap">
+                Sync Volume Profile
+              </span>
+              <div onClick={(e) => e.stopPropagation()}>
+                <FigSwitch
+                  checked={volumeProfileSyncEnabled}
+                  onChange={(checked) => setVolumeProfileSyncEnabled(checked)}
+                  aria-label="Synchronize volume profile"
                 />
               </div>
             </div>

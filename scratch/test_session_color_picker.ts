@@ -40,6 +40,8 @@ function runSessionTests() {
       fillRect: (x: number, y: number, w: number, h: number) => operations.push(`fillRect(${x},${y},${w},${h})`),
       fillText: (text: string, x: number, y: number) => operations.push(`fillText(${text},${x},${y})`),
       font: '',
+      save: () => operations.push('save()'),
+      restore: () => operations.push('restore()'),
     } as unknown as CanvasRenderingContext2D;
 
     const candles: Candle[] = [
@@ -52,7 +54,7 @@ function runSessionTests() {
       mockCtx,
       candles,
       { firstIndex: 0, lastIndex: 1 },
-      () => 50,
+      (idx: number) => (idx === 0 ? 50 : 150),
       10,
       600,
       24,
@@ -75,13 +77,13 @@ function runSessionTests() {
     console.log(`  ✓ drawSessions applies custom opacity (0.12) to fillStyle: ${hasCustomOpacityFill}`);
     if (!hasCustomOpacityFill) process.exit(1);
 
-    // Session without custom opacity falls back to 0.07
+    // Session without custom opacity falls back to 0.15
     operations.length = 0;
     drawSessions(
       mockCtx,
       candles,
       { firstIndex: 0, lastIndex: 1 },
-      () => 50,
+      (idx: number) => (idx === 0 ? 50 : 150),
       10,
       600,
       24,
@@ -99,9 +101,11 @@ function runSessionTests() {
       'UTC'
     );
 
-    const hasFallbackOpacityFill = operations.some(op => op.includes('rgba(33, 150, 243, 0.07)'));
-    console.log(`  ✓ drawSessions without opacity falls back to 0.07: ${hasFallbackOpacityFill}`);
-    if (!hasFallbackOpacityFill) process.exit(1);
+    const hasFallbackOpacityFill = operations.some(op => op.includes('rgba(33, 150, 243, 0.15)'));
+    const hasLondonLabel = operations.some(op => op.includes('fillText(London'));
+    console.log(`  ✓ drawSessions without opacity falls back to 0.15: ${hasFallbackOpacityFill}`);
+    console.log(`  ✓ drawSessions renders London identification label: ${hasLondonLabel}`);
+    if (!hasFallbackOpacityFill || !hasLondonLabel) process.exit(1);
   }
 
   // Test 3: Shared ColorPickerPopover exports

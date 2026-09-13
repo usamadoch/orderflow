@@ -32,7 +32,7 @@ import { drawSessions } from '@/lib/draw/drawSessions';
 import { buildHeatmapRows } from '@/lib/liquidity/heatmap';
 import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { initCanvas } from '@/lib/utils/canvas';
-import { formatPrice, formatVol } from '@/lib/utils/format';
+import { formatPrice, formatVol, getInstrumentPrecision } from '@/lib/utils/format';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
 import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleDisplayMode, BubbleGroupingMode, BubblePriceAggrMode, BubbleTickGroupingMode } from '@/types/bubble';
 import type { DrawingHitZone, IndicatorId, VolumeBarsInputData, VolumeProfileType } from '@/types/chart';
@@ -68,7 +68,7 @@ import {
   getPriceLineHitZone,
 } from './chartCanvasHitTest';
 import { drawAbsorption } from './drawAbsorption';
-import { drawGrid, drawPriceAxis, drawTimeAxis, calculatePriceStep } from './drawAxes';
+import { drawGrid, drawPriceAxis, drawTimeAxis } from './drawAxes';
 import { chartColorToRgba } from '@/lib/config/chartColors';
 import { drawAggregateTradeBubbles } from './drawBubbles';
 import { drawCandles } from './drawCandles';
@@ -349,7 +349,7 @@ export function ChartCanvas({
   statsIndicatorEnabled,
   statsIndicatorItems,
   globalTimezone = 'local',
-  globalTimeFormat = '24h',
+  globalTimeFormat = '12h',
   showTimeAxis = true,
   onBarWidthChange,
   onScrollOffsetChange,
@@ -826,6 +826,7 @@ export function ChartCanvas({
           candles,
           { firstIndex, lastIndex },
           indexToX,
+          priceToY,
           currentBarWidth,
           logicalHeight,
           timeAxisHeight,
@@ -1720,8 +1721,7 @@ export function ChartCanvas({
           // Price Label
           if (my !== null && my >= 0 && my <= chartHeight) {
             const price = yToPrice(my, priceMin, priceMax, chartHeight);
-            const step = calculatePriceStep(priceMax - priceMin, chartHeight);
-            const precision = step < 1 ? Math.max(0, -Math.floor(Math.log10(step))) : 0;
+            const precision = getInstrumentPrecision(candles, tickSize, price);
             drawCrosshairPriceLabel(ctx, my, price, chartWidth, priceAxisWidth, chartHeight, precision);
           }
 

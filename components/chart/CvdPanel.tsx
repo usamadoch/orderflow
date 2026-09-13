@@ -55,7 +55,7 @@ export function CvdPanel({
   profileWidth,
   sessions,
   globalTimezone = 'local',
-  globalTimeFormat = '24h',
+  globalTimeFormat = '12h',
   cvdMode,
   cvdSmoothing,
   cvdResetMode,

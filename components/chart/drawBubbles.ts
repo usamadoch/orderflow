@@ -430,7 +430,7 @@ export function drawAggregateTradeBubbles(
     aggregateBubbleMarketSource = 'active',
     activeChartContractType = 'spot',
     activeDataSourceMode = activeChartContractType,
-    bubbleThreshold,
+    bubbleThreshold = 15,
     bubbleThresholdMode = 'absolute',
     bubbleFilterRender,
     bubbleStdDevVal,
@@ -439,12 +439,12 @@ export function drawAggregateTradeBubbles(
     bubbleScaleMode = 'sqrt',
     bubbleColorMode = 'askBidSplit',
     bubbleVolumeColorMode = 'deltaAbsolute',
-    bubbleMinOrders = 10,
+    bubbleMinOrders = 100,
     bubbleDisplayMode = '2d',
     bubbleBidColor = '#4ade80',
     bubbleAskColor = '#f87171',
     bubbleLineWidth = 1,
-    bubbleOpacity = 0.5,
+    bubbleOpacity = 0.15,
   } = settings;
   const filterReasons: Record<string, number> = {};
   const latestEvent = events.length > 0 ? events[events.length - 1] : null;
