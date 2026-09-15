@@ -15,10 +15,19 @@ const MAX_MT5_CONSECUTIVE_FAILURES = 3;
  */
 export function useTradingSync() {
   const symbol = useChartStore(s => s.panels.left.pair);
+  const activePanelId = useChartStore(s => s.activePanel);
+  const activePanel = useChartStore(s => s.panels[activePanelId]);
+  const chartMode = activePanel?.chartMode;
+  const timeframe = activePanel?.timeframe;
+  const pair = activePanel?.pair;
+
   const refreshAccountSnapshot = useChartRuntimeStore(s => s.refreshAccountSnapshot);
   const syncMT5Bridge = useChartRuntimeStore(s => s.syncMT5Bridge);
   const mt5BridgeStatus = useChartRuntimeStore(s => s.tradingStatus.mt5BridgeStatus);
+  const fetchMT5Candles = useChartRuntimeStore(s => s.fetchMT5Candles);
+  const notifyMT5ViewState = useChartRuntimeStore(s => s.notifyMT5ViewState);
   const mt5Failures = useRef(0);
+  const wasMode4Active = useRef(false);
 
   // Binance snapshot sync
   useEffect(() => {
@@ -85,4 +94,38 @@ export function useTradingSync() {
       clearInterval(intervalId);
     };
   }, [mt5BridgeStatus, syncMT5Bridge]);
+
+  // MT5 Mode 4 (Side-by-Side) reverse-channel view state & candle sync
+  useEffect(() => {
+    let mounted = true;
+    const isMode4 = chartMode === 'side-by-side';
+
+    if (!isMode4) {
+      if (wasMode4Active.current) {
+        wasMode4Active.current = false;
+        // Inform bridge/EA that Mode 4 is now inactive
+        void notifyMT5ViewState(false, pair || 'BTCUSD', timeframe || '1m');
+      }
+      return;
+    }
+
+    wasMode4Active.current = true;
+    // Inform bridge/EA that Mode 4 is active with current pair & timeframe
+    void notifyMT5ViewState(true, pair || 'BTCUSD', timeframe || '1m');
+
+    // Initial fetch of MT5 candles
+    void fetchMT5Candles(activePanelId, pair, timeframe);
+
+    // Fast poll for live candles strictly while in Mode 4 and bridge is connected
+    const intervalId = setInterval(() => {
+      if (!mounted) return;
+      if (useChartRuntimeStore.getState().tradingStatus.mt5BridgeStatus !== 'connected') return;
+      void fetchMT5Candles(activePanelId, pair, timeframe);
+    }, 200);
+
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+    };
+  }, [chartMode, timeframe, pair, activePanelId, fetchMT5Candles, notifyMT5ViewState]);
 }

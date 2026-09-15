@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "bridge": "node market_order_bridge/server.mjs",
     "collector:btc": "node --env-file=.env.local scripts/collector/btcusdtCollector.mjs",
     "test:collector": "node --test --env-file=.env.local scripts/collector/btcusdtCollector.test.mjs",
     "test:bubbles": "npx tsx --test scripts/tests/bubbleGrouping.test.ts",
@@ -21,6 +22,7 @@
     "pino": "^10.3.1",
     "react": "^18",
     "react-dom": "^18",
+    "undici": "^8.10.2",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

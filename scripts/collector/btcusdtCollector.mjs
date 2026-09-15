@@ -1,5 +1,6 @@
 import pg from 'pg'
 import pino from 'pino'
+import { ProxyAgent, fetch as undiciFetch } from 'undici'
 const { Pool } = pg
 
 // Standalone Pino Logger & Burst Collapsing (Self-contained for standalone EC2 deployment)
@@ -255,9 +256,32 @@ const queuedAggregateBubbleEvents = []
 const queuedAggregateBubbleKeys = new Set()
 
 const sourceState = {
-  spot: { connected: false, isBackfilling: false, lastTradeTimeMs: null, lastMessageAtMs: null },
-  futures: { connected: false, isBackfilling: false, lastTradeTimeMs: null, lastMessageAtMs: null },
+  spot: { connected: false, isBackfilling: false, lastTradeTimeMs: null, lastMessageAtMs: null, connectedAtMs: null },
+  futures: { connected: false, isBackfilling: false, lastTradeTimeMs: null, lastMessageAtMs: null, connectedAtMs: null },
 }
+
+let exitFn = (code) => process.exit(code)
+let startTimeMs = Date.now()
+
+async function safeExit(code, reason) {
+  if (shuttingDown) return
+  logger.error('CRITICAL: collector exiting due to watchdog/fatal condition', { reason, code })
+  const uptimeMs = Date.now() - startTimeMs
+  if (uptimeMs < 60000) {
+    logger.warn('rapid exit detected, applying 10s cooldown before restart', { uptimeMs })
+    await new Promise((r) => setTimeout(r, 10000))
+  }
+  exitFn(code)
+}
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('CRITICAL: unhandled rejection', { error: getErrorMessage(reason) })
+  void safeExit(1, 'unhandledRejection')
+})
+process.on('uncaughtException', (err) => {
+  logger.error('CRITICAL: uncaught exception', { error: getErrorMessage(err) })
+  void safeExit(1, 'uncaughtException')
+})
 
 if (process.env.NODE_ENV !== 'test') {
   main().catch((error) => {
@@ -269,6 +293,7 @@ if (process.env.NODE_ENV !== 'test') {
 async function main() {
   assertRuntimeSupport()
   await initTimescale()
+  await seedWatermarksFromDatabase()
   runtimes = TARGETS.map((target) => createRuntime(target))
 
   logger.info('active aggregation identities', {
@@ -322,6 +347,42 @@ async function main() {
   }
 }
 
+async function seedWatermarksFromDatabase() {
+  if (!pgPool) return
+  try {
+    const metaRes = await pgPool.query(
+      "SELECT key, value FROM collector_meta WHERE key IN ('last_spot_trade_time_ms', 'last_futures_trade_time_ms')"
+    )
+    const metaMap = new Map(metaRes.rows.map((r) => [r.key, Number(r.value)]))
+    const minValidMs = Date.now() - (config.retentionSeconds * 1000)
+
+    for (const source of SOURCES) {
+      const metaVal = metaMap.get(`last_${source}_trade_time_ms`)
+      if (Number.isFinite(metaVal) && metaVal > minValidMs && metaVal < Date.now()) {
+        sourceState[source].lastTradeTimeMs = metaVal
+        logger.info('seeded source watermark from collector_meta', { source, watermarkMs: metaVal, date: new Date(metaVal).toISOString() })
+        continue
+      }
+
+      const rowRes = await pgPool.query(
+        "SELECT MAX(candle_time_sec) as max_sec FROM footprint_cells WHERE symbol = $1 AND contract_type = $2",
+        [SYMBOL, source]
+      )
+      const maxSec = Number(rowRes.rows[0]?.max_sec)
+      const maxMs = maxSec * 1000
+      if (Number.isFinite(maxMs) && maxMs > minValidMs && maxMs < Date.now()) {
+        sourceState[source].lastTradeTimeMs = maxMs
+        logger.info('seeded source watermark from footprint_cells', { source, watermarkMs: maxMs, date: new Date(maxMs).toISOString() })
+      } else {
+        sourceState[source].lastTradeTimeMs = null
+        logger.info('no prior valid watermark found for source, starting fresh', { source })
+      }
+    }
+  } catch (err) {
+    logger.warn('could not seed watermarks from database, starting fresh', { error: getErrorMessage(err) })
+  }
+}
+
 function loadConfig() {
   const tickSize = DEFAULT_TICK_SIZE
 
@@ -338,6 +399,7 @@ function loadConfig() {
     reconnectMinMs: DEFAULT_RECONNECT_MIN_MS,
     reconnectMaxMs: DEFAULT_RECONNECT_MAX_MS,
     heartbeatMs: DEFAULT_HEARTBEAT_MS,
+    tradeStallThresholdMs: process.env.COLLECTOR_TRADE_STALL_THRESHOLD_MS ? Number(process.env.COLLECTOR_TRADE_STALL_THRESHOLD_MS) : 120000,
     expectedIdleThresholdMs: process.env.COLLECTOR_EXPECTED_IDLE_THRESHOLD_MS ? Number(process.env.COLLECTOR_EXPECTED_IDLE_THRESHOLD_MS) : DEFAULT_EXPECTED_IDLE_THRESHOLD_MS,
     maxQueuedBubbleEvents: process.env.COLLECTOR_MAX_QUEUED_BUBBLES ? Number(process.env.COLLECTOR_MAX_QUEUED_BUBBLES) : DEFAULT_MAX_QUEUED_BUBBLE_EVENTS,
     maxBufferedSlices: process.env.COLLECTOR_MAX_BUFFERED_SLICES ? Number(process.env.COLLECTOR_MAX_BUFFERED_SLICES) : DEFAULT_MAX_BUFFERED_SLICES,
@@ -434,6 +496,7 @@ function createBinanceStreamClient(source) {
       reconnectAttempts = 0
       log.info('stream connected', { source, streams })
       sourceState[source].connected = true
+      sourceState[source].connectedAtMs = Date.now()
       sourceState[source].lastMessageAtMs = Date.now()
       
       const gapStart = sourceState[source].lastTradeTimeMs
@@ -463,6 +526,21 @@ function createBinanceStreamClient(source) {
         if (idleMs > config.expectedIdleThresholdMs) {
           log.warn('stream appears stalled, forcing reconnect', { source, idleMs, thresholdMs: config.expectedIdleThresholdMs })
           ws.close()
+          return
+        }
+
+        // Trade-stall watchdog (checked only when not backfilling)
+        if (!sourceState[source].isBackfilling) {
+          const lastTrade = sourceState[source].lastTradeTimeMs ?? sourceState[source].connectedAtMs ?? Date.now()
+          const tradeIdleMs = Date.now() - lastTrade
+          if (tradeIdleMs > config.tradeStallThresholdMs) {
+            log.error('trade stream stalled, triggering watchdog restart', {
+              source,
+              tradeIdleMs,
+              thresholdMs: config.tradeStallThresholdMs,
+            })
+            void safeExit(1, `trade_stall_${source}`)
+          }
         }
       }, config.heartbeatMs)
     }
@@ -1321,13 +1399,24 @@ async function logStatus() {
   const persistenceHealth = getPersistenceHealth()
   const oldestPendingSliceAgeMs = getOldestPendingSliceAgeMs()
 
-  // Warn early if slices are aging dangerously — before the hard drop cap hits
+  // Warn or trigger watchdog if slices are aging dangerously
+  const isAnyBackfilling = SOURCES.some((s) => sourceState[s].isBackfilling)
   if (persistenceHealth === 'degraded' && oldestPendingSliceAgeMs !== null) {
-    logger.warn('PERSISTENCE_DEGRADED oldest pending slice is aging, data loss risk increasing', {
-      oldestPendingSliceAgeMs,
-      warnThresholdMs: PERSISTENCE_WARN_THRESHOLD_MS,
-      pendingSlices,
-    })
+    if (!isAnyBackfilling && oldestPendingSliceAgeMs > PERSISTENCE_WARN_THRESHOLD_MS && pendingSlices > 0) {
+      logger.error('PERSISTENCE_WATCHDOG_TRIPPED oldest pending slice exceeded threshold while not backfilling, triggering restart', {
+        oldestPendingSliceAgeMs,
+        thresholdMs: PERSISTENCE_WARN_THRESHOLD_MS,
+        pendingSlices,
+      })
+      void safeExit(1, 'persistence_stall')
+    } else {
+      logger.warn('PERSISTENCE_DEGRADED oldest pending slice is aging, data loss risk increasing', {
+        oldestPendingSliceAgeMs,
+        warnThresholdMs: PERSISTENCE_WARN_THRESHOLD_MS,
+        pendingSlices,
+        isAnyBackfilling,
+      })
+    }
   }
 
   const sinceLastInterval = {
@@ -1376,6 +1465,8 @@ async function logStatus() {
   if (config.enableWrites && !config.dryRun && pgPool) {
     await updateCollectorMeta({
       last_collector_heartbeat: new Date().toISOString(),
+      last_spot_trade_time_ms: sourceState.spot.lastTradeTimeMs ? String(sourceState.spot.lastTradeTimeMs) : undefined,
+      last_futures_trade_time_ms: sourceState.futures.lastTradeTimeMs ? String(sourceState.futures.lastTradeTimeMs) : undefined,
       collector_status: JSON.stringify({
         symbol: SYMBOL,
         health,
@@ -1474,6 +1565,44 @@ function isValidTrade(trade) {
 //   return Math.floor(getNumberEnv(name, fallback))
 // }
 
+export function getRestBaseUrl(source) {
+  const isSpot = source === 'spot'
+  const proxyRoot = process.env.BINANCE_REST_PROXY_URL?.replace(/\/+$/, '')
+
+  if (isSpot) {
+    if (process.env.BINANCE_SPOT_REST_URL) {
+      return process.env.BINANCE_SPOT_REST_URL.replace(/\/+$/, '')
+    }
+    if (proxyRoot) {
+      return `${proxyRoot}/api/v3`
+    }
+    return 'https://data-api.binance.vision/api/v3'
+  }
+
+  // Futures
+  if (process.env.BINANCE_FUTURES_REST_URL) {
+    return process.env.BINANCE_FUTURES_REST_URL.replace(/\/+$/, '')
+  }
+  if (proxyRoot) {
+    return `${proxyRoot}/fapi/v1`
+  }
+  return 'https://fapi.binance.com/fapi/v1'
+}
+
+let proxyAgentInstance = null
+let lastConfiguredProxy = null
+
+export function getProxyAgent() {
+  const proxyUrl = process.env.BINANCE_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY
+  if (!proxyUrl) return undefined
+  if (proxyAgentInstance && lastConfiguredProxy === proxyUrl) {
+    return proxyAgentInstance
+  }
+  lastConfiguredProxy = proxyUrl
+  proxyAgentInstance = new ProxyAgent(proxyUrl)
+  return proxyAgentInstance
+}
+
 async function runBackfill(source, startTime, endTime) {
   const log = sourceLoggers[source] || logger
   if (endTime - startTime < 1000) {
@@ -1482,8 +1611,9 @@ async function runBackfill(source, startTime, endTime) {
   
   log.info('starting auto-backfill for gap', { source, gapMs: endTime - startTime })
   
-  const isSpot = source === 'spot'
-  const baseUrl = isSpot ? 'https://api.binance.com/api/v3' : 'https://fapi.binance.com/fapi/v1'
+  const baseUrl = getRestBaseUrl(source)
+  const isFutures = source === 'futures'
+  const dispatcher = (isFutures || process.env.PROXY_ALL === 'true') ? getProxyAgent() : undefined
   let currentStartTime = startTime
   let totalFetched = 0
 
@@ -1492,7 +1622,11 @@ async function runBackfill(source, startTime, endTime) {
     const url = `${baseUrl}/aggTrades?symbol=${SYMBOL}&startTime=${currentStartTime}&endTime=${endTime}&limit=1000`
     
     try {
-      const response = await fetch(url)
+      const fetchFn = dispatcher ? undiciFetch : globalThis.fetch
+      const response = await fetchFn(url, {
+        signal: AbortSignal.timeout(10000),
+        ...(dispatcher ? { dispatcher } : {}),
+      })
       if (!response.ok) {
         log.error('backfill request failed', { source, status: response.status, statusText: response.statusText })
         break
@@ -1517,6 +1651,7 @@ async function runBackfill(source, startTime, endTime) {
         }
 
         if (isValidTrade(trade)) {
+          sourceState[source].lastTradeTimeMs = Math.max(sourceState[source].lastTradeTimeMs ?? 0, trade.time)
           queueAggregateBubbleCandidate(trade)
           for (const runtime of runtimes) {
             if (!runtime.activeSources.includes(source)) continue
@@ -1664,5 +1799,11 @@ export const _test = {
   setShuttingDown: (val) => { shuttingDown = val },
   setPersistPromise: (val) => { persistPromise = val },
   getRuntimes: () => runtimes,
-  setRuntimes: (val) => { runtimes.length = 0; runtimes.push(...val) }
+  setRuntimes: (val) => { runtimes.length = 0; runtimes.push(...val) },
+  setExitFn: (fn) => { exitFn = fn },
+  getExitFn: () => exitFn,
+  safeExit,
+  seedWatermarksFromDatabase,
+  getRestBaseUrl,
+  getProxyAgent,
 }

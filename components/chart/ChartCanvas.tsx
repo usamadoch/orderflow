@@ -34,6 +34,7 @@ import { LiquidityHistoryManager } from '@/lib/liquidity/history';
 import { initCanvas } from '@/lib/utils/canvas';
 import { formatPrice, formatVol, getInstrumentPrecision } from '@/lib/utils/format';
 import { computeMeasurementMetrics, computeFootprintMetrics, CoordinateSystem } from '@/lib/utils/measurement';
+import { getTimeframeSeconds } from '@/lib/utils/feedUtils';
 import type { AggregateBubbleMarketSource, BubbleSizeBy, BubbleScaleMode, BubbleColorMode, BubbleVolumeColorMode, BubbleDisplayMode, BubbleGroupingMode, BubblePriceAggrMode, BubbleTickGroupingMode } from '@/types/bubble';
 import type { DrawingHitZone, IndicatorId, VolumeBarsInputData, VolumeProfileType } from '@/types/chart';
 import type { ExhaustionResult } from '@/types/exhaustion';
@@ -41,6 +42,7 @@ import type { FootprintMode } from '@/types/footprint';
 import type { IcebergLevel } from '@/types/iceberg';
 import type { HeatmapRow } from '@/types/liquidity';
 import type { Order, BracketDragState, PendingModifyOrder, Position, BracketOrder, VirtualPosition } from '@/types/trading';
+import type { Candle } from '@/types/candle';
 import type { VolumeProfileSource } from '@/types/volumeProfile';
 
 // 3. Relative component & canvas imports
@@ -72,6 +74,7 @@ import { drawGrid, drawPriceAxis, drawTimeAxis } from './drawAxes';
 import { chartColorToRgba } from '@/lib/config/chartColors';
 import { drawAggregateTradeBubbles } from './drawBubbles';
 import { drawCandles } from './drawCandles';
+import { drawSideBySideCandles } from './drawSideBySideCandles';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
 import { drawExhaustion } from './drawExhaustion';
 import { drawFootprint } from './drawFootprint';
@@ -594,6 +597,7 @@ export function ChartCanvas({
       const panelState = storeState.panels[panelId];
 
       const candles = currentPanelRuntime.candles ?? [];
+      const mt5Candles = currentPanelRuntime.mt5Candles ?? [];
       const openOrders = runtimeState.tradingStatus.openOrders ?? [];
       const bracketOrders = runtimeState.tradingStatus.bracketOrders ?? [];
       const positions = runtimeState.tradingStatus.positions ?? [];
@@ -623,7 +627,25 @@ export function ChartCanvas({
 
       // Auto-scale visible price range or initialize price scaling
       if (isAutoScaled.current || priceCenter.current === null || priceRange.current === null) {
-        const { priceMin: autoMin, priceMax: autoMax } = getVisiblePriceRange(candles, rawFirstIndex, rawLastIndex);
+        let { priceMin: autoMin, priceMax: autoMax } = getVisiblePriceRange(candles, rawFirstIndex, rawLastIndex);
+        if (chartMode === 'side-by-side' && mt5Candles.length > 0) {
+          const intervalSec = getTimeframeSeconds(timeframe);
+          const mt5Map = new Map<number, Candle>();
+          for (let m = 0; m < mt5Candles.length; m++) {
+            const alignedTime = Math.round(mt5Candles[m].time / intervalSec) * intervalSec;
+            mt5Map.set(alignedTime, mt5Candles[m]);
+          }
+          const validFirst = Math.max(0, Math.min(candles.length - 1, rawFirstIndex));
+          const validLast = Math.max(0, Math.min(candles.length - 1, rawLastIndex));
+          for (let i = validFirst; i <= validLast; i++) {
+            const webAlignedTime = Math.round(candles[i].time / intervalSec) * intervalSec;
+            const mc = mt5Map.get(webAlignedTime);
+            if (mc) {
+              if (mc.high > autoMax) autoMax = mc.high;
+              if (mc.low < autoMin) autoMin = mc.low;
+            }
+          }
+        }
         priceCenter.current = (autoMin + autoMax) / 2;
         priceRange.current = (autoMax - autoMin) || 100;
       }
@@ -986,13 +1008,39 @@ export function ChartCanvas({
               downWickOpacity: candleDownWickOpacity,
             }
           );
+        } else if (chartMode === 'side-by-side') {
+          drawSideBySideCandles(
+            liveCtx,
+            candles,
+            mt5Candles,
+            firstIndex,
+            lastIndex,
+            indexToX,
+            priceToY,
+            currentBarWidth,
+            {
+              timeframe,
+              webColors: {
+                upColor: candleUpColor,
+                upOpacity: candleUpOpacity,
+                downColor: candleDownColor,
+                downOpacity: candleDownOpacity,
+                upWickColor: candleUpWickColor,
+                upWickOpacity: candleUpWickOpacity,
+                downWickColor: candleDownWickColor,
+                downWickOpacity: candleDownWickOpacity,
+              },
+            }
+          );
         } else {
           drawFootprint(liveCtx, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, engine, bucketSize, chartHeight, footprintMode);
         }
 
         // Volume bubbles — drawn above candles/footprint, below volume profile
         if (bubblesEnabled) {
-          drawAggregateTradeBubbles(liveCtx, aggregateBubbleEvents, candles, firstIndex, lastIndex, indexToX, priceToY, currentBarWidth, {
+          const bubbleIndexToX = chartMode === 'side-by-side' ? (i: number) => indexToX(i) - currentBarWidth * 0.23 : indexToX;
+          const bubbleBarWidth = chartMode === 'side-by-side' ? currentBarWidth * 0.46 : currentBarWidth;
+          drawAggregateTradeBubbles(liveCtx, aggregateBubbleEvents, candles, firstIndex, lastIndex, bubbleIndexToX, priceToY, bubbleBarWidth, {
             bubbleSizeBy,
             aggregateBubbleMarketSource,
             activeChartContractType,

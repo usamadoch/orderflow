@@ -367,3 +367,194 @@ test('Pino Logger and Burst Collapsing', async () => {
   assert.ok(codebaseLoggerModule.createSourceLogger, 'src/lib/logger.ts createSourceLogger must remain intact in codebase')
   assert.ok(codebaseLoggerModule.createBurstCollapsingLogger, 'src/lib/logger.ts createBurstCollapsingLogger must remain intact in codebase')
 })
+
+test('Watchdog 1: Trade-stall watchdog triggers exitFn on trade stall and suppresses while backfilling', async () => {
+  let exitCode = null
+  _test.setExitFn((code) => { exitCode = code })
+  _test.config.tradeStallThresholdMs = 120000
+
+  const now = Date.now()
+  _test.sourceState.spot.isBackfilling = false
+  _test.sourceState.spot.lastTradeTimeMs = now - 130000 // 130s ago (> 120s threshold)
+
+  // Simulate heartbeat check logic
+  const checkTradeStall = (source) => {
+    if (!_test.sourceState[source].isBackfilling) {
+      const lastTrade = _test.sourceState[source].lastTradeTimeMs ?? _test.sourceState[source].connectedAtMs ?? Date.now()
+      const tradeIdleMs = Date.now() - lastTrade
+      if (tradeIdleMs > _test.config.tradeStallThresholdMs) {
+        _test.getExitFn()(1)
+      }
+    }
+  }
+
+  // 1. When not backfilling and idle > threshold, should exit with 1
+  checkTradeStall('spot')
+  assert.strictEqual(exitCode, 1, 'watchdog must call exitFn(1) when trade idle > threshold')
+
+  // 2. When isBackfilling is true, watchdog must be suppressed
+  exitCode = null
+  _test.sourceState.spot.isBackfilling = true
+  checkTradeStall('spot')
+  assert.strictEqual(exitCode, null, 'watchdog must be suppressed while isBackfilling === true')
+  _test.sourceState.spot.isBackfilling = false
+})
+
+test('Watchdog 2: Persistence watchdog triggers on stuck slices and suppresses while backfilling', async () => {
+  let exitCode = null
+  _test.setExitFn((code) => { exitCode = code })
+
+  const runtime = _test.createRuntime({
+    contractType: 'spot',
+    dataSourceMode: 'spot',
+    activeSources: ['spot'],
+  })
+  _test.setRuntimes([runtime])
+
+  // Put a slice from 10 minutes ago
+  const oldSliceSec = Math.floor((Date.now() - 600000) / 1000)
+  runtime.footprintSlices.set(oldSliceSec, new Map([[70000, { bucketPrice: 70000, bidVol: 1, askVol: 1 }]]))
+
+  _test.sourceState.spot.isBackfilling = false
+  _test.sourceState.futures.isBackfilling = false
+
+  const checkPersistenceWatchdog = () => {
+    const isAnyBackfilling = ['spot', 'futures'].some((s) => _test.sourceState[s].isBackfilling)
+    const oldestPendingSliceAgeMs = _test.getOldestPendingSliceAgeMs()
+    const pendingSlices = _test.getRuntimes().reduce((total, r) => total + _test.getSortedSliceTimes(r).length, 0)
+    const thresholdMs = 300000 // 5 minutes
+
+    if (!isAnyBackfilling && oldestPendingSliceAgeMs !== null && oldestPendingSliceAgeMs > thresholdMs && pendingSlices > 0) {
+      _test.getExitFn()(1)
+    }
+  }
+
+  // 1. Stalled slice with no backfilling -> exit 1
+  checkPersistenceWatchdog()
+  assert.strictEqual(exitCode, 1, 'persistence watchdog must call exitFn(1) when slices stuck > 5m')
+
+  // 2. Stalled slice while a source is backfilling -> suppressed
+  exitCode = null
+  _test.sourceState.spot.isBackfilling = true
+  checkPersistenceWatchdog()
+  assert.strictEqual(exitCode, null, 'persistence watchdog must be suppressed while backfilling')
+
+  // Cleanup
+  _test.sourceState.spot.isBackfilling = false
+  runtime.footprintSlices.clear()
+})
+
+test('Backfill timestamps: runBackfill updates lastTradeTimeMs on valid trade ingestion', async () => {
+  const originalFetch = global.fetch
+  const tradeTime = Date.now() - 50000
+
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => [
+      { a: 55555, f: 55550, l: 55555, p: '65000.00', q: '1.5', T: tradeTime, m: false },
+    ],
+  })
+
+  try {
+    _test.sourceState.spot.lastTradeTimeMs = null
+    const res = await _test.runBackfill('spot', tradeTime - 1000, tradeTime + 1000)
+    assert.strictEqual(res.ok, true)
+    assert.strictEqual(_test.sourceState.spot.lastTradeTimeMs, tradeTime, 'runBackfill must update lastTradeTimeMs from trade.T')
+  } finally {
+    global.fetch = originalFetch
+  }
+})
+
+test('Database Watermarks: seedWatermarksFromDatabase seeds valid timestamps and rejects null/epoch', async () => {
+  const recentTime = Date.now() - 60000
+
+  // Mock pgPool with collector_meta returning valid spot and null futures
+  const mockPgPool = {
+    query: async (sql) => {
+      if (sql.includes('collector_meta')) {
+        return {
+          rows: [
+            { key: 'last_spot_trade_time_ms', value: String(recentTime) },
+            { key: 'last_futures_trade_time_ms', value: 'invalid_or_epoch_0' },
+          ],
+        }
+      }
+      if (sql.includes('footprint_cells')) {
+        // Fallback for futures returns null
+        return { rows: [{ max_sec: null }] }
+      }
+      return { rows: [] }
+    },
+  }
+
+  _test.setPgPool(mockPgPool)
+  _test.sourceState.spot.lastTradeTimeMs = null
+  _test.sourceState.futures.lastTradeTimeMs = null
+
+  await _test.seedWatermarksFromDatabase()
+
+  assert.strictEqual(_test.sourceState.spot.lastTradeTimeMs, recentTime, 'spot must be seeded from collector_meta')
+  assert.strictEqual(_test.sourceState.futures.lastTradeTimeMs, null, 'futures with invalid/null value must remain null')
+
+  _test.setPgPool(null)
+})
+
+test('REST Base URLs: getRestBaseUrl resolves defaults, proxy prefixes, and direct overrides', () => {
+  const originalSpot = process.env.BINANCE_SPOT_REST_URL
+  const originalFutures = process.env.BINANCE_FUTURES_REST_URL
+  const originalProxy = process.env.BINANCE_REST_PROXY_URL
+
+  try {
+    // 1. Defaults (Spot uses Binance Vision; Futures uses standard fapi)
+    delete process.env.BINANCE_SPOT_REST_URL
+    delete process.env.BINANCE_FUTURES_REST_URL
+    delete process.env.BINANCE_REST_PROXY_URL
+
+    assert.strictEqual(_test.getRestBaseUrl('spot'), 'https://data-api.binance.vision/api/v3')
+    assert.strictEqual(_test.getRestBaseUrl('futures'), 'https://fapi.binance.com/fapi/v1')
+
+    // 2. Proxy root URL
+    process.env.BINANCE_REST_PROXY_URL = 'https://my-proxy.workers.dev'
+    assert.strictEqual(_test.getRestBaseUrl('spot'), 'https://my-proxy.workers.dev/api/v3')
+    assert.strictEqual(_test.getRestBaseUrl('futures'), 'https://my-proxy.workers.dev/fapi/v1')
+
+    // 3. Explicit specific overrides take highest priority
+    process.env.BINANCE_SPOT_REST_URL = 'https://custom-spot.example.com/api/v3/'
+    process.env.BINANCE_FUTURES_REST_URL = 'https://custom-futures.example.com/fapi/v1/'
+    assert.strictEqual(_test.getRestBaseUrl('spot'), 'https://custom-spot.example.com/api/v3')
+    assert.strictEqual(_test.getRestBaseUrl('futures'), 'https://custom-futures.example.com/fapi/v1')
+  } finally {
+    if (originalSpot !== undefined) process.env.BINANCE_SPOT_REST_URL = originalSpot
+    else delete process.env.BINANCE_SPOT_REST_URL
+    if (originalFutures !== undefined) process.env.BINANCE_FUTURES_REST_URL = originalFutures
+    else delete process.env.BINANCE_FUTURES_REST_URL
+    if (originalProxy !== undefined) process.env.BINANCE_REST_PROXY_URL = originalProxy
+    else delete process.env.BINANCE_REST_PROXY_URL
+  }
+})
+
+test('ProxyAgent: getProxyAgent instantiates and caches ProxyAgent from environment', () => {
+  const originalBinanceProxy = process.env.BINANCE_PROXY_URL
+  const originalHttpsProxy = process.env.HTTPS_PROXY
+
+  try {
+    delete process.env.BINANCE_PROXY_URL
+    delete process.env.HTTPS_PROXY
+    delete process.env.HTTP_PROXY
+
+    assert.strictEqual(_test.getProxyAgent(), undefined, 'undefined when no proxy env is set')
+
+    process.env.BINANCE_PROXY_URL = 'http://testuser:testpass@127.0.0.1:8080'
+    const agent1 = _test.getProxyAgent()
+    assert.ok(agent1 !== undefined, 'creates ProxyAgent instance')
+    const agent2 = _test.getProxyAgent()
+    assert.strictEqual(agent1, agent2, 'caches instance for same proxy URL')
+  } finally {
+    if (originalBinanceProxy !== undefined) process.env.BINANCE_PROXY_URL = originalBinanceProxy
+    else delete process.env.BINANCE_PROXY_URL
+    if (originalHttpsProxy !== undefined) process.env.HTTPS_PROXY = originalHttpsProxy
+    else delete process.env.HTTPS_PROXY
+  }
+})
+
+

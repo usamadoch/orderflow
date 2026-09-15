@@ -13,6 +13,22 @@ input string BridgeUrl = "http://127.0.0.1:3001";
 string g_bridgeUrl;
 CTrade trade;
 
+// MT5 Candle & View Sync State
+bool             g_viewActive            = false;
+string           g_viewSymbol            = "BTCUSD";
+ENUM_TIMEFRAMES  g_viewTf                = PERIOD_M1;
+string           g_viewTfStr             = "1m";
+bool             g_isCandleReqActive     = false;
+datetime         g_lastLiveCandleTime    = 0;
+double           g_lastLiveCandleClose   = 0;
+ulong            g_lastLiveCandleTickVol = 0;
+
+void SendAccountUpdate();
+void CheckForViewSync();
+void SendLiveCandleDelta();
+void SendCandlesHistory(string sym, ENUM_TIMEFRAMES tf, int count = 200);
+ENUM_TIMEFRAMES ParseTimeframe(string tf);
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -28,16 +44,14 @@ int OnInit()
       g_bridgeUrl = StringSubstr(g_bridgeUrl, 0, StringLen(g_bridgeUrl)-1);
      }
 
-   EventSetMillisecondTimer(200);
-   Print("MarketOrderEA initialized. Polling ", g_bridgeUrl);
+   EventSetMillisecondTimer(100);
+   Print("MarketOrderEA initialized. Polling ", g_bridgeUrl, " at 100ms");
    return(INIT_SUCCEEDED);
   }
 
 //+------------------------------------------------------------------+
 //| Expert deinitialization function                                 |
 //+------------------------------------------------------------------+
-void SendAccountUpdate();
-
 void OnDeinit(const int reason)
   {
    EventKillTimer();
@@ -128,18 +142,33 @@ int g_timerTicks = 0;
 void OnTimer()
   {
    g_timerTicks++;
-   if(g_timerTicks % 25 == 0) // every ~5 seconds (25 * 200ms)
+   
+   // Periodic account snapshot every ~5 seconds (50 * 100ms)
+   if(g_timerTicks % 50 == 0)
      {
       SendAccountUpdate();
      }
 
-   if(g_timerTicks % 2 == 0) // alternate ticks (~400ms)
+   // Poll web view state (symbol/timeframe) every ~2 seconds (20 * 100ms)
+   if(g_timerTicks % 20 == 0)
+     {
+      CheckForViewSync();
+     }
+
+   // Modifications and closes polled alternatively (~400ms)
+   if(g_timerTicks % 4 == 0)
      {
       CheckForPendingModifications();
      }
-   else
+   else if(g_timerTicks % 4 == 2)
      {
       CheckForPendingCloses();
+     }
+
+   // Stream live candle delta whenever web app is actively in Mode 4
+   if(g_viewActive)
+     {
+      SendLiveCandleDelta();
      }
 
    char postData[];
@@ -472,5 +501,182 @@ void SendAccountUpdate()
    ResetLastError();
    string headers = "Content-Type: application/json\r\n";
    WebRequest("POST", g_bridgeUrl + "/account-update", headers, 1000, postData, result, resultHeaders);
+  }
+//+------------------------------------------------------------------+
+//| Parse timeframe string to MT5 timeframe                          |
+//+------------------------------------------------------------------+
+ENUM_TIMEFRAMES ParseTimeframe(string tf)
+  {
+   string upper = tf;
+   StringToUpper(upper);
+   if(upper == "M1" || upper == "1M") return PERIOD_M1;
+   if(upper == "M3" || upper == "3M") return PERIOD_M3;
+   if(upper == "M5" || upper == "5M") return PERIOD_M5;
+   if(upper == "M15" || upper == "15M") return PERIOD_M15;
+   if(upper == "M30" || upper == "30M") return PERIOD_M30;
+   if(upper == "H1" || upper == "1H") return PERIOD_H1;
+   if(upper == "H4" || upper == "4H") return PERIOD_H4;
+   if(upper == "D1" || upper == "1D") return PERIOD_D1;
+   return _Period;
+  }
+
+//+------------------------------------------------------------------+
+//| Check web view state to see if candle streaming is required     |
+//+------------------------------------------------------------------+
+void CheckForViewSync()
+  {
+   if(g_isCandleReqActive) return;
+   
+   char postData[];
+   char result[];
+   string resultHeaders;
+   string url = g_bridgeUrl + "/poll-view";
+   
+   ResetLastError();
+   int res = WebRequest("GET", url, NULL, 50, postData, result, resultHeaders);
+   if(res != 200) return;
+   
+   string json = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+   if(json == "" || json == "null") return;
+   
+   string activeStr = ExtractJsonValue(json, "active");
+   bool isActive = (activeStr == "true" || activeStr == "1");
+   string sym = ExtractJsonValue(json, "symbol");
+   string tfStr = ExtractJsonValue(json, "timeframe");
+   string mt5TfStr = ExtractJsonValue(json, "mt5Timeframe");
+   if(sym == "") sym = _Symbol;
+   if(tfStr == "") tfStr = "1m";
+   
+   ENUM_TIMEFRAMES targetTf = ParseTimeframe(mt5TfStr != "" ? mt5TfStr : tfStr);
+   
+   bool needsHistory = false;
+   if(isActive && (!g_viewActive || sym != g_viewSymbol || targetTf != g_viewTf))
+     {
+      needsHistory = true;
+     }
+     
+   g_viewActive = isActive;
+   g_viewSymbol = sym;
+   g_viewTf = targetTf;
+   g_viewTfStr = tfStr;
+   
+   if(needsHistory)
+     {
+      SendCandlesHistory(g_viewSymbol, g_viewTf, 200);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Send historical candles snapshot to bridge                       |
+//+------------------------------------------------------------------+
+void SendCandlesHistory(string sym, ENUM_TIMEFRAMES tf, int count = 200)
+  {
+   if(g_isCandleReqActive) return;
+   g_isCandleReqActive = true;
+   
+   SymbolSelect(sym, true);
+   MqlRates rates[];
+   ArraySetAsSeries(rates, false);
+   int copied = CopyRates(sym, tf, 0, count, rates);
+   if(copied <= 0)
+     {
+      g_isCandleReqActive = false;
+      return;
+     }
+     
+   long rawOffset = (long)(TimeCurrent() - TimeGMT());
+   long gmtOffsetSec = (long)(MathRound((double)rawOffset / 900.0) * 900.0);
+   
+   string json = "{\"symbol\":\"" + sym + "\",\"timeframe\":\"" + g_viewTfStr + "\",\"candles\":[";
+   for(int i = 0; i < copied; i++)
+     {
+      if(i > 0) json += ",";
+      long utcMs = ((long)rates[i].time - gmtOffsetSec) * 1000;
+      json += "{\"time\":" + IntegerToString(utcMs) + ",";
+      json += "\"open\":" + DoubleToString(rates[i].open, _Digits) + ",";
+      json += "\"high\":" + DoubleToString(rates[i].high, _Digits) + ",";
+      json += "\"low\":" + DoubleToString(rates[i].low, _Digits) + ",";
+      json += "\"close\":" + DoubleToString(rates[i].close, _Digits) + ",";
+      json += "\"volume\":" + IntegerToString((long)rates[i].tick_volume) + "}";
+     }
+   json += "]}";
+   
+   char postData[];
+   char result[];
+   string resultHeaders;
+   StringToCharArray(json, postData, 0, WHOLE_ARRAY, CP_UTF8);
+   int size = ArraySize(postData);
+   if(size > 0 && postData[size-1] == 0) ArrayResize(postData, size-1);
+   
+   ResetLastError();
+   string headers = "Content-Type: application/json\r\n";
+   WebRequest("POST", g_bridgeUrl + "/mt5-candles-history", headers, 500, postData, result, resultHeaders);
+   g_isCandleReqActive = false;
+  }
+
+//+------------------------------------------------------------------+
+//| Send live forming candle delta to bridge                         |
+//+------------------------------------------------------------------+
+void SendLiveCandleDelta()
+  {
+   if(!g_viewActive || g_isCandleReqActive) return;
+   
+   MqlRates rates[];
+   ArraySetAsSeries(rates, true); // index 0 is current, 1 is previous
+   int copied = CopyRates(g_viewSymbol, g_viewTf, 0, 2, rates);
+   if(copied <= 0) return;
+   
+   // Skip if forming candle hasn't changed
+   if(rates[0].time == g_lastLiveCandleTime && 
+      rates[0].close == g_lastLiveCandleClose && 
+      rates[0].tick_volume == g_lastLiveCandleTickVol)
+     {
+      return;
+     }
+     
+   g_lastLiveCandleTime = rates[0].time;
+   g_lastLiveCandleClose = rates[0].close;
+   g_lastLiveCandleTickVol = rates[0].tick_volume;
+   
+   g_isCandleReqActive = true;
+   long rawOffset = (long)(TimeCurrent() - TimeGMT());
+   long gmtOffsetSec = (long)(MathRound((double)rawOffset / 900.0) * 900.0);
+   long curUtcMs = ((long)rates[0].time - gmtOffsetSec) * 1000;
+   
+   string json = "{\"symbol\":\"" + g_viewSymbol + "\",\"timeframe\":\"" + g_viewTfStr + "\",";
+   json += "\"candle\":{";
+   json += "\"time\":" + IntegerToString(curUtcMs) + ",";
+   json += "\"open\":" + DoubleToString(rates[0].open, _Digits) + ",";
+   json += "\"high\":" + DoubleToString(rates[0].high, _Digits) + ",";
+   json += "\"low\":" + DoubleToString(rates[0].low, _Digits) + ",";
+   json += "\"close\":" + DoubleToString(rates[0].close, _Digits) + ",";
+   json += "\"volume\":" + IntegerToString((long)rates[0].tick_volume);
+   json += "}";
+   
+   if(copied > 1)
+     {
+      long prevUtcMs = ((long)rates[1].time - gmtOffsetSec) * 1000;
+      json += ",\"previousCandle\":{";
+      json += "\"time\":" + IntegerToString(prevUtcMs) + ",";
+      json += "\"open\":" + DoubleToString(rates[1].open, _Digits) + ",";
+      json += "\"high\":" + DoubleToString(rates[1].high, _Digits) + ",";
+      json += "\"low\":" + DoubleToString(rates[1].low, _Digits) + ",";
+      json += "\"close\":" + DoubleToString(rates[1].close, _Digits) + ",";
+      json += "\"volume\":" + IntegerToString((long)rates[1].tick_volume);
+      json += "}";
+     }
+   json += "}";
+   
+   char postData[];
+   char result[];
+   string resultHeaders;
+   StringToCharArray(json, postData, 0, WHOLE_ARRAY, CP_UTF8);
+   int size = ArraySize(postData);
+   if(size > 0 && postData[size-1] == 0) ArrayResize(postData, size-1);
+   
+   ResetLastError();
+   string headers = "Content-Type: application/json\r\n";
+   WebRequest("POST", g_bridgeUrl + "/mt5-candles-live", headers, 50, postData, result, resultHeaders);
+   g_isCandleReqActive = false;
   }
 //+------------------------------------------------------------------+

@@ -28,7 +28,7 @@ import { LiquidityHistoryManager } from '../lib/liquidity/history';
 import { IcebergEngine } from '../lib/iceberg/engine';
 import type { VolumeProfileSource } from './volumeProfile';
 
-export type ChartMode = 'candle' | 'footprint' | 'hollow';
+export type ChartMode = 'candle' | 'footprint' | 'hollow' | 'side-by-side';
 export type PanelId = 'left' | 'right';
 export type LayoutMode = 'single' | 'dual';
 export type SplitDirection = 'vertical' | 'horizontal';
@@ -505,6 +505,7 @@ export interface PanelRuntimeState {
   activeMeasurement: Measurement | null;
   refreshKey: number;
   dataVersion: number;
+  mt5Candles: Candle[];
 }
 
 export interface TradingRuntimeStatus {

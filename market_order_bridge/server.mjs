@@ -26,6 +26,18 @@ const modificationResults = new Map(); // requestId -> result
 const pendingCloses = []; // FIFO queue
 const closeResults = new Map(); // requestId -> result
 
+// MT5 Candle & View Sync State
+const MAX_CACHED_BARS = 300;
+const candleCache = new Map(); // "symbol:timeframe" -> Candle[]
+let activeViewState = {
+  active: false,
+  symbol: 'BTCUSD',
+  timeframe: '1m',
+  mt5Timeframe: 'M1',
+  count: 200,
+  lastUpdated: 0
+};
+
 const server = http.createServer((req, res) => {
   // CORS & Cache headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -244,6 +256,198 @@ const server = http.createServer((req, res) => {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Result not found' }));
       return;
+    }
+
+    // --- MT5 CANDLE COMPARISON & VIEW REVERSE CHANNEL ---
+
+    if (req.method === 'POST' && req.url === '/mt5-view-state') {
+      const { active, symbol, timeframe, count } = body;
+      let mt5Symbol = symbol || activeViewState.symbol;
+      if (mt5Symbol && mt5Symbol.endsWith('USDT')) {
+        mt5Symbol = mt5Symbol.replace('USDT', 'USD');
+      }
+      const tf = timeframe || activeViewState.timeframe;
+      
+      const normalizeTimeframeToMt5 = (t) => {
+        if (!t) return 'M1';
+        const lower = String(t).toLowerCase().trim();
+        if (lower === '1m') return 'M1';
+        if (lower === '3m') return 'M3';
+        if (lower === '5m') return 'M5';
+        if (lower === '15m') return 'M15';
+        if (lower === '30m') return 'M30';
+        if (lower === '1h') return 'H1';
+        if (lower === '4h') return 'H4';
+        if (lower === '1d') return 'D1';
+        return lower.toUpperCase();
+      };
+      const mt5Tf = normalizeTimeframeToMt5(tf);
+      const wasActive = activeViewState.active;
+      const prevTf = activeViewState.timeframe;
+      const prevSym = activeViewState.symbol;
+
+      activeViewState = {
+        active: Boolean(active),
+        symbol: mt5Symbol,
+        timeframe: tf,
+        mt5Timeframe: mt5Tf,
+        count: count || 200,
+        lastUpdated: Date.now()
+      };
+
+      if (activeViewState.active !== wasActive || prevTf !== tf || prevSym !== mt5Symbol) {
+        console.log(`[BRIDGE] View state updated: active=${activeViewState.active}, symbol=${mt5Symbol}, tf=${tf} (${mt5Tf})`);
+      }
+      return respondJson(200, { success: true, activeViewState });
+    }
+
+    if (req.method === 'GET' && req.url === '/poll-view') {
+      lastMt5Heartbeat = Date.now();
+      return respondJson(200, activeViewState);
+    }
+
+    if (req.method === 'POST' && req.url === '/mt5-candles-history') {
+      lastMt5Heartbeat = Date.now();
+      const { symbol, timeframe, candles } = body;
+      if (!symbol || !timeframe || !Array.isArray(candles)) {
+        return respondJson(400, { error: 'Invalid payload' });
+      }
+      const getTimeframeSeconds = (tf) => {
+        if (!tf) return 60;
+        const s = String(tf).toLowerCase().trim();
+        if (s === '1m' || s === 'm1') return 60;
+        if (s === '3m' || s === 'm3') return 180;
+        if (s === '5m' || s === 'm5') return 300;
+        if (s === '15m' || s === 'm15') return 900;
+        if (s === '30m' || s === 'm30') return 1800;
+        if (s === '1h' || s === 'h1') return 3600;
+        if (s === '4h' || s === 'h4') return 14400;
+        if (s === '1d' || s === 'd1') return 86400;
+        if (s.endsWith('m')) return (parseInt(s, 10) || 1) * 60;
+        if (s.endsWith('h')) return (parseInt(s, 10) || 1) * 3600;
+        if (s.endsWith('d')) return (parseInt(s, 10) || 1) * 86400;
+        return 60;
+      };
+
+      const tfSec = getTimeframeSeconds(timeframe);
+      const normalizeCandle = (c) => {
+        if (!c || !Number.isFinite(c.time)) return null;
+        let timeSec = c.time > 1e11 ? Math.floor(c.time / 1000) : Math.floor(c.time);
+        timeSec = Math.round(timeSec / tfSec) * tfSec;
+        return {
+          time: timeSec,
+          open: Number(c.open),
+          high: Number(c.high),
+          low: Number(c.low),
+          close: Number(c.close),
+          volume: Number(c.volume || 0),
+          isClosed: Boolean(c.isClosed)
+        };
+      };
+
+      const key = `${symbol}:${timeframe}`;
+      const byTime = new Map();
+      for (const raw of candles) {
+        const c = normalizeCandle(raw);
+        if (c && Number.isFinite(c.time) && Number.isFinite(c.close)) {
+          byTime.set(c.time, c);
+        }
+      }
+      const normalized = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+      const pruned = normalized.slice(-MAX_CACHED_BARS);
+      candleCache.set(key, pruned);
+      console.log(`[BRIDGE] Ingested ${pruned.length} historical candles for ${key}`);
+      return respondJson(200, { success: true, count: pruned.length });
+    }
+
+    if (req.method === 'POST' && req.url === '/mt5-candles-live') {
+      lastMt5Heartbeat = Date.now();
+      const { symbol, timeframe, candle, previousCandle } = body;
+      if (!symbol || !timeframe || !candle) {
+        return respondJson(400, { error: 'Invalid payload' });
+      }
+
+      const getTimeframeSeconds = (tf) => {
+        if (!tf) return 60;
+        const s = String(tf).toLowerCase().trim();
+        if (s === '1m' || s === 'm1') return 60;
+        if (s === '3m' || s === 'm3') return 180;
+        if (s === '5m' || s === 'm5') return 300;
+        if (s === '15m' || s === 'm15') return 900;
+        if (s === '30m' || s === 'm30') return 1800;
+        if (s === '1h' || s === 'h1') return 3600;
+        if (s === '4h' || s === 'h4') return 14400;
+        if (s === '1d' || s === 'd1') return 86400;
+        if (s.endsWith('m')) return (parseInt(s, 10) || 1) * 60;
+        if (s.endsWith('h')) return (parseInt(s, 10) || 1) * 3600;
+        if (s.endsWith('d')) return (parseInt(s, 10) || 1) * 86400;
+        return 60;
+      };
+
+      const tfSec = getTimeframeSeconds(timeframe);
+      const normalizeCandle = (c) => {
+        if (!c || !Number.isFinite(c.time)) return null;
+        let timeSec = c.time > 1e11 ? Math.floor(c.time / 1000) : Math.floor(c.time);
+        timeSec = Math.round(timeSec / tfSec) * tfSec;
+        return {
+          time: timeSec,
+          open: Number(c.open),
+          high: Number(c.high),
+          low: Number(c.low),
+          close: Number(c.close),
+          volume: Number(c.volume || 0),
+          isClosed: Boolean(c.isClosed)
+        };
+      };
+
+      const key = `${symbol}:${timeframe}`;
+      let list = candleCache.get(key) || [];
+
+      const normPrev = normalizeCandle(previousCandle);
+      if (normPrev) {
+        const prevIdx = list.findIndex(c => c.time === normPrev.time);
+        if (prevIdx >= 0) {
+          list[prevIdx] = normPrev;
+        } else {
+          list.push(normPrev);
+        }
+      }
+
+      const normCur = normalizeCandle(candle);
+      if (normCur) {
+        const curIdx = list.findIndex(c => c.time === normCur.time);
+        if (curIdx >= 0) {
+          list[curIdx] = normCur;
+        } else {
+          list.push(normCur);
+        }
+      }
+
+      list.sort((a, b) => a.time - b.time);
+      if (list.length > MAX_CACHED_BARS) {
+        list = list.slice(-MAX_CACHED_BARS);
+      }
+      candleCache.set(key, list);
+      return respondJson(200, { success: true });
+    }
+
+    if (req.method === 'GET' && req.url.startsWith('/mt5-candles')) {
+      lastWebHeartbeat = Date.now();
+      const parsedUrl = new URL(req.url, 'http://localhost');
+      let symbol = parsedUrl.searchParams.get('symbol') || activeViewState.symbol;
+      if (symbol && symbol.endsWith('USDT')) {
+        symbol = symbol.replace('USDT', 'USD');
+      }
+      const timeframe = parsedUrl.searchParams.get('timeframe') || activeViewState.timeframe;
+      const key = `${symbol}:${timeframe}`;
+      const candles = candleCache.get(key) || [];
+      return respondJson(200, {
+        success: true,
+        symbol,
+        timeframe,
+        active: activeViewState.active,
+        candles
+      });
     }
 
     res.writeHead(404);

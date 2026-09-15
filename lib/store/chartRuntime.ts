@@ -24,7 +24,7 @@ import type {
   TradingUserStreamStatusPayload,
   VirtualPosition,
 } from '../../types/trading';
-import { MAX_AGGREGATE_BUBBLE_EVENTS } from './chart';
+import { MAX_AGGREGATE_BUBBLE_EVENTS, useChartStore } from './chart';
 import type { PanelRuntimeState, TradingRuntimeStatus, GlobalCrosshair, HistoryRestoreStatus, Measurement, PanelId, DrawnLine, TimeframeInputState } from '../../types/chart';
 
 export type { PanelRuntimeState, TradingRuntimeStatus };
@@ -78,6 +78,9 @@ export interface ChartRuntimeState {
   setMT5BridgeStatus: (status: 'connected' | 'disconnected' | 'connecting' | 'paused') => void;
   syncMT5Bridge: () => Promise<boolean>;
   syncMT5Positions: (positions: MT5PositionPayload[]) => void;
+  setMt5Candles: (panelId: PanelId, candles: Candle[]) => void;
+  fetchMT5Candles: (panelId: PanelId, symbol?: string, timeframe?: string) => Promise<void>;
+  notifyMT5ViewState: (active: boolean, symbol: string, timeframe: string) => Promise<void>;
   // ── Virtual Position actions ──────────────────────────────────────────────
   /** Upsert a virtual position derived from fills; updates unrealized PnL if markPrice is supplied. */
   upsertVirtualPosition: (position: VirtualPosition) => void;
@@ -141,6 +144,7 @@ function createDefaultRuntimePanel(): PanelRuntimeState {
     activeMeasurement: null,
     refreshKey: 0,
     dataVersion: 0,
+    mt5Candles: [],
   };
 }
 
@@ -557,6 +561,59 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
         },
       };
     }),
+
+  setMt5Candles: (panelId, candles) => {
+    // Strict safeguard: Only update state if active panel is in 'side-by-side' mode
+    const chartMode = useChartStore.getState().panels[panelId]?.chartMode;
+    if (chartMode !== 'side-by-side') return;
+
+    set((state) => {
+      const panel = state.panels[panelId];
+      if (!panel) return state;
+      return {
+        panels: {
+          ...state.panels,
+          [panelId]: {
+            ...panel,
+            mt5Candles: candles,
+          },
+        },
+      };
+    });
+  },
+
+  fetchMT5Candles: async (panelId, symbol, timeframe) => {
+    // Strict safeguard: Never poll MT5 candles if not in 'side-by-side' mode
+    const chartMode = useChartStore.getState().panels[panelId]?.chartMode;
+    if (chartMode !== 'side-by-side') return;
+
+    try {
+      const sym = symbol || 'BTCUSD';
+      const tf = timeframe || '1m';
+      const res = await fetch(`http://localhost:3001/mt5-candles?symbol=${encodeURIComponent(sym)}&timeframe=${encodeURIComponent(tf)}`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && Array.isArray(data.candles)) {
+        get().setMt5Candles(panelId, data.candles);
+      }
+    } catch {
+      // Ignore fetch errors
+    }
+  },
+
+  notifyMT5ViewState: async (active, symbol, timeframe) => {
+    try {
+      await fetch('http://localhost:3001/mt5-view-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active, symbol, timeframe }),
+      });
+    } catch {
+      // Ignore network errors
+    }
+  },
 
   upsertVirtualPosition: (position) =>
     set((state) => {

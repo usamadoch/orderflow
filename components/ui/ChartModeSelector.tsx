@@ -44,6 +44,17 @@ export function FootprintIcon({ className = '', size = 16 }: { className?: strin
   );
 }
 
+export function SideBySideCandlestickIcon({ className = '', size = 16 }: { className?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className={className}>
+      <line x1="4" y1="2" x2="4" y2="14" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+      <rect x="2.5" y="4" width="3" height="6" rx="0.5" fill="currentColor" />
+      <line x1="11" y1="3" x2="11" y2="15" stroke="#3D7EFF" strokeWidth="1" strokeLinecap="round" />
+      <rect x="9.5" y="5" width="3" height="7" rx="0.5" stroke="#3D7EFF" strokeWidth="1" fill="#3D7EFF" fillOpacity="0.25" />
+    </svg>
+  );
+}
+
 export const CHART_MODE_OPTIONS: {
   value: ChartMode;
   label: string;
@@ -63,6 +74,11 @@ export const CHART_MODE_OPTIONS: {
     value: 'footprint',
     label: 'Footprint',
     icon: <FootprintIcon size={15} className="text-white" />,
+  },
+  {
+    value: 'side-by-side',
+    label: 'MT5 Compare',
+    icon: <SideBySideCandlestickIcon size={15} className="text-white" />,
   },
 ];
 

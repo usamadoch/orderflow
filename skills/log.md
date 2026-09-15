@@ -1,6 +1,48 @@
 # OrderFlow Chart - Change Log
 
-## [2026-09-13] - Refinement: Disabled-by-Default VWAP Bands & Verified Standard Presets
+## [2026-09-15] - Feature: Binance REST Proxy Support, undici ProxyAgent & Binance Vision Default
+- **What changed**:
+  - In `scripts/collector/btcusdtCollector.mjs`:
+    - Integrated `undici.ProxyAgent` support via `getProxyAgent()`, honoring `BINANCE_PROXY_URL`, `HTTPS_PROXY`, and `HTTP_PROXY`.
+    - Passed proxy `dispatcher` into `fetch()` during Futures backfills (and optionally all sources via `PROXY_ALL=true`).
+    - Created `getRestBaseUrl(source)` helper resolving REST endpoints dynamically.
+    - Updated Spot backfill default from `api.binance.com` to `https://data-api.binance.vision/api/v3` (Binance Vision CDN public market data endpoint, unblocked globally for datacenter IPs).
+    - Exported `getProxyAgent` and `getRestBaseUrl` in `_test`.
+  - In `scripts/collector/btcusdtCollector.test.mjs`:
+    - Added unit test `ProxyAgent: getProxyAgent instantiates and caches ProxyAgent from environment`.
+    - Added unit test `REST Base URLs: getRestBaseUrl resolves defaults, proxy prefixes, and direct overrides`.
+- **Why it changed**: Datacenter VPS (Enzonic US) received HTTP 451 from Binance on historical REST backfills. Webshare HTTP/HTTPS proxies allow unblocked backfilling without CloudFront 403 blocks.
+- **Impact summary**: Spot backfills work immediately without 451 using Binance Vision; Futures backfills route through standard HTTP/HTTPS proxies via `BINANCE_PROXY_URL`; all 14 collector tests and 15 bubble tests passing.
+
+## [2026-09-14] - Fix: Collector Hard Watchdogs, REST Backfill Timeout & Cold-Start Watermark Seeding
+- **What changed**:
+  - In `scripts/collector/btcusdtCollector.mjs`:
+    - Added trade ingestion watchdog in `heartbeatTimer` (restarts via `safeExit(1)` if 0 trades in 120s, suppressed when `isBackfilling === true`).
+    - Added persistence stall watchdog in `logStatus` (restarts via `safeExit(1)` if pending slices are stuck > 5m, suppressed when any source is backfilling).
+    - Added 10-second `AbortSignal.timeout(10000)` on all REST `fetch()` calls in `runBackfill` to prevent indefinite socket hangs on cloud VPS drops.
+    - Added stamping of `sourceState[source].lastTradeTimeMs` during REST backfill trade ingestion.
+    - Added `last_spot_trade_time_ms` and `last_futures_trade_time_ms` tracking in `collector_meta`.
+    - Added `seedWatermarksFromDatabase()` on cold startup to seed spot/futures watermarks independently and prevent data holes / fake LVNs on restart.
+    - Added top-level `unhandledRejection` and `uncaughtException` listeners and a rapid restart 10-second cooldown guard.
+    - Added injectable `exitFn` exported in `_test`.
+  - In `scripts/collector/btcusdtCollector.test.mjs`:
+    - Added 4 new comprehensive unit tests covering trade watchdog, persistence watchdog, backfill timestamps, and cold-start watermark seeding.
+- **Why it changed**: Collector on Enzonic entered a 3-hour zombie state because klines kept bumping message timestamps while trades were dead, and slices could not close.
+- **Impact summary**: Collector automatically detects and recovers from dropped trade streams, guarantees continuous backfill without data gaps or fake LVNs, and passes 12/12 unit tests.
+
+## [2026-09-14] - Feature: Chart Mode 4 (Side-by-Side MT5 Comparison Sandbox) & Bidirectional Reverse Channel
+- **What changed**:
+  - In `types/chart.ts`: Extended `ChartMode` union with `'side-by-side'`; added `mt5Candles: Candle[]` to `PanelRuntimeState`.
+  - In `components/ui/ChartModeSelector.tsx`: Added `SideBySideCandlestickIcon` and registered 4th mode `'side-by-side'` (`MT5 Compare`).
+  - In `components/chart/drawSideBySideCandles.ts`: Created dedicated dual-slot renderer displaying Binance candle on left sub-slot and MT5 broker candle on right sub-slot (Cyan `#00E5FF` bullish, Magenta `#D500F9` bearish with crisp outline) sharing the exact same price-to-Y axis.
+  - In `components/chart/ChartCanvas.tsx`: Routed `chartMode === 'side-by-side'` to `drawSideBySideCandles`; expanded `getVisiblePriceRange` to include MT5 wicks; anchored volume bubbles cleanly to Binance sub-slot.
+  - In `lib/store/chartRuntime.ts`: Added `mt5Candles`, `setMt5Candles`, `fetchMT5Candles`, and `notifyMT5ViewState` with strict mode gating so zero writes occur when in standard modes (`candle`, `hollow`, `footprint`).
+  - In `hooks/useTradingSync.ts`: Added reverse-channel view state synchronization: notifies bridge when entering/leaving Mode 4 and fast-polls live candles only while Mode 4 is active.
+  - In `market_order_bridge/server.mjs`: Added `/mt5-view-state`, `/poll-view`, `/mt5-candles-history`, `/mt5-candles-live`, and `/mt5-candles` endpoints with `MAX_CACHED_BARS = 300` bounded ring buffer pruning and timestamp normalization to unix seconds.
+  - In `market_order_bridge/MarketOrderEA.mq5`: Updated timer to 100ms; implemented `/poll-view` checking, `SendCandlesHistory` via `CopyRates`, `SendLiveCandleDelta` with 50ms strict timeout and in-flight lock (`g_isCandleReqActive`) to safeguard MT5's single thread.
+- **Why it changed**: User requested a side-by-side comparative candle view of web chart vs MT5 broker prices implemented as an isolated Chart Mode 4 sandbox to eliminate any performance regression or freeze risk for existing chart modes.
+- **Impact summary**: Zero performance impact or store writes when browsing standard chart modes; seamless side-by-side MT5 candle comparison in Mode 4; bidirectional timeframe/symbol synchronization; 15/15 bubble tests passing; 0 TypeScript errors.
+
 - **What changed**:
   - In `lib/store/chart.ts`: Set default `vwapBand1Enabled`, `vwapBand2Enabled`, and `vwapBand3Enabled` to `false` in `createDefaultPanel`.
   - Preserved standard industry defaults: `vwapPeriodMode: 'Session'`, `vwapSessionAnchor: 'Day'`, `vwapEnvelopeMode: 'Standard Deviation'`.
