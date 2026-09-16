@@ -4,6 +4,7 @@ import { RawTradeVolumeProfileEngine } from '../../../lib/volumeProfile/profileE
 import { OrderbookManager } from '../../../lib/liquidity/orderbook';
 import { LiquidityHistoryManager } from '../../../lib/liquidity/history';
 import { AggregationWorkerClient } from '../../../lib/worker/aggregationWorkerClient';
+import { HeatmapWorkerClient } from '../../../lib/worker/heatmapWorkerClient';
 import type { Trade } from '../../../types/trade';
 import type { TradeSource } from '../../../types/feed';
 import type { FineProfileRow } from '../../../types/volumeProfile';
@@ -25,6 +26,7 @@ export function useFeedAggregation(
   const bucketSizeRef = useRef(bucketSize);
   const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
   const aggregationWorkerClient = useMemo(() => new AggregationWorkerClient(), []);
+  const heatmapWorkerClient = useMemo(() => new HeatmapWorkerClient(), []);
   const volumeProfileEngineRef = useRef(new RawTradeVolumeProfileEngine());
   const pendingFootprintRedrawRef = useRef(false);
   const pendingProfileRedrawRef = useRef(false);
@@ -63,12 +65,13 @@ export function useFeedAggregation(
     liquidityHistoryRef.current.setMaxSnapshots(liquidityHistoryDepth);
   }, [liquidityHistoryDepth]);
 
-  // Clean up worker on unmount
+  // Clean up workers on unmount
   useEffect(() => {
     return () => {
       aggregationWorkerClient.terminate();
+      heatmapWorkerClient.destroy();
     };
-  }, [aggregationWorkerClient]);
+  }, [aggregationWorkerClient, heatmapWorkerClient]);
 
   return {
     connectedRef,
@@ -98,5 +101,6 @@ export function useFeedAggregation(
     footprintIngestionSkippedRef,
     icebergDisabledNoopSkippedRef,
     aggregationWorkerClient,
+    heatmapWorkerClient,
   };
 }

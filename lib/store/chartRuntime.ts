@@ -70,6 +70,8 @@ export interface ChartRuntimeState {
   setIcebergLevels: (panelId: PanelId, levels: IcebergLevel[]) => void;
   setLiquidityVacuumZones: (panelId: PanelId, zones: LiquidityVacuumZone[]) => void;
   setLiquidityZones: (panelId: PanelId, zones: LiquidityZone[]) => void;
+  setOrderbookResyncCount: (panelId: PanelId, count: number) => void;
+  setViewportPrice: (panelId: PanelId, viewport: { priceMin: number; priceMax: number; priceCenter: number; priceRange: number } | null) => void;
   setMeasureToolActive: (panelId: PanelId, active: boolean) => void;
   setActiveMeasurement: (panelId: PanelId, measurement: Measurement | null) => void;
   setCrosshair: (crosshair: GlobalCrosshair) => void;
@@ -145,6 +147,8 @@ function createDefaultRuntimePanel(): PanelRuntimeState {
     refreshKey: 0,
     dataVersion: 0,
     mt5Candles: [],
+    orderbookResyncCount: 0,
+    viewportPrice: null,
   };
 }
 
@@ -376,6 +380,12 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
 
   setLiquidityZones: (panelId, liquidityZones) =>
     set((state) => updateRuntimePanel(state, panelId, { liquidityZones })),
+
+  setOrderbookResyncCount: (panelId, orderbookResyncCount) =>
+    set((state) => updateRuntimePanel(state, panelId, { orderbookResyncCount })),
+
+  setViewportPrice: (panelId, viewportPrice) =>
+    set((state) => updateRuntimePanel(state, panelId, { viewportPrice })),
 
   setMeasureToolActive: (panelId, measureToolActive) =>
     set((state) => {

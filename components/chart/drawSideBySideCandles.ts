@@ -12,10 +12,6 @@ export interface SideBySideOptions {
   showLegend?: boolean;
 }
 
-// Professional high-contrast compare colors for MT5:
-// Electric Sky Blue for MT5 Bullish, Radiant Warm Orange for MT5 Bearish
-const DEFAULT_MT5_BULLISH = '#00B0FF';
-const DEFAULT_MT5_BEARISH = '#FF6D00';
 
 /**
  * Draws Binance (Web) candle on the left sub-slot and MT5 candle on the right sub-slot
@@ -43,8 +39,8 @@ export function drawSideBySideCandles(
   const webUpWick = options?.webColors?.upWickColor || webUpBody;
   const webDownWick = options?.webColors?.downWickColor || webDownBody;
 
-  const mt5UpColor = options?.mt5BullishColor || DEFAULT_MT5_BULLISH;
-  const mt5DownColor = options?.mt5BearishColor || DEFAULT_MT5_BEARISH;
+  const mt5UpColor = options?.mt5BullishColor || webUpBody;
+  const mt5DownColor = options?.mt5BearishColor || webDownBody;
   const mt5Opacity = typeof options?.mt5Opacity === 'number' ? options.mt5Opacity : 0.92;
 
   const intervalSec = getTimeframeSeconds(options?.timeframe || '1m');
@@ -142,7 +138,7 @@ export function drawSideBySideCandles(
 
     const isMt5Bullish = cMt5.close >= cMt5.open;
     const mt5Color = isMt5Bullish ? mt5UpColor : mt5DownColor;
-    const mt5FillRgba = chartColorToRgba(mt5Color, mt5Opacity);
+    const mt5HollowFillRgba = chartColorToRgba(mt5Color, Math.min(0.15, mt5Opacity * 0.1));
     const mt5BorderRgba = chartColorToRgba(mt5Color, 1.0);
 
     const mt5OpenY = priceToY(cMt5.open);
@@ -164,13 +160,16 @@ export function drawSideBySideCandles(
     ctx.lineTo(mt5WickX, Math.round(mt5LowY));
     ctx.stroke();
 
-    // MT5 Body: Solid vibrant body with crisp 1px border for high-definition clarity
-    ctx.fillStyle = mt5FillRgba;
+    // MT5 Body: Hollow body with crisp 1px border outline for unmistakable visual distinction
+    ctx.fillStyle = mt5HollowFillRgba;
     ctx.fillRect(mt5LeftX, mt5TopY, slotWidth, mt5BodyHeight);
-    if (slotWidth > 3 && mt5BodyHeight > 3) {
-      ctx.strokeStyle = mt5BorderRgba;
-      ctx.lineWidth = 1;
+
+    ctx.strokeStyle = mt5BorderRgba;
+    ctx.lineWidth = 1;
+    if (slotWidth > 2 && mt5BodyHeight > 2) {
       ctx.strokeRect(mt5LeftX + 0.5, mt5TopY + 0.5, slotWidth - 1, mt5BodyHeight - 1);
+    } else {
+      ctx.fillRect(mt5LeftX, mt5TopY, slotWidth, mt5BodyHeight);
     }
   }
 
@@ -192,7 +191,7 @@ function drawCompareLegend(
   const badgeX = 14;
   const badgeY = 12;
   const badgeHeight = 22;
-  const badgeWidth = 264;
+  const badgeWidth = 280;
 
   ctx.save();
   // Pill background
@@ -216,31 +215,32 @@ function drawCompareLegend(
   ctx.fill();
 
   ctx.fillStyle = '#94A3B8';
-  ctx.fillText('Binance (L)', badgeX + 18, midY);
+  ctx.fillText('Binance: Solid', badgeX + 18, midY);
 
   // Divider
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
   ctx.beginPath();
-  ctx.moveTo(badgeX + 90, badgeY + 4);
-  ctx.lineTo(badgeX + 90, badgeY + badgeHeight - 4);
+  ctx.moveTo(badgeX + 110, badgeY + 4);
+  ctx.lineTo(badgeX + 110, badgeY + badgeHeight - 4);
   ctx.stroke();
 
-  // MT5 Feed Dot & Text
-  ctx.fillStyle = mt5Up;
+  // MT5 Feed Hollow Ring & Text
+  ctx.strokeStyle = mt5Up;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(badgeX + 102, midY, 3.5, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(badgeX + 122, midY, 3.5, 0, Math.PI * 2);
+  ctx.stroke();
 
   ctx.fillStyle = '#94A3B8';
-  ctx.fillText('MT5 (R):', badgeX + 110, midY);
+  ctx.fillText('MT5: Hollow', badgeX + 130, midY);
 
   // MT5 Bullish chip
   ctx.fillStyle = mt5Up;
-  ctx.fillText('Bull', badgeX + 158, midY);
+  ctx.fillText('Bull', badgeX + 210, midY);
 
   // MT5 Bearish chip
   ctx.fillStyle = mt5Down;
-  ctx.fillText('Bear', badgeX + 190, midY);
+  ctx.fillText('Bear', badgeX + 242, midY);
 
   ctx.restore();
 }

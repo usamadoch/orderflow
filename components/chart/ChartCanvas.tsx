@@ -654,6 +654,22 @@ export function ChartCanvas({
       const pRange = priceRange.current;
       const priceMin = pCenter - pRange / 2;
       const priceMax = pCenter + pRange / 2;
+
+      // Sync active price scale state to runtime store for sibling panels (e.g. HeatmapPanel)
+      const currentViewport = useChartRuntimeStore.getState().panels[panelId]?.viewportPrice;
+      const epsilon = 1e-4;
+      if (
+        !currentViewport ||
+        Math.abs(currentViewport.priceMin - priceMin) > epsilon ||
+        Math.abs(currentViewport.priceMax - priceMax) > epsilon
+      ) {
+        useChartRuntimeStore.getState().setViewportPrice(panelId, {
+          priceMin,
+          priceMax,
+          priceCenter: pCenter,
+          priceRange: pRange,
+        });
+      }
       const resolvedCustomProfileRange = resolveCustomProfileRange(customProfileRange, candles);
       const liveDrawnLines = storeState.panels[panelId]?.drawnLines ?? drawnLines;
       const isDrawingsSyncEnabled = storeState.drawingsSyncEnabled;
@@ -3322,16 +3338,37 @@ export function ChartCanvas({
         const entryPrice = bracketDragEntryPrice.current ?? rawPrice;
         const side = bracketDragSide.current ?? 'long';
         const { handle, positionId } = bracketDragRef.current;
+        const store = useChartRuntimeStore.getState();
+        const bracket = store.tradingStatus.bracketOrders.find((b) => b.positionId === positionId);
+        const minGap = Math.max(tickSize || 0.5, 0.01);
 
         let clampedPrice = rawPrice;
         if (handle === 'sl') {
-          clampedPrice = side === 'long'
-            ? Math.min(rawPrice, entryPrice - 1)
-            : Math.max(rawPrice, entryPrice + 1);
+          // Trailing Stop Loss: SL can freely move past entryPrice into the profit / TP zone.
+          // Bounded only by Take Profit (if active TP exists).
+          if (side === 'long') {
+            clampedPrice = (bracket?.takeProfitPrice != null && bracket.takeProfitStatus === 'active')
+              ? Math.min(rawPrice, bracket.takeProfitPrice - minGap)
+              : rawPrice;
+          } else {
+            clampedPrice = (bracket?.takeProfitPrice != null && bracket.takeProfitStatus === 'active')
+              ? Math.max(rawPrice, bracket.takeProfitPrice + minGap)
+              : rawPrice;
+          }
         } else {
-          clampedPrice = side === 'long'
-            ? Math.max(rawPrice, entryPrice + 1)
-            : Math.min(rawPrice, entryPrice - 1);
+          // Take Profit: TP must remain on the favorable side of active Stop Loss (if SL exists),
+          // or on the favorable side of entryPrice (if no SL exists).
+          if (side === 'long') {
+            const lowerBound = (bracket?.stopLossPrice != null && bracket.stopLossStatus === 'active')
+              ? bracket.stopLossPrice
+              : entryPrice;
+            clampedPrice = Math.max(rawPrice, lowerBound + minGap);
+          } else {
+            const upperBound = (bracket?.stopLossPrice != null && bracket.stopLossStatus === 'active')
+              ? bracket.stopLossPrice
+              : entryPrice;
+            clampedPrice = Math.min(rawPrice, upperBound - minGap);
+          }
         }
 
         if (Number.isFinite(clampedPrice)) {

@@ -143,6 +143,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const resetPanelRuntime = useChartRuntimeStore(s => s.resetPanelRuntime);
   const liquidityEnabled = useChartStore(s => s.panels[panelId].liquidityEnabled);
   const liquidityHeatmapEnabled = useChartStore(s => s.panels[panelId].liquidityHeatmapEnabled);
+  const heatmapPanelEnabled = useChartStore(s => s.panels[panelId]?.heatmapPanelEnabled ?? false);
   const liquidityBucketSize = useChartStore(s => s.panels[panelId].liquidityBucketSize);
   const liquidityHistoryDepth = useChartStore(s => s.panels[panelId].liquidityHistoryDepth);
   const minimumLiquidityThreshold = useChartStore(s => s.panels[panelId].minimumLiquidityThreshold);
@@ -180,6 +181,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     icebergDisabledNoopSkippedRef,
     workerTradeQueueRef,
     aggregationWorkerClient,
+    heatmapWorkerClient,
   } = useFeedAggregation(bucketSize, liquidityBucketSize, liquidityHistoryDepth);
   const aggregateBubbleMarketSource = dataSourceMode;
   const volumeBarsMarketSource = dataSourceMode;
@@ -2672,10 +2674,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     const loadOrderbookSnapshot = async () => {
       try {
-        console.log(`[PanelFeed:${panelId}] Fetching orderbook snapshot for ${pair}...`);
-        const snapshot = await fetchSharedOrderbookSnapshot(pair, 500);
+        console.log(`[PanelFeed:${panelId}] Fetching orderbook snapshot for ${pair} (${contractType})...`);
+        const snapshot = await fetchSharedOrderbookSnapshot(pair, contractType, 500);
         if (!active) return;
         obManager.initFromSnapshot(snapshot);
+        heatmapWorkerClient.postSnapshot(snapshot);
         console.log(`[PanelFeed:${panelId}] Orderbook snapshot loaded (${snapshot.bids.length} bids, ${snapshot.asks.length} asks)`);
       } catch (err) {
         console.warn(`[PanelFeed:${panelId}] Failed to fetch orderbook snapshot:`, err);
@@ -2687,9 +2690,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       void loadOrderbookSnapshot();
     };
 
+    heatmapWorkerClient.onResyncRequest = (reason, count) => {
+      console.warn(`[PanelFeed:${panelId}] Heatmap gap resync request: ${reason} (count ${count})`);
+      useChartRuntimeStore.getState().setOrderbookResyncCount(panelId, count);
+      void loadOrderbookSnapshot();
+    };
+
     const initOrderbook = async () => {
       const panelState = useChartStore.getState().panels[panelId];
-      if (!panelState.liquidityEnabled && !panelState.liquidityHeatmapEnabled) {
+      if (!panelState.liquidityEnabled && !panelState.liquidityHeatmapEnabled && !panelState.heatmapPanelEnabled) {
         pendingAggregationRef.current = false;
         return;
       }
@@ -2697,20 +2706,31 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (!isDepthSubscribed) {
         isDepthSubscribed = true;
         feedUnsubscribers.push(
-          subscribeDepthStream(pair, (update: DepthUpdate) => {
-            obManager.applyUpdate(update);
+          subscribeDepthStream(pair, contractType, (update: DepthUpdate, raw?: string) => {
+            // Forward raw WS message string directly to worker off the main thread
+            heatmapWorkerClient.postRawDiff(raw || update);
+
+            // Legacy liquidity zones on main thread if explicitly enabled
             if (useChartStore.getState().panels[panelId].liquidityEnabled) {
+              obManager.applyUpdate(update);
               pendingAggregationRef.current = true;
             }
           }, (state) => {
-            if (state === 'LIVE' && !obManager.isReady()) {
-              console.log(`[PanelFeed:${panelId}] Depth connection restored, refetching snapshot...`);
+            if (state === 'LIVE') {
+              console.log(`[PanelFeed:${panelId}] Depth connection restored, triggering unconditional fresh snapshot...`);
+              heatmapWorkerClient.reset();
+              obManager.reset();
               void loadOrderbookSnapshot();
+            } else {
+              // Unconditional reset on any disconnect / error
+              heatmapWorkerClient.reset();
+              obManager.reset();
             }
           })
         );
       }
 
+      // Pre-snapshot buffering guarantee: WS stream connects and buffers before REST snapshot is fetched
       await loadOrderbookSnapshot();
 
       if (!aggregationInterval) {
@@ -2795,7 +2815,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       volumeProfileEngine.releaseSharedBaseCache();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, triggerWorkerComputeSignals, absorptionEnabled, exhaustionEnabled, bubblesEnabled, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
+  }, [pair, timeframe, panelId, exhaustionLookback, icebergEnabled, icebergMinScore, pushCandle, setConnected, pushAllCandles, setLoadingHistory, setHistoryRestoreStatus, setAbsorptionMap, setExhaustionMap, setIcebergLevels, setLiquidityVacuumZones, autoBucketSize, setComputedBucketSize, tickSize, setLiquidityZones, liquidityEnabled, liquidityHeatmapEnabled, heatmapPanelEnabled, liquidityBucketSize, minimumLiquidityThreshold, liquidityRange, contractType, dataSourceMode, markProcessedTrade, appendAggregateBubbleEvents, triggerWorkerComputeSignals, absorptionEnabled, exhaustionEnabled, bubblesEnabled, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, cvdEnabled, clearIcebergLevelsIfNeeded, getCurrentFootprintWorkNeed, resetPanelRuntime]);
   // Register protected ranges for Volume Profile cache to prevent eviction
   useEffect(() => {
     return useChartStore.subscribe((state) => {
@@ -2906,6 +2926,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         icebergEngine: icebergEngineRef.current,
         volumeProfileEngine: volumeProfileEngineRef.current,
         volumeProfileRevision,
+        heatmapWorkerClient,
       }}
     >
       {children}

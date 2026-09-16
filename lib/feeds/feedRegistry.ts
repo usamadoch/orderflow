@@ -53,12 +53,12 @@ function getTradeKey(sourceType: SourceType, symbol: string) {
   return `${sourceType}::${normalizeSymbol(symbol)}`;
 }
 
-function getDepthKey(symbol: string) {
-  return `spot::${normalizeSymbol(symbol)}`;
+function getDepthKey(symbol: string, contractType: ContractType = 'spot') {
+  return `${contractType}::depth::${normalizeSymbol(symbol)}`;
 }
 
-function getSnapshotKey(symbol: string, limit: number) {
-  return `${getDepthKey(symbol)}::${limit}`;
+function getSnapshotKey(symbol: string, limit: number, contractType: ContractType = 'spot') {
+  return `${getDepthKey(symbol, contractType)}::snap::${limit}`;
 }
 
 function log(message: string, details: Record<string, unknown>) {
@@ -274,14 +274,15 @@ export function subscribeTradeStream(
 
 export function subscribeDepthStream(
   symbol: string,
-  callback: (update: DepthUpdate) => void,
+  contractType: ContractType,
+  callback: (update: DepthUpdate, raw?: string) => void,
   onStateChange?: (state: ConnectionState) => void,
 ): Unsubscribe {
-  const key = getDepthKey(symbol);
+  const key = getDepthKey(symbol, contractType);
   let entry = depthStreams.get(key);
 
   if (!entry) {
-    const adapter = getAdapter('spot');
+    const adapter = getAdapter(contractType);
     if (!adapter.subscribeOrderbook || !adapter.disconnectOrderbook) {
       log('stream skipped: adapter has no depth support', {
         streamType: 'depth',
@@ -304,12 +305,12 @@ export function subscribeDepthStream(
       subscriberCount: 0,
     });
 
-    adapter.subscribeOrderbook(symbol, (update) => {
+    adapter.subscribeOrderbook(symbol, (update, raw) => {
       const current = depthStreams.get(key);
       if (!current) return;
       recordStreamEvent('depth', key);
       for (const subscriber of Array.from(current.subscribers)) {
-        subscriber(update);
+        (subscriber as (update: DepthUpdate, raw?: string) => void)(update, raw);
       }
     });
 
@@ -425,8 +426,12 @@ export async function fetchSharedHistory(
   return promise;
 }
 
-export async function fetchSharedOrderbookSnapshot(symbol: string, limit = 500) {
-  const key = getSnapshotKey(symbol, limit);
+export async function fetchSharedOrderbookSnapshot(
+  symbol: string,
+  contractType: ContractType = 'spot',
+  limit = 500,
+) {
+  const key = getSnapshotKey(symbol, limit, contractType);
   const existing = inFlightOrderbookSnapshots.get(key);
 
   if (existing) {
@@ -438,6 +443,7 @@ export async function fetchSharedOrderbookSnapshot(symbol: string, limit = 500) 
         source: 'shared-orderbook-snapshot',
         deduped: true,
         symbol,
+        contractType,
         limit,
       },
     });
@@ -449,7 +455,7 @@ export async function fetchSharedOrderbookSnapshot(symbol: string, limit = 500) 
     return cloneSnapshot(await existing.promise);
   }
 
-  const adapter = getAdapter('spot');
+  const adapter = getAdapter(contractType);
   if (!adapter.fetchOrderbookSnapshot) {
     return { lastUpdateId: 0, bids: [], asks: [] };
   }
@@ -471,6 +477,7 @@ export async function fetchSharedOrderbookSnapshot(symbol: string, limit = 500) 
           source: 'shared-orderbook-snapshot',
           deduped: false,
           symbol,
+          contractType,
           limit,
           bids: snapshot.bids.length,
           asks: snapshot.asks.length,

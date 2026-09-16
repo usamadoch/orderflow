@@ -14,9 +14,10 @@ import { chartColorToRgba, DEFAULT_GRID_COLOR, DEFAULT_GRID_OPACITY } from '@/li
 import { DrawingFavoritesToolbar } from '../ui/DrawingFavoritesToolbar';
 import { OrderTicket } from '../ui/OrderTicket';
 import { PanelToolbar } from '../ui/PanelToolbar';
-import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine } from '../ChartEngineContext';
+import { useChartEngine, useLiquidityHistory, useVolumeProfileEngine, useHeatmapWorkerClient } from '../ChartEngineContext';
 import { ChartCanvas } from './ChartCanvas';
 import { CvdPanel } from './CvdPanel';
+import { HeatmapPanel } from './HeatmapPanel';
 import { formatCvdValue } from './drawCvd';
 import { IndicatorLabels } from './IndicatorLabels';
 
@@ -73,6 +74,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
   const engine = useChartEngine();
   const liquidityHistory = useLiquidityHistory();
   const { volumeProfileEngine, volumeProfileRevision } = useVolumeProfileEngine();
+  const heatmapWorkerClient = useHeatmapWorkerClient();
   
   const chartProfileWidth = (panel.defaultProfileEnabled ? 120 : 0) + (panel.liquidityHeatmapEnabled ? panel.liquidityHeatmapWidth : 0);
   const chartAreaRef = React.useRef<HTMLDivElement>(null);
@@ -195,10 +197,11 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
       <DrawingFavoritesToolbar panelId={panelId} />
       <div ref={chartAreaRef} className="flex-1 relative min-h-0 flex flex-col bg-background">
         <div
-          className={`relative min-h-0 ${isCvdCompact ? 'flex-1' : ''}`}
+          className={`relative min-h-0 flex flex-row ${isCvdCompact ? 'flex-1' : ''}`}
           style={{ height: isCvdExpanded ? `${100 - panel.cvdPanelHeightPct}%` : panel.cvdEnabled ? '100%' : '100%' }}
         >
-          <React.Profiler id="ChartCanvas" onRender={onRenderCallback}>
+          <div className="flex-1 relative min-w-0 h-full overflow-hidden">
+            <React.Profiler id="ChartCanvas" onRender={onRenderCallback}>
             <ChartCanvas
               panelId={panelId}
               chartMode={panel.chartMode}
@@ -343,6 +346,14 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
                 <Maximize2 size={11} strokeWidth={2.5} />
               </div>
             </FigButton>
+          )}
+        </div>
+          {panel.heatmapPanelEnabled && (
+            <HeatmapPanel
+              panelId={panelId}
+              workerClient={heatmapWorkerClient}
+              tickSize={tickSize}
+            />
           )}
         </div>
         {isCvdExpanded && (

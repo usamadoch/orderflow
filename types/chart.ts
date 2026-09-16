@@ -480,6 +480,14 @@ export interface PanelState {
   liquidityHeatmapShowPersistence: boolean;
   liquidityHeatmapShowCurrentLabel: boolean;
   liquidityHeatmapProfileSync: boolean;
+  // Order Book Liquidity Heatmap Panel
+  heatmapPanelEnabled: boolean;
+  heatmapPriceBucketSize: number;
+  heatmapSampleIntervalMs: number;
+  heatmapRetentionMinutes: number;
+  heatmapClampPercentile: number;
+  heatmapPanelWidth: number;
+  heatmapShowTrades: boolean;
   // Stats Indicator
   statsIndicatorEnabled: boolean;
   statsIndicatorCount: number;
@@ -506,6 +514,8 @@ export interface PanelRuntimeState {
   refreshKey: number;
   dataVersion: number;
   mt5Candles: Candle[];
+  orderbookResyncCount: number;
+  viewportPrice: { priceMin: number; priceMax: number; priceCenter: number; priceRange: number } | null;
 }
 
 export interface TradingRuntimeStatus {
@@ -559,6 +569,7 @@ export interface ChartEngineContextValue {
   icebergEngine: IcebergEngine | null;
   volumeProfileEngine: VolumeProfileSource | null;
   volumeProfileRevision: number;
+  heatmapWorkerClient?: import('../lib/worker/heatmapWorkerClient').HeatmapWorkerClient | null;
 }
 
 export interface IndicatorLabelConfig {

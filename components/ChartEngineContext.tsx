@@ -11,6 +11,7 @@ export const ChartEngineContext = createContext<ChartEngineContextValue>({
   icebergEngine: null,
   volumeProfileEngine: null,
   volumeProfileRevision: 0,
+  heatmapWorkerClient: null,
 });
 
 export function useChartEngine() {
@@ -46,4 +47,9 @@ export function useVolumeProfileEngine() {
     volumeProfileEngine: context.volumeProfileEngine,
     volumeProfileRevision: context.volumeProfileRevision,
   };
+}
+
+export function useHeatmapWorkerClient() {
+  const context = useContext(ChartEngineContext);
+  return context?.heatmapWorkerClient ?? null;
 }

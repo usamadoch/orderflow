@@ -62,3 +62,33 @@ RULES:
 - Do NOT push if working directory has unfinished task.md changes
 - Do NOT include unrelated files
 - Always confirm repo is in clean state before pushing
+
+## Execution constraints
+
+Do not endlessly explore the codebase. Your job is to reach a conclusion, not to inspect every file.
+
+- Start with the files directly relevant to the task. Do not recursively inspect unrelated files.
+- Do not repeatedly reopen the same file or reread the same sections unless new evidence requires it.
+- Do not inspect line-by-line across large files without a specific reason.
+- After you have enough evidence to determine the cause, stop investigating and state the conclusion.
+- Do not chase unrelated errors, warnings, TODOs, refactors, or hypothetical edge cases.
+- Do not expand the scope of the task on your own.
+- Do not keep searching for additional confirmation after the conclusion is already sufficiently supported.
+- Never invent missing behavior, code, files, test results, or causes. If something cannot be verified, explicitly say so.
+- If evidence is conflicting or insufficient, report exactly what is known and what remains unverified instead of continuing indefinitely.
+- Prefer the smallest set of files and lines needed to answer the task.
+- Do not perform broad codebase exploration unless the task explicitly requires it.
+
+### Hard stop
+
+If you have spent substantial effort without finding new relevant evidence, STOP and provide the best-supported conclusion so far.
+
+Your final response must contain:
+
+1. What you found.
+2. The specific files/functions involved.
+3. The exact cause or conclusion.
+4. What should be changed, if anything.
+5. Any uncertainty that remains.
+
+Do not continue investigating merely to make the answer more certain.

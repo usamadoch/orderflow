@@ -19,7 +19,7 @@ export class BinanceFuturesAdapter implements FeedAdapter {
 
   // Orderbook — separate WebSocket
   private obWs: WebSocket | null = null;
-  private obCb: ((update: DepthUpdate) => void) | null = null;
+  private obCb: ((update: DepthUpdate, raw?: string) => void) | null = null;
   private obReconnectAttempts: number = 0;
   private obShouldReconnect: boolean = false;
   private obReconnectTimer: NodeJS.Timeout | null = null;
@@ -288,7 +288,7 @@ export class BinanceFuturesAdapter implements FeedAdapter {
     }
   }
 
-  subscribeOrderbook(pair: string, cb: (update: DepthUpdate) => void): void {
+  subscribeOrderbook(pair: string, cb: (update: DepthUpdate, raw?: string) => void): void {
     this.obPair = pair.toLowerCase();
     this.obCb = cb;
     this.obShouldReconnect = true;
@@ -341,7 +341,7 @@ export class BinanceFuturesAdapter implements FeedAdapter {
           this.obManager.applyUpdate(data);
           
           if (this.obState === 'LIVE' && this.obCb) {
-            this.obCb(data);
+            this.obCb(data, typeof event.data === 'string' ? event.data : undefined);
           }
         }
       } catch (e) {

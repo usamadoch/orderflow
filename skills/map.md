@@ -105,7 +105,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/chart-settings/VolumeBarsSettings.tsx` → Volume Bars indicator settings (input data, filters, colors, opacity, MA) using FigUI3 and PropsKit controls.
 - `components/ui/chart-settings/BubbleSettings.tsx` → Volume Bubbles indicator settings (size, modes, thresholds, sliders, 2D/3D, FigButton docs link) using FigUI3 and PropsKit controls.
 - `components/ui/chart-settings/LiquidityMapSettings.tsx` → Liquidity map indicator settings (opacity, bucket size, min size, range) using PropskitSlider and PropskitNumber.
-- `components/ui/chart-settings/HeatmapSettings.tsx` → Historical orderbook heatmap indicator settings (opacity, fade, strip width, depth, toggles) using FigUI3 and PropsKit controls.
+- `components/ui/chart-settings/HeatmapSettings.tsx` → Historical orderbook heatmap settings (bucket size, sample interval, history retention, 95th percentile clamp, panel width, trade toggle, dev resync counter) using FigUI3 and PropsKit controls.
 - `components/ui/chart-settings/StatsSettings.tsx` → Stats indicator toggles and display ordering using FigSwitch controls.
 - `components/ui/chart-settings/SignalSettings.tsx` → Microstructure signal detection settings (absorption, exhaustion, iceberg, liquidity vacuum) using FigButton toggles and PropsKit controls.
 - `components/ui/chart-settings/VwapSettings.tsx` → VWAP indicator configuration (mode, anchor, lookback, envelopes, bands) using FigUI3 and PropsKit components.
@@ -143,12 +143,13 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Chart Rendering
 
-- `components/chart/ChartPanel.tsx` → Panel container bridging chart settings, runtime state, symbol filtering, historical session ranges, and global 28% opacity CVD border styling with FigButton CVD expand/collapse triggers.
+- `components/chart/ChartPanel.tsx` → Panel container bridging chart settings, runtime state, symbol filtering, historical session ranges, side-by-side HeatmapPanel mount, and global 28% opacity CVD border styling with FigButton CVD expand/collapse triggers.
+- `components/chart/HeatmapPanel.tsx` → Interactive side-by-side split chart canvas with independent vertical price navigation, horizontal time navigation, dedicated right price axis, bottom time axis, auto-scale toggling, and decoupled rAF rendering.
 - `components/chart/chartPanelUtils.ts` → Utilities for symbol filtering (orders, positions, fills) and historical session ranges.
 - `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots for docked bottom indicators, treating volume bars as an on-canvas overlay.
 - `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, reordering controls, and always-visible action icons without hover requirement.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas coordinator and multi-layer rendering pipeline with reactive profile settings cache invalidation, continuous auto-scaling, and timeframe/symbol/history reset triggers ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
+- `components/chart/ChartCanvas.tsx` → Main canvas coordinator and multi-layer rendering pipeline with trailing SL past breakeven into TP zone, continuous auto-scaling, and timeframe/symbol/history reset triggers ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
 - `components/chart/chartCanvasUtils.ts` → Continuous fractional index interpolation (resolveIndexFromTime) from timestamps for multi-timeframe drawing sync, coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
 - `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (1px white defaults, FigUI tooltips, Trash2 delete, box border/fill, and position tool profit & stop loss color pickers) and custom profile controls with pointer/mouse event isolation.
@@ -159,7 +160,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/hooks/useVwapHydration.ts` → Hook fetching and subscribing to historical 1m base candles with display-range validation to hydrate accurate VWAP state.
 - `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, axis drag/wheel zoom, auto-scale state tracking, and double-click scale auto-fit.
 - `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry with half-pixel alignment for crisp high-definition lines and TradingView-standard hollow candle rendering.
-- `components/chart/drawSideBySideCandles.ts` → Comparative dual-slot candle renderer displaying Binance and MT5 broker candles side-by-side on the same price scale with distinct styling.
+- `components/chart/drawSideBySideCandles.ts` → Comparative dual-slot candle renderer displaying solid Binance candles and hollow MT5 broker candles side-by-side using shared web color palette.
 - `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with crisp TradingView axis typography, half-pixel ticks, and divergence markers.
 - `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters, delta, or delta-volume profiles per price level.
 - `components/chart/drawBubbles.ts` → Volume bubble renderer with bounded price grouping, zoom-stable tick grouping, and multi-tier color/display modes.
@@ -186,7 +187,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/draw/drawMeasurement.ts` → Measurement tool overlay renderer.
 - `lib/draw/drawSessions.ts` → Clean session highlight box renderer (Tokyo, London, NY) bounded by High/Low behind candles with default 15% opacity and bottom session identification label.
 - `lib/draw/drawLiquidity.ts` → Orderbook liquidity depth visualization overlay near current price.
-- `lib/draw/drawOrderbookHeatmap.ts` → Rolling time-and-price orderbook heatmap renderer with intensity color scaling.
+- `lib/draw/drawOrderbookHeatmap.ts` → Pixel-column aggregated orderbook heatmap renderer with wall-preserving blend and visible background alpha curve.
 - `lib/draw/drawLiquidityHeatmap.ts` → Right-side orderbook liquidity depth summary strip.
 - `lib/draw/drawIceberg.ts` → Renderer for detected iceberg order defense levels.
 - `lib/draw/drawLiquidityVacuum.ts` → Renderer highlighting low-liquidity vacuum zones.
@@ -230,6 +231,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/utils/aggregation.ts` → Math utilities aggregating trade ticks into footprint price levels.
 - `lib/worker/aggregationWorker.ts` → Web Worker script for processing high-frequency trades into base footprints off the main thread.
 - `lib/worker/aggregationWorkerClient.ts` → Client singleton coordinating communication with the aggregation worker.
+- `lib/worker/heatmapWorker.ts` → Web Worker script handling raw depth JSON parsing, orderbook synchronization, and periodic grid sampling off the main thread.
+- `lib/worker/heatmapWorkerClient.ts` → Client singleton coordinating off-thread orderbook updates, sampling ticks, and slice broadcasts.
 - `types/footprint.ts` → Footprint cluster and aggregation types.
 
 ### Volume Profile
@@ -258,8 +261,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Liquidity / Orderbook
 
-- `lib/liquidity/orderbook.ts` → In-memory orderbook maintainer synchronizing REST snapshots with WebSocket diff updates.
-- `lib/liquidity/orderbookHeatmap.ts` → Time-series orderbook engine capturing historical depth snapshots for heatmap rendering.
+- `lib/liquidity/orderbook.ts` → In-memory orderbook maintainer with pre-snapshot buffering, rolling sequence check, and gap resync tracking.
+- `lib/liquidity/orderbookHeatmap.ts` → Time-series orderbook engine with O(1) slice ingestion, bounded p95 sampling, and explicit slot memory eviction.
 - `lib/liquidity/aggregation.ts` → Utilities aggregating orderbook levels into liquidity clusters.
 - `lib/liquidity/history.ts` → Capped buffer storing historical orderbook snapshots.
 - `lib/liquidity/analysis.ts` → Classification logic for liquidity behavior and imbalance.
@@ -295,6 +298,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 - `scripts/collector/btcusdtCollector.mjs` → Standalone Node.js collector fetching and storing BTCUSDT market data to TimescaleDB ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/btcusdtCollector.map.md)).
 - `scripts/collector/runBackfill.mjs` → Data backfill script fetching historical market feeds to populate storage.
+- `scripts/testOrderbookSync.ts` → Verification script validating orderbook sequence validation, pre-snapshot buffering, and gap resync handling.
+- `scripts/testHeatmapRetention.ts` → Long-run verification script testing memory retention, ring buffer eviction, and heap stability over simulated time slots.
 
 ### Local Market Order Bridge
 

@@ -18,6 +18,6 @@ export interface FeedAdapter {
 
   // Orderbook support (optional — implemented by adapters that support it)
   fetchOrderbookSnapshot?(pair: string, limit?: number): Promise<OrderbookSnapshot>;
-  subscribeOrderbook?(pair: string, cb: (update: DepthUpdate) => void): void;
+  subscribeOrderbook?(pair: string, cb: (update: DepthUpdate, raw?: string) => void): void;
   disconnectOrderbook?(): void;
 }

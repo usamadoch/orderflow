@@ -1,6 +1,25 @@
 /**
  * OrderbookManager — maintains a local in-memory orderbook from
  * Binance snapshot + incremental depth updates.
+ *
+ * Dual-mode sequence validation:
+ *
+ * BINANCE SPOT (@depth@100ms):
+ *   1. Buffering incoming diffs before snapshot.
+ *   2. Dropping updates where u <= snapshot.lastUpdateId.
+ *   3. First bridging event: U <= lastUpdateId + 1 <= u.
+ *   4. Subsequent updates: U === rollingU + 1.
+ *
+ * BINANCE USD-M FUTURES (@depth@100ms):
+ *   Futures events carry a `pu` field (previous event's final update ID).
+ *   U values are match-engine transaction IDs that jump unpredictably.
+ *   1. Buffering incoming diffs before snapshot.
+ *   2. Dropping updates where u <= snapshot.lastUpdateId.
+ *   3. First bridging event: U <= lastUpdateId AND lastUpdateId <= u
+ *      (or pu <= lastUpdateId AND lastUpdateId <= u).
+ *   4. Subsequent updates: pu === rollingU.
+ *
+ * Auto gap detection, resync tracking, and clean reset for both modes.
  */
 
 export interface OrderbookSnapshot {
@@ -10,27 +29,38 @@ export interface OrderbookSnapshot {
 }
 
 export interface DepthUpdate {
-  e: string;       // event type
-  E: number;       // event time
-  s: string;       // symbol
-  U: number;       // first update ID
-  u: number;       // last update ID (use this as "updateId")
+  e?: string;       // event type
+  E?: number;       // event time
+  s?: string;       // symbol
+  U: number;        // first update ID
+  u: number;        // last update ID (use this as "updateId")
+  pu?: number;      // previous event's final update ID (Binance Futures only)
   b: [string, string][]; // bids
   a: [string, string][]; // asks
+}
+
+/** Returns true if this event comes from a Binance Futures depth stream (has `pu` field). */
+function isFuturesEvent(update: DepthUpdate): boolean {
+  return typeof update.pu === 'number';
 }
 
 export class OrderbookManager {
   private bids: Map<number, number> = new Map(); // price -> qty
   private asks: Map<number, number> = new Map();
-  private lastUpdateId: number = 0;
+  private lastSnapshotUpdateId: number = 0;
+  private rollingU: number = 0;
   private initialized: boolean = false;
+  private awaitingFirstUpdate: boolean = false;
   private buffer: DepthUpdate[] = [];
+  public resyncCount: number = 0;
   public onGapDetected?: () => void;
+  public onResync?: (reason: string) => void;
 
   /**
    * Populate from REST snapshot.
+   * Discards stale buffer entries and applies the first bridging update.
    */
-  initFromSnapshot(snapshot: OrderbookSnapshot): void {
+  initFromSnapshot(snapshot: OrderbookSnapshot): boolean {
     this.bids.clear();
     this.asks.clear();
 
@@ -46,42 +76,175 @@ export class OrderbookManager {
       if (qty > 0) this.asks.set(price, qty);
     }
 
-    this.lastUpdateId = snapshot.lastUpdateId;
-    this.initialized = true;
+    this.lastSnapshotUpdateId = snapshot.lastUpdateId;
+    this.rollingU = snapshot.lastUpdateId;
+    this.initialized = false;
+    this.awaitingFirstUpdate = true;
 
-    const pending = [...this.buffer];
+    // Discard any buffered events where u <= snapshot.lastUpdateId
+    const pending = this.buffer.filter((update) => update.u > snapshot.lastUpdateId);
     this.buffer = [];
-    for (const update of pending) {
-      this.applyUpdate(update);
+
+    if (pending.length === 0) {
+      // Buffer empty or all events were older than snapshot; wait for next live update
+      return true;
     }
+
+    const first = pending[0];
+    const snapId = snapshot.lastUpdateId;
+
+    if (isFuturesEvent(first)) {
+      // ── Futures bridging: first event must cover the snapshot ──
+      // Valid bridge: (pu <= snapId OR U <= snapId) AND snapId <= u
+      const bridges = ((first.pu! <= snapId) || (first.U <= snapId)) && (snapId <= first.u);
+      if (!bridges) {
+        // All buffered events are after the snapshot — gap
+        if (first.U > snapId && (first.pu === undefined || first.pu! > snapId)) {
+          this.triggerResync(`Futures buffer gap: first event U=${first.U}, pu=${first.pu} > snapId=${snapId}`);
+          return false;
+        }
+        // Event is stale (u < snapId), shouldn't happen since we filtered, skip
+        return true;
+      }
+
+      this.applyLevels(first);
+      this.rollingU = first.u;
+      this.initialized = true;
+      this.awaitingFirstUpdate = false;
+
+      // Apply subsequent buffered events with pu continuity
+      for (let i = 1; i < pending.length; i++) {
+        const update = pending[i];
+        if (update.pu !== this.rollingU) {
+          this.triggerResync(`Futures buffer seq gap: pu=${update.pu} !== rollingU=${this.rollingU}`);
+          return false;
+        }
+        this.applyLevels(update);
+        this.rollingU = update.u;
+      }
+    } else {
+      // ── Spot bridging: U <= lastUpdateId + 1 <= u ──
+      const targetSeq = snapId + 1;
+      if (first.U > targetSeq) {
+        this.triggerResync(`Buffer gap: first buffered U (${first.U}) > lastUpdateId+1 (${targetSeq})`);
+        return false;
+      }
+
+      this.applyLevels(first);
+      this.rollingU = first.u;
+      this.initialized = true;
+      this.awaitingFirstUpdate = false;
+
+      // Apply subsequent buffered updates in strict rolling sequence
+      for (let i = 1; i < pending.length; i++) {
+        const update = pending[i];
+        if (update.U !== this.rollingU + 1) {
+          this.triggerResync(`Sequence gap in buffer: update.U (${update.U}) !== rollingU+1 (${this.rollingU + 1})`);
+          return false;
+        }
+        this.applyLevels(update);
+        this.rollingU = update.u;
+      }
+    }
+
+    return true;
   }
 
   /**
    * Apply one incremental depth update.
-   * Skips stale updates (u <= lastUpdateId from snapshot).
+   * Can accept either a parsed DepthUpdate or raw JSON string (parsed off-thread).
    */
-  applyUpdate(update: DepthUpdate): void {
-    if (!this.initialized) {
+  applyUpdate(updateOrRaw: DepthUpdate | string): boolean {
+    let update: DepthUpdate;
+    if (typeof updateOrRaw === 'string') {
+      try {
+        update = JSON.parse(updateOrRaw) as DepthUpdate;
+      } catch (err) {
+        console.error('[Orderbook] Failed to parse raw depth update:', err);
+        return false;
+      }
+    } else {
+      update = updateOrRaw;
+    }
+
+    if (!update || !Array.isArray(update.b) || !Array.isArray(update.a)) {
+      return false;
+    }
+
+    // If not yet initialized and not awaiting first update, buffer it
+    if (!this.initialized && !this.awaitingFirstUpdate) {
       this.buffer.push(update);
-      // Prevent buffer from growing infinitely if snapshot fails
       if (this.buffer.length > 5000) {
         this.buffer.shift();
       }
-      return;
+      return true;
     }
 
-    // Skip stale updates
-    if (update.u <= this.lastUpdateId) return;
-
-    // Gap detection: U must be <= lastUpdateId + 1
-    if (update.U > this.lastUpdateId + 1) {
-      console.warn(`[Orderbook] Sequence gap detected! lastUpdateId=${this.lastUpdateId}, new update.U=${update.U}`);
-      this.initialized = false;
-      this.buffer = [];
-      if (this.onGapDetected) this.onGapDetected();
-      return;
+    // Drop stale updates (u <= lastSnapshotUpdateId)
+    if (update.u <= this.lastSnapshotUpdateId) {
+      return false;
     }
 
+    const futures = isFuturesEvent(update);
+
+    // If awaiting the first update to bridge the snapshot:
+    if (this.awaitingFirstUpdate) {
+      const snapId = this.lastSnapshotUpdateId;
+
+      if (futures) {
+        // Futures bridging: (pu <= snapId OR U <= snapId) AND snapId <= u
+        const bridges = ((update.pu! <= snapId) || (update.U <= snapId)) && (snapId <= update.u);
+        if (bridges) {
+          this.applyLevels(update);
+          this.rollingU = update.u;
+          this.initialized = true;
+          this.awaitingFirstUpdate = false;
+          return true;
+        } else if (update.U > snapId && (update.pu === undefined || update.pu! > snapId)) {
+          this.triggerResync(`Futures first event gap: U=${update.U}, pu=${update.pu} > snapId=${snapId}`);
+          return false;
+        }
+        // Event doesn't bridge yet (u <= snapId-ish range), discard
+        return false;
+      } else {
+        // Spot bridging: U <= lastUpdateId + 1 <= u
+        const targetSeq = snapId + 1;
+        if (update.U <= targetSeq && targetSeq <= update.u) {
+          this.applyLevels(update);
+          this.rollingU = update.u;
+          this.initialized = true;
+          this.awaitingFirstUpdate = false;
+          return true;
+        } else if (update.U > targetSeq) {
+          this.triggerResync(`First event gap: update.U (${update.U}) > lastUpdateId+1 (${targetSeq})`);
+          return false;
+        }
+        // Older than targetSeq, discard
+        return false;
+      }
+    }
+
+    // ── Subsequent updates: rolling continuity check ──
+    if (futures) {
+      // Futures: pu must equal the previous event's u (our rollingU)
+      if (update.pu !== this.rollingU) {
+        this.triggerResync(`Futures seq gap: pu=${update.pu} !== rollingU=${this.rollingU}`);
+        return false;
+      }
+    } else {
+      // Spot: U must equal rollingU + 1
+      if (update.U !== this.rollingU + 1) {
+        this.triggerResync(`Sequence gap detected: update.U (${update.U}) !== rollingU+1 (${this.rollingU + 1})`);
+        return false;
+      }
+    }
+
+    this.applyLevels(update);
+    this.rollingU = update.u;
+    return true;
+  }
+
+  private applyLevels(update: DepthUpdate): void {
     for (const [p, q] of update.b) {
       const price = parseFloat(p);
       const qty = parseFloat(q);
@@ -101,12 +264,25 @@ export class OrderbookManager {
         this.asks.set(price, qty);
       }
     }
+  }
 
-    this.lastUpdateId = update.u;
+  private triggerResync(reason: string): void {
+    console.warn(`[Orderbook] ${reason} — triggering resync`);
+    this.resyncCount++;
+    this.reset();
+    if (this.onResync) this.onResync(reason);
+    if (this.onGapDetected) this.onGapDetected();
   }
 
   /**
-   * Returns top N bids sorted descending by price.
+   * Simulate a dropped/out-of-order sequence gap for testing.
+   */
+  simulateGap(): void {
+    this.triggerResync('Simulated sequence gap');
+  }
+
+  /**
+   * Top N bids sorted descending by price.
    */
   getTopBids(n: number = 200): [number, number][] {
     const sorted = Array.from(this.bids.entries())
@@ -115,7 +291,7 @@ export class OrderbookManager {
   }
 
   /**
-   * Returns top N asks sorted ascending by price.
+   * Top N asks sorted ascending by price.
    */
   getTopAsks(n: number = 200): [number, number][] {
     const sorted = Array.from(this.asks.entries())
@@ -172,7 +348,21 @@ export class OrderbookManager {
   }
 
   /**
-   * Whether the orderbook has been initialized from a snapshot.
+   * Rolling sequence updateId.
+   */
+  getRollingU(): number {
+    return this.rollingU;
+  }
+
+  /**
+   * Number of resync events triggered.
+   */
+  getResyncCount(): number {
+    return this.resyncCount;
+  }
+
+  /**
+   * Whether the orderbook has been initialized and is actively tracking diffs.
    */
   isReady(): boolean {
     return this.initialized;
@@ -184,8 +374,10 @@ export class OrderbookManager {
   reset(): void {
     this.bids.clear();
     this.asks.clear();
-    this.lastUpdateId = 0;
+    this.lastSnapshotUpdateId = 0;
+    this.rollingU = 0;
     this.initialized = false;
+    this.awaitingFirstUpdate = false;
     this.buffer = [];
   }
 }

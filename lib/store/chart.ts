@@ -303,6 +303,14 @@ export interface ChartState {
   setLiquidityHeatmapShowPersistence: (panelId: PanelId, show: boolean) => void;
   setLiquidityHeatmapShowCurrentLabel: (panelId: PanelId, show: boolean) => void;
   setLiquidityHeatmapProfileSync: (panelId: PanelId, sync: boolean) => void;
+  // Order Book Liquidity Heatmap Panel
+  setHeatmapPanelEnabled: (panelId: PanelId, enabled: boolean) => void;
+  setHeatmapPriceBucketSize: (panelId: PanelId, size: number) => void;
+  setHeatmapSampleIntervalMs: (panelId: PanelId, interval: number) => void;
+  setHeatmapRetentionMinutes: (panelId: PanelId, minutes: number) => void;
+  setHeatmapClampPercentile: (panelId: PanelId, percentile: number) => void;
+  setHeatmapPanelWidth: (panelId: PanelId, width: number) => void;
+  setHeatmapShowTrades: (panelId: PanelId, show: boolean) => void;
 
   // Stats Indicator
   setStatsIndicatorEnabled: (panelId: PanelId, enabled: boolean) => void;
@@ -529,6 +537,14 @@ function createDefaultPanel(id: PanelId): PanelState {
     liquidityHeatmapShowPersistence: true,
     liquidityHeatmapShowCurrentLabel: true,
     liquidityHeatmapProfileSync: false,
+    // Order Book Liquidity Heatmap Panel
+    heatmapPanelEnabled: false,
+    heatmapPriceBucketSize: 50,
+    heatmapSampleIntervalMs: 200,
+    heatmapRetentionMinutes: 120,
+    heatmapClampPercentile: 95,
+    heatmapPanelWidth: 280,
+    heatmapShowTrades: true,
     // Stats Indicator
     statsIndicatorEnabled: true,
     statsIndicatorCount: 2,
@@ -577,6 +593,9 @@ function clampTimeframeSettings(settings: Partial<TimeframeSettings>, tickSize: 
     ...(settings.aggregateBubbleMarketSource === undefined
       ? {}
       : { aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(settings.aggregateBubbleMarketSource) }),
+    ...(settings.bubbleThreshold === undefined
+      ? {}
+      : { bubbleThreshold: Math.max(0.1, Number(settings.bubbleThreshold) || 15) }),
     ...(settings.bubbleMinOrders === undefined
       ? {}
       : { bubbleMinOrders: clampBubbleMinOrders(settings.bubbleMinOrders) }),
@@ -939,7 +958,10 @@ export const useChartStore = create<ChartState>()(
           if (indicatorId === 'sessions') updates.sessionsEnabled = true;
           if (indicatorId === 'historicalSessions') updates.historicalSessionProfileEnabled = true;
           if (indicatorId === 'profile') updates.defaultProfileEnabled = true;
-          if (indicatorId === 'heatmap') updates.liquidityHeatmapEnabled = true;
+          if (indicatorId === 'heatmap') {
+            updates.liquidityHeatmapEnabled = true;
+            updates.heatmapPanelEnabled = true;
+          }
           if (indicatorId === 'liquidityMap') updates.liquidityEnabled = true;
           if (indicatorId === 'stats') updates.statsIndicatorEnabled = true;
           if (indicatorId === 'vwap') updates.vwapEnabled = true;
@@ -959,7 +981,10 @@ export const useChartStore = create<ChartState>()(
           if (indicatorId === 'sessions') updates.sessionsEnabled = false;
           if (indicatorId === 'historicalSessions') updates.historicalSessionProfileEnabled = false;
           if (indicatorId === 'profile') updates.defaultProfileEnabled = false;
-          if (indicatorId === 'heatmap') updates.liquidityHeatmapEnabled = false;
+          if (indicatorId === 'heatmap') {
+            updates.liquidityHeatmapEnabled = false;
+            updates.heatmapPanelEnabled = false;
+          }
           if (indicatorId === 'liquidityMap') updates.liquidityEnabled = false;
           if (indicatorId === 'stats') updates.statsIndicatorEnabled = false;
           if (indicatorId === 'vwap') updates.vwapEnabled = false;
@@ -1044,8 +1069,13 @@ export const useChartStore = create<ChartState>()(
       setAggregateBubbleMarketSource: (panelId, aggregateBubbleMarketSource) =>
         set((state) => updatePanel(state, panelId, { aggregateBubbleMarketSource: normalizeAggregateBubbleMarketSource(aggregateBubbleMarketSource) })),
 
-      setBubbleThreshold: (panelId, bubbleThreshold) =>
-        set((state) => updatePanel(state, panelId, { bubbleThreshold: Math.max(1, bubbleThreshold) })),
+      setBubbleThreshold: (panelId, bubbleThreshold) => {
+        const val = Number(bubbleThreshold);
+        if (!Number.isFinite(val) || val < 0.1) return;
+        const clamped = Math.max(0.1, val);
+        if (get().panels[panelId]?.bubbleThreshold === clamped) return;
+        set((state) => updatePanel(state, panelId, { bubbleThreshold: clamped }));
+      },
 
       setBubbleThresholdMode: (panelId, bubbleThresholdMode) =>
         set((state) => updatePanel(state, panelId, { bubbleThresholdMode })),
@@ -1563,6 +1593,22 @@ export const useChartStore = create<ChartState>()(
       setLiquidityHeatmapProfileSync: (panelId, liquidityHeatmapProfileSync) =>
         set((state) => updatePanel(state, panelId, { liquidityHeatmapProfileSync })),
 
+      // Order Book Liquidity Heatmap Panel actions
+      setHeatmapPanelEnabled: (panelId, heatmapPanelEnabled) =>
+        set((state) => updatePanel(state, panelId, { heatmapPanelEnabled })),
+      setHeatmapPriceBucketSize: (panelId, heatmapPriceBucketSize) =>
+        set((state) => updatePanel(state, panelId, { heatmapPriceBucketSize: Math.max(0.1, heatmapPriceBucketSize) })),
+      setHeatmapSampleIntervalMs: (panelId, heatmapSampleIntervalMs) =>
+        set((state) => updatePanel(state, panelId, { heatmapSampleIntervalMs: Math.max(50, heatmapSampleIntervalMs) })),
+      setHeatmapRetentionMinutes: (panelId, heatmapRetentionMinutes) =>
+        set((state) => updatePanel(state, panelId, { heatmapRetentionMinutes: Math.max(5, heatmapRetentionMinutes) })),
+      setHeatmapClampPercentile: (panelId, heatmapClampPercentile) =>
+        set((state) => updatePanel(state, panelId, { heatmapClampPercentile: Math.max(50, Math.min(100, heatmapClampPercentile)) })),
+      setHeatmapPanelWidth: (panelId, heatmapPanelWidth) =>
+        set((state) => updatePanel(state, panelId, { heatmapPanelWidth: Math.max(100, Math.min(1200, heatmapPanelWidth)) })),
+      setHeatmapShowTrades: (panelId, heatmapShowTrades) =>
+        set((state) => updatePanel(state, panelId, { heatmapShowTrades })),
+
       // Stats Indicator actions
       setStatsIndicatorEnabled: (panelId, statsIndicatorEnabled) =>
         set((state) => {
@@ -1943,6 +1989,13 @@ export const useChartStore = create<ChartState>()(
             liquidityHeatmapShowPersistence: p.liquidityHeatmapShowPersistence ?? true,
             liquidityHeatmapShowCurrentLabel: p.liquidityHeatmapShowCurrentLabel ?? true,
             liquidityHeatmapProfileSync: p.liquidityHeatmapProfileSync ?? false,
+            heatmapPanelEnabled: p.heatmapPanelEnabled ?? false,
+            heatmapPriceBucketSize: p.heatmapPriceBucketSize ?? 50,
+            heatmapSampleIntervalMs: p.heatmapSampleIntervalMs ?? 200,
+            heatmapRetentionMinutes: p.heatmapRetentionMinutes ?? 120,
+            heatmapClampPercentile: p.heatmapClampPercentile ?? 95,
+            heatmapPanelWidth: p.heatmapPanelWidth ?? 280,
+            heatmapShowTrades: p.heatmapShowTrades ?? true,
             // Stats Indicator (v36)
             statsIndicatorEnabled: p.statsIndicatorEnabled ?? true,
             statsIndicatorCount: Math.max(1, Math.min(4, p.statsIndicatorCount ?? 2)),
@@ -2205,6 +2258,13 @@ export const useChartStore = create<ChartState>()(
             liquidityHeatmapShowPersistence: state.panels.left.liquidityHeatmapShowPersistence,
             liquidityHeatmapShowCurrentLabel: state.panels.left.liquidityHeatmapShowCurrentLabel,
             liquidityHeatmapProfileSync: state.panels.left.liquidityHeatmapProfileSync,
+            heatmapPanelEnabled: state.panels.left.heatmapPanelEnabled,
+            heatmapPriceBucketSize: state.panels.left.heatmapPriceBucketSize,
+            heatmapSampleIntervalMs: state.panels.left.heatmapSampleIntervalMs,
+            heatmapRetentionMinutes: state.panels.left.heatmapRetentionMinutes,
+            heatmapClampPercentile: state.panels.left.heatmapClampPercentile,
+            heatmapPanelWidth: state.panels.left.heatmapPanelWidth,
+            heatmapShowTrades: state.panels.left.heatmapShowTrades,
             historicalSessionProfileEnabled: state.panels.left.historicalSessionProfileEnabled,
             historicalSessionProfileSession: state.panels.left.historicalSessionProfileSession,
             historicalSessionProfileSessions: state.panels.left.historicalSessionProfileSessions,

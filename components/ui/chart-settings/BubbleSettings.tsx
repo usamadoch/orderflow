@@ -197,8 +197,13 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
                       <span className="text-[10px] text-text-dim/70">Tick Count</span>
                       <PropskitNumber
                         value={panel.bubbleTickCount}
+                        onInput={(val) => {
+                          if (!isNaN(val) && val >= 1) {
+                            setBubbleTickCount(panelId, Math.max(1, Math.min(100, Math.round(val))));
+                          }
+                        }}
                         onChange={(val) => {
-                          if (val >= 1) {
+                          if (!isNaN(val) && val >= 1) {
                             setBubbleTickCount(panelId, Math.max(1, Math.min(100, Math.round(val))));
                           }
                         }}
@@ -233,8 +238,13 @@ export const BubbleSettings = forwardRef<HTMLDivElement, BubbleSettingsProps>(({
                 </span>
                 <PropskitNumber
                   value={panel.bubbleThreshold}
+                  onInput={(val) => {
+                    if (!isNaN(val) && val >= 0.1) {
+                      setBubbleThreshold(panelId, val);
+                    }
+                  }}
                   onChange={(val) => {
-                    if (val >= 0.1) {
+                    if (!isNaN(val) && val >= 0.1) {
                       setBubbleThreshold(panelId, val);
                     }
                   }}

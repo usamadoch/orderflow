@@ -1,6 +1,6 @@
 'use client';
 
-import React, { forwardRef, useMemo } from 'react';
+import React, { forwardRef, useMemo, useRef } from 'react';
 import { useFigElement } from './useFigElement';
 
 export interface PropskitNumberProps {
@@ -47,6 +47,9 @@ export const PropskitNumber = forwardRef<HTMLElement, PropskitNumberProps>(funct
   },
   forwardedRef
 ) {
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
   const events = useMemo<Record<string, (e: Event) => void>>(() => {
     const handlers: Record<string, (e: Event) => void> = {};
     const parseVal = (e: Event): number => {
@@ -54,12 +57,17 @@ export const PropskitNumber = forwardRef<HTMLElement, PropskitNumberProps>(funct
       const target = e.target as HTMLElement & { value?: string | number };
       const raw = customEvent.detail !== undefined ? customEvent.detail : target.value;
       const num = typeof raw === 'number' ? raw : parseFloat(String(raw));
-      return isNaN(num) ? value : num;
+      return isNaN(num) ? valueRef.current : num;
     };
 
-    if (onInput) {
+    if (onInput || onChange) {
       handlers.input = (e: Event) => {
-        onInput(parseVal(e));
+        const parsed = parseVal(e);
+        if (onInput) {
+          onInput(parsed);
+        } else if (onChange) {
+          onChange(parsed);
+        }
       };
     }
     if (onChange) {
@@ -68,7 +76,7 @@ export const PropskitNumber = forwardRef<HTMLElement, PropskitNumberProps>(funct
       };
     }
     return handlers;
-  }, [onChange, onInput, value]);
+  }, [onChange, onInput]);
 
   const properties = useMemo(() => ({
     value: String(value),
