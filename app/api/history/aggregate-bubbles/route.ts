@@ -9,8 +9,6 @@ import {
 import { isAllowedDataSourceMode, isAllowedSymbol } from '../../../../lib/config/markets'
 import { normalizeTimeParam, resolveContractTypes } from '../../../../lib/validators/historyValidation'
 
-export const dynamic = 'force-dynamic'
-
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const symbol = searchParams.get('symbol')
@@ -57,11 +55,13 @@ export async function GET(request: NextRequest) {
       limit: Math.min(limit, MAX_AGGREGATE_BUBBLE_RESTORE_LIMIT),
     })
 
+    const isPastRange = endTime < Date.now() - 3600 * 1000
     return NextResponse.json(rows, {
       headers: {
         'x-aggregate-bubble-min-volume': String(thresholds.minVolume),
         'x-aggregate-bubble-min-trade-count': String(thresholds.minTradeCount),
         'x-aggregate-bubble-min-trade-count-volume': String(thresholds.minTradeCountVolume),
+        'Cache-Control': isPastRange ? 'public, max-age=300, stale-while-revalidate=3600' : 'no-store',
       },
     })
   } catch (error) {

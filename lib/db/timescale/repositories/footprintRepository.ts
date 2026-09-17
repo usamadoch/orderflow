@@ -70,7 +70,7 @@ export async function getFootprintCellsForRange(
       AND bucket_size = $5
       AND time >= $6
       AND time < $7
-    ORDER BY time ASC, bucket_price ASC
+    ORDER BY time ASC
   `
   
   const result = await query(sql, [

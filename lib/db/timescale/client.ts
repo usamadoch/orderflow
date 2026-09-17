@@ -16,8 +16,8 @@ export function getTimescalePool(): Pool {
     
     globalPool._timescalePool = new Pool({
       connectionString,
-      // Keep max low in serverless so concurrent lambdas don't overwhelm DB limits
-      max: 5,
+      // Allow sufficient connections for concurrent profile and footprint chunk restores
+      max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 15000,
       ssl: isLocalhost ? false : { rejectUnauthorized: false },

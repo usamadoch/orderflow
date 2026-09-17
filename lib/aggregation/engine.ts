@@ -36,7 +36,7 @@ export class AggregationEngine {
   private displayTimeframeSeconds: number;
   private maxCandles: number;
 
-  constructor(bucketSize: number, maxCandles: number = 500, displayTimeframeSeconds: number = BASE_FOOTPRINT_TIMEFRAME_SECONDS) {
+  constructor(bucketSize: number, maxCandles: number = 15000, displayTimeframeSeconds: number = BASE_FOOTPRINT_TIMEFRAME_SECONDS) {
     this.displayBucketSize = normalizeDisplayBucketSize(bucketSize);
     this.displayTimeframeSeconds = Math.max(BASE_FOOTPRINT_TIMEFRAME_SECONDS, displayTimeframeSeconds);
     this.maxCandles = maxCandles;
@@ -49,7 +49,7 @@ export class AggregationEngine {
   ingestCandle(candle: Candle) {
     this.displayCandleMap.set(candle.time, candle);
 
-    if (candle.isClosed) {
+    if (candle.isClosed && this.displayCandleMap.size > this.maxCandles) {
       this.trim();
     }
   }
@@ -68,7 +68,10 @@ export class AggregationEngine {
 
   hydrateBaseFootprintCandle(time: number, cells: Map<number, FootprintCell>, candle?: Partial<Candle>, delta?: number) {
     this.baseCache.hydrateBaseFootprintCandle(time, cells, candle, delta);
-    this.trim();
+    const maxBaseCandles = Math.max(this.maxCandles, Math.ceil(this.maxCandles * this.displayTimeframeSeconds / BASE_FOOTPRINT_TIMEFRAME_SECONDS));
+    if (this.baseCache.getAllBaseFootprintCandles().length > maxBaseCandles) {
+      this.trim();
+    }
   }
 
   getBaseFootprintCandlesInRange(startTime: number, endTime: number): FootprintCandle[] {

@@ -8,8 +8,6 @@ import {
 } from '../../../../lib/config/markets'
 import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
 
-export const dynamic = 'force-dynamic'
-
 const MAX_PROFILE_RESTORE_RANGE_SECONDS = 6 * 60 * 60
 
 export async function GET(request: NextRequest) {
@@ -39,6 +37,8 @@ export async function GET(request: NextRequest) {
       symbol, contractType, dataSourceMode, FINE_PROFILE_STORAGE_TIMEFRAME, start, end, baseBucketSize,
     )
     const candleTimes = rows.map((row) => row.candle_time)
+    const minCandleTime = candleTimes.length > 0 ? candleTimes.reduce((min, t) => Math.min(min, t), candleTimes[0]) : null
+    const maxCandleTime = candleTimes.length > 0 ? candleTimes.reduce((max, t) => Math.max(max, t), candleTimes[0]) : null
 
     console.debug('[VPROFILE_DEBUG] Profile history API restore query', {
       symbol,
@@ -51,11 +51,11 @@ export async function GET(request: NextRequest) {
       baseBucketSize,
       rowsFetched: rows.length,
       distinctCandleTimeCount: new Set(candleTimes).size,
-      minCandleTime: candleTimes.length > 0 ? Math.min(...candleTimes) : null,
-      maxCandleTime: candleTimes.length > 0 ? Math.max(...candleTimes) : null,
+      minCandleTime,
+      maxCandleTime,
     })
 
-    return NextResponse.json(rows.map((row) => {
+    const response = NextResponse.json(rows.map((row) => {
       const r = row as unknown as Record<string, unknown>;
       return {
         candleTime: r.candle_time,
@@ -68,6 +68,13 @@ export async function GET(request: NextRequest) {
         orderCount: r.order_count,
       };
     }))
+
+    const isPastRange = end < Math.floor(Date.now() / 1000) - 3600
+    response.headers.set(
+      'Cache-Control',
+      isPastRange ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-store'
+    )
+    return response
   } catch (error: unknown) {
     console.error('[API:Profile] Error fetching fine profile rows:', error)
     const message = error instanceof Error ? error.message : 'Unknown database error'

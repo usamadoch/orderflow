@@ -27,6 +27,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 │   ├── actions/                  # Server action bridge for storage
 │   ├── aggregation/              # Footprint aggregation and shared footprint cache
 │   ├── cache/                    # Shared cache retention/cleanup policy
+│   ├── chart/                    # Candle retention cache singleton
 │   ├── config/                   # Market/timeframe/source validation and constants
 │   ├── db/                       # libSQL/Turso and TimescaleDB storage adapters
 │   ├── debug/                    # Dev-only market metrics snapshot registry
@@ -68,9 +69,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 - `app/api/history/candles/route.ts` → Selected-driver candle history API returning source-scoped candles.
 - `app/api/history/footprint/route.ts` → Selected-driver footprint restore API with range caps and safe 503 fallback.
-- `app/api/history/profile/route.ts` → Selected-driver fine Volume Profile restore API with range caps and safe 503 fallback.
+- `app/api/history/profile/route.ts` → Selected-driver fine Volume Profile restore API with range caps, safe 503 fallback, and HTTP Cache-Control for past ranges.
 - `app/api/history/trades/route.ts` → Raw trade history API with range and cursor hydration support.
-- `app/api/history/aggregate-bubbles/route.ts` → Aggregate trade bubble restore API querying TimescaleDB history with range bounds.
+- `app/api/history/aggregate-bubbles/route.ts` → Aggregate trade bubble restore API querying TimescaleDB history with range bounds and HTTP Cache-Control for past ranges.
 - `app/api/history/status/route.ts` → Database status API returning driver metadata, row counts, and retention info.
 - `app/api/history/storage/route.ts` → Storage size inspection and manual data deletion API for TimescaleDB.
 
@@ -207,6 +208,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/feeds/binanceFutures.ts` → Binance Futures WebSocket/REST market data adapter with explicit state machine and jitter.
 - `lib/feeds/feedRegistry.ts` → Central ref-counted manager for shared market feeds and stream deduplication.
 - `lib/feeds/candleCache.ts` → Shared in-memory candle cache with subscriber fanout and range tracking.
+- `lib/feeds/serverBinanceCandles.ts` → Server-side Binance historical candles fetcher with proxy support and TimescaleDB caching.
 - `lib/feeds/index.ts` → Module exports for market feed adapters.
 - `types/feed.ts` → Types for feed interfaces, connection states, trade events, and subscription options.
 
@@ -379,6 +381,16 @@ Fast navigation for files exceeding 800 lines to avoid loading full source files
 - **Observability:** Dev-only `window.__MARKET_DEBUG__` snapshot metrics, including orderbook heatmap sampling stats
 - **Layout:** Single/split chart panels with focus layout mode
 
+## Stable Core Contracts (DO NOT REGRESS)
+
+The following data and restore pipelines are tested, stable, and working smoothly under active user testing. You may optimize or extend them, but **do not break these core invariants**:
+- **Footprint & Candle Retention**: `AggregationEngine` (`maxCandles`) and `MARKET_CACHE_MAX_BASE_SLICES` must remain at least **15,000** candles/slices (~10 days). Never reduce this capacity or reintroduce aggressive trimming on historical ingests.
+- **Direct Main-Thread Hydration**: On historical footprint restore, `engineRef.current.hydrateBaseFootprintCandle` must be called directly alongside worker dispatch so the canvas can render immediately without waiting on worker postMessage queues.
+- **Non-Blocking Lazy Restores**: In `FeedProvider.tsx` (`lazyProfileRestoreInterval`), user panning/scrolling (`scrolledFootprintRange`, `scrolledCandleUntil`) must never be blocked by early `return;` statements from profile restore passes.
+- **DB Connection Pool & SQL Sorting**: TimescaleDB pool `max` connections must remain `>= 20`. Do not re-add `ORDER BY bucket_price ASC` to range queries in `footprintRepository` or `profileRepository` (rely on indexed `time ASC` + client Map grouping).
+- **Timeframe Isolation**: `candleRetentionCache` is strictly partitioned by `symbol::contractType::timeframe`. Candle pushes must remain gated to `activeTimeframe === timeframe` to avoid cross-timeframe candle contamination.
+
 ## Maintenance Rule
 
 `skills/map.md` should describe the current state only. Do not append long historical responsibility updates here. Put chronological task history in `skills/log.md`.
+

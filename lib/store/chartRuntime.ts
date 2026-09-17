@@ -50,7 +50,7 @@ export interface ChartRuntimeState {
   panels: Record<PanelId, PanelRuntimeState>;
   crosshair: GlobalCrosshair;
   tradingStatus: TradingRuntimeStatus;
-  resetPanelRuntime: (panelId: PanelId) => void;
+  resetPanelRuntime: (panelId: PanelId, opts?: { keepCandles?: boolean }) => void;
   triggerPanelRefresh: (panelId: PanelId) => void;
   setConnected: (panelId: PanelId, connected: boolean) => void;
   setLoadingHistory: (panelId: PanelId, isLoadingHistory: boolean) => void;
@@ -307,8 +307,16 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
   timeframeInputState: null,
   setTimeframeInputState: (timeframeInputState) => set({ timeframeInputState }),
 
-  resetPanelRuntime: (panelId) =>
-    set((state) => updateRuntimePanel(state, panelId, createDefaultRuntimePanel())),
+  resetPanelRuntime: (panelId, opts) =>
+    set((state) => {
+      const defaultPanel = createDefaultRuntimePanel();
+      if (opts?.keepCandles) {
+        // Preserve the current candle array so the canvas keeps drawing during
+        // a timeframe switch while the background fetch is in flight.
+        defaultPanel.candles = state.panels[panelId]?.candles ?? [];
+      }
+      return updateRuntimePanel(state, panelId, defaultPanel);
+    }),
 
   triggerPanelRefresh: (panelId) =>
     set((state) => updateRuntimePanel(state, panelId, { refreshKey: state.panels[panelId].refreshKey + 1 })),

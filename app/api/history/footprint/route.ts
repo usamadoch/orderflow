@@ -12,8 +12,6 @@ import {
 } from '../../../../lib/config/markets'
 import { getMarketStorageAdapter } from '../../../../lib/db/storageAdapter'
 
-export const dynamic = 'force-dynamic'
-
 const FOOTPRINT_RANGE_MAX_SECONDS = 2 * 60 * 60
 const FOOTPRINT_RANGE_BASE_CANDLE_LIMIT = Math.floor(
   FOOTPRINT_RANGE_MAX_SECONDS / BASE_FOOTPRINT_TIMEFRAME_SECONDS,
@@ -54,13 +52,20 @@ export async function GET(request: NextRequest) {
       const rows = await getMarketStorageAdapter().getFootprintCellsForRange(
         symbol, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, start, end, BASE_FOOTPRINT_BUCKET_SIZE,
       )
-      return NextResponse.json(rows.map((row) => ({
+      const response = NextResponse.json(rows.map((row) => ({
         candleTime: row.candle_time,
         bucketPrice: row.bucket_price,
         bidVol: row.bid_vol,
         askVol: row.ask_vol,
         delta: row.delta,
       })))
+      const until = searchParams.get('end') ?? searchParams.get('candleTime') ?? searchParams.get('until')
+      const isPastRange = until !== null && Number(until) < Math.floor(Date.now() / 1000) - 3600
+      response.headers.set(
+        'Cache-Control',
+        isPastRange ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-store'
+      )
+      return response
     } catch (error: unknown) {
       console.error('[API:Footprint] Error fetching footprint cells for range:', error)
       const message = error instanceof Error ? error.message : 'Unknown database error'
@@ -76,13 +81,20 @@ export async function GET(request: NextRequest) {
     const rows = await getMarketStorageAdapter().getFootprintCells(
       symbol, contractType, dataSourceMode, BASE_FOOTPRINT_TIMEFRAME, candleTime, BASE_FOOTPRINT_BUCKET_SIZE,
     )
-    return NextResponse.json(rows.map((row) => ({
+    const response = NextResponse.json(rows.map((row) => ({
       candleTime: row.candle_time,
       bucketPrice: row.bucket_price,
       bidVol: row.bid_vol,
       askVol: row.ask_vol,
       delta: row.delta,
     })))
+    const until = searchParams.get('end') ?? searchParams.get('candleTime') ?? searchParams.get('until')
+    const isPastRange = until !== null && Number(until) < Math.floor(Date.now() / 1000) - 3600
+    response.headers.set(
+      'Cache-Control',
+      isPastRange ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-store'
+    )
+    return response
   } catch (error: unknown) {
     console.error('[API:Footprint] Error fetching footprint cells:', error)
     const message = error instanceof Error ? error.message : 'Unknown database error'

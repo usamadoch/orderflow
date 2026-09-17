@@ -100,6 +100,7 @@ import {
 } from '../lib/feeds/feedRegistry';
 import { storeBaseFootprintAction, storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
 import { recordAggregateBubbleRestoreDebug, recordRestoreDiagnostic } from '../lib/debug/marketMetrics';
+import { candleRetentionCache } from '../lib/chart/candleRetentionCache';
 
 // Local Context
 import { ChartEngineContext } from './ChartEngineContext';
@@ -259,7 +260,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   }, [rebuildLiquidityVacuumZones]);
 
   useEffect(() => {
-    aggregationWorkerClient.init(bucketSize);
+    aggregationWorkerClient.init(bucketSize, 15000);
     
     aggregationWorkerClient.onFootprintUpdate = (footprints) => {
       for (const fp of footprints) {
@@ -416,10 +417,46 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     }
   }, [autoBucketSize, tickSize, panelId, setComputedBucketSize, bucketSize]);
 
+  // Track previous symbol/contractType so the main useEffect can distinguish
+  // a symbol change (requires full clear) from a timeframe change (can retain
+  // cached candles to avoid blanking the chart).
+  const prevSymbolRef = useRef<string | null>(null);
+  const prevContractTypeRef = useRef<string | null>(null);
+
   useEffect(() => {
     let active = true;
     const fineProfileBaseBucketSize = getFineProfileBaseBucketSize(tickSize);
-    resetPanelRuntime(panelId);
+
+    // Determine whether this run was triggered by a symbol/contractType change
+    // or a timeframe/dataSourceMode change. Symbol changes require a full wipe
+    // because existing candles are for the wrong market. Timeframe changes can
+    // keep cached candles so the canvas doesn't flash blank.
+    const isSymbolChange =
+      prevSymbolRef.current !== null &&
+      (prevSymbolRef.current !== pair || prevContractTypeRef.current !== contractType);
+
+    if (isSymbolChange) {
+      // Clear the retention cache for the OLD symbol before updating the refs,
+      // so a lingering swap-in can never supply wrong-symbol candles.
+      candleRetentionCache.clearSymbol(prevSymbolRef.current!, prevContractTypeRef.current!);
+      resetPanelRuntime(panelId); // full clear — candles: []
+      console.log(`[PanelFeed:${panelId}] Symbol changed to ${pair} — retention cache cleared, full reset.`);
+    } else {
+      // Timeframe switch (or initial mount, or dataSourceMode change).
+      // Try to serve cached candles immediately so the canvas stays populated.
+      const cached = candleRetentionCache.get(pair, contractType, timeframe);
+      resetPanelRuntime(panelId);
+      if (cached) {
+        // Replay cached snapshot immediately — canvas draws on this frame.
+        pushAllCandles(panelId, cached);
+        console.log(`[PanelFeed:${panelId}] TF switch ${timeframe} — replayed ${cached.length} cached candles instantly.`);
+      }
+    }
+
+    // Always update refs AFTER the clear so clearSymbol used the old values.
+    prevSymbolRef.current = pair;
+    prevContractTypeRef.current = contractType;
+
     connectedRef.current = false;
     setConnected(panelId, false);
     engineRef.current.reset();
@@ -548,6 +585,18 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       rowsPerChunk: [],
       skippedBecauseRangeTooLarge: false,
       restoreFailureReason: null,
+    });
+
+    const createEmptyAggregateBubbleStats = (): AggregateBubbleHydrationStats => ({
+      rowsFetched: 0,
+      rowsHydrated: 0,
+      duplicateSkipped: 0,
+      spotCount: 0,
+      futuresCount: 0,
+      oldestTime: null,
+      newestTime: null,
+      range: null,
+      thresholds: null,
     });
 
     const getTradeClosedFineProfileTime = () => {
@@ -1176,15 +1225,18 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
     const handleFuturesTrade = (trade: Trade) => handleTrade(trade, 'futures');
 
     const fetchStoredHistory = async () => {
+      const computedLimit = String(Math.min(10080, Math.ceil((7 * 24 * 60 * 60) / timeframeSeconds)));
+      console.log(`[PanelFeed:${panelId}] fetchStoredHistory calling /api/history/candles with limit: ${computedLimit} (timeframe: ${timeframe})`);
       const params = new URLSearchParams({
         symbol: pair,
         contractType,
         timeframe,
-        limit: '500',
+        // Fetch the full 7-day window up front so scroll-back never waits on
+        // the network for already-closed candles. Derived from timeframeSeconds;
+        // capped at 10 080 (1m × 7 days) so heavier timeframes stay small.
+        limit: computedLimit,
       });
-      const response = await fetch(`/api/history/candles?${params.toString()}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(`/api/history/candles?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error(`History API returned ${response.status}`);
@@ -1410,9 +1462,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       };
 
       try {
-        const response = await fetch(`/api/history/aggregate-bubbles?${params.toString()}`, {
-          cache: 'no-store',
-        });
+        const response = await fetch(`/api/history/aggregate-bubbles?${params.toString()}`);
 
         stats.thresholds = parseAggregateBubbleThresholds(response);
         if (stats.thresholds) {
@@ -1514,118 +1564,149 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const chunks = getFootprintRestoreChunks(clampedRange);
       stats.chunkCount = chunks.length;
 
-      for (let index = 0; index < chunks.length; index += 1) {
+      const CONCURRENCY = 3;
+
+      for (let i = 0; i < chunks.length; i += CONCURRENCY) {
         if (!active) break;
+        const batchChunks = chunks.slice(i, i + CONCURRENCY);
 
-        const chunk = chunks[index];
-        const candidateTimes = footprintCache.getMissingBaseCandleTimes(chunk.startSeconds, chunk.endSeconds);
-        if (candidateTimes.length === 0) {
-          stats.chunksSkipped += 1;
-          stats.rowsPerChunk.push(0);
-          recordRestoreDiagnostic({
-            kind: 'footprint',
-            key: restoreKey,
-            timestamp: Date.now(),
-            rowsFetched: 0,
-            distinctCandleTimeCount: 0,
-            details: {
-              panelId,
-              status: 'cache-covered',
-              sourceKey: footprintCache.key,
-              requestedRange: stats.requestedRange,
-              clampedRange: stats.clampedRange,
-              chunkIndex: index + 1,
-              chunkCount: chunks.length,
-              chunkStart: chunk.startSeconds,
-              chunkEnd: chunk.endSeconds,
-              baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
-            },
-          });
-          continue;
-        }
-
-        try {
-          const chunkStats = await footprintCache.runRestoreOnce(chunk.startSeconds, chunk.endSeconds, async () => {
-            const restoredChunkStats = {
-              rowsFetched: 0,
-              candlesHydrated: 0,
-              cellsHydrated: 0,
-              bucketMatches: 0,
-              bucketMisses: 0,
-            };
-            const params = new URLSearchParams({
-              symbol: pair,
-              contractType,
-              dataSourceMode,
-              timeframe: BASE_FOOTPRINT_TIMEFRAME,
-              start: String(chunk.startSeconds),
-              end: String(chunk.endSeconds),
-              bucketSize: String(BASE_FOOTPRINT_BUCKET_SIZE),
-            });
-            const response = await fetch(`/api/history/footprint?${params.toString()}`, {
-              cache: 'no-store',
-            });
-
-            if (!response.ok) {
-              let failureReason = `Footprint row restore failed with ${response.status}`;
-              try {
-                const body = await response.json() as { error?: string };
-                if (body.error) failureReason = body.error;
-              } catch {
-                // Keep the HTTP status message when the response body is not JSON.
-              }
-              throw new Error(failureReason);
-            }
-
-            const rows = await response.json() as FootprintHistoryRow[];
-            restoredChunkStats.rowsFetched = rows.length;
-
-            const rowsByCandle = new Map<number, FootprintHistoryRow[]>();
-            for (const row of rows) {
-              const current = rowsByCandle.get(row.candleTime) ?? [];
-              current.push(row);
-              rowsByCandle.set(row.candleTime, current);
-            }
-
-            const candidateTimeSet = new Set(candidateTimes);
-            restoredChunkStats.bucketMatches = candidateTimes.filter((time) => rowsByCandle.has(time)).length;
-            restoredChunkStats.bucketMisses = Math.max(0, candidateTimes.length - restoredChunkStats.bucketMatches);
-
-            for (const candleTime of candidateTimes) {
-              if (!active) return restoredChunkStats;
-
-              const candleRows = rowsByCandle.get(candleTime);
-              if (!candleRows || candleRows.length === 0) continue;
-              if (!candidateTimeSet.has(candleTime)) continue;
-
-              const cells = new Map<number, FootprintCell>();
-
-              for (const row of candleRows) {
-                cells.set(row.bucketPrice, {
-                  bidVol: row.bidVol,
-                  askVol: row.askVol,
-                });
-              }
-
-              aggregationWorkerClient.hydrateFootprints(candleTime, cells);
-              restoredChunkStats.candlesHydrated += 1;
-              restoredChunkStats.cellsHydrated += cells.size;
-
-              if (restoredChunkStats.candlesHydrated % HYDRATION_CHUNK_SIZE === 0) {
-                await yieldToBrowser();
-              }
-            }
-
+        const chunkPromises = batchChunks.map(async (chunk, indexInBatch) => {
+          const index = i + indexInBatch;
+          const candidateTimes = footprintCache.getMissingBaseCandleTimes(chunk.startSeconds, chunk.endSeconds);
+          if (candidateTimes.length === 0) {
             recordRestoreDiagnostic({
               kind: 'footprint',
               key: restoreKey,
               timestamp: Date.now(),
-              rowsFetched: restoredChunkStats.rowsFetched,
-              distinctCandleTimeCount: restoredChunkStats.candlesHydrated,
-              skippedRows: restoredChunkStats.bucketMisses,
+              rowsFetched: 0,
+              distinctCandleTimeCount: 0,
               details: {
                 panelId,
-                status: 'chunk-complete',
+                status: 'cache-covered',
+                sourceKey: footprintCache.key,
+                requestedRange: stats.requestedRange,
+                clampedRange: stats.clampedRange,
+                chunkIndex: index + 1,
+                chunkCount: chunks.length,
+                chunkStart: chunk.startSeconds,
+                chunkEnd: chunk.endSeconds,
+                baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+              },
+            });
+            return { skipped: true as const, rowsFetched: 0 };
+          }
+
+          try {
+            const chunkStats = await footprintCache.runRestoreOnce(chunk.startSeconds, chunk.endSeconds, async () => {
+              const restoredChunkStats = {
+                rowsFetched: 0,
+                candlesHydrated: 0,
+                cellsHydrated: 0,
+                bucketMatches: 0,
+                bucketMisses: 0,
+              };
+              const params = new URLSearchParams({
+                symbol: pair,
+                contractType,
+                dataSourceMode,
+                timeframe: BASE_FOOTPRINT_TIMEFRAME,
+                start: String(chunk.startSeconds),
+                end: String(chunk.endSeconds),
+                bucketSize: String(BASE_FOOTPRINT_BUCKET_SIZE),
+              });
+              const response = await fetch(`/api/history/footprint?${params.toString()}`);
+
+              if (!response.ok) {
+                let failureReason = `Footprint row restore failed with ${response.status}`;
+                try {
+                  const body = await response.json() as { error?: string };
+                  if (body.error) failureReason = body.error;
+                } catch {
+                  // Keep the HTTP status message when the response body is not JSON.
+                }
+                throw new Error(failureReason);
+              }
+
+              const rows = await response.json() as FootprintHistoryRow[];
+              restoredChunkStats.rowsFetched = rows.length;
+
+              const rowsByCandle = new Map<number, FootprintHistoryRow[]>();
+              for (const row of rows) {
+                const current = rowsByCandle.get(row.candleTime) ?? [];
+                current.push(row);
+                rowsByCandle.set(row.candleTime, current);
+              }
+
+              const candidateTimeSet = new Set(candidateTimes);
+              restoredChunkStats.bucketMatches = candidateTimes.filter((time) => rowsByCandle.has(time)).length;
+              restoredChunkStats.bucketMisses = Math.max(0, candidateTimes.length - restoredChunkStats.bucketMatches);
+
+              for (const candleTime of candidateTimes) {
+                if (!active) return restoredChunkStats;
+
+                const candleRows = rowsByCandle.get(candleTime);
+                if (!candleRows || candleRows.length === 0) continue;
+                if (!candidateTimeSet.has(candleTime)) continue;
+
+                const cells = new Map<number, FootprintCell>();
+
+                for (const row of candleRows) {
+                  cells.set(row.bucketPrice, {
+                    bidVol: row.bidVol,
+                    askVol: row.askVol,
+                  });
+                }
+
+                engineRef.current.hydrateBaseFootprintCandle(candleTime, cells);
+                aggregationWorkerClient.hydrateFootprints(candleTime, cells);
+                restoredChunkStats.candlesHydrated += 1;
+                restoredChunkStats.cellsHydrated += cells.size;
+
+                if (restoredChunkStats.candlesHydrated % HYDRATION_CHUNK_SIZE === 0) {
+                  await yieldToBrowser();
+                }
+              }
+
+              recordRestoreDiagnostic({
+                kind: 'footprint',
+                key: restoreKey,
+                timestamp: Date.now(),
+                rowsFetched: restoredChunkStats.rowsFetched,
+                distinctCandleTimeCount: restoredChunkStats.candlesHydrated,
+                skippedRows: restoredChunkStats.bucketMisses,
+                details: {
+                  panelId,
+                  status: 'chunk-complete',
+                  sourceKey: footprintCache.key,
+                  requestedRange: stats.requestedRange,
+                  clampedRange: stats.clampedRange,
+                  chunkIndex: index + 1,
+                  chunkCount: chunks.length,
+                  chunkStart: chunk.startSeconds,
+                  chunkEnd: chunk.endSeconds,
+                  candidateCandles: candidateTimes.length,
+                  cellsHydrated: restoredChunkStats.cellsHydrated,
+                  bucketMatches: restoredChunkStats.bucketMatches,
+                  bucketMisses: restoredChunkStats.bucketMisses,
+                  rowsPerChunk: restoredChunkStats.rowsFetched,
+                  baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
+                },
+              });
+
+              return restoredChunkStats;
+            });
+
+            return { skipped: false as const, success: true as const, ...chunkStats };
+          } catch (error) {
+            const failureReason = error instanceof Error ? error.message : String(error);
+            recordRestoreDiagnostic({
+              kind: 'footprint',
+              key: restoreKey,
+              timestamp: Date.now(),
+              failedRows: candidateTimes.length,
+              details: {
+                panelId,
+                status: 'failed',
                 sourceKey: footprintCache.key,
                 requestedRange: stats.requestedRange,
                 clampedRange: stats.clampedRange,
@@ -1634,49 +1715,35 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
                 chunkStart: chunk.startSeconds,
                 chunkEnd: chunk.endSeconds,
                 candidateCandles: candidateTimes.length,
-                cellsHydrated: restoredChunkStats.cellsHydrated,
-                bucketMatches: restoredChunkStats.bucketMatches,
-                bucketMisses: restoredChunkStats.bucketMisses,
-                rowsPerChunk: restoredChunkStats.rowsFetched,
+                restoreFailureReason: failureReason,
                 baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
               },
             });
+            console.warn(`[HistoryRestore:${panelId}] Stored footprint chunk ${index + 1}/${chunks.length} failed: ${failureReason}`);
+            return { skipped: false as const, success: false as const, error: failureReason };
+          }
+        });
 
-            return restoredChunkStats;
-          });
-
-          stats.rowsFetched += chunkStats.rowsFetched;
-          stats.candlesHydrated += chunkStats.candlesHydrated;
-          stats.cellsHydrated += chunkStats.cellsHydrated;
-          stats.bucketMatches += chunkStats.bucketMatches;
-          stats.bucketMisses += chunkStats.bucketMisses;
-          stats.rowsPerChunk.push(chunkStats.rowsFetched);
-          stats.chunksFetched += 1;
-        } catch (error) {
-          const failureReason = error instanceof Error ? error.message : String(error);
-          stats.restoreFailureReason = stats.restoreFailureReason ?? failureReason;
-          stats.rowsPerChunk.push(0);
-          recordRestoreDiagnostic({
-            kind: 'footprint',
-            key: restoreKey,
-            timestamp: Date.now(),
-            failedRows: candidateTimes.length,
-            details: {
-              panelId,
-              status: 'failed',
-              sourceKey: footprintCache.key,
-              requestedRange: stats.requestedRange,
-              clampedRange: stats.clampedRange,
-              chunkIndex: index + 1,
-              chunkCount: chunks.length,
-              chunkStart: chunk.startSeconds,
-              chunkEnd: chunk.endSeconds,
-              candidateCandles: candidateTimes.length,
-              restoreFailureReason: failureReason,
-              baseBucketSize: BASE_FOOTPRINT_BUCKET_SIZE,
-            },
-          });
-          console.warn(`[HistoryRestore:${panelId}] Stored footprint chunk ${index + 1}/${chunks.length} failed: ${failureReason}`);
+        const batchResults = await Promise.allSettled(chunkPromises);
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            const res = result.value;
+            if (res.skipped) {
+              stats.chunksSkipped += 1;
+              stats.rowsPerChunk.push(0);
+            } else if (!res.success) {
+              stats.restoreFailureReason = stats.restoreFailureReason ?? res.error;
+              stats.rowsPerChunk.push(0);
+            } else {
+              stats.rowsFetched += res.rowsFetched;
+              stats.candlesHydrated += res.candlesHydrated;
+              stats.cellsHydrated += res.cellsHydrated;
+              stats.bucketMatches += res.bucketMatches;
+              stats.bucketMisses += res.bucketMisses;
+              stats.rowsPerChunk.push(res.rowsFetched);
+              stats.chunksFetched += 1;
+            }
+          }
         }
 
         await yieldToBrowser();
@@ -1752,8 +1819,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const chunks = getFineProfileRestoreChunks(ranges);
       const hydratedCandleTimes = new Set<number>();
 
-      // Concurrency limit for API requests (keep very low to prevent Vercel 500 connection timeouts)
-      const CONCURRENCY = 1;
+      // Concurrency limit for API requests
+      const CONCURRENCY = 3;
 
       for (let i = 0; i < chunks.length; i += CONCURRENCY) {
         if (!active) break;
@@ -1807,9 +1874,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               end: String(chunk.endSeconds),
               baseBucketSize: String(fineProfileBaseBucketSize),
             });
-            const response = await fetch(`/api/history/profile?${params.toString()}`, {
-              cache: 'no-store',
-            });
+            const response = await fetch(`/api/history/profile?${params.toString()}`);
 
             if (!response.ok) {
               recordRestoreDiagnostic({
@@ -1991,7 +2056,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         .map(segment => alignFineProfileRange(segment.startTimeMs / 1000, segment.endTimeMs / 1000))
         .filter(r => profileCache.getMissingBaseCandleTimes(r.startSeconds, r.endSeconds).length > 0);
         
-      return missingRanges.length > 0 ? missingRanges : null;
+      return missingRanges.length > 0 ? missingRanges.slice(0, 2) : null;
     };
 
     const restoreLazyProfileRanges = async (
@@ -2111,7 +2176,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const safeBarWidth = Math.max(1, Number.isFinite(panel.barWidth) ? panel.barWidth : 1);
       const barsFromLatest = Math.max(0, Math.floor(panel.scrollOffset / safeBarWidth));
 
-      if (candles.length - barsFromLatest < 150) {
+      // Trigger a lazy fetch when within 500 bars of the oldest loaded candle
+      // (previously 150). This fires ~2-3 seconds before the user reaches the
+      // edge at typical drag speed, giving the network request time to land.
+      if (candles.length - barsFromLatest < 500) {
         return candles[0].time;
       }
       return null;
@@ -2130,20 +2198,30 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           until: String(until),
           limit: '500',
         });
-        const response = await fetch(`/api/history/candles?${params.toString()}`, {
-          cache: 'no-store',
-        });
+        const response = await fetch(`/api/history/candles?${params.toString()}`);
 
         if (!response.ok) return;
 
         const fetchedCandles = await response.json() as Candle[];
+        const activeTimeframe = useChartStore.getState().panels[panelId]?.timeframe;
+        if (!active || activeTimeframe !== timeframe) return;
+
         if (fetchedCandles.length > 0) {
           lastLazyCandlesRestoreKey = until;
           const currentCandles = useChartRuntimeStore.getState().panels[panelId].candles;
           const existingTimes = new Set(currentCandles.map((c) => c.time));
           const newCandles = fetchedCandles.filter((c) => !existingTimes.has(c.time));
           if (newCandles.length > 0) {
-            pushAllCandles(panelId, [...newCandles, ...currentCandles].sort((a, b) => a.time - b.time));
+            const merged = [...newCandles, ...currentCandles].sort((a, b) => a.time - b.time);
+            pushAllCandles(panelId, merged);
+            // Keep the retention cache current so a future TF switch can
+            // replay this extended range immediately. Gated to active timeframe.
+            if (useChartStore.getState().panels[panelId]?.timeframe === timeframe) {
+              candleRetentionCache.set(
+                pair, contractType, timeframe,
+                merged,
+              );
+            }
           }
         } else {
           // If no more history, prevent refetching
@@ -2168,17 +2246,17 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         feedUnsubscribers.push(candleCache.subscribe((snapshot) => {
           if (!active) return;
 
+          // Derive timeframe and symbols from the candle data source (snapshot.key)
+          const keyParts = snapshot.key.split('::');
+          const sourceContractType = keyParts[0] === 'spot' ? 'spot' : 'futures';
+          const sourceSymbol = keyParts[1] || pair;
+          const sourceTimeframe = keyParts[2] || timeframe;
+
+          const activeTimeframe = useChartStore.getState().panels[panelId]?.timeframe;
+          // Gate: only push and write if active timeframe matches source
+          if (activeTimeframe !== sourceTimeframe) return;
+
           if (snapshot.reason === 'live' && snapshot.candle) {
-            // console.log(`[CANDLE_CACHE_VERIFY:${panelId}] live candle from shared cache`, {
-            //   candleCacheKey: snapshot.key,
-            //   pair,
-            //   contractType,
-            //   timeframe,
-            //   candleTime: snapshot.candle.time,
-            //   isClosed: snapshot.candle.isClosed,
-            //   candleCount: snapshot.candleCount,
-            //   subscriberPanel: panelId,
-            // });
             handleCandle(snapshot.candle);
             return;
           }
@@ -2186,7 +2264,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           if (snapshot.reason === 'connection-restored') {
             console.log(`[PanelFeed:${panelId}] Connection restored, fetching recent Binance history to heal gaps...`);
             void candleCache.restoreHistory(async () => {
-              const binanceHistory = await fetchSharedHistory(contractType, pair, timeframe).catch(() => []);
+              const binanceHistory = await fetchSharedHistory(sourceContractType, sourceSymbol, sourceTimeframe).catch(() => []);
               return {
                 candles: binanceHistory,
                 source: 'Binance',
@@ -2199,9 +2277,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
           console.log(`[CANDLE_CACHE_VERIFY:${panelId}] syncing candle snapshot from shared cache`, {
             candleCacheKey: snapshot.key,
-            pair,
-            contractType,
-            timeframe,
+            pair: sourceSymbol,
+            contractType: sourceContractType,
+            timeframe: sourceTimeframe,
             reason: snapshot.reason,
             candleCount: snapshot.candleCount,
             firstCandleTime: snapshot.candles[0]?.time ?? null,
@@ -2209,6 +2287,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
             subscriberPanel: panelId,
           });
           pushAllCandles(panelId, snapshot.candles);
+          // Mirror into retention cache with derived source parameters
+          candleRetentionCache.set(sourceSymbol, sourceContractType, sourceTimeframe, snapshot.candles);
           const lastCandle = snapshot.candles[snapshot.candles.length - 1];
           if (Number.isFinite(lastCandle?.close)) {
             contractPriceRef.current = lastCandle.close;
@@ -2245,10 +2325,13 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
                 message: 'Restoring candles from storage...',
               });
               storedHistory = await fetchStoredHistory();
-              if (storedHistory.length > 0) {
+              const activeTimeframe = useChartStore.getState().panels[panelId]?.timeframe;
+              if (active && activeTimeframe === timeframe && storedHistory.length > 0) {
                 restoredHistory = storedHistory;
                 source = 'stored';
                 pushAllCandles(panelId, storedHistory);
+                // Cache so a fast TF switch can replay these candles instantly.
+                candleRetentionCache.set(pair, contractType, timeframe, storedHistory);
                 publishRestoreStatus({
                   stage: 'candles',
                   message: `Restored ${storedHistory.length} stored candles`,
@@ -2280,16 +2363,21 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           if (binanceHistory.length > 0) {
             restoredHistory = mergeHistoryCandles(restoredHistory, binanceHistory);
             source = storedHistory.length > 0 ? 'stored+Binance' : 'Binance';
-            pushAllCandles(panelId, restoredHistory);
-            publishRestoreStatus({
-              stage: 'candles',
-              message: `Restored ${restoredHistory.length} candles`,
-              candleCount: restoredHistory.length,
-              storedCandleCount: storedHistory.length,
-              binanceCandleCount: binanceHistory.length,
-              source,
-            });
-            await yieldToBrowser();
+            const activeTimeframeAfterBinance = useChartStore.getState().panels[panelId]?.timeframe;
+            if (active && activeTimeframeAfterBinance === timeframe) {
+              pushAllCandles(panelId, restoredHistory);
+              // Update the retention cache with the fully merged (stored + Binance) set.
+              candleRetentionCache.set(pair, contractType, timeframe, restoredHistory);
+              publishRestoreStatus({
+                stage: 'candles',
+                message: `Restored ${restoredHistory.length} candles`,
+                candleCount: restoredHistory.length,
+                storedCandleCount: storedHistory.length,
+                binanceCandleCount: binanceHistory.length,
+                source,
+              });
+              await yieldToBrowser();
+            }
           }
 
           return {
@@ -2301,6 +2389,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         });
         const history = historyResult.candles;
         const historySource = historyResult.source;
+
+        if (active && useChartStore.getState().panels[panelId]?.timeframe === timeframe && history.length > 0) {
+          pushAllCandles(panelId, history);
+          candleRetentionCache.set(pair, contractType, timeframe, history);
+        }
+
         publishRestoreStatus({
           stage: 'candles',
           message: `Restored ${history.length} candles`,
@@ -2415,7 +2509,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           const rawStats = shouldHydrateRawTrades
             ? await hydrateStoredRawTrades(history)
             : createEmptyRawTradeStats();
-          const aggregateBubbleStats = await hydrateStoredAggregateBubbles(history);
+          const aggregateBubbleStats = createEmptyAggregateBubbleStats();
+          if (shouldHydrateStoredAggregateBubbles()) {
+            void hydrateStoredAggregateBubbles(history);
+          }
           const footprintWorkForRestore = getCurrentFootprintWorkNeed();
           const footprintRestoreSkipped = !footprintWorkForRestore.needed;
           if (footprintRestoreSkipped) {
@@ -2639,19 +2736,16 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const customRange = getCustomProfileRestoreWindow();
       if (customRange) {
         void restoreLazyProfileRanges(customRange, 'custom');
-        return;
-      }
-
-      const defaultRange = getDefaultProfileRestoreWindow();
-      if (defaultRange) {
-        void restoreLazyProfileRanges(defaultRange, 'default');
-        return;
-      }
-
-      const historicalRange = getHistoricalSessionProfileRestoreWindow();
-      if (historicalRange) {
-        void restoreLazyProfileRanges(historicalRange, 'historical');
-        return;
+      } else {
+        const defaultRange = getDefaultProfileRestoreWindow();
+        if (defaultRange) {
+          void restoreLazyProfileRanges(defaultRange, 'default');
+        } else {
+          const historicalRange = getHistoricalSessionProfileRestoreWindow();
+          if (historicalRange) {
+            void restoreLazyProfileRanges(historicalRange, 'historical');
+          }
+        }
       }
 
       const scrolledCandleUntil = getScrolledCandlesRestoreWindow();
@@ -2668,7 +2762,10 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       if (scrolledRange) {
         void restoreLazyProfileRanges(scrolledRange, 'lazy');
       }
-    }, 1200);
+    // 250 ms instead of 1200 ms: at normal drag speed 1200 ms is too coarse —
+    // the user can scroll 3+ screens before a fetch fires. 250 ms gives one
+    // poll per ~15 animation frames, negligible CPU cost.
+    }, 250);
     const obManager = orderbookRef.current;
     let isDepthSubscribed = false;
 

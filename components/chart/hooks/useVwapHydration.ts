@@ -91,9 +91,7 @@ export function useVwapHydration(panelId: PanelId) {
             until: String(lastDisplayTime + 60), // buffer
             limit: '50000', // ensure enough limit to cover up to 30 days of 1m candles
           });
-          const response = await fetch(`/api/history/candles?${params.toString()}`, {
-            cache: 'no-store',
-          });
+          const response = await fetch(`/api/history/candles?${params.toString()}`);
 
           if (!response.ok) {
             console.warn(`[VWAP Hydration] API returned ${response.status}`);

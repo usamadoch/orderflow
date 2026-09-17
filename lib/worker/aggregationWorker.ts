@@ -49,7 +49,7 @@ self.addEventListener('message', (e: MessageEvent<AggregationWorkerRequest>) => 
 
   try {
     if (type === 'INIT') {
-      engine = new AggregationEngine(payload.bucketSize, payload.maxCandles || 500);
+      engine = new AggregationEngine(payload.bucketSize, payload.maxCandles || 15000);
       profileEngine = new RawTradeVolumeProfileEngine();
     }
     

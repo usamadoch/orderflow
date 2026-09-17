@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getStoredCandles } from '../../../../lib/db/storageAdapter'
 import { isAllowedContractType, isAllowedSymbol, isAllowedTimeframe } from '../../../../lib/config/markets'
 import type { MarketContractType } from '../../../../lib/config/markets'
-
-export const dynamic = 'force-dynamic'
+import { fetchAndStoreBinanceCandles } from '../../../../lib/feeds/serverBinanceCandles'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -31,7 +30,7 @@ export async function GET(request: NextRequest) {
   }
 
   const requestedContractType: MarketContractType = (contractType as MarketContractType) ?? 'spot'
-  const rows = await getStoredCandles({
+  let rows = await getStoredCandles({
     symbol,
     contractType: requestedContractType,
     timeframe,
@@ -40,8 +39,18 @@ export async function GET(request: NextRequest) {
     limit,
   })
 
+  if (rows.length === 0) {
+    rows = await fetchAndStoreBinanceCandles({
+      symbol,
+      contractType: requestedContractType,
+      timeframe,
+      since,
+      until,
+      limit,
+    })
+  }
 
-  return NextResponse.json(rows.map((row) => ({
+  const response = NextResponse.json(rows.map((row) => ({
     time: row.open_time,
     open: row.open,
     high: row.high,
@@ -51,4 +60,13 @@ export async function GET(request: NextRequest) {
     tradeCount: row.trade_count,
     isClosed: true,
   })))
+
+  const untilParam = searchParams.get('until')
+  const isPastRange = untilParam !== null && Number(untilParam) < Math.floor(Date.now() / 1000) - 3600
+  response.headers.set(
+    'Cache-Control',
+    isPastRange ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-store'
+  )
+
+  return response
 }

@@ -24,7 +24,7 @@ export function useFeedAggregation(
   // --- Engine refs ---
   const connectedRef = useRef(false);
   const bucketSizeRef = useRef(bucketSize);
-  const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize));
+  const engineRef = useRef<AggregationEngine>(new AggregationEngine(bucketSize, 15000));
   const aggregationWorkerClient = useMemo(() => new AggregationWorkerClient(), []);
   const heatmapWorkerClient = useMemo(() => new HeatmapWorkerClient(), []);
   const volumeProfileEngineRef = useRef(new RawTradeVolumeProfileEngine());
