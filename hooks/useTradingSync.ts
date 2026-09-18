@@ -136,16 +136,23 @@ export function useTradingSync() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'candle') {
-            void fetchMT5Candles(activePanelId, pair, timeframe);
-            if (data.bid != null && data.ask != null) {
-              useChartRuntimeStore.getState().setMt5Quotes(activePanelId, data.bid, data.ask);
+            if (data.candle) {
+              useChartRuntimeStore.getState().pushMt5LiveCandle(
+                activePanelId,
+                data.candle,
+                data.previousCandle,
+                data.bid,
+                data.ask
+              );
+            } else if (data.bid != null || data.ask != null) {
+              useChartRuntimeStore.getState().setMt5Quotes(activePanelId, data.bid ?? null, data.ask ?? null);
             }
           } else if (data.type === 'account') {
             if (Array.isArray(data.positions)) {
               useChartRuntimeStore.getState().syncMT5Positions(data.positions);
             }
-            if (data.bid != null && data.ask != null) {
-              useChartRuntimeStore.getState().setMt5Quotes(activePanelId, data.bid, data.ask);
+            if (data.bid != null || data.ask != null) {
+              useChartRuntimeStore.getState().setMt5Quotes(activePanelId, data.bid ?? null, data.ask ?? null);
             }
           }
         } catch {
@@ -156,12 +163,12 @@ export function useTradingSync() {
       // EventSource fallback
     }
 
-    // Fast poll for live candles strictly while in Mode 4 and bridge is connected
+    // Safety fallback poll for MT5 candles (e.g. gap filling or if SSE dropped)
     const intervalId = setInterval(() => {
       if (!mounted) return;
       if (useChartRuntimeStore.getState().tradingStatus.mt5BridgeStatus !== 'connected') return;
       void fetchMT5Candles(activePanelId, pair, timeframe);
-    }, 150);
+    }, 1000);
 
     return () => {
       mounted = false;

@@ -46,8 +46,8 @@ int OnInit()
       g_bridgeUrl = StringSubstr(g_bridgeUrl, 0, StringLen(g_bridgeUrl)-1);
      }
 
-   EventSetMillisecondTimer(100);
-   Print("MarketOrderEA initialized. Polling ", g_bridgeUrl, " at 100ms");
+   EventSetMillisecondTimer(50);
+   Print("MarketOrderEA initialized. Polling ", g_bridgeUrl, " at 50ms");
    return(INIT_SUCCEEDED);
   }
 
@@ -129,10 +129,24 @@ void ReportResult(string reqId, string status, ulong ticket = 0, double fillPric
    
    ResetLastError();
    string headers = "Content-Type: application/json\r\n";
-   int res = WebRequest("POST", url, headers, 1000, postData, result, resultHeaders);
+   int res = WebRequest("POST", url, headers, 100, postData, result, resultHeaders);
    if(res == -1)
      {
       Print("Failed to report result for ", reqId, " error: ", GetLastError());
+     }
+  }
+
+void CheckForPendingOrders();
+
+//+------------------------------------------------------------------+
+//| Expert tick function (instant order pickup on price ticks)       |
+//+------------------------------------------------------------------+
+void OnTick()
+  {
+   CheckForPendingOrders();
+   if(g_viewActive)
+     {
+      SendLiveCandleDelta();
      }
   }
 
@@ -145,41 +159,50 @@ void OnTimer()
   {
    g_timerTicks++;
    
-   // Periodic account snapshot: fast ~300ms if positions open, otherwise ~5 seconds (50 * 100ms)
-   if((PositionsTotal() > 0 && g_timerTicks % 3 == 0) || (g_timerTicks % 50 == 0))
+   // 1. Check for pending market orders FIRST (highest priority action)
+   CheckForPendingOrders();
+
+   // Periodic account snapshot: fast ~300ms if positions open, otherwise ~5 seconds (100 * 50ms)
+   if((PositionsTotal() > 0 && g_timerTicks % 6 == 0) || (g_timerTicks % 100 == 0))
      {
       SendAccountUpdate();
      }
 
-   // Poll web view state (symbol/timeframe) every ~2 seconds (20 * 100ms)
-   if(g_timerTicks % 20 == 0)
+   // Poll web view state (symbol/timeframe) every ~2 seconds (40 * 50ms)
+   if(g_timerTicks % 40 == 0)
      {
       CheckForViewSync();
      }
 
    // Modifications and closes polled alternatively (~400ms)
-   if(g_timerTicks % 4 == 0)
+   if(g_timerTicks % 8 == 0)
      {
       CheckForPendingModifications();
      }
-   else if(g_timerTicks % 4 == 2)
+   else if(g_timerTicks % 8 == 4)
      {
       CheckForPendingCloses();
      }
 
-   // Stream live candle delta whenever web app is actively in Mode 4
-   if(g_viewActive)
+   // Stream live candle delta whenever web app is actively in Mode 4 (~100ms)
+   if(g_viewActive && g_timerTicks % 2 == 0)
      {
       SendLiveCandleDelta();
      }
+  }
 
+//+------------------------------------------------------------------+
+//| Check and execute pending market orders                          |
+//+------------------------------------------------------------------+
+void CheckForPendingOrders()
+  {
    char postData[];
    char result[];
    string resultHeaders;
    string url = g_bridgeUrl + "/pending";
    
    ResetLastError();
-   int res = WebRequest("GET", url, NULL, 500, postData, result, resultHeaders);
+   int res = WebRequest("GET", url, NULL, 50, postData, result, resultHeaders);
    
    if(res == -1)
      {
@@ -197,6 +220,7 @@ void OnTimer()
       if(slStr == "") slStr = ExtractJsonValue(json, "slPrice");
       
       if(reqId == "") return;
+
       
       Print("Received order: ", json);
       
@@ -299,7 +323,7 @@ void CheckForPendingModifications()
    string url = g_bridgeUrl + "/poll-modify";
 
    ResetLastError();
-   int res = WebRequest("GET", url, NULL, 500, postData, result, resultHeaders);
+   int res = WebRequest("GET", url, NULL, 50, postData, result, resultHeaders);
 
    if(res != 200) return;
 
@@ -380,7 +404,7 @@ void SendModifyResult(string requestId, bool success, string errorMsg)
 
    ResetLastError();
    string headers = "Content-Type: application/json\r\n";
-   WebRequest("POST", url, headers, 1000, postData, result, resultHeaders);
+   WebRequest("POST", url, headers, 100, postData, result, resultHeaders);
   }
 
 //+------------------------------------------------------------------+
@@ -394,7 +418,7 @@ void CheckForPendingCloses()
    string url = g_bridgeUrl + "/poll-close";
 
    ResetLastError();
-   int res = WebRequest("GET", url, NULL, 500, postData, result, resultHeaders);
+   int res = WebRequest("GET", url, NULL, 50, postData, result, resultHeaders);
 
    if(res != 200) return;
 
@@ -452,7 +476,7 @@ void SendCloseResult(string requestId, bool success, string errorMsg)
 
    ResetLastError();
    string headers = "Content-Type: application/json\r\n";
-   WebRequest("POST", url, headers, 1000, postData, result, resultHeaders);
+   WebRequest("POST", url, headers, 100, postData, result, resultHeaders);
   }
 
 //+------------------------------------------------------------------+
@@ -507,7 +531,7 @@ void SendAccountUpdate()
 
    ResetLastError();
    string headers = "Content-Type: application/json\r\n";
-   WebRequest("POST", g_bridgeUrl + "/account-update", headers, 1000, postData, result, resultHeaders);
+   WebRequest("POST", g_bridgeUrl + "/account-update", headers, 100, postData, result, resultHeaders);
   }
 //+------------------------------------------------------------------+
 //| Parse timeframe string to MT5 timeframe                          |

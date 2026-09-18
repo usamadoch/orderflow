@@ -81,6 +81,7 @@ export interface ChartRuntimeState {
   syncMT5Bridge: () => Promise<boolean>;
   syncMT5Positions: (positions: MT5PositionPayload[]) => void;
   setMt5Candles: (panelId: PanelId, candles: Candle[], bid?: number | null, ask?: number | null) => void;
+  pushMt5LiveCandle: (panelId: PanelId, candle: Candle, previousCandle?: Candle, bid?: number | null, ask?: number | null) => void;
   setMt5Quotes: (panelId: PanelId, bid: number | null, ask: number | null) => void;
   fetchMT5Candles: (panelId: PanelId, symbol?: string, timeframe?: string) => Promise<void>;
   notifyMT5ViewState: (active: boolean, symbol: string, timeframe: string) => Promise<void>;
@@ -612,6 +613,57 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
             mt5Candles: candles,
             ...(bid !== undefined ? { mt5Bid: bid } : {}),
             ...(ask !== undefined ? { mt5Ask: ask } : {}),
+          },
+        },
+      };
+    });
+  },
+
+  pushMt5LiveCandle: (panelId, candle, previousCandle, bid, ask) => {
+    const chartMode = useChartStore.getState().panels[panelId]?.chartMode;
+    if (chartMode !== 'side-by-side') return;
+
+    set((state) => {
+      const panel = state.panels[panelId];
+      if (!panel) return state;
+
+      const existing = [...(panel.mt5Candles || [])];
+
+      if (previousCandle && existing.length > 0) {
+        const prevIdx = existing.findIndex((c) => c.time === previousCandle.time);
+        if (prevIdx >= 0) {
+          existing[prevIdx] = previousCandle;
+        } else {
+          existing.push(previousCandle);
+        }
+      }
+
+      if (candle) {
+        const curIdx = existing.findIndex((c) => c.time === candle.time);
+        if (curIdx >= 0) {
+          existing[curIdx] = candle;
+        } else {
+          existing.push(candle);
+        }
+      }
+
+      existing.sort((a, b) => a.time - b.time);
+      if (existing.length > 500) {
+        existing.splice(0, existing.length - 500);
+      }
+
+      const nextBid = bid !== undefined ? bid : (candle ? candle.close : panel.mt5Bid);
+      const nextAsk = ask !== undefined ? ask : panel.mt5Ask;
+
+      return {
+        panels: {
+          ...state.panels,
+          [panelId]: {
+            ...panel,
+            mt5Candles: existing,
+            mt5Bid: nextBid,
+            mt5Ask: nextAsk,
+            dataVersion: (panel.dataVersion || 0) + 1,
           },
         },
       };

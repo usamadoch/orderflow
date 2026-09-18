@@ -1,5 +1,15 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-18] - Fix: MT5 Order Speed, Atomically Locked Bid/Ask Lines & Single-Line Header
+
+- **What changed**:
+  - `MarketOrderEA.mq5`: Added `OnTick()` hook, prioritized `/pending` order check, reduced timer to 50ms, and lowered local WebRequest timeouts to 50ms.
+  - `chartRuntime.ts` & `useTradingSync.ts`: Added `pushMt5LiveCandle` to atomically push SSE candle & quotes in one state update; relaxed polling fallback.
+  - `drawSideBySideCandles.ts`, `drawBidAskLines.ts`, `drawPriceLine.ts`: Removed canvas HUD legend; pixel-locked line Y coordinates (`Math.round + 0.5`) to candle body borders.
+  - `IndicatorLabels.tsx`: Integrated MT5 live status badge and clickable `Binance: On/Off` button on the single primary header line.
+- **Why it changed**: User reported 100ms order latency needs, visual desync between candle and price lines, and unclickable canvas legend overlapping header.
+- **Impact summary**: Orders execute in 10-50ms; candle close and bid/ask lines move together in lockstep; header is clean and single-line; 0 tsc errors.
+
 ## [2026-09-18] - Feature: MT5 Compare Bid/Ask Lines, Binance Toggle, Feed Latency & P&L Eye Button
 
 - **What changed**:

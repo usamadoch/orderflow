@@ -39,7 +39,7 @@ export function drawBidAskLines(
   // Helper to draw a single horizontal quote line
   const drawLine = (price: number, color: string) => {
     const rawY = priceToY(price);
-    const lineY = Math.floor(rawY) + 0.5;
+    const lineY = Math.round(rawY) + 0.5;
 
     ctx.save();
     ctx.strokeStyle = color;

@@ -135,7 +135,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/fig/FigTooltip.tsx` → Reusable React wrapper for `<fig-tooltip>` custom element supporting contextual hover/click tooltips with explicit position/offset forwarding and no-overlay styling.
 - `components/ui/fig/index.ts` → FigUI3 component barrel export.
 - `components/debug/DebugPanel.tsx` → Floating dev debug panel (Ctrl+Shift+D) displaying metrics, store summaries, and restore diagnostics with FigButton tab navigation.
-- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, reordering controls, and always-visible action icons (settings, remove, hide, reorder) without hover requirement.
+- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, MT5 Compare live status and Binance toggle, reordering controls, and always-visible action icons without hover requirement.
 
 ### Feed / Engine Context
 

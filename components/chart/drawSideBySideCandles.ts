@@ -67,7 +67,6 @@ export function drawSideBySideCandles(
   const slotWidth = Math.max(2, Math.floor(barWidth * 0.40));
   const fullCandleWidth = Math.max(1, Math.floor(barWidth * 0.82));
 
-  let matchedPairsCount = 0;
 
   for (let i = firstIndex; i <= lastIndex; i++) {
     const cWeb = candles[i];
@@ -77,12 +76,11 @@ export function drawSideBySideCandles(
 
     // Normalize Binance candle time to interval to find matching MT5 candle
     const webAlignedTime = Math.round(cWeb.time / intervalSec) * intervalSec;
-    const cMt5 = mt5Map.get(webAlignedTime);
+    const cMt5 = mt5Map.get(webAlignedTime) || (i === candles.length - 1 && mt5Candles.length > 0 ? mt5Candles[mt5Candles.length - 1] : undefined);
 
     // ── Mode A: Binance Disabled (Show MT5 Only, Centered) ───────────────────
     if (!showBinance) {
       if (!cMt5) continue;
-      matchedPairsCount++;
 
       const leftX = Math.round(x - fullCandleWidth / 2);
       const wickX = Math.floor(x) + 0.5;
@@ -162,8 +160,6 @@ export function drawSideBySideCandles(
       continue;
     }
 
-    matchedPairsCount++;
-
     // 1. Draw Left Sub-slot: Binance (Web) Candle
     const webCenterX = x - slotOffset;
     const webLeftX = Math.round(webCenterX - slotWidth / 2);
@@ -223,113 +219,7 @@ export function drawSideBySideCandles(
     }
   }
 
-  // ── 3. Render Subtle Floating HUD Legend in Canvas Top-Left ───────────────
-  if (options?.showLegend !== false && matchedPairsCount > 0) {
-    drawCompareLegend(ctx, webUpBody, webDownBody, mt5UpColor, mt5DownColor, showBinance);
-  }
-
   ctx.restore();
 }
 
-function drawCompareLegend(
-  ctx: CanvasRenderingContext2D,
-  webUp: string,
-  webDown: string,
-  mt5Up: string,
-  mt5Down: string,
-  showBinance: boolean = false
-) {
-  const badgeX = 14;
-  const badgeY = 12;
-  const badgeHeight = 22;
-  const badgeWidth = showBinance ? 290 : 220;
-
-  ctx.save();
-  // Pill background
-  ctx.fillStyle = 'rgba(15, 17, 21, 0.85)';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 5);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.textBaseline = 'middle';
-
-  const midY = badgeY + badgeHeight / 2;
-
-  if (showBinance) {
-    // Binance Feed Dot & Text
-    ctx.fillStyle = webUp;
-    ctx.beginPath();
-    ctx.arc(badgeX + 10, midY, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#94A3B8';
-    ctx.fillText('Binance: Solid', badgeX + 18, midY);
-
-    // Divider
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.beginPath();
-    ctx.moveTo(badgeX + 110, badgeY + 4);
-    ctx.lineTo(badgeX + 110, badgeY + badgeHeight - 4);
-    ctx.stroke();
-
-    // MT5 Feed Hollow Ring & Text
-    ctx.strokeStyle = mt5Up;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(badgeX + 122, midY, 3.5, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = '#94A3B8';
-    ctx.fillText('MT5: Hollow', badgeX + 130, midY);
-
-    // MT5 Bullish chip
-    ctx.fillStyle = mt5Up;
-    ctx.fillText('Bull', badgeX + 210, midY);
-
-    // MT5 Bearish chip
-    ctx.fillStyle = mt5Down;
-    ctx.fillText('Bear', badgeX + 242, midY);
-  } else {
-    // MT5 Feed Hollow Ring & Text (Single chart mode)
-    ctx.strokeStyle = mt5Up;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.arc(badgeX + 12, midY, 3.5, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = '#E2E8F0';
-    ctx.fillText('MT5 Chart', badgeX + 22, midY);
-
-    // Divider
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.beginPath();
-    ctx.moveTo(badgeX + 88, badgeY + 4);
-    ctx.lineTo(badgeX + 88, badgeY + badgeHeight - 4);
-    ctx.stroke();
-
-    // MT5 Bullish chip
-    ctx.fillStyle = mt5Up;
-    ctx.fillText('Bull', badgeX + 98, midY);
-
-    // MT5 Bearish chip
-    ctx.fillStyle = mt5Down;
-    ctx.fillText('Bear', badgeX + 128, midY);
-
-    // Divider
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.beginPath();
-    ctx.moveTo(badgeX + 160, badgeY + 4);
-    ctx.lineTo(badgeX + 160, badgeY + badgeHeight - 4);
-    ctx.stroke();
-
-    ctx.fillStyle = '#64748B';
-    ctx.fillText('Binance: Off', badgeX + 168, midY);
-  }
-
-  ctx.restore();
-}
 

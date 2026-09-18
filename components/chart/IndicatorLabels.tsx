@@ -26,7 +26,9 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
   const setCollapsed = useChartStore(s => s.setIndicatorLabelsCollapsed);
   const panel = useChartStore(s => s.panels[panelId]);
   const setDataSourceMode = useChartStore(s => s.setDataSourceMode);
+  const setMt5CompareShowBinance = useChartStore(s => s.setMt5CompareShowBinance);
   const connected = useChartRuntimeStore(s => s.panels[panelId].connected);
+  const mt5BridgeStatus = useChartRuntimeStore(s => s.tradingStatus.mt5BridgeStatus);
   const contractLabel = panel.contractType === 'futures' ? 'Futures' : 'Spot';
 
   const removeIndicator = useChartStore(s => s.removeIndicator);
@@ -129,6 +131,36 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
                   </FigTooltip>
                 ))}
               </div>
+              {panel.chartMode === 'side-by-side' && (
+                <>
+                  <span className="text-text-dim/70">{'\u00b7'}</span>
+                  <FigTooltip text={mt5BridgeStatus === 'connected' ? 'MT5 Bridge Connected' : 'MT5 Bridge Disconnected'}>
+                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.08] text-[11px]">
+                      <span className="text-cyan-400 font-bold">MT5</span>
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${mt5BridgeStatus === 'connected' ? 'bg-[#00E5FF]' : 'bg-[#EF5350]'}`}
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </FigTooltip>
+                  <span className="text-text-dim/70">{'\u00b7'}</span>
+                  <FigTooltip text={panel.mt5CompareShowBinance ? 'Hide Binance chart (show MT5 centered)' : 'Show Binance chart side-by-side'}>
+                    <FigButton
+                      variant="ghost"
+                      size="small"
+                      onClick={() => setMt5CompareShowBinance(panelId, !panel.mt5CompareShowBinance)}
+                      className={`h-5 px-1.5 text-[11px] font-semibold transition-colors ${
+                        panel.mt5CompareShowBinance
+                          ? 'bg-[#089981]/20 text-[#089981] border border-[#089981]/30 hover:bg-[#089981]/30'
+                          : 'text-[#94A3B8] hover:text-[#E8E8E8] bg-white/[0.03] border border-white/[0.08]'
+                      }`}
+                      aria-pressed={panel.mt5CompareShowBinance}
+                    >
+                      {panel.mt5CompareShowBinance ? 'Binance: On' : 'Binance: Off'}
+                    </FigButton>
+                  </FigTooltip>
+                </>
+              )}
               {isLoading && (
                 <div
                   className="ml-1 flex items-center gap-0.5"

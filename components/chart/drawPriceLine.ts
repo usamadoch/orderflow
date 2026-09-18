@@ -16,7 +16,7 @@ export function drawPriceLine(
   isHovered: boolean = false
 ) {
   const rawY = priceToY(lastCandle.close);
-  const lineY = Math.floor(rawY) + 0.5;
+  const lineY = Math.round(rawY) + 0.5;
   const price = lastCandle.close;
   
   const isBullish = lastCandle.close >= lastCandle.open;
