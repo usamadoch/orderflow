@@ -1064,6 +1064,7 @@ export function ChartCanvas({
             {
               timeframe,
               showBinance: panelState?.mt5CompareShowBinance ?? false,
+              liveBid: currentPanelRuntime.mt5Bid ?? (mt5Candles.length > 0 ? mt5Candles[mt5Candles.length - 1].close : null),
               webColors: {
                 upColor: candleUpColor,
                 upOpacity: candleUpOpacity,
@@ -1755,9 +1756,11 @@ export function ChartCanvas({
         // Draw Price Lines
         if (chartMode === 'side-by-side') {
           // Draw live MT5 Bid & Ask lines
-          const mt5Bid = currentPanelRuntime.mt5Bid ?? (lastCandle ? lastCandle.close - 0.5 : null);
-          const mt5Ask = currentPanelRuntime.mt5Ask ?? (lastCandle ? lastCandle.close + 0.5 : null);
-          drawBidAskLines(ctx, mt5Bid, mt5Ask, priceToY, chartWidth, priceAxisWidth);
+          const lastMt5Candle = mt5Candles.length > 0 ? mt5Candles[mt5Candles.length - 1] : null;
+          const mt5Bid = currentPanelRuntime.mt5Bid ?? lastMt5Candle?.close ?? (lastCandle ? lastCandle.close - 0.5 : null);
+          const mt5Ask = currentPanelRuntime.mt5Ask ?? (lastMt5Candle ? lastMt5Candle.close + 1.0 : (lastCandle ? lastCandle.close + 0.5 : null));
+          const isBidBullish = lastMt5Candle ? (mt5Bid !== null ? mt5Bid >= lastMt5Candle.open : lastMt5Candle.close >= lastMt5Candle.open) : true;
+          drawBidAskLines(ctx, mt5Bid, mt5Ask, priceToY, chartWidth, priceAxisWidth, { isBidBullish });
 
           // Only draw Binance price line if Binance chart is enabled
           if (panelState?.mt5CompareShowBinance && lastCandle) {
@@ -2159,7 +2162,8 @@ export function ChartCanvas({
 
         const prevLength = lastCandlesLengthRef.current;
         const prevFirstTime = firstCandleTimeRef.current;
-        const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
+        const panelRuntime = useChartRuntimeStore.getState().panels[panelId];
+        const candles = panelRuntime?.candles ?? [];
 
         lastCandlesLengthRef.current = candles.length;
         firstCandleTimeRef.current = candles.length > 0 ? candles[0].time : null;
@@ -2167,7 +2171,26 @@ export function ChartCanvas({
         if (prevLength > 0 && candles.length > 0) {
           // If we just appended one candle or updated the last candle
           if ((candles.length === prevLength || candles.length === prevLength + 1) && candles[0].time === prevFirstTime) {
+            const vp = panelRuntime?.viewportPrice;
+            const currentPrice = chartMode === 'side-by-side'
+              ? (panelRuntime?.mt5Bid ?? candles[candles.length - 1]?.close)
+              : candles[candles.length - 1]?.close;
+
+            if (vp && currentPrice != null && Number.isFinite(currentPrice)) {
+              if (currentPrice < vp.priceMin || currentPrice > vp.priceMax) {
+                redraw('all');
+                return;
+              }
+            }
+
+            if (chartMode === 'side-by-side') {
+              redraw('live');
+              redraw('overlay');
+              return;
+            }
+
             redraw('live-dirty');
+            redraw('overlay');
             return;
           }
         }
@@ -2175,7 +2198,7 @@ export function ChartCanvas({
       }
     );
     return () => unsubscribe();
-  }, [panelId, redraw]);
+  }, [panelId, chartMode, redraw]);
 
   useEffect(() => {
     redraw('all');
@@ -2271,6 +2294,7 @@ export function ChartCanvas({
   useEffect(() => {
     const timer = setInterval(() => {
       redraw('background');
+      redraw('overlay');
     }, 1000);
     return () => clearInterval(timer);
   }, [redraw]);

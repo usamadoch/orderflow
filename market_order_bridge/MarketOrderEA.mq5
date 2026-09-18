@@ -660,6 +660,14 @@ void SendLiveCandleDelta()
    double bid = SymbolInfoDouble(g_viewSymbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(g_viewSymbol, SYMBOL_ASK);
 
+   // Strictly synchronize forming candle close with current live Bid
+   if(bid > 0)
+     {
+      rates[0].close = bid;
+      if(bid > rates[0].high) rates[0].high = bid;
+      if(bid < rates[0].low) rates[0].low = bid;
+     }
+
    // Skip if forming candle and quotes haven't changed
    if(rates[0].time == g_lastLiveCandleTime && 
       rates[0].close == g_lastLiveCandleClose && 

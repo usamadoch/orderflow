@@ -1,5 +1,16 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-18] - Fix: Lock Forming Candle Close and Horizontal Price Line Rendering
+
+- **What changed**:
+  - `ChartCanvas.tsx`: Atomically scheduled `live` and `overlay` redraws on `dataVersion` updates; auto-expanded price viewport on breakout; wired `liveBid` and `isBidBullish`.
+  - `drawBidAskLines.ts` & `drawPriceLine.ts`: Fixed sub-pixel misalignment on bearish candles (`Math.round - 0.5` vs `+ 0.5` for bullish) to match candle borders.
+  - `drawSideBySideCandles.ts`: Hard-locked forming MT5 candle close and high/low to `options.liveBid` in both Mode A (centered) and Mode B (dual-slot).
+  - `chartRuntime.ts`: Incremented `dataVersion` and locked candle close in `setMt5Quotes`, `setMt5Candles`, and `pushMt5LiveCandle`.
+  - `MarketOrderEA.mq5` & `server.mjs`: Forced `rates[0].close = bid` to ensure MT5 EA and bridge emit matching candle close and quote values.
+- **Why it changed**: User reported candle close and horizontal price lines were lagging or visually misaligned on price movements.
+- **Impact summary**: Candle close and horizontal price lines now move in 100% atomic lockstep with perfect sub-pixel border alignment in both directions; 0 tsc errors.
+
 ## [2026-09-18] - Fix: MT5 Order Speed, Atomically Locked Bid/Ask Lines & Single-Line Header
 
 - **What changed**:

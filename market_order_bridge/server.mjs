@@ -457,8 +457,21 @@ const server = http.createServer((req, res) => {
         }
       }
 
+      if (body.bid != null && Number.isFinite(Number(body.bid))) {
+        liveQuotes.bid = Number(body.bid);
+      }
+      if (body.ask != null && Number.isFinite(Number(body.ask))) {
+        liveQuotes.ask = Number(body.ask);
+      }
+      liveQuotes.lastUpdated = Date.now();
+
       const normCur = normalizeCandle(candle);
       if (normCur) {
+        if (liveQuotes.bid != null && Number.isFinite(liveQuotes.bid)) {
+          normCur.close = liveQuotes.bid;
+          if (liveQuotes.bid > normCur.high) normCur.high = liveQuotes.bid;
+          if (liveQuotes.bid < normCur.low) normCur.low = liveQuotes.bid;
+        }
         const curIdx = list.findIndex(c => c.time === normCur.time);
         if (curIdx >= 0) {
           list[curIdx] = normCur;
@@ -472,14 +485,6 @@ const server = http.createServer((req, res) => {
         list = list.slice(-MAX_CACHED_BARS);
       }
       candleCache.set(key, list);
-
-      if (body.bid != null && Number.isFinite(Number(body.bid))) {
-        liveQuotes.bid = Number(body.bid);
-      }
-      if (body.ask != null && Number.isFinite(Number(body.ask))) {
-        liveQuotes.ask = Number(body.ask);
-      }
-      liveQuotes.lastUpdated = Date.now();
 
       broadcastSSE('candle', {
         symbol,

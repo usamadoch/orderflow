@@ -11,6 +11,7 @@ export interface SideBySideOptions {
   mt5Opacity?: number;
   showLegend?: boolean;
   showBinance?: boolean;
+  liveBid?: number | null;
 }
 
 
@@ -85,15 +86,22 @@ export function drawSideBySideCandles(
       const leftX = Math.round(x - fullCandleWidth / 2);
       const wickX = Math.floor(x) + 0.5;
 
-      const isMt5Bullish = cMt5.close >= cMt5.open;
+      const isLatest = i === candles.length - 1 || i === lastIndex;
+      const mt5ClosePrice = (isLatest && options?.liveBid != null && Number.isFinite(options.liveBid))
+        ? options.liveBid
+        : cMt5.close;
+      const mt5HighPrice = Math.max(cMt5.high, mt5ClosePrice);
+      const mt5LowPrice = Math.min(cMt5.low, mt5ClosePrice);
+
+      const isMt5Bullish = mt5ClosePrice >= cMt5.open;
       const mt5Color = isMt5Bullish ? mt5UpColor : mt5DownColor;
       const mt5HollowFillRgba = chartColorToRgba(mt5Color, Math.min(0.15, mt5Opacity * 0.1));
       const mt5BorderRgba = chartColorToRgba(mt5Color, 1.0);
 
       const mt5OpenY = priceToY(cMt5.open);
-      const mt5CloseY = priceToY(cMt5.close);
-      const mt5HighY = priceToY(cMt5.high);
-      const mt5LowY = priceToY(cMt5.low);
+      const mt5CloseY = priceToY(mt5ClosePrice);
+      const mt5HighY = priceToY(mt5HighPrice);
+      const mt5LowY = priceToY(mt5LowPrice);
 
       const mt5TopY = Math.round(Math.min(mt5OpenY, mt5CloseY));
       const mt5BottomY = Math.round(Math.max(mt5OpenY, mt5CloseY));
@@ -182,15 +190,22 @@ export function drawSideBySideCandles(
     const mt5LeftX = Math.round(mt5CenterX - slotWidth / 2);
     const mt5WickX = Math.floor(mt5CenterX) + 0.5;
 
-    const isMt5Bullish = cMt5.close >= cMt5.open;
+    const isLatest = i === candles.length - 1 || i === lastIndex;
+    const mt5ClosePrice = (isLatest && options?.liveBid != null && Number.isFinite(options.liveBid))
+      ? options.liveBid
+      : cMt5.close;
+    const mt5HighPrice = Math.max(cMt5.high, mt5ClosePrice);
+    const mt5LowPrice = Math.min(cMt5.low, mt5ClosePrice);
+
+    const isMt5Bullish = mt5ClosePrice >= cMt5.open;
     const mt5Color = isMt5Bullish ? mt5UpColor : mt5DownColor;
     const mt5HollowFillRgba = chartColorToRgba(mt5Color, Math.min(0.15, mt5Opacity * 0.1));
     const mt5BorderRgba = chartColorToRgba(mt5Color, 1.0);
 
     const mt5OpenY = priceToY(cMt5.open);
-    const mt5CloseY = priceToY(cMt5.close);
-    const mt5HighY = priceToY(cMt5.high);
-    const mt5LowY = priceToY(cMt5.low);
+    const mt5CloseY = priceToY(mt5ClosePrice);
+    const mt5HighY = priceToY(mt5HighPrice);
+    const mt5LowY = priceToY(mt5LowPrice);
 
     const mt5TopY = Math.round(Math.min(mt5OpenY, mt5CloseY));
     const mt5BottomY = Math.round(Math.max(mt5OpenY, mt5CloseY));

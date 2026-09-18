@@ -16,10 +16,10 @@ export function drawPriceLine(
   isHovered: boolean = false
 ) {
   const rawY = priceToY(lastCandle.close);
-  const lineY = Math.round(rawY) + 0.5;
-  const price = lastCandle.close;
-  
   const isBullish = lastCandle.close >= lastCandle.open;
+  // Bullish candle close border is at top (round + 0.5); bearish candle close border is at bottom (round - 0.5)
+  const lineY = isBullish ? Math.round(rawY) + 0.5 : Math.round(rawY) - 0.5;
+  const price = lastCandle.close;
   const color = isBullish ? CHART_BULLISH_COLOR : CHART_BEARISH_COLOR;
 
   // 1. Draw Horizontal Line across the chart area (half-pixel offset for crisp 1px stroke)

@@ -12,6 +12,7 @@ export interface BidAskLinesOptions {
   lineDash?: number[];
   alpha?: number;
   showBadges?: boolean;
+  isBidBullish?: boolean;
 }
 
 /**
@@ -33,13 +34,15 @@ export function drawBidAskLines(
   const lineDash = options?.lineDash ?? [4, 3];
   const alpha = options?.alpha ?? 0.88;
   const showBadges = options?.showBadges !== false;
+  const isBidBullish = options?.isBidBullish ?? true;
 
   ctx.save();
 
   // Helper to draw a single horizontal quote line
-  const drawLine = (price: number, color: string) => {
+  const drawLine = (price: number, color: string, isBullish: boolean = true) => {
     const rawY = priceToY(price);
-    const lineY = Math.round(rawY) + 0.5;
+    // Bullish candle close border is at top (round + 0.5); bearish candle close border is at bottom (round - 0.5)
+    const lineY = isBullish ? Math.round(rawY) + 0.5 : Math.round(rawY) - 0.5;
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -84,13 +87,13 @@ export function drawBidAskLines(
 
   // 1. Draw Ask Line (Higher price)
   if (ask != null && Number.isFinite(ask) && ask > 0) {
-    drawLine(ask, askColor);
+    drawLine(ask, askColor, true);
     drawBadge(ask, 'ASK', askColor, '#FFFFFF');
   }
 
-  // 2. Draw Bid Line (Lower price)
+  // 2. Draw Bid Line (Lower price, sub-pixel locked to candle close border)
   if (bid != null && Number.isFinite(bid) && bid > 0) {
-    drawLine(bid, bidColor);
+    drawLine(bid, bidColor, isBidBullish);
     drawBadge(bid, 'BID', bidColor, '#0A0E17');
   }
 

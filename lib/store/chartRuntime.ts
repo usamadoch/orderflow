@@ -605,14 +605,29 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
     set((state) => {
       const panel = state.panels[panelId];
       if (!panel) return state;
+
+      const candleList = [...candles];
+      const nextBid = bid !== undefined ? bid : panel.mt5Bid;
+      const nextAsk = ask !== undefined ? ask : panel.mt5Ask;
+
+      if (nextBid != null && Number.isFinite(nextBid) && candleList.length > 0) {
+        const lastIdx = candleList.length - 1;
+        const last = { ...candleList[lastIdx] };
+        last.close = nextBid;
+        if (nextBid > last.high) last.high = nextBid;
+        if (nextBid < last.low) last.low = nextBid;
+        candleList[lastIdx] = last;
+      }
+
       return {
         panels: {
           ...state.panels,
           [panelId]: {
             ...panel,
-            mt5Candles: candles,
-            ...(bid !== undefined ? { mt5Bid: bid } : {}),
-            ...(ask !== undefined ? { mt5Ask: ask } : {}),
+            mt5Candles: candleList,
+            mt5Bid: nextBid,
+            mt5Ask: nextAsk,
+            dataVersion: (panel.dataVersion || 0) + 1,
           },
         },
       };
@@ -638,12 +653,24 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
         }
       }
 
+      const nextBid = bid !== undefined ? bid : (candle ? candle.close : panel.mt5Bid);
+      const nextAsk = ask !== undefined ? ask : panel.mt5Ask;
+
       if (candle) {
-        const curIdx = existing.findIndex((c) => c.time === candle.time);
+        let liveCandle = candle;
+        if (nextBid != null && Number.isFinite(nextBid)) {
+          liveCandle = {
+            ...candle,
+            close: nextBid,
+            high: Math.max(candle.high, nextBid),
+            low: Math.min(candle.low, nextBid),
+          };
+        }
+        const curIdx = existing.findIndex((c) => c.time === liveCandle.time);
         if (curIdx >= 0) {
-          existing[curIdx] = candle;
+          existing[curIdx] = liveCandle;
         } else {
-          existing.push(candle);
+          existing.push(liveCandle);
         }
       }
 
@@ -651,9 +678,6 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
       if (existing.length > 500) {
         existing.splice(0, existing.length - 500);
       }
-
-      const nextBid = bid !== undefined ? bid : (candle ? candle.close : panel.mt5Bid);
-      const nextAsk = ask !== undefined ? ask : panel.mt5Ask;
 
       return {
         panels: {
@@ -671,16 +695,32 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
   },
 
   setMt5Quotes: (panelId, bid, ask) => {
+    const chartMode = useChartStore.getState().panels[panelId]?.chartMode;
+    if (chartMode !== 'side-by-side') return;
+
     set((state) => {
       const panel = state.panels[panelId];
       if (!panel) return state;
+
+      const existing = [...(panel.mt5Candles || [])];
+      if (bid != null && Number.isFinite(bid) && existing.length > 0) {
+        const lastIdx = existing.length - 1;
+        const last = { ...existing[lastIdx] };
+        last.close = bid;
+        if (bid > last.high) last.high = bid;
+        if (bid < last.low) last.low = bid;
+        existing[lastIdx] = last;
+      }
+
       return {
         panels: {
           ...state.panels,
           [panelId]: {
             ...panel,
+            mt5Candles: existing,
             mt5Bid: bid,
             mt5Ask: ask,
+            dataVersion: (panel.dataVersion || 0) + 1,
           },
         },
       };
