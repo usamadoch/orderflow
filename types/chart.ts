@@ -311,6 +311,8 @@ export interface PanelState {
   pair: string;
   timeframe: string;
   chartMode: ChartMode;
+  mt5CompareShowBinance?: boolean;
+  showPositionPnl?: boolean;
   footprintMode: FootprintMode;
   bucketSize: number;
   autoBucketSize: boolean;
@@ -514,6 +516,8 @@ export interface PanelRuntimeState {
   refreshKey: number;
   dataVersion: number;
   mt5Candles: Candle[];
+  mt5Bid: number | null;
+  mt5Ask: number | null;
   orderbookResyncCount: number;
   viewportPrice: { priceMin: number; priceMax: number; priceCenter: number; priceRange: number } | null;
 }

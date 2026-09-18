@@ -73,6 +73,81 @@ function drawOrderLabelRight(
   ctx.fillText(text, x + 8, y, width - 14);
 }
 
+function drawPositionLabelWithEye(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  rightX: number,
+  y: number,
+  color: string,
+  showPnl: boolean,
+  minLeft = 10,
+): { eyeBox: { x: number; y: number; w: number; h: number } } {
+  ctx.font = LABEL_FONT;
+  const textWidth = Math.ceil(ctx.measureText(text).width);
+  const eyeWidth = 18;
+  const eyeHeight = 18;
+  const paddingX = 8;
+  const gap = 6;
+  const totalWidth = textWidth + paddingX * 2 + gap + eyeWidth;
+  const x = Math.max(minLeft, rightX - totalWidth);
+  const width = rightX - x;
+  const height = 20;
+  const labelY = y - height / 2;
+
+  // Box background & border
+  ctx.fillStyle   = 'rgba(15,15,15,0.92)';
+  ctx.strokeStyle = chartColorToRgba(color, 0.65);
+  ctx.lineWidth   = 1;
+  drawRoundedRect(ctx, x, labelY, width, height, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  // Position text
+  ctx.fillStyle    = '#E8E8E8';
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + paddingX, y, width - paddingX * 2 - eyeWidth - gap);
+
+  // Eye icon button on the right side of the box
+  const eyeX = Math.round(rightX - eyeWidth - 4);
+  const eyeY = Math.round(y - eyeHeight / 2);
+  const eyeCenter = { x: eyeX + eyeWidth / 2, y: eyeY + eyeHeight / 2 };
+
+  ctx.save();
+  // Eye icon subtle pill background
+  ctx.fillStyle = showPnl ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.04)';
+  drawRoundedRect(ctx, eyeX, eyeY, eyeWidth, eyeHeight, 2.5);
+  ctx.fill();
+
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = showPnl ? '#94A3B8' : '#64748B';
+  ctx.fillStyle = showPnl ? '#94A3B8' : '#64748B';
+
+  if (showPnl) {
+    // Open Eye: eyelid ellipse + pupil
+    ctx.beginPath();
+    ctx.ellipse(eyeCenter.x, eyeCenter.y, 4.5, 2.8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(eyeCenter.x, eyeCenter.y, 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Closed / Slashed Eye: eyelid + diagonal slash line
+    ctx.beginPath();
+    ctx.ellipse(eyeCenter.x, eyeCenter.y, 4.5, 2.8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(eyeCenter.x - 4.5, eyeCenter.y - 4.5);
+    ctx.lineTo(eyeCenter.x + 4.5, eyeCenter.y + 4.5);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  return { eyeBox: { x: eyeX - 2, y: eyeY - 2, w: eyeWidth + 4, h: eyeHeight + 4 } };
+}
+
 // ─── Price-axis badge (right edge) ───────────────────────────────────────────
 
 function drawPriceBadge(
@@ -226,6 +301,8 @@ export interface TradingOverlayHitZones {
   slHandles: Map<string, { x: number; y: number; w: number; h: number }>;
   /** TP handle bounding boxes: map from positionId → box */
   tpHandles: Map<string, { x: number; y: number; w: number; h: number }>;
+  /** Eye toggle bounding boxes: map from positionId → box */
+  pnlEyeHandles: Map<string, { x: number; y: number; w: number; h: number }>;
 }
 
 // ─── Main draw entry point ────────────────────────────────────────────────────
@@ -246,12 +323,14 @@ export function drawTradingOverlays(
   dragPreview?: { orderId: string; price: number } | null,
   bracketDrag?: BracketDragState | null,
   marketOrderDrag?: MarketOrderDragState | null,
+  options?: { showPositionPnl?: boolean }
 ): TradingOverlayHitZones {
   ctx.save();
 
   const hitZones: TradingOverlayHitZones = {
     slHandles: new Map(),
     tpHandles: new Map(),
+    pnlEyeHandles: new Map(),
   };
 
   // ── 1. Recent fill markers ─────────────────────────────────────────────────
@@ -381,13 +460,22 @@ export function drawTradingOverlays(
       curX -= 4;
     }
 
-    // PnL text
-    const pnlStr = Number.isFinite(vp.unrealizedPnl)
-      ? ` ${vp.unrealizedPnl! >= 0 ? '+' : ''}${vp.unrealizedPnl!.toFixed(2)} USDT`
-      : '';
+    // PnL text with currency awareness & eye button toggle
+    const showPnl = options?.showPositionPnl ?? true;
+    const isMt5 = /^\d+$/.test(vp.id);
+    const currency = isMt5 ? 'USD' : 'USDT';
+
+    let pnlStr = '';
+    if (showPnl && Number.isFinite(vp.unrealizedPnl)) {
+      pnlStr = ` ${vp.unrealizedPnl! >= 0 ? '+' : ''}${vp.unrealizedPnl!.toFixed(2)} ${currency}`;
+    } else if (!showPnl) {
+      pnlStr = ' ***';
+    }
+
     const sideStr  = isLong ? 'LONG' : 'SHORT';
     const entryStr = `${sideStr}  ${formatVol(vp.quantity)} @ ${formatPrice(vp.entryPrice)}${pnlStr}`;
-    drawOrderLabelRight(ctx, entryStr, curX - 4, y, color);
+    const { eyeBox } = drawPositionLabelWithEye(ctx, entryStr, curX - 4, y, color, showPnl);
+    hitZones.pnlEyeHandles.set(vp.id, eyeBox);
     drawPriceBadge(ctx, vp.entryPrice, y, color, chartWidth);
 
     // Liquidation line (Futures only)

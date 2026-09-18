@@ -37,6 +37,25 @@ let activeViewState = {
   count: 200,
   lastUpdated: 0
 };
+let liveQuotes = {
+  bid: null,
+  ask: null,
+  lastUpdated: 0
+};
+
+// SSE streaming clients
+const sseClients = new Set();
+function broadcastSSE(type, data) {
+  if (sseClients.size === 0) return;
+  const payload = `data: ${JSON.stringify({ type, ...data })}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(payload);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
 
 const server = http.createServer((req, res) => {
   // CORS & Cache headers
@@ -73,6 +92,21 @@ const server = http.createServer((req, res) => {
 
     // --- CONNECTION & STATUS ---
 
+    if (req.method === 'GET' && req.url === '/mt5-stream') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.write(`data: ${JSON.stringify({ type: 'connected', bid: liveQuotes.bid, ask: liveQuotes.ask, ...mt5Account })}\n\n`);
+      sseClients.add(res);
+      req.on('close', () => {
+        sseClients.delete(res);
+      });
+      return;
+    }
+
     if (req.method === 'POST' && req.url === '/account-update') {
       lastMt5Heartbeat = Date.now();
       if (body) {
@@ -84,6 +118,14 @@ const server = http.createServer((req, res) => {
           pnl: body.pnl || 0,
           positions: Array.isArray(body.positions) ? body.positions : []
         };
+        if (body.bid != null && Number.isFinite(Number(body.bid))) {
+          liveQuotes.bid = Number(body.bid);
+        }
+        if (body.ask != null && Number.isFinite(Number(body.ask))) {
+          liveQuotes.ask = Number(body.ask);
+        }
+        liveQuotes.lastUpdated = Date.now();
+        broadcastSSE('account', { ...mt5Account, bid: liveQuotes.bid, ask: liveQuotes.ask });
       }
       return respondJson(200, { success: true });
     }
@@ -93,6 +135,8 @@ const server = http.createServer((req, res) => {
       const isConnected = (Date.now() - lastMt5Heartbeat) < 5000; // 5 seconds timeout
       return respondJson(200, {
         connected: isConnected,
+        bid: liveQuotes.bid,
+        ask: liveQuotes.ask,
         ...mt5Account
       });
     }
@@ -428,6 +472,24 @@ const server = http.createServer((req, res) => {
         list = list.slice(-MAX_CACHED_BARS);
       }
       candleCache.set(key, list);
+
+      if (body.bid != null && Number.isFinite(Number(body.bid))) {
+        liveQuotes.bid = Number(body.bid);
+      }
+      if (body.ask != null && Number.isFinite(Number(body.ask))) {
+        liveQuotes.ask = Number(body.ask);
+      }
+      liveQuotes.lastUpdated = Date.now();
+
+      broadcastSSE('candle', {
+        symbol,
+        timeframe,
+        candle: normCur,
+        previousCandle: normPrev,
+        bid: liveQuotes.bid,
+        ask: liveQuotes.ask
+      });
+
       return respondJson(200, { success: true });
     }
 
@@ -446,6 +508,8 @@ const server = http.createServer((req, res) => {
         symbol,
         timeframe,
         active: activeViewState.active,
+        bid: liveQuotes.bid,
+        ask: liveQuotes.ask,
         candles
       });
     }
@@ -457,6 +521,9 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[BRIDGE] Server listening on http://localhost:${PORT} and http://127.0.0.1:${PORT}`);
+  server.on('connection', (socket) => {
+    socket.setNoDelay(true);
+  });
   
   // Log connection state transitions so the user knows what's going on
   setInterval(() => {

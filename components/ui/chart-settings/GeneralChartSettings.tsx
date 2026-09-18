@@ -26,6 +26,9 @@ export const GeneralChartSettings = forwardRef<HTMLDivElement, GeneralChartSetti
   const bracketDragConfirmEnabled = useChartStore(s => s.bracketDragConfirmEnabled);
   const setBracketDragConfirmEnabled = useChartStore(s => s.setBracketDragConfirmEnabled);
 
+  const setMt5CompareShowBinance = useChartStore(s => s.setMt5CompareShowBinance);
+  const setShowPositionPnl = useChartStore(s => s.setShowPositionPnl);
+
   // Time update for Global Time display
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -130,6 +133,48 @@ export const GeneralChartSettings = forwardRef<HTMLDivElement, GeneralChartSetti
               checked={bracketDragConfirmEnabled}
               onChange={(checked) => setBracketDragConfirmEnabled(checked)}
               aria-label="TP / SL Drag Confirmation"
+            />
+          </div>
+        </div>
+
+        {/* Position P&L Display */}
+        <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+          <div>
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Show Position P&L</label>
+            <div className="text-[9px] text-text-dim/40 font-medium">Display floating unrealized profit/loss on active position entry lines</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
+              {(panel.showPositionPnl ?? true) ? 'Enabled' : 'Disabled'}
+            </span>
+            <FigSwitch
+              checked={panel.showPositionPnl ?? true}
+              onChange={(checked) => setShowPositionPnl(panelId, checked)}
+              aria-label="Show Position P&L"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* MT5 Compare Chart Mode */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] font-black text-text-dim/50 uppercase tracking-[0.2em]">MT5 Compare Mode</div>
+        </div>
+
+        <div className="flex items-center justify-between bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+          <div>
+            <label className="text-[11px] font-bold text-text-dim uppercase tracking-wide">Show Binance in MT5 Compare</label>
+            <div className="text-[9px] text-text-dim/40 font-medium">Display Binance candles side-by-side with MT5. When disabled, only MT5 candles and live Bid/Ask lines are shown.</div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] text-text-dim/40 font-black uppercase tracking-tighter">
+              {(panel.mt5CompareShowBinance ?? false) ? 'Enabled' : 'Disabled'}
+            </span>
+            <FigSwitch
+              checked={panel.mt5CompareShowBinance ?? false}
+              onChange={(checked) => setMt5CompareShowBinance(panelId, checked)}
+              aria-label="Show Binance in MT5 Compare"
             />
           </div>
         </div>

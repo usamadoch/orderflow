@@ -87,15 +87,26 @@ export function useTradingSync() {
 
     const intervalId = setInterval(() => {
       void doSync();
-    }, 2000);
+    }, 1000);
+
+    // Ultra-fast 250ms polling when open MT5 positions exist to keep PnL live
+    const fastPosIntervalId = setInterval(() => {
+      const hasOpenMt5 = useChartRuntimeStore.getState().tradingStatus.virtualPositions.some(
+        (p) => p.status === 'open' && /^\d+$/.test(p.id)
+      );
+      if (hasOpenMt5) {
+        void doSync();
+      }
+    }, 250);
 
     return () => {
       mounted = false;
       clearInterval(intervalId);
+      clearInterval(fastPosIntervalId);
     };
   }, [mt5BridgeStatus, syncMT5Bridge]);
 
-  // MT5 Mode 4 (Side-by-Side) reverse-channel view state & candle sync
+  // MT5 Mode 4 (Side-by-Side) reverse-channel view state, SSE stream & candle sync
   useEffect(() => {
     let mounted = true;
     const isMode4 = chartMode === 'side-by-side';
@@ -116,16 +127,48 @@ export function useTradingSync() {
     // Initial fetch of MT5 candles
     void fetchMT5Candles(activePanelId, pair, timeframe);
 
+    // Connect to Server-Sent Events (SSE) for instant push updates from the bridge
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('http://localhost:3001/mt5-stream');
+      eventSource.onmessage = (event) => {
+        if (!mounted) return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'candle') {
+            void fetchMT5Candles(activePanelId, pair, timeframe);
+            if (data.bid != null && data.ask != null) {
+              useChartRuntimeStore.getState().setMt5Quotes(activePanelId, data.bid, data.ask);
+            }
+          } else if (data.type === 'account') {
+            if (Array.isArray(data.positions)) {
+              useChartRuntimeStore.getState().syncMT5Positions(data.positions);
+            }
+            if (data.bid != null && data.ask != null) {
+              useChartRuntimeStore.getState().setMt5Quotes(activePanelId, data.bid, data.ask);
+            }
+          }
+        } catch {
+          // ignore parsing error
+        }
+      };
+    } catch {
+      // EventSource fallback
+    }
+
     // Fast poll for live candles strictly while in Mode 4 and bridge is connected
     const intervalId = setInterval(() => {
       if (!mounted) return;
       if (useChartRuntimeStore.getState().tradingStatus.mt5BridgeStatus !== 'connected') return;
       void fetchMT5Candles(activePanelId, pair, timeframe);
-    }, 200);
+    }, 150);
 
     return () => {
       mounted = false;
       clearInterval(intervalId);
+      if (eventSource) {
+        eventSource.close();
+      }
     };
   }, [chartMode, timeframe, pair, activePanelId, fetchMT5Candles, notifyMT5ViewState]);
 }

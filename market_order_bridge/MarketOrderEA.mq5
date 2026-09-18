@@ -22,6 +22,8 @@ bool             g_isCandleReqActive     = false;
 datetime         g_lastLiveCandleTime    = 0;
 double           g_lastLiveCandleClose   = 0;
 ulong            g_lastLiveCandleTickVol = 0;
+double           g_lastLiveBid           = 0;
+double           g_lastLiveAsk           = 0;
 
 void SendAccountUpdate();
 void CheckForViewSync();
@@ -143,8 +145,8 @@ void OnTimer()
   {
    g_timerTicks++;
    
-   // Periodic account snapshot every ~5 seconds (50 * 100ms)
-   if(g_timerTicks % 50 == 0)
+   // Periodic account snapshot: fast ~300ms if positions open, otherwise ~5 seconds (50 * 100ms)
+   if((PositionsTotal() > 0 && g_timerTicks % 3 == 0) || (g_timerTicks % 50 == 0))
      {
       SendAccountUpdate();
      }
@@ -489,7 +491,12 @@ void SendAccountUpdate()
         }
      }
 
-   json += "]}";
+   json += "]";
+   double curBid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double curAsk = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   json += ",\"bid\":" + DoubleToString(curBid, _Digits);
+   json += ",\"ask\":" + DoubleToString(curAsk, _Digits);
+   json += "}";
 
    char postData[];
    char result[];
@@ -626,10 +633,15 @@ void SendLiveCandleDelta()
    int copied = CopyRates(g_viewSymbol, g_viewTf, 0, 2, rates);
    if(copied <= 0) return;
    
-   // Skip if forming candle hasn't changed
+   double bid = SymbolInfoDouble(g_viewSymbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(g_viewSymbol, SYMBOL_ASK);
+
+   // Skip if forming candle and quotes haven't changed
    if(rates[0].time == g_lastLiveCandleTime && 
       rates[0].close == g_lastLiveCandleClose && 
-      rates[0].tick_volume == g_lastLiveCandleTickVol)
+      rates[0].tick_volume == g_lastLiveCandleTickVol &&
+      bid == g_lastLiveBid &&
+      ask == g_lastLiveAsk)
      {
       return;
      }
@@ -637,6 +649,8 @@ void SendLiveCandleDelta()
    g_lastLiveCandleTime = rates[0].time;
    g_lastLiveCandleClose = rates[0].close;
    g_lastLiveCandleTickVol = rates[0].tick_volume;
+   g_lastLiveBid = bid;
+   g_lastLiveAsk = ask;
    
    g_isCandleReqActive = true;
    long rawOffset = (long)(TimeCurrent() - TimeGMT());
@@ -644,6 +658,7 @@ void SendLiveCandleDelta()
    long curUtcMs = ((long)rates[0].time - gmtOffsetSec) * 1000;
    
    string json = "{\"symbol\":\"" + g_viewSymbol + "\",\"timeframe\":\"" + g_viewTfStr + "\",";
+   json += "\"bid\":" + DoubleToString(bid, _Digits) + ",\"ask\":" + DoubleToString(ask, _Digits) + ",";
    json += "\"candle\":{";
    json += "\"time\":" + IntegerToString(curUtcMs) + ",";
    json += "\"open\":" + DoubleToString(rates[0].open, _Digits) + ",";

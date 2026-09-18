@@ -161,7 +161,8 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/hooks/useVwapHydration.ts` → Hook fetching and subscribing to historical 1m base candles with display-range validation to hydrate accurate VWAP state.
 - `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, axis drag/wheel zoom, auto-scale state tracking, and double-click scale auto-fit.
 - `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry with half-pixel alignment for crisp high-definition lines and TradingView-standard hollow candle rendering.
-- `components/chart/drawSideBySideCandles.ts` → Comparative dual-slot candle renderer displaying solid Binance candles and hollow MT5 broker candles side-by-side using shared web color palette.
+- `components/chart/drawSideBySideCandles.ts` → MT5 Compare chart renderer displaying centered MT5 broker candles or comparative dual-slots with toggleable Binance chart.
+- `components/chart/drawBidAskLines.ts` → Canvas renderer for MT5 live Bid and Ask horizontal lines with price-axis badges.
 - `components/chart/drawCvd.ts` → CVD renderer supporting candle, bar, line, and histogram modes with crisp TradingView axis typography, half-pixel ticks, and divergence markers.
 - `components/chart/drawFootprint.ts` → Footprint renderer displaying bid/ask volume clusters, delta, or delta-volume profiles per price level.
 - `components/chart/drawBubbles.ts` → Volume bubble renderer with bounded price grouping, zoom-stable tick grouping, and multi-tier color/display modes.

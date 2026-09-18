@@ -1,5 +1,15 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-18] - Feature: MT5 Compare Bid/Ask Lines, Binance Toggle, Feed Latency & P&L Eye Button
+
+- **What changed**:
+  - `components/chart/drawBidAskLines.ts` [NEW]: Rendered live Bid (cyan) and Ask (red) horizontal lines with price-axis badges.
+  - `drawSideBySideCandles.ts`, `ChartCanvas.tsx`, `chart.ts`: Added `mt5CompareShowBinance` (default `false`) to display centered MT5 candles; toggleable via settings.
+  - `server.mjs`, `MarketOrderEA.mq5`, `useTradingSync.ts`: Added SSE `/mt5-stream` push, tick-sensitive EA quote detection, and 250ms position updates.
+  - `chartRuntime.ts`, `drawTradingOverlays.ts`, `ChartCanvas.tsx`: Fixed Binance close overriding MT5 P&L; added interactive on-canvas eye button to toggle P&L visibility.
+- **Why it changed**: User requested MT5 bid/ask price lines, default-disabled Binance chart in Mode 4, faster bridge feed, and accurate P&L with eye toggle.
+- **Impact summary**: Live MT5 quotes display real-time spread lines; P&L accurately reflects broker terminal values; 0 tsc errors.
+
 ## [2026-09-18] - Feature: Wire bubbleThreshold to Aggregate Bubbles SQL Query
 
 - **What changed**:

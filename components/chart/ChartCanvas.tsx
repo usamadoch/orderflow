@@ -75,6 +75,7 @@ import { chartColorToRgba } from '@/lib/config/chartColors';
 import { drawAggregateTradeBubbles } from './drawBubbles';
 import { drawCandles } from './drawCandles';
 import { drawSideBySideCandles } from './drawSideBySideCandles';
+import { drawBidAskLines } from './drawBidAskLines';
 import { drawCrosshair, drawCrosshairPriceLabel, drawCrosshairTimeLabel } from './drawCrosshair';
 import { drawExhaustion } from './drawExhaustion';
 import { drawFootprint } from './drawFootprint';
@@ -408,6 +409,7 @@ export function ChartCanvas({
   const bracketHitZones = useRef<TradingOverlayHitZones>({
     slHandles: new Map(),
     tpHandles: new Map(),
+    pnlEyeHandles: new Map(),
   });
 
   const coordsRef = useRef<CoordinateSystem | null>(null);
@@ -628,6 +630,8 @@ export function ChartCanvas({
       // Auto-scale visible price range or initialize price scaling
       if (isAutoScaled.current || priceCenter.current === null || priceRange.current === null) {
         let { priceMin: autoMin, priceMax: autoMax } = getVisiblePriceRange(candles, rawFirstIndex, rawLastIndex);
+        const mt5CompareShowBinance = panelState?.mt5CompareShowBinance ?? false;
+
         if (chartMode === 'side-by-side' && mt5Candles.length > 0) {
           const intervalSec = getTimeframeSeconds(timeframe);
           const mt5Map = new Map<number, Candle>();
@@ -637,14 +641,37 @@ export function ChartCanvas({
           }
           const validFirst = Math.max(0, Math.min(candles.length - 1, rawFirstIndex));
           const validLast = Math.max(0, Math.min(candles.length - 1, rawLastIndex));
-          for (let i = validFirst; i <= validLast; i++) {
-            const webAlignedTime = Math.round(candles[i].time / intervalSec) * intervalSec;
-            const mc = mt5Map.get(webAlignedTime);
-            if (mc) {
-              if (mc.high > autoMax) autoMax = mc.high;
-              if (mc.low < autoMin) autoMin = mc.low;
+
+          if (!mt5CompareShowBinance) {
+            let mt5Min = Infinity;
+            let mt5Max = -Infinity;
+            for (let i = validFirst; i <= validLast; i++) {
+              const webAlignedTime = Math.round(candles[i].time / intervalSec) * intervalSec;
+              const mc = mt5Map.get(webAlignedTime);
+              if (mc) {
+                if (mc.high > mt5Max) mt5Max = mc.high;
+                if (mc.low < mt5Min) mt5Min = mc.low;
+              }
+            }
+            if (Number.isFinite(mt5Min) && Number.isFinite(mt5Max)) {
+              autoMin = mt5Min;
+              autoMax = mt5Max;
+            }
+          } else {
+            for (let i = validFirst; i <= validLast; i++) {
+              const webAlignedTime = Math.round(candles[i].time / intervalSec) * intervalSec;
+              const mc = mt5Map.get(webAlignedTime);
+              if (mc) {
+                if (mc.high > autoMax) autoMax = mc.high;
+                if (mc.low < autoMin) autoMin = mc.low;
+              }
             }
           }
+
+          const curBid = currentPanelRuntime.mt5Bid;
+          const curAsk = currentPanelRuntime.mt5Ask;
+          if (curAsk != null && Number.isFinite(curAsk) && curAsk > autoMax) autoMax = curAsk;
+          if (curBid != null && Number.isFinite(curBid) && curBid < autoMin) autoMin = curBid;
         }
         priceCenter.current = (autoMin + autoMax) / 2;
         priceRange.current = (autoMax - autoMin) || 100;
@@ -1036,6 +1063,7 @@ export function ChartCanvas({
             currentBarWidth,
             {
               timeframe,
+              showBinance: panelState?.mt5CompareShowBinance ?? false,
               webColors: {
                 upColor: candleUpColor,
                 upOpacity: candleUpOpacity,
@@ -1054,8 +1082,9 @@ export function ChartCanvas({
 
         // Volume bubbles — drawn above candles/footprint, below volume profile
         if (bubblesEnabled) {
-          const bubbleIndexToX = chartMode === 'side-by-side' ? (i: number) => indexToX(i) - currentBarWidth * 0.23 : indexToX;
-          const bubbleBarWidth = chartMode === 'side-by-side' ? currentBarWidth * 0.46 : currentBarWidth;
+          const isDualSlot = chartMode === 'side-by-side' && (panelState?.mt5CompareShowBinance ?? false);
+          const bubbleIndexToX = isDualSlot ? (i: number) => indexToX(i) - currentBarWidth * 0.23 : indexToX;
+          const bubbleBarWidth = isDualSlot ? currentBarWidth * 0.46 : currentBarWidth;
           drawAggregateTradeBubbles(liveCtx, aggregateBubbleEvents, candles, firstIndex, lastIndex, bubbleIndexToX, priceToY, bubbleBarWidth, {
             bubbleSizeBy,
             aggregateBubbleMarketSource,
@@ -1718,13 +1747,28 @@ export function ChartCanvas({
               ? { orderId: modifyingOrderId, price: dragPreviewPrice }
               : null,
             bracketDrag,
-            marketOrderDrag
+            marketOrderDrag,
+            { showPositionPnl: panelState?.showPositionPnl ?? true }
           );
+        }
+
+        // Draw Price Lines
+        if (chartMode === 'side-by-side') {
+          // Draw live MT5 Bid & Ask lines
+          const mt5Bid = currentPanelRuntime.mt5Bid ?? (lastCandle ? lastCandle.close - 0.5 : null);
+          const mt5Ask = currentPanelRuntime.mt5Ask ?? (lastCandle ? lastCandle.close + 0.5 : null);
+          drawBidAskLines(ctx, mt5Bid, mt5Ask, priceToY, chartWidth, priceAxisWidth);
+
+          // Only draw Binance price line if Binance chart is enabled
+          if (panelState?.mt5CompareShowBinance && lastCandle) {
+            drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
+          }
+        } else if (lastCandle) {
+          drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
         }
 
         if (lastCandle) {
           useChartRuntimeStore.getState().updateVirtualPnl(tradingSymbol, lastCandle.close);
-          drawPriceLine(ctx, lastCandle, priceToY, chartWidth, priceAxisWidth, logicalWidth, timeframe);
         }
 
         // Draw Crosshair
@@ -2964,9 +3008,13 @@ export function ChartCanvas({
         const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
         const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
-        // 1. Bracket Handles
+        // 1. Bracket Handles & PnL Eye Toggle
         for (const vp of virtualPositions) {
           if (vp.status !== 'open') continue;
+          const eyeBox = bracketHitZones.current.pnlEyeHandles?.get(vp.id);
+          if (eyeBox && x >= eyeBox.x && x <= eyeBox.x + eyeBox.w && y >= eyeBox.y && y <= eyeBox.y + eyeBox.h) {
+            return { type: 'pnl-eye' as const, positionId: vp.id };
+          }
           const slBox = bracketHitZones.current.slHandles.get(vp.id);
           const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
           const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
@@ -3017,6 +3065,12 @@ export function ChartCanvas({
       const hitTarget = getUnifiedHitTarget(x, y);
 
       if (hitTarget) {
+        if (hitTarget.type === 'pnl-eye') {
+          useChartStore.getState().toggleShowPositionPnl(panelId);
+          redraw();
+          return;
+        }
+
         if (hitTarget.type === 'bracket') {
           isDraggingBracket.current = true;
           bracketDragEntryPrice.current = hitTarget.entryPrice;
@@ -3168,9 +3222,13 @@ export function ChartCanvas({
           const priceToY = (price: number) => calcPriceToY(price, priceMin, priceMax, chartHeight);
           const indexToX = (idx: number) => calcIndexToX(idx, candles.length, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
-          // 1. Bracket Handles
+          // 1. Bracket Handles & PnL Eye Toggle
           for (const vp of virtualPositions) {
             if (vp.status !== 'open') continue;
+            const eyeBox = bracketHitZones.current.pnlEyeHandles?.get(vp.id);
+            if (eyeBox && x >= eyeBox.x && x <= eyeBox.x + eyeBox.w && y >= eyeBox.y && y <= eyeBox.y + eyeBox.h) {
+              return { type: 'pnl-eye' as const, positionId: vp.id };
+            }
             const slBox = bracketHitZones.current.slHandles.get(vp.id);
             const tpBox = bracketHitZones.current.tpHandles.get(vp.id);
             const hitSL = slBox && x >= slBox.x && x <= slBox.x + slBox.w && y >= slBox.y && y <= slBox.y + slBox.h;
@@ -3221,7 +3279,9 @@ export function ChartCanvas({
         const hitTarget = getUnifiedHitTarget(x, y);
 
         if (hitTarget) {
-          if (hitTarget.type === 'bracket' || hitTarget.type === 'order') {
+          if (hitTarget.type === 'pnl-eye') {
+            cursor = 'pointer';
+          } else if (hitTarget.type === 'bracket' || hitTarget.type === 'order') {
             cursor = 'ns-resize';
           } else if (hitTarget.type === 'custom-profile') {
             hoverZone.current = hitTarget.hitZone;

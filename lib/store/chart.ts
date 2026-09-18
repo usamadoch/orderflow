@@ -155,6 +155,9 @@ export interface ChartState {
   setPair: (panelId: PanelId, pair: string) => void;
   setTimeframe: (panelId: PanelId, timeframe: string) => void;
   setChartMode: (panelId: PanelId, mode: ChartMode) => void;
+  setMt5CompareShowBinance: (panelId: PanelId, enabled: boolean) => void;
+  setShowPositionPnl: (panelId: PanelId, show: boolean) => void;
+  toggleShowPositionPnl: (panelId: PanelId) => void;
   setFootprintMode: (panelId: PanelId, mode: FootprintMode) => void;
   setBucketSize: (panelId: PanelId, size: number) => void;
   setBarWidth: (panelId: PanelId, width: number) => void;
@@ -384,6 +387,8 @@ function createDefaultPanel(id: PanelId): PanelState {
     pair: 'BTCUSDT',
     timeframe: '1m',
     chartMode: 'candle',
+    mt5CompareShowBinance: false,
+    showPositionPnl: true,
     footprintMode: 'bid-ask',
     bucketSize: 10,
     autoBucketSize: false,
@@ -1023,6 +1028,18 @@ export const useChartStore = create<ChartState>()(
 
       setChartMode: (panelId, chartMode) =>
         set((state) => updatePanel(state, panelId, { chartMode })),
+
+      setMt5CompareShowBinance: (panelId, mt5CompareShowBinance) =>
+        set((state) => updatePanel(state, panelId, { mt5CompareShowBinance })),
+
+      setShowPositionPnl: (panelId, showPositionPnl) =>
+        set((state) => updatePanel(state, panelId, { showPositionPnl })),
+
+      toggleShowPositionPnl: (panelId) =>
+        set((state) => {
+          const current = state.panels[panelId]?.showPositionPnl ?? true;
+          return updatePanel(state, panelId, { showPositionPnl: !current });
+        }),
 
       setFootprintMode: (panelId, footprintMode) =>
         set((state) => updatePanel(state, panelId, { footprintMode })),

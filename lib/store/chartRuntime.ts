@@ -80,7 +80,8 @@ export interface ChartRuntimeState {
   setMT5BridgeStatus: (status: 'connected' | 'disconnected' | 'connecting' | 'paused') => void;
   syncMT5Bridge: () => Promise<boolean>;
   syncMT5Positions: (positions: MT5PositionPayload[]) => void;
-  setMt5Candles: (panelId: PanelId, candles: Candle[]) => void;
+  setMt5Candles: (panelId: PanelId, candles: Candle[], bid?: number | null, ask?: number | null) => void;
+  setMt5Quotes: (panelId: PanelId, bid: number | null, ask: number | null) => void;
   fetchMT5Candles: (panelId: PanelId, symbol?: string, timeframe?: string) => Promise<void>;
   notifyMT5ViewState: (active: boolean, symbol: string, timeframe: string) => Promise<void>;
   // ── Virtual Position actions ──────────────────────────────────────────────
@@ -147,6 +148,8 @@ function createDefaultRuntimePanel(): PanelRuntimeState {
     refreshKey: 0,
     dataVersion: 0,
     mt5Candles: [],
+    mt5Bid: null,
+    mt5Ask: null,
     orderbookResyncCount: 0,
     viewportPrice: null,
   };
@@ -469,6 +472,10 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
         if (Array.isArray(data.positions)) {
           get().syncMT5Positions(data.positions);
         }
+        if (data.bid != null || data.ask != null) {
+          const activeId = useChartStore.getState().activePanel;
+          get().setMt5Quotes(activeId, data.bid ?? null, data.ask ?? null);
+        }
         return true;
       } else {
         set((state) => ({
@@ -589,7 +596,7 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
       };
     }),
 
-  setMt5Candles: (panelId, candles) => {
+  setMt5Candles: (panelId, candles, bid, ask) => {
     // Strict safeguard: Only update state if active panel is in 'side-by-side' mode
     const chartMode = useChartStore.getState().panels[panelId]?.chartMode;
     if (chartMode !== 'side-by-side') return;
@@ -603,6 +610,25 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
           [panelId]: {
             ...panel,
             mt5Candles: candles,
+            ...(bid !== undefined ? { mt5Bid: bid } : {}),
+            ...(ask !== undefined ? { mt5Ask: ask } : {}),
+          },
+        },
+      };
+    });
+  },
+
+  setMt5Quotes: (panelId, bid, ask) => {
+    set((state) => {
+      const panel = state.panels[panelId];
+      if (!panel) return state;
+      return {
+        panels: {
+          ...state.panels,
+          [panelId]: {
+            ...panel,
+            mt5Bid: bid,
+            mt5Ask: ask,
           },
         },
       };
@@ -623,7 +649,7 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
       if (!res.ok) return;
       const data = await res.json();
       if (data && Array.isArray(data.candles)) {
-        get().setMt5Candles(panelId, data.candles);
+        get().setMt5Candles(panelId, data.candles, data.bid ?? null, data.ask ?? null);
       }
     } catch {
       // Ignore fetch errors
@@ -692,6 +718,11 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
     set((state) => {
       const virtualPositions = state.tradingStatus.virtualPositions.map((p) => {
         if (p.symbol.toUpperCase() !== symbol.toUpperCase() || p.status !== 'open') return p;
+        const isMt5Ticket = /^\d+$/.test(p.id);
+        if (isMt5Ticket) {
+          // MT5 position: Retain authoritative broker profit from MT5 terminal, never overwrite with Binance candle close!
+          return p;
+        }
         const pnlPerUnit = p.side === 'long'
           ? markPrice - p.entryPrice
           : p.entryPrice - markPrice;
