@@ -26,8 +26,8 @@ export type {
 }
 
 export const DEFAULT_AGGREGATE_BUBBLE_RESTORE_LIMIT = 5000
-export const MAX_AGGREGATE_BUBBLE_RESTORE_LIMIT = 10000
-export const MAX_AGGREGATE_BUBBLE_RESTORE_RANGE_SECONDS = 6 * 60 * 60
+export const MAX_AGGREGATE_BUBBLE_RESTORE_LIMIT = 50000
+export const MAX_AGGREGATE_BUBBLE_RESTORE_RANGE_SECONDS = 90 * 24 * 60 * 60
 
 
 function getPositiveNumberEnv(name: string, fallback: number) {

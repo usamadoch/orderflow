@@ -23,6 +23,8 @@ export interface GetAggregateBubbleEventsInput {
   startTime: number
   endTime: number
   limit?: number
+  order?: 'ASC' | 'DESC'
+  minVolume?: number
 }
 
 export interface StoreAggregateBubbleEventsResult {
@@ -83,35 +85,66 @@ export async function getAggregateBubbleEvents({
   startTime,
   endTime,
   limit = 5000,
+  order = 'ASC',
+  minVolume,
 }: GetAggregateBubbleEventsInput) {
-  const boundedLimit = Math.max(1, Math.min(limit, 10000))
+  const boundedLimit = Math.max(1, Math.min(limit, 50000))
   const startMs = startTime < 10_000_000_000 ? startTime * 1000 : startTime
   const endMs = endTime < 10_000_000_000 ? endTime * 1000 : endTime
+  const sortOrder = order === 'DESC' ? 'DESC' : 'ASC'
 
-  // contractTypes is an array, we can use ANY($3) in postgres
+  // Query indexed event_time directly without secondary column in SQL to avoid Incremental Sort
   const sql = `
-    SELECT * FROM aggregate_bubble_events
+    SELECT 
+      aggregate_trade_id,
+      symbol,
+      contract_type,
+      event_time,
+      event_time_ms,
+      price,
+      side,
+      volume,
+      trade_count,
+      first_trade_id,
+      last_trade_id,
+      qualified_by
+    FROM aggregate_bubble_events
     WHERE symbol = $1
       AND event_time >= $2
       AND event_time <= $3
       AND contract_type = ANY($4::text[])
-    ORDER BY event_time ASC, aggregate_trade_id ASC
+      AND volume >= $6
+    ORDER BY event_time ${sortOrder}
     LIMIT $5
   `
 
-  const result = await query(sql, [
+  const params: QueryParam[] = [
     symbol,
     new Date(startMs),
     new Date(endMs),
     contractTypes,
-    boundedLimit
-  ])
+    boundedLimit,
+  ]
+  params.push(minVolume ?? 15) // $6
 
-  return result.rows.map((row) => ({
+  const result = await query(sql, params)
+
+  // If queried DESC to fetch newest rows, reverse back to chronological ASC for the client
+  const rawRows = sortOrder === 'DESC' ? result.rows.reverse() : result.rows
+
+  // Sort deterministically in memory (tie-break on aggregate_trade_id for identical timestamps)
+  rawRows.sort((a, b) => {
+    const timeA = Number(a.event_time_ms ?? (a.event_time instanceof Date ? a.event_time.getTime() : new Date(a.event_time).getTime()))
+    const timeB = Number(b.event_time_ms ?? (b.event_time instanceof Date ? b.event_time.getTime() : new Date(b.event_time).getTime()))
+    if (timeA !== timeB) return timeA - timeB
+    return Number(a.aggregate_trade_id) - Number(b.aggregate_trade_id)
+  })
+
+  return rawRows.map((row) => ({
     id: Number(row.aggregate_trade_id),
     symbol: row.symbol,
     contractType: row.contract_type as BubbleEventContractType,
-    time: Number(row.event_time_ms ?? row.event_time.getTime()),
+    time: Number(row.event_time_ms ?? (row.event_time instanceof Date ? row.event_time.getTime() : new Date(row.event_time).getTime())),
     price: Number(row.price),
     side: row.side as BubbleEventSide,
     volume: Number(row.volume),

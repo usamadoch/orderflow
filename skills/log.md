@@ -1,5 +1,32 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-18] - Feature: Wire bubbleThreshold to Aggregate Bubbles SQL Query
+
+- **What changed**:
+  - `components/FeedProvider.tsx`: Read `bubbleThreshold` from panel state and passed as `minVolume` in initial and scroll restore queries.
+  - `app/api/history/aggregate-bubbles/route.ts`: Parsed `minVolume` search param and forwarded to repository.
+  - `lib/db/timescale/repositories/bubbleRepository.ts`: Added `minVolume` to input type, appended `$6` parameter, and added `AND volume >= $6` to SQL WHERE clause.
+- **Why it changed**: Filter candidate bubbles at database query level to prevent transferring tens of thousands of rows below threshold over the wire.
+- **Impact summary**: For bubbleThreshold=50, response drops from 50k rows to 270 rows (transfers in ~2s vs ~200s); 0 tsc errors.
+
+## [2026-09-18] - Fix: Aggregate Bubbles Query Plan & TimescaleDB Index Optimization
+
+- **What changed**:
+  - `lib/db/timescale/repositories/bubbleRepository.ts`: Selected explicit columns and removed secondary `aggregate_trade_id` from SQL `ORDER BY` to eliminate `Incremental Sort`; deterministic tie-break moved to in-memory JS.
+  - `lib/db/timescale/migrations.ts`: Added `idx_bubbles_restore_desc` and `idx_bubbles_symbol_time_desc` indexes.
+- **Why it changed**: Profiled `/api/history/aggregate-bubbles` with `EXPLAIN ANALYZE`; multi-column sort triggered Incremental Sort and composite index could not satisfy `ANY` contract types.
+- **Impact summary**: Query plan execution time on DB engine is 24–82ms for 50k rows (well under 1s target); eliminated Incremental Sort; 0 tsc errors.
+
+## [2026-09-18] - Fix: Aggregate Bubbles — Progressive Scroll Loading & Retention Cache
+
+- **What changed**:
+  - `lib/db/aggregateBubbleStorage.ts`, `bubbleRepository.ts`, `route.ts`: Raised limit to 50k, added `order: DESC`, removed 6h cap, updated `Cache-Control` to 3600/86400.
+  - `lib/chart/bubbleRetentionCache.ts` [NEW]: Module-level retention cache keyed by `symbol::contractType::timeframe` for instant replay on switch.
+  - `lib/store/chartRuntime.ts`: Incremented `dataVersion` on bubble appends to trigger immediate canvas redraw.
+  - `components/FeedProvider.tsx`: Added upfront 50k fetch covering full candle range and 250ms scroll trigger with 500-bar threshold with chunked hydration.
+- **Why it changed**: Bubbles only loaded in narrow 6h window, never loaded on scroll-back, were wiped on timeframe switches, and lacked HTTP caching.
+- **Impact summary**: Bubbles load across 7-day scroll range at the same speed as footprint with zero canvas freeze and instant replay on timeframe switch; 0 tsc errors.
+
 ## [2026-09-17] - Fix: Footprint Retention, Main-Thread Hydration & TimescaleDB Restore Throughput
 
 - **What changed**:

@@ -101,6 +101,7 @@ import {
 import { storeBaseFootprintAction, storeClosedCandleAction, storeFineProfileRowsAction, storeRawTradesAction } from '../lib/actions/storageActions';
 import { recordAggregateBubbleRestoreDebug, recordRestoreDiagnostic } from '../lib/debug/marketMetrics';
 import { candleRetentionCache } from '../lib/chart/candleRetentionCache';
+import { bubbleRetentionCache } from '../lib/chart/bubbleRetentionCache';
 
 // Local Context
 import { ChartEngineContext } from './ChartEngineContext';
@@ -422,6 +423,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   // cached candles to avoid blanking the chart).
   const prevSymbolRef = useRef<string | null>(null);
   const prevContractTypeRef = useRef<string | null>(null);
+  const prevTimeframeRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -437,25 +439,39 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     if (isSymbolChange) {
       // Clear the retention cache for the OLD symbol before updating the refs,
-      // so a lingering swap-in can never supply wrong-symbol candles.
+      // so a lingering swap-in can never supply wrong-symbol candles or bubbles.
       candleRetentionCache.clearSymbol(prevSymbolRef.current!, prevContractTypeRef.current!);
-      resetPanelRuntime(panelId); // full clear — candles: []
+      bubbleRetentionCache.clearSymbol(prevSymbolRef.current!, prevContractTypeRef.current!);
+      resetPanelRuntime(panelId); // full clear — candles: [], bubbles: []
       console.log(`[PanelFeed:${panelId}] Symbol changed to ${pair} — retention cache cleared, full reset.`);
     } else {
+      // Save current bubbles before resetting if switching timeframe
+      if (prevSymbolRef.current !== null && prevTimeframeRef.current !== null) {
+        const prevBubbles = useChartRuntimeStore.getState().panels[panelId]?.aggregateBubbleEvents;
+        if (prevBubbles && prevBubbles.length > 0) {
+          bubbleRetentionCache.set(prevSymbolRef.current, prevContractTypeRef.current!, prevTimeframeRef.current, prevBubbles);
+        }
+      }
       // Timeframe switch (or initial mount, or dataSourceMode change).
-      // Try to serve cached candles immediately so the canvas stays populated.
-      const cached = candleRetentionCache.get(pair, contractType, timeframe);
+      // Try to serve cached candles and bubbles immediately so the canvas stays populated.
+      const cachedCandles = candleRetentionCache.get(pair, contractType, timeframe);
+      const cachedBubbles = bubbleRetentionCache.get(pair, contractType, timeframe);
       resetPanelRuntime(panelId);
-      if (cached) {
+      if (cachedCandles) {
         // Replay cached snapshot immediately — canvas draws on this frame.
-        pushAllCandles(panelId, cached);
-        console.log(`[PanelFeed:${panelId}] TF switch ${timeframe} — replayed ${cached.length} cached candles instantly.`);
+        pushAllCandles(panelId, cachedCandles);
+        console.log(`[PanelFeed:${panelId}] TF switch ${timeframe} — replayed ${cachedCandles.length} cached candles instantly.`);
+      }
+      if (cachedBubbles) {
+        appendAggregateBubbleEvents(panelId, cachedBubbles);
+        console.log(`[PanelFeed:${panelId}] TF switch ${timeframe} — replayed ${cachedBubbles.length} cached bubbles instantly.`);
       }
     }
 
     // Always update refs AFTER the clear so clearSymbol used the old values.
     prevSymbolRef.current = pair;
     prevContractTypeRef.current = contractType;
+    prevTimeframeRef.current = timeframe;
 
     connectedRef.current = false;
     setConnected(panelId, false);
@@ -1421,6 +1437,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
       if (!stats.range) return stats;
 
+      const bubbleThreshold = useChartStore.getState().panels[panelId]?.bubbleThreshold;
+
       const params = new URLSearchParams({
         symbol: pair,
         marketSource: 'both',
@@ -1428,6 +1446,8 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         startTime: String(stats.range.startTime),
         endTime: String(stats.range.endTime),
         limit: String(AGGREGATE_BUBBLE_RESTORE_LIMIT),
+        order: 'DESC',
+        minVolume: String(bubbleThreshold ?? 15),
       });
 
       const recordAggregateBubbleRestore = (status: string) => {
@@ -1522,6 +1542,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
         if (restoredEvents.length > 0) {
           appendAggregateBubbleEvents(panelId, restoredEvents);
+        }
+
+        if (active && useChartStore.getState().panels[panelId]?.timeframe === timeframe) {
+          const currentBubbles = useChartRuntimeStore.getState().panels[panelId]?.aggregateBubbleEvents ?? [];
+          bubbleRetentionCache.set(pair, contractType, timeframe, currentBubbles);
         }
 
         recordAggregateBubbleRestore('complete');
@@ -2234,6 +2259,125 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       }
     };
 
+    let lazyBubbleRestoreRunning = false;
+    let lastLazyBubbleRestoreKey = '';
+
+    const getScrolledBubbleRestoreWindow = () => {
+      const panel = useChartStore.getState().panels[panelId];
+      if (!shouldHydrateStoredAggregateBubbles()) return null;
+      const candles = useChartRuntimeStore.getState().panels[panelId]?.candles ?? [];
+      if (candles.length === 0) return null;
+
+      const safeBarWidth = Math.max(1, Number.isFinite(panel.barWidth) ? panel.barWidth : 1);
+      const barsFromLatest = Math.max(0, Math.floor(panel.scrollOffset / safeBarWidth));
+
+      // Trigger lazy fetch when approaching within 500 bars of the edge of history (same threshold as candles & footprint)
+      const rightIndex = Math.max(0, candles.length - 1 - barsFromLatest + 50);
+      const leftIndex = Math.max(0, rightIndex - 500);
+
+      const targetFirstTimeSec = candles[leftIndex]?.time;
+      if (targetFirstTimeSec === undefined) return null;
+      const targetFirstTimeMs = targetFirstTimeSec * 1000;
+
+      const currentBubbles = useChartRuntimeStore.getState().panels[panelId]?.aggregateBubbleEvents ?? [];
+      if (currentBubbles.length === 0) {
+        return {
+          startTime: candles[0].time * 1000,
+          endTime: (candles[candles.length - 1].time + timeframeSeconds) * 1000,
+        };
+      }
+
+      const oldestBubbleMs = currentBubbles[0].time;
+      // If visible/approaching range is older than oldest loaded bubble, fetch preceding window
+      if (targetFirstTimeMs < oldestBubbleMs) {
+        const fetchStartMs = Math.max(candles[0].time * 1000, targetFirstTimeMs - 500 * timeframeSeconds * 1000);
+        return {
+          startTime: fetchStartMs,
+          endTime: oldestBubbleMs,
+        };
+      }
+
+      return null;
+    };
+
+    const restoreLazyBubbleRange = async (range: { startTime: number; endTime: number }) => {
+      if (lazyBubbleRestoreRunning || range.endTime <= range.startTime) return;
+
+      const restoreKey = `${range.startTime}:${range.endTime}`;
+      if (restoreKey === lastLazyBubbleRestoreKey) return;
+
+      lazyBubbleRestoreRunning = true;
+      try {
+        const bubbleThreshold = useChartStore.getState().panels[panelId]?.bubbleThreshold;
+
+        const params = new URLSearchParams({
+          symbol: pair,
+          marketSource: 'both',
+          activeContractType: contractType,
+          startTime: String(range.startTime),
+          endTime: String(range.endTime),
+          limit: '50000',
+          order: 'DESC',
+          minVolume: String(bubbleThreshold ?? 15),
+        });
+
+        const response = await fetch(`/api/history/aggregate-bubbles?${params.toString()}`);
+        if (!response.ok) return;
+
+        const rows = await response.json() as BubbleEvent[];
+        const activeTimeframe = useChartStore.getState().panels[panelId]?.timeframe;
+        if (!active || activeTimeframe !== timeframe) return;
+
+        lastLazyBubbleRestoreKey = restoreKey;
+
+        if (rows.length > 0) {
+          const existingKeys = new Set(
+            useChartRuntimeStore.getState().panels[panelId].aggregateBubbleEvents.map(getAggregateBubbleEventKey),
+          );
+          const restoredEvents: BubbleEvent[] = [];
+
+          for (let i = 0; i < rows.length; i += 1) {
+            if (!active) return;
+            if (i > 0 && i % HYDRATION_CHUNK_SIZE === 0) {
+              await yieldToBrowser();
+            }
+
+            const row = rows[i];
+            if (
+              row.source !== 'aggregateTrade'
+              || (row.contractType !== 'spot' && row.contractType !== 'futures')
+              || (row.side !== 'buy' && row.side !== 'sell')
+              || !Number.isFinite(row.time)
+              || !Number.isFinite(row.price)
+              || !Number.isFinite(row.volume)
+            ) {
+              continue;
+            }
+
+            const event: BubbleEvent = { ...row, origin: 'restored' };
+            const key = getAggregateBubbleEventKey(event);
+            if (existingKeys.has(key)) continue;
+
+            existingKeys.add(key);
+            restoredEvents.push(event);
+          }
+
+          if (restoredEvents.length > 0) {
+            appendAggregateBubbleEvents(panelId, restoredEvents);
+          }
+
+          if (active && useChartStore.getState().panels[panelId]?.timeframe === timeframe) {
+            const currentBubbles = useChartRuntimeStore.getState().panels[panelId]?.aggregateBubbleEvents ?? [];
+            bubbleRetentionCache.set(pair, contractType, timeframe, currentBubbles);
+          }
+        }
+      } catch (error) {
+        console.warn(`[HistoryRestore:${panelId}] lazy aggregate bubbles restore failed`, error);
+      } finally {
+        lazyBubbleRestoreRunning = false;
+      }
+    };
+
     const feedUnsubscribers: Array<() => void> = [];
 
     const init = async () => {
@@ -2756,6 +2900,11 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       const scrolledFootprintRange = getScrolledFootprintRestoreWindow();
       if (scrolledFootprintRange) {
         void restoreLazyFootprintRange(scrolledFootprintRange, 'lazy');
+      }
+
+      const scrolledBubbleRange = getScrolledBubbleRestoreWindow();
+      if (scrolledBubbleRange) {
+        void restoreLazyBubbleRange(scrolledBubbleRange);
       }
 
       const scrolledRange = getScrolledProfileRestoreWindow();

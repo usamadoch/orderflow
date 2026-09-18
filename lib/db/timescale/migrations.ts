@@ -126,6 +126,14 @@ export async function runTimescaleMigrations() {
       CREATE INDEX IF NOT EXISTS idx_bubbles_restore
       ON aggregate_bubble_events (symbol, contract_type, event_time);
     `)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_bubbles_restore_desc
+      ON aggregate_bubble_events (symbol, contract_type, event_time DESC);
+    `)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_bubbles_symbol_time_desc
+      ON aggregate_bubble_events (symbol, event_time DESC);
+    `)
     // Deduplication index (needs event_time to be part of unique constraint for hypertables)
     // See the UNIQUE constraint above which includes event_time.
     await client.query(`

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   DEFAULT_AGGREGATE_BUBBLE_RESTORE_LIMIT,
   MAX_AGGREGATE_BUBBLE_RESTORE_LIMIT,
-  MAX_AGGREGATE_BUBBLE_RESTORE_RANGE_SECONDS,
   getAggregateBubbleEvents,
   getAggregateBubbleThresholds,
 } from '../../../../lib/db/aggregateBubbleStorage'
@@ -15,9 +14,12 @@ export async function GET(request: NextRequest) {
   const marketSource = searchParams.get('marketSource')
   const contractType = searchParams.get('contractType')
   const activeContractType = searchParams.get('activeContractType')
-  const startTime = normalizeTimeParam(Number(searchParams.get('startTime') ?? searchParams.get('start')))
-  const endTime = normalizeTimeParam(Number(searchParams.get('endTime') ?? searchParams.get('end')))
+  const startTime = normalizeTimeParam(Number(searchParams.get('startTime') ?? searchParams.get('start') ?? searchParams.get('from')))
+  const endTime = normalizeTimeParam(Number(searchParams.get('endTime') ?? searchParams.get('end') ?? searchParams.get('until')))
   const limit = Number(searchParams.get('limit') ?? DEFAULT_AGGREGATE_BUBBLE_RESTORE_LIMIT)
+  const orderParam = searchParams.get('order')?.toUpperCase()
+  const order: 'ASC' | 'DESC' = orderParam === 'DESC' ? 'DESC' : 'ASC'
+  const minVolume = Math.max(0, Number(searchParams.get('minVolume') ?? 15))
   const contractTypes = resolveContractTypes(marketSource, contractType, activeContractType)
 
   if (!isAllowedSymbol(symbol) || contractTypes === null) {
@@ -37,13 +39,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid startTime, endTime, or limit' }, { status: 400 })
   }
 
-  if ((endTime - startTime) / 1000 > MAX_AGGREGATE_BUBBLE_RESTORE_RANGE_SECONDS) {
-    return NextResponse.json(
-      { error: 'Aggregate bubble history range is too large; request it in smaller chunks' },
-      { status: 413 },
-    )
-  }
-
   const thresholds = getAggregateBubbleThresholds()
 
   try {
@@ -53,6 +48,8 @@ export async function GET(request: NextRequest) {
       startTime,
       endTime,
       limit: Math.min(limit, MAX_AGGREGATE_BUBBLE_RESTORE_LIMIT),
+      order,
+      minVolume,
     })
 
     const isPastRange = endTime < Date.now() - 3600 * 1000
@@ -61,7 +58,7 @@ export async function GET(request: NextRequest) {
         'x-aggregate-bubble-min-volume': String(thresholds.minVolume),
         'x-aggregate-bubble-min-trade-count': String(thresholds.minTradeCount),
         'x-aggregate-bubble-min-trade-count-volume': String(thresholds.minTradeCountVolume),
-        'Cache-Control': isPastRange ? 'public, max-age=300, stale-while-revalidate=3600' : 'no-store',
+        'Cache-Control': isPastRange ? 'public, max-age=3600, stale-while-revalidate=86400' : 'no-store',
       },
     })
   } catch (error) {

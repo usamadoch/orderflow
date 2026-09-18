@@ -368,11 +368,20 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
       if (events.length === 0) return {};
       const panel = state.panels[panelId];
       const aggregateBubbleEvents = mergeAggregateBubbleEvents(panel.aggregateBubbleEvents, events);
-      return updateRuntimePanel(state, panelId, { aggregateBubbleEvents });
+      return updateRuntimePanel(state, panelId, {
+        aggregateBubbleEvents,
+        dataVersion: (panel.dataVersion || 0) + 1,
+      });
     }),
 
   clearAggregateBubbleEvents: (panelId) =>
-    set((state) => updateRuntimePanel(state, panelId, { aggregateBubbleEvents: [] })),
+    set((state) => {
+      const panel = state.panels[panelId];
+      return updateRuntimePanel(state, panelId, {
+        aggregateBubbleEvents: [],
+        dataVersion: (panel.dataVersion || 0) + 1,
+      });
+    }),
 
   setProfileSelected: (panelId, isProfileSelected) =>
     set((state) => updateRuntimePanel(state, panelId, { isProfileSelected })),

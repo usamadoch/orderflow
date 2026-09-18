@@ -394,7 +394,7 @@ export function getAggregateBubbleRestoreRange(candles: Candle[], timeframeSecon
   if (!window) return null;
 
   const restoreEndSeconds = window.endSeconds;
-  const restoreStartSeconds = Math.max(window.startSeconds, restoreEndSeconds - AGGREGATE_BUBBLE_RESTORE_SECONDS);
+  const restoreStartSeconds = window.startSeconds;
 
   return {
     startTime: restoreStartSeconds * 1000,
