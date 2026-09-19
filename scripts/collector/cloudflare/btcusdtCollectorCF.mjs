@@ -517,7 +517,7 @@ function getRestBaseUrl(env, source) {
   }
 
   if (env.BINANCE_FUTURES_REST_URL) return env.BINANCE_FUTURES_REST_URL.replace(/\/+$/, '')
-  return 'https://fapi.binance.com/fapi/v1'
+  return 'https://fapi.binance.com/fapi/v2'
 }
 
 // ---------------------------------------------------------------------------
@@ -753,10 +753,12 @@ export class BtcusdtCollector extends DurableObject {
   async seedPriceReferences() {
     for (const source of SOURCES) {
       const log = this.sourceLoggers[source] || this.logger
+      const baseUrl = getRestBaseUrl(this.env, source)
+      const url = `${baseUrl}/ticker/price?symbol=${SYMBOL}`
+      let response = null
       try {
-        const baseUrl = getRestBaseUrl(this.env, source)
-        const response = await fetch(
-          `${baseUrl}/ticker/price?symbol=${SYMBOL}`,
+        response = await fetch(
+          url,
           { signal: AbortSignal.timeout(10000) },
         )
         if (!response.ok) {
@@ -774,11 +776,24 @@ export class BtcusdtCollector extends DurableObject {
         )
       } catch (error) {
         log.error(
-          { source, error: getErrorMessage(error) },
+          {
+            source,
+            url,
+            status: response?.status ?? null,
+            statusText: response?.statusText ?? null,
+            error: getErrorMessage(error),
+          },
           'failed to seed contract price reference',
         )
       }
     }
+
+    this.logger.info({
+      priceReferences: {
+        spot: this.priceReferences.spot,
+        futures: this.priceReferences.futures,
+      },
+    }, 'price reference seed result')
   }
 
   createRuntime(target) {
@@ -889,7 +904,11 @@ export class BtcusdtCollector extends DurableObject {
       }
 
       ws.onerror = (event) => {
-        log.error({ source, error: describeWebSocketEvent(event) }, 'stream error')
+        log.error({
+          source,
+          error: describeWebSocketEvent(event),
+          url,
+        }, 'stream error')
       }
 
       ws.onclose = (event) => {
@@ -989,6 +1008,7 @@ export class BtcusdtCollector extends DurableObject {
         source: trade.source,
         tradeId: trade.id,
         tradePrice: trade.price,
+        priceReference: this.priceReferences[runtime.contractType],
       }, 'DATA_LOSS trade skipped due to missing price reference')
       return
     }
@@ -1521,25 +1541,40 @@ export class BtcusdtCollector extends DurableObject {
 
     log.info({ source, gapMs: endTime - startTime }, 'starting auto-backfill for gap')
 
-    const baseUrl = getRestBaseUrl(this.env, source)
+    const baseUrl = getRestBaseUrl(this.env, source).replace(/\/fapi\/v2$/, '/fapi/v1')
     let currentStartTime = startTime
     let totalFetched = 0
 
     while (currentStartTime < endTime) {
       if (this.stopped) break
-      const url = `${baseUrl}/aggTrades?symbol=${SYMBOL}&startTime=${currentStartTime}&endTime=${endTime}&limit=1000`
+      const requestEndTime = Math.min(
+        endTime,
+        currentStartTime + 50 * 60 * 1000 - 1,
+      )
+      const url = `${baseUrl}/aggTrades?symbol=${SYMBOL}&startTime=${currentStartTime}&endTime=${requestEndTime}&limit=1000`
 
       try {
         const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
         if (!response.ok) {
-          log.error({ source, status: response.status, statusText: response.statusText }, 'backfill request failed')
+          const body = await response.text()
+          log.error({
+            source,
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            body,
+          }, 'backfill request failed')
           break
         }
 
         const trades = await response.json()
         if (trades.length === 0) {
-          currentStartTime = endTime
-          break
+          if (requestEndTime >= endTime) {
+            currentStartTime = endTime
+            break
+          }
+          currentStartTime = requestEndTime + 1
+          continue
         }
 
         for (const data of trades) {
@@ -1568,14 +1603,18 @@ export class BtcusdtCollector extends DurableObject {
 
         const lastTradeTime = trades[trades.length - 1].T
         if (trades.length < 1000) {
-          currentStartTime = endTime
-          break
+          if (requestEndTime >= endTime) {
+            currentStartTime = endTime
+            break
+          }
+          currentStartTime = requestEndTime + 1
+        } else {
+          currentStartTime = lastTradeTime + 1
         }
 
-        currentStartTime = lastTradeTime + 1
         await new Promise((resolve) => setTimeout(resolve, 100))
       } catch (error) {
-        log.error({ source, error: getErrorMessage(error) }, 'backfill network error')
+        log.error({ source, url, error: getErrorMessage(error) }, 'backfill network error')
         break
       }
     }
