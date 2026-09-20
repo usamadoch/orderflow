@@ -17,7 +17,6 @@ import {
   MAX_DEDUPE_KEYS,
   ENABLE_BROWSER_MARKET_WRITES,
   FINE_PROFILE_RESTORE_CHUNK_SECONDS,
-  AGGREGATE_BUBBLE_RESTORE_SECONDS,
 } from '../config/constants';
 import type {
   TradeSource,

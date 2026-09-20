@@ -57,16 +57,15 @@ export async function GET(request: NextRequest) {
 
     const response = NextResponse.json(rows.map((row) => {
       const r = row as unknown as Record<string, unknown>;
-      return {
-        candleTime: r.candle_time,
-        baseBucketSize: r.base_bucket_size,
-        bucketPrice: r.bucket_price,
-        bidVol: r.bid_vol,
-        askVol: r.ask_vol,
-        totalVol: r.total_vol,
-        tradeCount: r.trade_count,
-        orderCount: r.order_count,
-      };
+      return [
+        r.candle_time,
+        r.bucket_price,
+        r.bid_vol,
+        r.ask_vol,
+        r.total_vol,
+        r.trade_count,
+        r.order_count,
+      ];
     }))
 
     const isPastRange = end < Math.floor(Date.now() / 1000) - 3600

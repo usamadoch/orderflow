@@ -108,6 +108,16 @@ import { ChartEngineContext } from './ChartEngineContext';
 import { useFeedAggregation } from './feed/hooks/useFeedAggregation';
 import { useSignalEngine } from './feed/hooks/useSignalEngine';
 
+interface FootprintRestoredChunkStats {
+  rowsFetched: number;
+  candlesHydrated: number;
+  cellsHydrated: number;
+  bucketMatches: number;
+  bucketMisses: number;
+}
+
+const activeFootprintRestores = new Map<string, Promise<FootprintRestoredChunkStats | undefined>>();
+
 interface PanelFeedProviderProps {
   panelId: PanelId;
   children: React.ReactNode;
@@ -130,6 +140,7 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
   const setConnected = useChartRuntimeStore(s => s.setConnected);
   const pushAllCandles = useChartRuntimeStore(s => s.pushAllCandles);
   const setLoadingHistory = useChartRuntimeStore(s => s.setLoadingHistory);
+  const setProfileLoading = useChartRuntimeStore(s => s.setProfileLoading);
   const setHistoryRestoreStatus = useChartRuntimeStore(s => s.setHistoryRestoreStatus);
   const triggerFootprintRedraw = useChartRuntimeStore(s => s.triggerFootprintRedraw);
   const appendAggregateBubbleEvents = useChartRuntimeStore(s => s.appendAggregateBubbleEvents);
@@ -1258,7 +1269,17 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         throw new Error(`History API returned ${response.status}`);
       }
 
-      const candles = await response.json() as Candle[];
+      const rawRows = await response.json() as [number, number, number, number, number, number, number][];
+      const candles: Candle[] = rawRows.map(row => ({
+        time: row[0],
+        open: row[1],
+        high: row[2],
+        low: row[3],
+        close: row[4],
+        volume: row[5],
+        tradeCount: row[6],
+        isClosed: true,
+      }));
       recordRestoreDiagnostic({
         kind: 'candles',
         key: `${pair}:${timeframe}:stored`,
@@ -1591,11 +1612,16 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
       const CONCURRENCY = 3;
 
+      type ChunkRestoreResult =
+        | { skipped: true; rowsFetched: 0 }
+        | ({ skipped: false; success: true } & FootprintRestoredChunkStats)
+        | { skipped: false; success: false; error: string };
+
       for (let i = 0; i < chunks.length; i += CONCURRENCY) {
         if (!active) break;
         const batchChunks = chunks.slice(i, i + CONCURRENCY);
 
-        const chunkPromises = batchChunks.map(async (chunk, indexInBatch) => {
+        const chunkPromises = batchChunks.map(async (chunk, indexInBatch): Promise<ChunkRestoreResult> => {
           const index = i + indexInBatch;
           const candidateTimes = footprintCache.getMissingBaseCandleTimes(chunk.startSeconds, chunk.endSeconds);
           if (candidateTimes.length === 0) {
@@ -1622,8 +1648,12 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           }
 
           try {
-            const chunkStats = await footprintCache.runRestoreOnce(chunk.startSeconds, chunk.endSeconds, async () => {
-              const restoredChunkStats = {
+            const promiseKey = `footprint:${pair}:${contractType}:${dataSourceMode}:${chunk.startSeconds}:${chunk.endSeconds}`;
+            let promise = activeFootprintRestores.get(promiseKey);
+
+            if (!promise) {
+              promise = footprintCache.runRestoreOnce(chunk.startSeconds, chunk.endSeconds, async () => {
+                const restoredChunkStats = {
                 rowsFetched: 0,
                 candlesHydrated: 0,
                 cellsHydrated: 0,
@@ -1669,17 +1699,16 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               for (const candleTime of candidateTimes) {
                 if (!active) return restoredChunkStats;
 
-                const candleRows = rowsByCandle.get(candleTime);
-                if (!candleRows || candleRows.length === 0) continue;
-                if (!candidateTimeSet.has(candleTime)) continue;
-
                 const cells = new Map<number, FootprintCell>();
+                const candleRows = rowsByCandle.get(candleTime);
 
-                for (const row of candleRows) {
-                  cells.set(row.bucketPrice, {
-                    bidVol: row.bidVol,
-                    askVol: row.askVol,
-                  });
+                if (candleRows && candleRows.length > 0 && candidateTimeSet.has(candleTime)) {
+                  for (const row of candleRows) {
+                    cells.set(row.bucketPrice, {
+                      bidVol: row.bidVol,
+                      askVol: row.askVol,
+                    });
+                  }
                 }
 
                 engineRef.current.hydrateBaseFootprintCandle(candleTime, cells);
@@ -1721,7 +1750,24 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               return restoredChunkStats;
             });
 
-            return { skipped: false as const, success: true as const, ...chunkStats };
+              activeFootprintRestores.set(promiseKey, promise);
+            }
+
+            let chunkStats;
+            try {
+              chunkStats = await promise;
+            } finally {
+              activeFootprintRestores.delete(promiseKey);
+            }
+
+            const defaultStats: FootprintRestoredChunkStats = {
+              rowsFetched: 0,
+              candlesHydrated: 0,
+              cellsHydrated: 0,
+              bucketMatches: 0,
+              bucketMisses: 0,
+            };
+            return { skipped: false as const, success: true as const, ...defaultStats, ...(chunkStats ?? {}) };
           } catch (error) {
             const failureReason = error instanceof Error ? error.message : String(error);
             recordRestoreDiagnostic({
@@ -1840,7 +1886,9 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
       };
       if (ranges.length === 0 || fineProfileBaseBucketSize <= 0) return stats;
 
-      const profileCache = volumeProfileEngineRef.current.getBaseCache();
+      setProfileLoading(panelId, true);
+      try {
+        const profileCache = volumeProfileEngineRef.current.getBaseCache();
       const chunks = getFineProfileRestoreChunks(ranges);
       const hydratedCandleTimes = new Set<number>();
 
@@ -1921,7 +1969,17 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
               throw new Error(`Fine profile row restore failed with ${response.status}`);
             }
 
-            const rows = await response.json() as FineProfileRow[];
+            const rawRows = await response.json() as [number, number, number, number, number, number, number][];
+            const rows: FineProfileRow[] = rawRows.map(row => ({
+              candleTime: row[0],
+              baseBucketSize: fineProfileBaseBucketSize,
+              bucketPrice: row[1],
+              bidVol: row[2],
+              askVol: row[3],
+              totalVol: row[4],
+              tradeCount: row[5],
+              orderCount: row[6],
+            }));
             const chunkCandleTimes = new Set(rows.map((row) => row.candleTime));
 
             if (rows.length > 0) {
@@ -1981,11 +2039,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
         }
       }
 
-      if (stats.candlesHydrated > 0) {
-        pendingProfileRedrawRef.current = true;
-      }
+        if (stats.candlesHydrated > 0) {
+          pendingProfileRedrawRef.current = true;
+        }
 
-      return stats;
+        return stats;
+      } finally {
+        setProfileLoading(panelId, false);
+      }
     };
 
     const hydrateStoredFineProfileRows = async (candles: Candle[]): Promise<FineProfileHydrationStats> => {
@@ -2227,7 +2288,17 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
         if (!response.ok) return;
 
-        const fetchedCandles = await response.json() as Candle[];
+        const rawRows = await response.json() as [number, number, number, number, number, number, number][];
+        const fetchedCandles: Candle[] = rawRows.map(row => ({
+          time: row[0],
+          open: row[1],
+          high: row[2],
+          low: row[3],
+          close: row[4],
+          volume: row[5],
+          tradeCount: row[6],
+          isClosed: true,
+        }));
         const activeTimeframe = useChartStore.getState().panels[panelId]?.timeframe;
         if (!active || activeTimeframe !== timeframe) return;
 

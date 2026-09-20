@@ -103,7 +103,17 @@ export function useVwapHydration(panelId: PanelId) {
             };
           }
 
-          const fetchedCandles = (await response.json()) as Candle[];
+          const rawRows = await response.json() as [number, number, number, number, number, number, number][];
+          const fetchedCandles: Candle[] = rawRows.map(row => ({
+            time: row[0],
+            open: row[1],
+            high: row[2],
+            low: row[3],
+            close: row[4],
+            volume: row[5],
+            tradeCount: row[6],
+            isClosed: true,
+          }));
           return {
             candles: fetchedCandles,
             source: 'stored',

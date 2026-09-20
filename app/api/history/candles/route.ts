@@ -50,16 +50,15 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  const response = NextResponse.json(rows.map((row) => ({
-    time: row.open_time,
-    open: row.open,
-    high: row.high,
-    low: row.low,
-    close: row.close,
-    volume: row.volume,
-    tradeCount: row.trade_count,
-    isClosed: true,
-  })))
+  const response = NextResponse.json(rows.map((row) => ([
+    row.open_time,
+    row.open,
+    row.high,
+    row.low,
+    row.close,
+    row.volume,
+    row.trade_count,
+  ])))
 
   const untilParam = searchParams.get('until')
   const isPastRange = untilParam !== null && Number(untilParam) < Math.floor(Date.now() / 1000) - 3600
