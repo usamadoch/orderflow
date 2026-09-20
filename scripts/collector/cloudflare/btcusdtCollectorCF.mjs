@@ -69,6 +69,7 @@
  */
 
 import { DurableObject } from 'cloudflare:workers'
+import { connect } from 'cloudflare:sockets'
 import pg from 'pg'
 const { Pool } = pg
 
@@ -505,19 +506,234 @@ function loadConfig(env) {
   }
 }
 
-// Proxy support dropped — Workers fetch has no custom dispatcher/proxy-agent
-// hook. If Binance geo-blocks this DO's colo you'll need a different
-// mitigation (see header comment), not a proxy rewrite here.
+// Proxy support: When env.BINANCE_PROXY_URL is set, REST requests route through the
+// forward proxy using outbound TCP sockets via `cloudflare:sockets` CONNECT tunneling.
 function getRestBaseUrl(env, source) {
   const isSpot = source === 'spot'
 
   if (isSpot) {
-    if (env.BINANCE_SPOT_REST_URL) return env.BINANCE_SPOT_REST_URL.replace(/\/+$/, '')
-    return 'https://data-api.binance.vision/api/v3'
+    if (env.BINANCE_SPOT_REST_URL) {
+      return env.BINANCE_SPOT_REST_URL.replace(/\/+$/, '')
+    }
+    return 'https://api.binance.com/api/v3'
   }
 
   if (env.BINANCE_FUTURES_REST_URL) return env.BINANCE_FUTURES_REST_URL.replace(/\/+$/, '')
   return 'https://fapi.binance.com/fapi/v2'
+}
+
+function decodeChunkedBody(bytes) {
+  let pos = 0
+  const chunks = []
+  let totalLength = 0
+
+  while (pos < bytes.length) {
+    let lineEnd = -1
+    for (let i = pos; i < bytes.length - 1; i++) {
+      if (bytes[i] === 13 && bytes[i + 1] === 10) {
+        lineEnd = i
+        break
+      }
+    }
+    if (lineEnd === -1) break
+    const sizeStr = new TextDecoder().decode(bytes.subarray(pos, lineEnd)).trim()
+    const chunkSize = parseInt(sizeStr, 16)
+    if (isNaN(chunkSize) || chunkSize === 0) break
+    const chunkStart = lineEnd + 2
+    const chunkEnd = chunkStart + chunkSize
+    if (chunkEnd > bytes.length) break
+    const chunk = bytes.subarray(chunkStart, chunkEnd)
+    chunks.push(chunk)
+    totalLength += chunk.byteLength
+    pos = chunkEnd + 2
+  }
+
+  const result = new Uint8Array(totalLength)
+  let offset = 0
+  for (const c of chunks) {
+    result.set(c, offset)
+    offset += c.byteLength
+  }
+  return result
+}
+
+async function fetchViaConnectProxy(targetUrl, options = {}, proxyUrl) {
+  const target = new URL(targetUrl)
+  const proxy = new URL(proxyUrl)
+  const targetPort = target.port || (target.protocol === 'https:' ? 443 : 80)
+  const targetHost = target.hostname
+  const proxyPort = Number(proxy.port) || 80
+  const proxyHost = proxy.hostname
+
+  const user = decodeURIComponent(proxy.username || '')
+  const pass = decodeURIComponent(proxy.password || '')
+  const authHeader = (user || pass)
+    ? `Proxy-Authorization: Basic ${btoa(`${user}:${pass}`)}\r\n`
+    : ''
+
+  const timeoutMs = 10000
+  const abortSignal = options?.signal
+
+  const socket = connect(
+    { hostname: proxyHost, port: proxyPort },
+    { secureTransport: 'starttls' },
+  )
+
+  const abortHandler = () => {
+    try { socket.close() } catch {}
+  }
+  if (abortSignal) {
+    if (abortSignal.aborted) {
+      socket.close()
+      throw new Error('This operation was aborted')
+    }
+    abortSignal.addEventListener('abort', abortHandler, { once: true })
+  }
+
+  let timeoutTimer = null
+  if (timeoutMs > 0) {
+    timeoutTimer = setTimeout(() => {
+      try { socket.close() } catch {}
+    }, timeoutMs)
+  }
+
+  try {
+    const writer = socket.writable.getWriter()
+    const reader = socket.readable.getReader()
+
+    const connectReq = `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\n` +
+      `Host: ${targetHost}:${targetPort}\r\n` +
+      authHeader +
+      `User-Agent: Cloudflare-Worker\r\n` +
+      `\r\n`
+    await writer.write(new TextEncoder().encode(connectReq))
+
+    let headerBuffer = ''
+    const decoder = new TextDecoder()
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) throw new Error('Proxy closed connection during CONNECT handshake')
+      headerBuffer += decoder.decode(value, { stream: true })
+      if (headerBuffer.includes('\r\n\r\n')) break
+    }
+
+    const firstLine = headerBuffer.split('\r\n')[0]
+    const match = firstLine.match(/HTTP\/\d\.\d\s+(\d+)/)
+    const statusCode = match ? Number(match[1]) : 0
+    if (statusCode !== 200) {
+      writer.releaseLock()
+      reader.releaseLock()
+      throw new Error(`Proxy CONNECT failed: ${firstLine}`)
+    }
+
+    writer.releaseLock()
+    reader.releaseLock()
+
+    const tlsSocket = socket.startTls({ expectedServerHostname: targetHost })
+    const secureWriter = tlsSocket.writable.getWriter()
+    const secureReader = tlsSocket.readable.getReader()
+
+    const path = target.pathname + target.search
+    const method = options?.method || 'GET'
+    const headers = new Headers(options?.headers || {})
+    if (!headers.has('Host')) headers.set('Host', targetHost)
+    if (!headers.has('User-Agent')) headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    if (!headers.has('Accept')) headers.set('Accept', 'application/json, text/plain, */*')
+    headers.set('Connection', 'close')
+
+    let reqHeaderStr = `${method} ${path} HTTP/1.1\r\n`
+    for (const [k, v] of headers.entries()) {
+      reqHeaderStr += `${k}: ${v}\r\n`
+    }
+    reqHeaderStr += '\r\n'
+
+    await secureWriter.write(new TextEncoder().encode(reqHeaderStr))
+    if (options?.body) {
+      const bodyBytes = typeof options.body === 'string'
+        ? new TextEncoder().encode(options.body)
+        : options.body
+      await secureWriter.write(bodyBytes)
+    }
+    secureWriter.releaseLock()
+
+    let rawResponse = new Uint8Array(0)
+    let headerEndIndex = -1
+    let contentLength = null
+
+    while (true) {
+      const { value, done } = await secureReader.read()
+      if (done) break
+      if (value && value.byteLength > 0) {
+        const prevLen = rawResponse.length
+        const next = new Uint8Array(prevLen + value.byteLength)
+        next.set(rawResponse, 0)
+        next.set(value, prevLen)
+        rawResponse = next
+
+        if (headerEndIndex === -1) {
+          for (let i = 0; i < rawResponse.length - 3; i++) {
+            if (rawResponse[i] === 13 && rawResponse[i+1] === 10 && rawResponse[i+2] === 13 && rawResponse[i+3] === 10) {
+              headerEndIndex = i
+              const headerText = new TextDecoder().decode(rawResponse.subarray(0, headerEndIndex))
+              const clMatch = headerText.match(/content-length:\s*(\d+)/i)
+              if (clMatch) {
+                contentLength = Number(clMatch[1])
+              }
+              break
+            }
+          }
+        }
+
+        if (headerEndIndex !== -1 && contentLength !== null) {
+          const bodyBytesReceived = rawResponse.length - (headerEndIndex + 4)
+          if (bodyBytesReceived >= contentLength) {
+            break
+          }
+        }
+      }
+    }
+
+    secureReader.releaseLock()
+    try { tlsSocket.close() } catch {}
+
+    if (headerEndIndex === -1) {
+      throw new Error('Invalid HTTP response from target: missing header terminator')
+    }
+
+    const resHeaderBytes = rawResponse.subarray(0, headerEndIndex)
+    let resBodyBytes = rawResponse.subarray(headerEndIndex + 4)
+    const resHeaderText = new TextDecoder().decode(resHeaderBytes)
+    const lines = resHeaderText.split('\r\n')
+    const resStatusLine = lines[0]
+    const resParts = resStatusLine.split(' ')
+    const resStatus = Number(resParts[1])
+    const resStatusText = resParts.slice(2).join(' ')
+
+    const resHeaders = new Headers()
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i]
+      const idx = line.indexOf(':')
+      if (idx > 0) {
+        resHeaders.append(line.slice(0, idx).trim(), line.slice(idx + 1).trim())
+      }
+    }
+
+    if (resHeaders.get('transfer-encoding')?.includes('chunked')) {
+      resBodyBytes = decodeChunkedBody(resBodyBytes)
+    }
+
+    return new Response(resBodyBytes, {
+      status: resStatus,
+      statusText: resStatusText,
+      headers: resHeaders,
+    })
+  } finally {
+    if (abortSignal) {
+      abortSignal.removeEventListener('abort', abortHandler)
+    }
+    if (timeoutTimer) clearTimeout(timeoutTimer)
+    try { socket.close() } catch {}
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +748,14 @@ export class BtcusdtCollector extends DurableObject {
     this.initialized = false
     this.initPromise = null
     this.restarting = false
+  }
+
+  async fetchBinance(url, options = {}) {
+    const proxyUrl = this.env?.BINANCE_PROXY_URL
+    if (proxyUrl) {
+      return fetchViaConnectProxy(url, options, proxyUrl)
+    }
+    return fetch(url, options)
   }
 
   // --- lifecycle entry points -----------------------------------------
@@ -755,9 +979,10 @@ export class BtcusdtCollector extends DurableObject {
       const log = this.sourceLoggers[source] || this.logger
       const baseUrl = getRestBaseUrl(this.env, source)
       const url = `${baseUrl}/ticker/price?symbol=${SYMBOL}`
+      const usingProxy = Boolean(this.env?.BINANCE_PROXY_URL)
       let response = null
       try {
-        response = await fetch(
+        response = await this.fetchBinance(
           url,
           { signal: AbortSignal.timeout(10000) },
         )
@@ -771,7 +996,7 @@ export class BtcusdtCollector extends DurableObject {
         }
         this.priceReferences[source] = price
         log.info(
-          { source, price },
+          { source, price, proxy: usingProxy },
           'seeded contract price reference',
         )
       } catch (error) {
@@ -779,6 +1004,7 @@ export class BtcusdtCollector extends DurableObject {
           {
             source,
             url,
+            proxy: usingProxy,
             status: response?.status ?? null,
             statusText: response?.statusText ?? null,
             error: getErrorMessage(error),
@@ -793,6 +1019,7 @@ export class BtcusdtCollector extends DurableObject {
         spot: this.priceReferences.spot,
         futures: this.priceReferences.futures,
       },
+      proxy: Boolean(this.env?.BINANCE_PROXY_URL),
     }, 'price reference seed result')
   }
 
@@ -1539,7 +1766,8 @@ export class BtcusdtCollector extends DurableObject {
       return { ok: true, cursor: endTime }
     }
 
-    log.info({ source, gapMs: endTime - startTime }, 'starting auto-backfill for gap')
+    const usingProxy = Boolean(this.env?.BINANCE_PROXY_URL)
+    log.info({ source, gapMs: endTime - startTime, proxy: usingProxy }, 'starting auto-backfill for gap')
 
     const baseUrl = getRestBaseUrl(this.env, source).replace(/\/fapi\/v2$/, '/fapi/v1')
     let currentStartTime = startTime
@@ -1554,12 +1782,13 @@ export class BtcusdtCollector extends DurableObject {
       const url = `${baseUrl}/aggTrades?symbol=${SYMBOL}&startTime=${currentStartTime}&endTime=${requestEndTime}&limit=1000`
 
       try {
-        const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
+        const response = await this.fetchBinance(url, { signal: AbortSignal.timeout(10000) })
         if (!response.ok) {
           const body = await response.text()
           log.error({
             source,
             url,
+            proxy: usingProxy,
             status: response.status,
             statusText: response.statusText,
             body,
@@ -1614,14 +1843,14 @@ export class BtcusdtCollector extends DurableObject {
 
         await new Promise((resolve) => setTimeout(resolve, 100))
       } catch (error) {
-        log.error({ source, url, error: getErrorMessage(error) }, 'backfill network error')
+        log.error({ source, url, proxy: usingProxy, error: getErrorMessage(error) }, 'backfill network error')
         break
       }
     }
 
     const completed = currentStartTime >= endTime
     if (completed) {
-      log.info({ source, totalFetched }, 'auto-backfill completed')
+      log.info({ source, totalFetched, proxy: usingProxy }, 'auto-backfill completed')
     }
     return { ok: completed, cursor: currentStartTime }
   }
