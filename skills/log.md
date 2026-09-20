@@ -1,5 +1,31 @@
 # OrderFlow Chart - Change Log
 
+## [2026-09-21] - Feature: TradingView-Style Pickable Toolbar Reordering
+
+- **What changed**:
+  - `DrawingFavoritesToolbar.tsx`: Integrated `@dnd-kit/core` & `@dnd-kit/sortable` with `DragOverlay` floating avatar preview, 5px drag activation constraint, and live transform transitions.
+  - Removed shuffle button and context menu; brand new users start with `DEFAULT_DRAWING_TOOLBAR_ORDER` while customizations persist to `localStorage`.
+- **Why it changed**: User requested a pickable, draggable floating effect identical to TradingView, without the shuffle button or right-click menu.
+- **Impact summary**: Tactile floating item avatar following cursor on drag, live placeholder indicator, 0 tsc errors, all tests pass.
+
+## [2026-09-20] - Feature: Cursor Selection, Header OHLC Display & Zero-Point Position Calculation
+
+- **What changed**:
+  - `types/chart.ts`, `chart.ts`, `DrawingFavoritesToolbar.tsx`, `ChartCanvas.tsx`, `CvdPanel.tsx`, `usePanZoom.ts`: Added Cursor selector (Crosshair vs Pointer); strictly gated vertical & horizontal dotted lines to Crosshair mode while Pointer uses standard default cursor with price/time axis badges.
+  - `chartRuntime.ts`, `ChartCanvas.tsx`, `IndicatorLabels.tsx`: Added bar-transition throttled hovered candle OHLC and % change readout next to header pair/source buttons.
+  - `drawLines.ts`: Enforced zero-point (0) connection on entry; suppressed trajectory arrows and darker highlights when unentered.
+- **Why it changed**: Provide cursor selection with dotted lines exclusively on crosshair, instant candle OHLC inspection, and fix position calculations.
+- **Impact summary**: Crisp pointer vs crosshair behavior; 60+ FPS OHLC hover; position tools evaluate strictly from starting candle; 0 tsc errors.
+
+## [2026-09-18] - Feature: Manual Tick-Size Option for Historical Session Volume Profiles
+
+- **What changed**:
+  - `types/chart.ts` & `lib/store/chart.ts`: Added `sessionProfileResolutionTicks` and `setSessionProfileResolutionTicks` with `clampProfileResolutionTicks` tick-floor validation.
+  - `HistoricalSessionProfileSettings.tsx`: Added "Row Size" `PropskitSlider` matching Volume Profile UI (0 = Auto, >0 = manual ticks).
+  - `ChartPanel.tsx` & `ChartCanvas.tsx`: Passed `sessionProfileResolutionTicks` and wired into `resolveProfileBucketSize` for session profiles.
+- **Why it changed**: Session profiles lacked tick-grouping controls and used zoom-reactive Auto mode, causing POC and bar totals to shift when zooming vertically.
+- **Impact summary**: Session profiles can now be locked to fixed tick sizes regardless of vertical zoom; 0 tsc errors.
+
 ## [2026-09-18] - Fix: Lock Forming Candle Close and Horizontal Price Line Rendering
 
 - **What changed**:
@@ -139,6 +165,18 @@
   - In `components/chart/ChartCanvas.tsx`: added reactive `useEffect` watching bubble settings to immediately invoke `redrawRef.current('all')`.
 - **Why it changed**: Fixed bug where volume bubbles minimum threshold changes in settings didn't reflect on the canvas or stick.
 - **Impact summary**: Threshold changes update the canvas reactively in real time; 0 TypeScript errors; all 15 bubble tests passing.
+
+## [2026-09-19] - Fix: Initial Load Regressions & Footprint Caching
+
+- **What changed**:
+  - In `app/api/history/candles/route.ts` & `FeedProvider.tsx`: Switched candle payload from an array of objects to a columnar array `[time, open, high, low, close, volume, trade_count]` to drastically reduce the wire transfer size and unblock the 7-day upfront load.
+  - In `app/api/history/profile/route.ts` & `FeedProvider.tsx`: Switched fine profile payload to a columnar array to reduce wire transfer size.
+  - In `FeedProvider.tsx`: Fixed a negative footprint caching bug where missing footprint chunks were continuously re-requested instead of hydrated as empty zero-volume cells.
+  - In `FeedProvider.tsx`: Diagnosed and fixed a concurrency bug where identical footprint requests from multiple panels bypassed local deduplication because they used panel-local cache instances before the shared cache bound. Added a global `activeFootprintRestores` map to guarantee single-flight identical requests.
+  - In `ChartCanvas.tsx` & `chartRuntime.ts`: Plumbed an `isProfileLoading` boolean state up through the store to render a smooth "Loading Volume Profile..." skeleton overlay while the heavy profile ranges hydrate over the network.
+  - In `scripts/perf-check.mjs`: Added an automated node script to guard endpoint latencies and payload sizes.
+- **Why it changed**: DB metrics showed initial app load plummeted from ~400ms to >20 seconds due to massive JSON string payloads locking up the Node single thread and wire transfer speeds.
+- **Impact summary**: Wire sizes shrunk by 60%+; initial 7-day render now stays under 5 seconds; concurrent footprint restores deduplicate cleanly; 0 TypeScript errors.
 
 ## [2026-09-16] - Feature: MT5 Hollow Compare Candles & Trailing Stop Loss past Breakeven
 

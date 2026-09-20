@@ -93,7 +93,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/OrderTicket.tsx` → Draggable floating order ticket modal with quantity presets, risk checks, and validation.
 - `components/ui/AccountBalanceWidget.tsx` → Header widget displaying available asset balances from live account snapshots.
 - `components/ui/OrdersPanel.tsx` → Bottom pane table displaying open limit orders with real-time status and cancellation controls.
-- `components/ui/DrawingFavoritesToolbar.tsx` → Draggable floating toolbar opening at center top by default with z-[70] stacking above header, 32x32px padded button clickable targets, and persisted dragged position.
+- `components/ui/DrawingFavoritesToolbar.tsx` → Draggable floating toolbar housing cursor selector (Crosshair/Pointer), drawing favorites, measure tool, and custom profile with persisted position, and TradingView-style pickable `@dnd-kit` drag-and-drop icon reordering with floating avatar preview and persistent custom item order.
 - `components/ui/ChartSettingsDropdown.tsx` → The settings window with solid opaque styling, indicator dialog mode, draggable floating settings window with custom vertical resize, FigButton sidebar navigation, and unblocked window drag listeners.
 - `components/ui/chart-settings/GeneralChartSettings.tsx` → General aggregation, global timezone/format, and interaction settings using FigUI3 and PropsKit controls.
 - `components/ui/chart-settings/CanvasSettings.tsx` → Canvas appearance settings (background, gridlines, crosshair, candle colors) using FigUI3 controls and child ColorPickerPopover.
@@ -135,7 +135,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/ui/fig/FigTooltip.tsx` → Reusable React wrapper for `<fig-tooltip>` custom element supporting contextual hover/click tooltips with explicit position/offset forwarding and no-overlay styling.
 - `components/ui/fig/index.ts` → FigUI3 component barrel export.
 - `components/debug/DebugPanel.tsx` → Floating dev debug panel (Ctrl+Shift+D) displaying metrics, store summaries, and restore diagnostics with FigButton tab navigation.
-- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, MT5 Compare live status and Binance toggle, reordering controls, and always-visible action icons without hover requirement.
+- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying pair, contract, live status, Spot/Futures toggles, real-time candle OHLC and % change readout, and active indicator badges.
 
 ### Feed / Engine Context
 
@@ -148,9 +148,9 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/HeatmapPanel.tsx` → Interactive side-by-side split chart canvas with independent vertical price navigation, horizontal time navigation, dedicated right price axis, bottom time axis, auto-scale toggling, and decoupled rAF rendering.
 - `components/chart/chartPanelUtils.ts` → Utilities for symbol filtering (orders, positions, fills) and historical session ranges.
 - `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots for docked bottom indicators, treating volume bars as an on-canvas overlay.
-- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying active indicator values, data source switcher, reordering controls, and always-visible action icons without hover requirement.
+- `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying pair, contract, live status, Spot/Futures toggles, real-time candle OHLC and % change readout, and active indicator badges.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas coordinator and multi-layer rendering pipeline with trailing SL past breakeven into TP zone, continuous auto-scaling, and timeframe/symbol/history reset triggers ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
+- `components/chart/ChartCanvas.tsx` → Main canvas coordinator and multi-layer rendering pipeline with Crosshair/Pointer cursor styles, throttled OHLC hover tracking, continuous auto-scaling, and reset triggers ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
 - `components/chart/chartCanvasUtils.ts` → Continuous fractional index interpolation (resolveIndexFromTime) from timestamps for multi-timeframe drawing sync, coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
 - `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (1px white defaults, FigUI tooltips, Trash2 delete, box border/fill, and position tool profit & stop loss color pickers) and custom profile controls with pointer/mouse event isolation.
@@ -169,7 +169,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawVolumeBars.ts` → On-canvas histogram overlay renderer for volume and trade counts layered behind candlesticks with moving average.
 - `components/chart/drawVolumeProfile.ts` → Main Volume Profile renderer displaying horizontal volume distribution, POC bar highlight with configurable fill and internal label, developing POC trail, Value Area, and bar-colored HVN/LVN nodes.
 - `components/chart/drawSelectionRect.ts` → Interactive selection rectangle, developing POC trail, and custom Volume Profile renderer with bar-colored HVN/LVN nodes and configurable POC fill.
-- `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools with exported `drawTimeAxisBadge` for time axis badge rendering ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/drawLines.map.md)).
+- `components/chart/drawLines.ts` → Canvas renderer for lines, rays, boxes, and position tools with strict zero-point (0) entry validation, trajectory arrows, and excursion highlights ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/drawLines.map.md)).
 - `lib/utils/format.ts` → Formatting helpers for price precision, dynamic instrument decimal resolution (`getInstrumentPrecision`), TradingView date-time formatting (`formatTradingViewDateTime`), countdowns, and axis badges.
 - `components/chart/drawVwap.ts` → Canvas renderer for VWAP lines, rolling windows, envelope bands, and session boundary path segment breaks.
 - `components/chart/drawAxes.ts` → Price and time axis gridline and label renderer with price precision bounds for high-value assets, crisp TradingView typography, half-pixel tick marks, and boundary clipping.
@@ -196,12 +196,12 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### State / Hooks
 
-- `lib/store/chart.ts` → Persisted Zustand store (v41) for chart preferences, independent drawing/profile sync, bubble defaults, disabled-by-default VWAP bands, and themes ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartStore.map.md)).
-- `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, depth, signals, brackets, and trades ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartRuntimeStore.map.md)).
+- `lib/store/chart.ts` → Persisted Zustand store (v41) for chart preferences, cursor type (Crosshair/Pointer), independent drawing/profile sync, bubble defaults, and themes ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartStore.map.md)).
+- `lib/store/chartRuntime.ts` → Ephemeral Zustand store for live candles, hovered candle OHLC, depth, signals, brackets, and trades ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/chartRuntimeStore.map.md)).
 - `lib/chart/candleRetentionCache.ts` → Module-level candle retention cache preserving candle arrays across timeframe switches.
 - `lib/chart/bubbleRetentionCache.ts` → Module-level bubble retention cache preserving aggregate bubble events across timeframe switches.
 - `hooks/useKeyboardShortcuts.ts` → Unified keyboard navigation engine handling arrow navigation, drawing/profile nudging, 50-step undo/redo, interval input, and utility shortcuts with context safety.
-- `types/chart.ts` → TypeScript definitions for chart configurations, panels, indicator options, and DrawnLine properties (including position profit/stop colors).
+- `types/chart.ts` → TypeScript definitions for chart configurations, CursorType, panels, indicator options, and DrawnLine properties.
 
 ### Feeds / Shared Live Data
 

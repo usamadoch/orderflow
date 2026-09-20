@@ -14,6 +14,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@rogieking/figui3": "^8.9.44",
     "lightweight-charts": "^5.2.0",
     "lucide-react": "^0.471.0",

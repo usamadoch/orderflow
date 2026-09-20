@@ -1,54 +1,114 @@
 'use client';
 
 import React from 'react';
-import { ChevronLeft, ChevronRight, GripVertical, Minus, MoveRight, Ruler, Square, AlignLeft } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  GripVertical,
+  Minus,
+  MoveRight,
+  Ruler,
+  Square,
+  AlignLeft,
+  Crosshair,
+  MousePointer,
+  Check,
+} from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
+  DragOverlay,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { FigTooltip } from './fig';
-import { LineDrawMode, PanelId, useChartStore } from '@/lib/store/chart';
+import {
+  LineDrawMode,
+  PanelId,
+  DrawingToolbarItemId,
+  DEFAULT_DRAWING_TOOLBAR_ORDER,
+  useChartStore,
+} from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
-
-const FAVORITE_TOOLS: Array<{
-  mode: Exclude<LineDrawMode, 'none'>;
-  title: string;
-  icon: React.ReactNode;
-}> = [
-    {
-      mode: 'horizontal',
-      title: 'Horizontal Line',
-      icon: <Minus size={16} strokeWidth={1.5} />,
-    },
-    {
-      mode: 'vertical',
-      title: 'Vertical Line',
-      icon: (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <line x1="12" y1="4" x2="12" y2="20" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-    {
-      mode: 'horizontal-ray',
-      title: 'Line',
-      icon: <MoveRight size={16} strokeWidth={1.5} />,
-    },
-    {
-      mode: 'box',
-      title: 'Box',
-      icon: <Square size={16} strokeWidth={1.5} />,
-    },
-  ];
 
 interface DrawingFavoritesToolbarProps {
   panelId: PanelId;
 }
 
+interface SortableToolbarItemProps {
+  id: DrawingToolbarItemId;
+  disabled?: boolean;
+  children: React.ReactNode;
+}
+
+function SortableToolbarItem({ id, disabled, children }: SortableToolbarItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+  };
+
+  const dragAttributes = { ...attributes } as Record<string, unknown>;
+  delete dragAttributes.role;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...dragAttributes}
+      {...listeners}
+      className={`relative flex items-center ${
+        isDragging
+          ? 'opacity-25 rounded-md border border-dashed border-[#3D7EFF] bg-[#3D7EFF]/10 scale-95'
+          : ''
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProps) {
   const toolbarRef = React.useRef<HTMLDivElement | null>(null);
   const panel = useChartStore(s => s.panels[panelId]);
-  const measureToolActive = useChartRuntimeStore(s => s.panels[panelId].measureToolActive);
+  const cursorType = panel.cursorType ?? 'crosshair';
+  const measureToolActive = useChartRuntimeStore(s => s.panels[panelId]?.measureToolActive ?? false);
   const setLineDrawMode = useChartStore(s => s.setLineDrawMode);
   const setDrawMode = useChartStore(s => s.setDrawMode);
+  const setCursorType = useChartStore(s => s.setCursorType);
   const setMeasureToolActive = useChartRuntimeStore(s => s.setMeasureToolActive);
   const setDrawingToolbarPosition = useChartStore(s => s.setDrawingToolbarPosition);
+  const setDrawingToolbarItemOrder = useChartStore(s => s.setDrawingToolbarItemOrder);
+
+  const [localOrder, setLocalOrder] = React.useState<DrawingToolbarItemId[]>(
+    () => panel.drawingToolbarItemOrder ?? DEFAULT_DRAWING_TOOLBAR_ORDER
+  );
+
+  React.useEffect(() => {
+    if (panel.drawingToolbarItemOrder && panel.drawingToolbarItemOrder.length > 0) {
+      setLocalOrder(panel.drawingToolbarItemOrder);
+    }
+  }, [panel.drawingToolbarItemOrder]);
+
   const isDefaultPosition = React.useCallback((pos: { x: number; y: number }) => {
     return pos.x < 0 || (pos.x === 16 && (pos.y === 48 || pos.y === 16));
   }, []);
@@ -99,6 +159,78 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
     return panel.drawingToolbarPosition;
   });
   const [collapsed, setCollapsed] = React.useState(false);
+  const [cursorDropdownOpen, setCursorDropdownOpen] = React.useState(false);
+  const cursorDropdownRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Drag-and-drop reordering state with @dnd-kit
+  const [activeId, setActiveId] = React.useState<DrawingToolbarItemId | null>(null);
+  const initialOrderRef = React.useRef<DrawingToolbarItemId[] | null>(null);
+  const currentOrderRef = React.useRef<DrawingToolbarItemId[]>(localOrder);
+  currentOrderRef.current = localOrder;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setCursorDropdownOpen(false);
+    setActiveId(event.active.id as DrawingToolbarItemId);
+    initialOrderRef.current = localOrder;
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setLocalOrder(items => {
+      const oldIndex = items.indexOf(active.id as DrawingToolbarItemId);
+      const newIndex = items.indexOf(over.id as DrawingToolbarItemId);
+      if (oldIndex === -1 || newIndex === -1) return items;
+      return arrayMove(items, oldIndex, newIndex);
+    });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    if (!over) {
+      if (initialOrderRef.current) {
+        setLocalOrder(initialOrderRef.current);
+        setDrawingToolbarItemOrder(panelId, initialOrderRef.current);
+      }
+      return;
+    }
+    const current = currentOrderRef.current;
+    const oldIndex = current.indexOf(active.id as DrawingToolbarItemId);
+    const newIndex = current.indexOf(over.id as DrawingToolbarItemId);
+    let finalOrder = current;
+    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+      finalOrder = arrayMove(current, oldIndex, newIndex);
+      setLocalOrder(finalOrder);
+    }
+    setDrawingToolbarItemOrder(panelId, finalOrder);
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+    if (initialOrderRef.current) {
+      setLocalOrder(initialOrderRef.current);
+    }
+  };
+
+  React.useEffect(() => {
+    if (!cursorDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cursorDropdownRef.current && !cursorDropdownRef.current.contains(event.target as Node)) {
+        setCursorDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [cursorDropdownOpen]);
 
   React.useLayoutEffect(() => {
     if (isDefaultPosition(panel.drawingToolbarPosition)) {
@@ -130,6 +262,7 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
     setMeasureToolActive(panelId, !measureToolActive);
   };
 
+  // Pointer drag for moving the whole toolbar
   const startDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
 
@@ -165,46 +298,119 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
   };
 
   const getButtonClass = (active: boolean) =>
-    `flex h-8 w-8 items-center justify-center p-1.5 rounded-md transition-colors m-0 border ${active
-      ? 'border-[#3D7EFF] bg-[#262626] text-white shadow-sm shadow-[#3D7EFF]/20'
-      : 'border-transparent text-[#909090] hover:bg-white/10 hover:text-white'
+    `flex h-8 w-8 items-center justify-center p-1.5 rounded-md transition-colors m-0 border select-none cursor-grab ${
+      active
+        ? 'border-[#3D7EFF] bg-[#262626] text-white shadow-sm shadow-[#3D7EFF]/20'
+        : 'border-transparent text-[#909090] hover:bg-white/10 hover:text-white'
     }`;
 
-  return (
-    <div
-      ref={toolbarRef}
-      className={`fixed z-[70] flex items-center p-0.5 border border-[#282828] bg-[#181818] shadow-2xl shadow-black/60 select-none ${collapsed ? 'rounded-full' : 'rounded-lg'
-        }`}
-      style={{ left: position.x, top: position.y }}
-      onPointerDown={(event) => event.stopPropagation()}
-      onMouseDown={(event) => event.stopPropagation()}
-    >
-      <button
-        type="button"
-        onPointerDown={startDrag}
-        className="flex h-8 w-6 items-center justify-center p-1 rounded-md text-[#666666] transition-colors hover:bg-white/10 hover:text-white cursor-move m-0 border border-transparent"
-        aria-label="Drag drawing toolbar"
-      >
-        <GripVertical size={16} strokeWidth={1.5} />
-      </button>
+  const tooltipText = (text: string) => (activeId ? '' : text);
 
-      {collapsed ? (
-        <>
-          <div className="h-3.5 w-5 rounded-full bg-[#2A2A2A] mx-1" />
-          <FigTooltip text="Expand toolbar">
-            <button
-              type="button"
-              onClick={() => setCollapsed(false)}
-              aria-label="Expand drawing toolbar"
-              className="flex h-8 w-8 items-center justify-center p-1.5 rounded-full text-[#909090] hover:bg-white/10 hover:text-white transition-colors m-0 border border-transparent"
-            >
-              <ChevronRight size={16} strokeWidth={1.5} />
-            </button>
-          </FigTooltip>
-        </>
-      ) : (
-        <>
-          <FigTooltip text="Custom Volume Profile (V)">
+  const renderItemIcon = (itemId: DrawingToolbarItemId) => {
+    switch (itemId) {
+      case 'cursor':
+        return cursorType === 'pointer' ? (
+          <MousePointer size={16} strokeWidth={1.5} />
+        ) : (
+          <Crosshair size={16} strokeWidth={1.5} />
+        );
+      case 'profile':
+        return <AlignLeft size={16} strokeWidth={1.5} />;
+      case 'measure':
+        return <Ruler size={16} strokeWidth={1.5} />;
+      case 'horizontal':
+        return <Minus size={16} strokeWidth={1.5} />;
+      case 'vertical':
+        return (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <line x1="12" y1="4" x2="12" y2="20" strokeLinecap="round" />
+          </svg>
+        );
+      case 'horizontal-ray':
+        return <MoveRight size={16} strokeWidth={1.5} />;
+      case 'box':
+        return <Square size={16} strokeWidth={1.5} />;
+      default:
+        return null;
+    }
+  };
+
+  const renderItem = (itemId: DrawingToolbarItemId) => {
+    switch (itemId) {
+      case 'cursor':
+        return (
+          <div ref={cursorDropdownRef} className="relative">
+            <FigTooltip text={tooltipText(cursorType === 'pointer' ? 'Pointer' : 'Crosshair')}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCursorDropdownOpen(prev => !prev);
+                }}
+                aria-haspopup="menu"
+                aria-expanded={cursorDropdownOpen}
+                aria-label="Cursor Selection"
+                className={getButtonClass(cursorDropdownOpen)}
+              >
+                {cursorType === 'pointer' ? (
+                  <MousePointer size={16} strokeWidth={1.5} />
+                ) : (
+                  <Crosshair size={16} strokeWidth={1.5} />
+                )}
+              </button>
+            </FigTooltip>
+
+            {cursorDropdownOpen && (
+              <div
+                className="absolute left-0 top-full mt-1.5 w-36 rounded-lg border border-[#282828] bg-[#181818] p-1 shadow-2xl shadow-black/80 z-[80] flex flex-col gap-0.5"
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCursorType(panelId, 'crosshair');
+                    setCursorDropdownOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                    cursorType === 'crosshair'
+                      ? 'bg-[#262626] text-white'
+                      : 'text-[#909090] hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Crosshair size={14} strokeWidth={1.5} />
+                    Crosshair
+                  </span>
+                  {cursorType === 'crosshair' && <Check size={14} className="text-[#3D7EFF]" strokeWidth={2} />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCursorType(panelId, 'pointer');
+                    setCursorDropdownOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                    cursorType === 'pointer'
+                      ? 'bg-[#262626] text-white'
+                      : 'text-[#909090] hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <MousePointer size={14} strokeWidth={1.5} />
+                    Pointer
+                  </span>
+                  {cursorType === 'pointer' && <Check size={14} className="text-[#3D7EFF]" strokeWidth={2} />}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'profile':
+        return (
+          <FigTooltip text={tooltipText('Custom Volume Profile (V)')}>
             <button
               type="button"
               onClick={selectProfile}
@@ -215,8 +421,11 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
               <AlignLeft size={16} strokeWidth={1.5} />
             </button>
           </FigTooltip>
+        );
 
-          <FigTooltip text="Measure">
+      case 'measure':
+        return (
+          <FigTooltip text={tooltipText('Measure')}>
             <button
               type="button"
               onClick={selectMeasure}
@@ -227,36 +436,156 @@ export function DrawingFavoritesToolbar({ panelId }: DrawingFavoritesToolbarProp
               <Ruler size={16} strokeWidth={1.5} />
             </button>
           </FigTooltip>
+        );
 
-          {FAVORITE_TOOLS.map(tool => {
-            const active = panel.lineDrawMode === tool.mode;
-            return (
-              <FigTooltip key={tool.mode} text={tool.title}>
-                <button
-                  type="button"
-                  onClick={() => selectTool(tool.mode)}
-                  aria-pressed={active}
-                  aria-label={tool.title}
-                  className={getButtonClass(active)}
-                >
-                  {tool.icon}
-                </button>
-              </FigTooltip>
-            );
-          })}
-
-          <FigTooltip text="Collapse toolbar">
+      case 'horizontal':
+        return (
+          <FigTooltip text={tooltipText('Horizontal Line')}>
             <button
               type="button"
-              onClick={() => setCollapsed(true)}
-              aria-label="Collapse drawing toolbar"
-              className="flex h-8 w-8 items-center justify-center p-1.5 rounded-md text-[#909090] hover:bg-white/10 hover:text-white transition-colors m-0 border border-transparent"
+              onClick={() => selectTool('horizontal')}
+              aria-pressed={panel.lineDrawMode === 'horizontal'}
+              aria-label="Horizontal Line"
+              className={getButtonClass(panel.lineDrawMode === 'horizontal')}
             >
-              <ChevronLeft size={16} strokeWidth={1.5} />
+              <Minus size={16} strokeWidth={1.5} />
             </button>
           </FigTooltip>
-        </>
-      )}
-    </div>
+        );
+
+      case 'vertical':
+        return (
+          <FigTooltip text={tooltipText('Vertical Line')}>
+            <button
+              type="button"
+              onClick={() => selectTool('vertical')}
+              aria-pressed={panel.lineDrawMode === 'vertical'}
+              aria-label="Vertical Line"
+              className={getButtonClass(panel.lineDrawMode === 'vertical')}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <line x1="12" y1="4" x2="12" y2="20" strokeLinecap="round" />
+              </svg>
+            </button>
+          </FigTooltip>
+        );
+
+      case 'horizontal-ray':
+        return (
+          <FigTooltip text={tooltipText('Line')}>
+            <button
+              type="button"
+              onClick={() => selectTool('horizontal-ray')}
+              aria-pressed={panel.lineDrawMode === 'horizontal-ray'}
+              aria-label="Line"
+              className={getButtonClass(panel.lineDrawMode === 'horizontal-ray')}
+            >
+              <MoveRight size={16} strokeWidth={1.5} />
+            </button>
+          </FigTooltip>
+        );
+
+      case 'box':
+        return (
+          <FigTooltip text={tooltipText('Box')}>
+            <button
+              type="button"
+              onClick={() => selectTool('box')}
+              aria-pressed={panel.lineDrawMode === 'box'}
+              aria-label="Box"
+              className={getButtonClass(panel.lineDrawMode === 'box')}
+            >
+              <Square size={16} strokeWidth={1.5} />
+            </button>
+          </FigTooltip>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div
+        ref={toolbarRef}
+        className={`fixed z-[70] flex items-center p-0.5 border border-[#282828] bg-[#181818] shadow-2xl shadow-black/60 select-none ${
+          collapsed ? 'rounded-full' : 'rounded-lg'
+        }`}
+        style={{ left: position.x, top: position.y }}
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          onPointerDown={startDrag}
+          className="flex h-8 w-6 items-center justify-center p-1 rounded-md text-[#666666] transition-colors hover:bg-white/10 hover:text-white cursor-move m-0 border border-transparent"
+          aria-label="Drag drawing toolbar"
+        >
+          <GripVertical size={16} strokeWidth={1.5} />
+        </button>
+
+        {collapsed ? (
+          <>
+            <div className="h-3.5 w-5 rounded-full bg-[#2A2A2A] mx-1" />
+            <FigTooltip text="Expand toolbar">
+              <button
+                type="button"
+                onClick={() => setCollapsed(false)}
+                aria-label="Expand drawing toolbar"
+                className="flex h-8 w-8 items-center justify-center p-1.5 rounded-full text-[#909090] hover:bg-white/10 hover:text-white transition-colors m-0 border border-transparent"
+              >
+                <ChevronRight size={16} strokeWidth={1.5} />
+              </button>
+            </FigTooltip>
+          </>
+        ) : (
+          <>
+            <SortableContext items={localOrder} strategy={horizontalListSortingStrategy}>
+              {localOrder.map((itemId) => (
+                <SortableToolbarItem
+                  key={itemId}
+                  id={itemId}
+                  disabled={cursorDropdownOpen}
+                >
+                  {renderItem(itemId)}
+                </SortableToolbarItem>
+              ))}
+            </SortableContext>
+
+            <FigTooltip text="Collapse toolbar">
+              <button
+                type="button"
+                onClick={() => setCollapsed(true)}
+                aria-label="Collapse drawing toolbar"
+                className="flex h-8 w-8 items-center justify-center p-1.5 rounded-md text-[#909090] hover:bg-white/10 hover:text-white transition-colors m-0 border border-transparent"
+              >
+                <ChevronLeft size={16} strokeWidth={1.5} />
+              </button>
+            </FigTooltip>
+          </>
+        )}
+      </div>
+
+      <DragOverlay
+        dropAnimation={{
+          duration: 180,
+          easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+        }}
+      >
+        {activeId ? (
+          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[#3D7EFF] bg-[#222222] text-white shadow-2xl shadow-black/90 scale-110 cursor-grabbing ring-2 ring-[#3D7EFF]/50 select-none pointer-events-none">
+            {renderItemIcon(activeId)}
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
