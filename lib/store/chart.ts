@@ -10,6 +10,7 @@ import {
   DEFAULT_GRID_COLOR,
   DEFAULT_GRID_OPACITY,
 } from '@/lib/config/chartColors';
+import { DEFAULT_DRAWING_TOOLBAR_ORDER } from '../../types/chart';
 import type {
   ChartMode,
   PanelId,
@@ -18,6 +19,8 @@ import type {
   AbsorptionSide,
   ExhaustionSide,
   LineDrawMode,
+  CursorType,
+  DrawingToolbarItemId,
   DrawingStrokeWidth,
   SessionId,
   CvdMode,
@@ -48,6 +51,8 @@ import type {
   PanelState,
 } from '../../types/chart';
 
+export { DEFAULT_DRAWING_TOOLBAR_ORDER };
+
 export type {
   ChartMode,
   PanelId,
@@ -56,6 +61,8 @@ export type {
   AbsorptionSide,
   ExhaustionSide,
   LineDrawMode,
+  CursorType,
+  DrawingToolbarItemId,
   DrawingStrokeWidth,
   SessionId,
   CvdMode,
@@ -207,7 +214,9 @@ export interface ChartState {
   updateLine: (panelId: PanelId, id: string, updates: Partial<DrawnLine>) => void;
   removeLine: (panelId: PanelId, id: string) => void;
   setLineDrawMode: (panelId: PanelId, mode: LineDrawMode) => void;
+  setCursorType: (panelId: PanelId, cursorType: CursorType) => void;
   setDrawingToolbarPosition: (panelId: PanelId, position: DrawingToolbarPosition) => void;
+  setDrawingToolbarItemOrder: (panelId: PanelId, order: DrawingToolbarItemId[]) => void;
   setExhaustionEnabled: (panelId: PanelId, enabled: boolean) => void;
   setExhaustionMinScore: (panelId: PanelId, score: number) => void;
   setExhaustionSide: (panelId: PanelId, side: ExhaustionSide) => void;
@@ -286,6 +295,7 @@ export interface ChartState {
   setHistoricalSessionProfileDisplayMode: (panelId: PanelId, mode: 'separate' | 'combined') => void;
   setHistoricalSessionProfileCount: (panelId: PanelId, count: number) => void;
   setHistoricalSessionProfileMinTimeframe: (panelId: PanelId, minTimeframe: string) => void;
+  setSessionProfileResolutionTicks: (panelId: PanelId, ticks: number) => void;
   setHistoricalSessionProfileCustomSessions: (panelId: PanelId, customSessions: { id: string; start: string; end: string; tz: string }[]) => void;
   setMergedProfileRanges: (panelId: PanelId, mergedProfileRanges: { start: number; end: number }[]) => void;
 
@@ -428,7 +438,9 @@ function createDefaultPanel(id: PanelId): PanelState {
     customProfileLocked: false,
     drawnLines: [],
     lineDrawMode: 'none',
+    cursorType: 'crosshair',
     drawingToolbarPosition: { x: -1, y: 44 },
+    drawingToolbarItemOrder: [...DEFAULT_DRAWING_TOOLBAR_ORDER],
     exhaustionEnabled: true,
     exhaustionMinScore: 40,
     exhaustionSide: 'both' as ExhaustionSide,
@@ -522,6 +534,7 @@ function createDefaultPanel(id: PanelId): PanelState {
     historicalSessionProfileDisplayMode: 'separate',
     historicalSessionProfileCount: 1,
     historicalSessionProfileMinTimeframe: '15m',
+    sessionProfileResolutionTicks: 0,
     historicalSessionProfileCustomSessions: [],
     mergedProfileRanges: [],
     settingsByTimeframe: {},
@@ -1345,6 +1358,9 @@ export const useChartStore = create<ChartState>()(
           return updatePanel(state, panelId, updates);
         }),
 
+      setCursorType: (panelId, cursorType) =>
+        set((state) => updatePanel(state, panelId, { cursorType })),
+
       setDrawingToolbarPosition: (panelId, drawingToolbarPosition) =>
         set((state) => updatePanel(state, panelId, {
           drawingToolbarPosition: {
@@ -1352,6 +1368,9 @@ export const useChartStore = create<ChartState>()(
             y: Math.max(0, Math.round(drawingToolbarPosition.y)),
           },
         })),
+
+      setDrawingToolbarItemOrder: (panelId, drawingToolbarItemOrder) =>
+        set((state) => updatePanel(state, panelId, { drawingToolbarItemOrder })),
 
       setExhaustionEnabled: (panelId, exhaustionEnabled) =>
         set((state) => updatePanel(state, panelId, { exhaustionEnabled })),
@@ -1719,6 +1738,11 @@ export const useChartStore = create<ChartState>()(
       setHistoricalSessionProfileMinTimeframe: (panelId, historicalSessionProfileMinTimeframe) =>
         set((state) => updatePanel(state, panelId, { historicalSessionProfileMinTimeframe })),
 
+      setSessionProfileResolutionTicks: (panelId, ticks) =>
+        set((state) => updatePanel(state, panelId, {
+          sessionProfileResolutionTicks: clampProfileResolutionTicks(ticks, state.tickSize),
+        })),
+
       setHistoricalSessionProfileCustomSessions: (panelId, historicalSessionProfileCustomSessions) =>
         set((state) => updatePanel(state, panelId, { historicalSessionProfileCustomSessions })),
 
@@ -1738,11 +1762,13 @@ export const useChartStore = create<ChartState>()(
           left: {
             ...state.panels.left,
             profileResolutionTicks: clampProfileResolutionTicks(state.panels.left.profileResolutionTicks, tickSize),
+            sessionProfileResolutionTicks: clampProfileResolutionTicks(state.panels.left.sessionProfileResolutionTicks, tickSize),
             settingsByTimeframe: clampSettingsByTimeframe(state.panels.left.settingsByTimeframe, tickSize),
           },
           right: {
             ...state.panels.right,
             profileResolutionTicks: clampProfileResolutionTicks(state.panels.right.profileResolutionTicks, tickSize),
+            sessionProfileResolutionTicks: clampProfileResolutionTicks(state.panels.right.sessionProfileResolutionTicks, tickSize),
             settingsByTimeframe: clampSettingsByTimeframe(state.panels.right.settingsByTimeframe, tickSize),
           },
         },
@@ -1840,6 +1866,28 @@ export const useChartStore = create<ChartState>()(
         };
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ensureDrawingToolbarItemOrder = (order: any): DrawingToolbarItemId[] => {
+          if (!Array.isArray(order) || order.length === 0) {
+            return [...DEFAULT_DRAWING_TOOLBAR_ORDER];
+          }
+          const validSet = new Set<string>(DEFAULT_DRAWING_TOOLBAR_ORDER);
+          const seen = new Set<DrawingToolbarItemId>();
+          const result: DrawingToolbarItemId[] = [];
+          for (const id of order) {
+            if (typeof id === 'string' && validSet.has(id) && !seen.has(id as DrawingToolbarItemId)) {
+              seen.add(id as DrawingToolbarItemId);
+              result.push(id as DrawingToolbarItemId);
+            }
+          }
+          for (const id of DEFAULT_DRAWING_TOOLBAR_ORDER) {
+            if (!seen.has(id)) {
+              result.push(id);
+            }
+          }
+          return result;
+        };
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ensurePanel = (p: any) => {
           if (!p) return p;
           const panelRest = { ...p };
@@ -1892,7 +1940,9 @@ export const useChartStore = create<ChartState>()(
             customProfileLocked: p.customProfileLocked ?? false,
             drawnLines: p.drawnLines ?? [],
             lineDrawMode: p.lineDrawMode || 'none',
+            cursorType: p.cursorType || 'crosshair',
             drawingToolbarPosition: ensureDrawingToolbarPosition(p.drawingToolbarPosition),
+            drawingToolbarItemOrder: ensureDrawingToolbarItemOrder(p.drawingToolbarItemOrder),
             exhaustionEnabled: p.exhaustionEnabled ?? true,
             exhaustionMinScore: p.exhaustionMinScore ?? 40,
             exhaustionSide: p.exhaustionSide || 'both',
@@ -2077,6 +2127,10 @@ export const useChartStore = create<ChartState>()(
                 persistedLeft.profileResolutionTicks ?? currentState.panels.left.profileResolutionTicks,
                 tickSize,
               ),
+              sessionProfileResolutionTicks: clampProfileResolutionTicks(
+                persistedLeft.sessionProfileResolutionTicks ?? currentState.panels.left.sessionProfileResolutionTicks ?? 0,
+                tickSize,
+              ),
               settingsByTimeframe: clampSettingsByTimeframe(
                 persistedLeft.settingsByTimeframe ?? currentState.panels.left.settingsByTimeframe,
                 tickSize,
@@ -2115,6 +2169,10 @@ export const useChartStore = create<ChartState>()(
               ...persistedRight,
               profileResolutionTicks: clampProfileResolutionTicks(
                 persistedRight.profileResolutionTicks ?? currentState.panels.right.profileResolutionTicks,
+                tickSize,
+              ),
+              sessionProfileResolutionTicks: clampProfileResolutionTicks(
+                persistedRight.sessionProfileResolutionTicks ?? currentState.panels.right.sessionProfileResolutionTicks ?? 0,
                 tickSize,
               ),
               settingsByTimeframe: clampSettingsByTimeframe(
@@ -2200,7 +2258,9 @@ export const useChartStore = create<ChartState>()(
             customProfileLocked: state.panels.left.customProfileLocked,
             drawnLines: state.panels.left.drawnLines,
             lineDrawMode: state.panels.left.lineDrawMode,
+            cursorType: state.panels.left.cursorType,
             drawingToolbarPosition: state.panels.left.drawingToolbarPosition,
+            drawingToolbarItemOrder: state.panels.left.drawingToolbarItemOrder,
             exhaustionEnabled: state.panels.left.exhaustionEnabled,
             exhaustionMinScore: state.panels.left.exhaustionMinScore,
             exhaustionSide: state.panels.left.exhaustionSide,
@@ -2288,6 +2348,7 @@ export const useChartStore = create<ChartState>()(
             historicalSessionProfileDisplayMode: state.panels.left.historicalSessionProfileDisplayMode,
             historicalSessionProfileCount: state.panels.left.historicalSessionProfileCount,
             historicalSessionProfileMinTimeframe: state.panels.left.historicalSessionProfileMinTimeframe,
+            sessionProfileResolutionTicks: state.panels.left.sessionProfileResolutionTicks ?? 0,
             statsIndicatorEnabled: state.panels.left.statsIndicatorEnabled,
             statsIndicatorCount: state.panels.left.statsIndicatorCount,
             statsIndicatorItems: state.panels.left.statsIndicatorItems,
@@ -2355,7 +2416,9 @@ export const useChartStore = create<ChartState>()(
             customProfileLocked: state.panels.right.customProfileLocked,
             drawnLines: state.panels.right.drawnLines,
             lineDrawMode: state.panels.right.lineDrawMode,
+            cursorType: state.panels.right.cursorType,
             drawingToolbarPosition: state.panels.right.drawingToolbarPosition,
+            drawingToolbarItemOrder: state.panels.right.drawingToolbarItemOrder,
             exhaustionEnabled: state.panels.right.exhaustionEnabled,
             exhaustionMinScore: state.panels.right.exhaustionMinScore,
             exhaustionSide: state.panels.right.exhaustionSide,
@@ -2436,6 +2499,7 @@ export const useChartStore = create<ChartState>()(
             historicalSessionProfileDisplayMode: state.panels.right.historicalSessionProfileDisplayMode,
             historicalSessionProfileCount: state.panels.right.historicalSessionProfileCount,
             historicalSessionProfileMinTimeframe: state.panels.right.historicalSessionProfileMinTimeframe,
+            sessionProfileResolutionTicks: state.panels.right.sessionProfileResolutionTicks ?? 0,
             statsIndicatorEnabled: state.panels.right.statsIndicatorEnabled,
             statsIndicatorCount: state.panels.right.statsIndicatorCount,
             statsIndicatorItems: state.panels.right.statsIndicatorItems,

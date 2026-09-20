@@ -25,7 +25,8 @@ export function usePanZoom(
   measureToolActive: boolean = false,
   canStartDrag?: (x: number, y: number) => boolean,
   onCrosshairChange?: (x: number | null, y: number | null) => void,
-  externalRefs?: PanZoomRefs
+  externalRefs?: PanZoomRefs,
+  defaultCursor: string = 'crosshair'
 ) {
   const localScrollOffset = useRef(initialScrollOffset);
   const localBarWidth = useRef(initialBarWidth);
@@ -46,7 +47,8 @@ export function usePanZoom(
     onBarWidthChange,
     onScrollOffsetChange,
     canStartDrag,
-    onCrosshairChange
+    onCrosshairChange,
+    defaultCursor
   });
   
   useEffect(() => {
@@ -56,7 +58,8 @@ export function usePanZoom(
       onBarWidthChange,
       onScrollOffsetChange,
       canStartDrag,
-      onCrosshairChange
+      onCrosshairChange,
+      defaultCursor
     };
   });
 
@@ -160,7 +163,7 @@ export function usePanZoom(
           } else if (mouseY.current >= chartHeight) {
             canvas.style.cursor = 'ew-resize';
           } else {
-            canvas.style.cursor = 'crosshair';
+            canvas.style.cursor = callbacksRef.current.defaultCursor || 'crosshair';
           }
         }
       }

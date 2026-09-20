@@ -107,6 +107,7 @@ interface ChartCanvasProps {
   scrollOffset: number;
   timeframe: string;
   isLoadingHistory: boolean;
+  isProfileLoading?: boolean;
   engine: AggregationEngine;
   volumeProfileEngine: VolumeProfileSource;
   volumeProfileRevision: number;
@@ -205,6 +206,7 @@ interface ChartCanvasProps {
   profileFilterMin?: number;
   profileFilterMax?: number;
   historicalSessionProfileEnabled: boolean;
+  sessionProfileResolutionTicks: number;
   profileNodeSensitivity: number;
   deltaProfileWidth: number;
   sessionsEnabled: boolean;
@@ -242,6 +244,7 @@ export function ChartCanvas({
   scrollOffset: scrollOffsetProp,
   timeframe,
   isLoadingHistory,
+  isProfileLoading,
   engine,
   volumeProfileEngine,
   volumeProfileRevision,
@@ -333,6 +336,7 @@ export function ChartCanvas({
   profileFilterMin,
   profileFilterMax,
   historicalSessionProfileEnabled,
+  sessionProfileResolutionTicks,
   profileNodeSensitivity,
   deltaProfileWidth,
   sessionsEnabled,
@@ -423,6 +427,8 @@ export function ChartCanvas({
 
   const [hoveredExhaustion, setHoveredExhaustion] = React.useState<{ result: ExhaustionResult, x: number, y: number } | null>(null);
   const [hoveredIceberg, setHoveredIceberg] = React.useState<{ level: IcebergLevel, x: number, y: number } | null>(null);
+  const cursorType = useChartStore((s) => s.panels[panelId]?.cursorType ?? 'crosshair');
+  const lastHoveredCandleTimeRef = useRef<number | null>(null);
   const selectedDrawingId = useChartRuntimeStore((s) => s.panels[panelId]?.selectedDrawingId ?? null);
   const setSelectedDrawingId = React.useCallback(
     (id: string | null) => useChartRuntimeStore.getState().setSelectedDrawingId(panelId, id),
@@ -1530,7 +1536,7 @@ export function ChartCanvas({
               sHigh,
               sLow,
               sessionProfileHeightPx,
-              profileResolutionTicks,
+              sessionProfileResolutionTicks,
               tickSize,
               bucketSize
             );
@@ -1800,13 +1806,16 @@ export function ChartCanvas({
         const verticalLineHeight = showTimeAxis ? timeAxisTop : logicalHeight;
 
         if (mx !== null || my !== null) {
-          drawCrosshair(ctx, mx, my, chartWidth, chartHeight, {
-            color: crosshairColor,
-            opacity: crosshairOpacity,
-            thickness: crosshairThickness,
-            style: crosshairStyle,
-            verticalLineHeight,
-          });
+          const activeCursorType = panelState?.cursorType ?? cursorType;
+          if (activeCursorType !== 'pointer') {
+            drawCrosshair(ctx, mx, my, chartWidth, chartHeight, {
+              color: crosshairColor,
+              opacity: crosshairOpacity,
+              thickness: crosshairThickness,
+              style: crosshairStyle,
+              verticalLineHeight,
+            });
+          }
 
           // Price Label
           if (my !== null && my >= 0 && my <= chartHeight) {
@@ -1838,7 +1847,7 @@ export function ChartCanvas({
       markEnd('rAF_redraw');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, bubbleColorMode, bubbleVolumeColorMode, bubbleDisplayMode, bubbleBidColor, bubbleAskColor, bubbleLineWidth, bubbleOpacity, bubbleGroupingMode, bubblePriceAggrMode, bubbleTickGroupingMode, bubbleTickCount, bubbleTimeWindowMs, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, profileInputData, profilePocColor, profileHvnColor, profileLvnColor, profilePocWidth, profileFilterMin, profileFilterMax, profileNodeSensitivity, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, candleUpColor, candleUpOpacity, candleDownColor, candleDownOpacity, candleUpWickColor, candleUpWickOpacity, candleDownWickColor, candleDownWickOpacity, chartBackgroundType, chartBackgroundColor, chartBackgroundOpacity, chartBackgroundGradientTop, chartBackgroundGradientTopOpacity, chartBackgroundGradientBottom, chartBackgroundGradientBottomOpacity, showVerticalGridLines, verticalGridLineColor, verticalGridLineOpacity, verticalGridLineStyle, showHorizontalGridLines, horizontalGridLineColor, horizontalGridLineOpacity, horizontalGridLineStyle, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle]);
+  }, [chartMode, footprintMode, bucketSize, engine, volumeProfileEngine, volumeProfileRevision, tickSize, isLoadingHistory, timeframe, absorptionEnabled, absorptionMinScore, absorptionSide, absorptionShowLabels, exhaustionEnabled, exhaustionMinScore, exhaustionSide, exhaustionShowProvisional, icebergEnabled, icebergMinScore, icebergLookback, icebergShowSuspected, icebergShowLabels, icebergShowTint, liquidityVacuumEnabled, liquidityVacuumMinScore, liquidityVacuumShowLabels, liquidityVacuumOpacity, bubblesEnabled, bubbleSizeBy, aggregateBubbleMarketSource, activeChartContractType, activeDataSourceMode, bubbleThreshold, bubbleThresholdMode, bubbleMinOrders, bubbleFilterRender, bubbleStdDevVal, bubbleOutStdDevPerc, bubbleSide, bubbleScaleMode, bubbleColorMode, bubbleVolumeColorMode, bubbleDisplayMode, bubbleBidColor, bubbleAskColor, bubbleLineWidth, bubbleOpacity, bubbleGroupingMode, bubblePriceAggrMode, bubbleTickGroupingMode, bubbleTickCount, bubbleTimeWindowMs, isDrawMode, customProfileRange, customProfileLocked, drawnLines, lineDrawMode, selectedDrawingId, profileWidthPct, defaultProfileEnabled, profileResolutionTicks, sessionProfileResolutionTicks, profileMinRowHeight, profileOpacity, profileMinRowWidth, profileScaleMode, profileShowPocHighlight, profileShowVaFill, profileShowPocLine, profileShowVaLines, profileType, profileInputData, profilePocColor, profileHvnColor, profileLvnColor, profilePocWidth, profileFilterMin, profileFilterMax, profileNodeSensitivity, deltaProfileWidth, sessionsEnabled, sessions, liquidityEnabled, liquidityOpacity, liquidityBucketSize, liquidityHistory, liquidityHeatmapEnabled, liquidityHeatmapOpacity, liquidityHeatmapAgeFade, liquidityHeatmapWidth, liquidityHeatmapShowPulled, liquidityHeatmapShowConsumed, liquidityHeatmapShowPersistence, liquidityHeatmapShowCurrentLabel, liquidityHeatmapProfileSync, activeIndicators, statsIndicatorEnabled, statsIndicatorItems, volumeBarsEnabled, volumeBarsInputData, volumeBarsMarketSource, volumeBarsFilterMode, volumeBarsMovingAverageLength, volumeBarsFilterMin, volumeBarsFilterMax, volumeBarsColorMode, volumeBarsOpacity, volumeBarsHeightPct, volumeBarsShowValueText, volumeBarsTextSize, volumeBarsAverageLineEnabled, volumeBarsAverageLength, showTimeAxis, modifyingOrderId, dragPreviewPrice, globalTimezone, globalTimeFormat, candleUpColor, candleUpOpacity, candleDownColor, candleDownOpacity, candleUpWickColor, candleUpWickOpacity, candleDownWickColor, candleDownWickOpacity, chartBackgroundType, chartBackgroundColor, chartBackgroundOpacity, chartBackgroundGradientTop, chartBackgroundGradientTopOpacity, chartBackgroundGradientBottom, chartBackgroundGradientBottomOpacity, showVerticalGridLines, verticalGridLineColor, verticalGridLineOpacity, verticalGridLineStyle, showHorizontalGridLines, horizontalGridLineColor, horizontalGridLineOpacity, horizontalGridLineStyle, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle, cursorType]);
 
   const scrollOffset = useRef(scrollOffsetProp);
   const barWidth = useRef(barWidthProp);
@@ -1929,6 +1938,10 @@ export function ChartCanvas({
     useCallback((x: number | null, y: number | null) => {
       if (x === null || y === null) {
         useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        if (lastHoveredCandleTimeRef.current !== null) {
+          lastHoveredCandleTimeRef.current = null;
+          useChartRuntimeStore.getState().setHoveredCandle(panelId, null);
+        }
         return;
       }
 
@@ -1941,6 +1954,10 @@ export function ChartCanvas({
       // Only update store if within canvas horizontal area and within main chart height
       if (x < 0 || x > chartWidth || y < 0 || y > mainChartHeight) {
         useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        if (lastHoveredCandleTimeRef.current !== null) {
+          lastHoveredCandleTimeRef.current = null;
+          useChartRuntimeStore.getState().setHoveredCandle(panelId, null);
+        }
         return;
       }
 
@@ -1968,6 +1985,10 @@ export function ChartCanvas({
 
       if (profileHitZone) {
         useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        if (lastHoveredCandleTimeRef.current !== null) {
+          lastHoveredCandleTimeRef.current = null;
+          useChartRuntimeStore.getState().setHoveredCandle(panelId, null);
+        }
         return;
       }
 
@@ -1975,8 +1996,10 @@ export function ChartCanvas({
       const index = xToIndex(x, candles, scrollOffset.current, barWidth.current, chartWidth, profileWidth);
 
       let time = null;
+      let hoveredCandle: Candle | null = null;
       if (candles[index]) {
         time = candles[index].time;
+        hoveredCandle = candles[index];
       } else if (candles.length > 0) {
         const lastCandle = candles[candles.length - 1];
         const firstCandle = candles[0];
@@ -1984,9 +2007,15 @@ export function ChartCanvas({
         time = lastCandle.time + (index - (candles.length - 1)) * avgInterval;
       }
 
+      if (hoveredCandle ? hoveredCandle.time !== lastHoveredCandleTimeRef.current : lastHoveredCandleTimeRef.current !== null) {
+        lastHoveredCandleTimeRef.current = hoveredCandle ? hoveredCandle.time : null;
+        useChartRuntimeStore.getState().setHoveredCandle(panelId, hoveredCandle);
+      }
+
       useChartRuntimeStore.getState().setCrosshair({ activePanel: panelId, time, price });
     }, [panelId, priceAxisWidth, getBottomLayout, profileWidth, customProfileRange, customProfileLocked]),
-    { scrollOffset, barWidth, priceCenter, priceRange, isAutoScaled }
+    { scrollOffset, barWidth, priceCenter, priceRange, isAutoScaled },
+    cursorType === 'pointer' ? 'default' : 'crosshair'
   );
 
   const redrawRef = useRef(redraw);
@@ -1997,6 +2026,13 @@ export function ChartCanvas({
   useEffect(() => {
     redrawRef.current('all');
   }, [globalTimezone, globalTimeFormat]);
+
+  useEffect(() => {
+    if (canvasRef.current) {
+      canvasRef.current.style.cursor = cursorType === 'pointer' ? 'default' : 'crosshair';
+    }
+    redrawRef.current('overlay');
+  }, [cursorType]);
 
   // Reset auto-scale when timeframe or symbol changes
   useEffect(() => {
@@ -3202,7 +3238,7 @@ export function ChartCanvas({
       const chartWidth = rect.width - priceAxisWidth;
       const chartHeight = getBottomLayout(rect.height).mainChartHeight;
 
-      let cursor = 'crosshair';
+      let cursor = cursorType === 'pointer' ? 'default' : 'crosshair';
 
       const measureToolActive = useChartRuntimeStore.getState().panels[panelId]?.measureToolActive ?? false;
 
@@ -3211,10 +3247,12 @@ export function ChartCanvas({
         hoveredLineId.current = null;
         hoveredDrawingZone.current = null;
         isHoveringDeleteDot.current = false;
-      } else if (measureToolActive || isDragging.current || isDrawMode) {
+      } else if (measureToolActive || isDrawMode) {
         cursor = 'crosshair';
+      } else if (isDragging.current) {
+        cursor = cursorType === 'pointer' ? 'default' : 'crosshair';
       } else if (isDraggingDrawing.current) {
-        cursor = drawingDragZone.current === 'move' ? 'grabbing' : 'crosshair';
+        cursor = drawingDragZone.current === 'move' ? 'grabbing' : (cursorType === 'pointer' ? 'default' : 'crosshair');
       } else if (isDraggingProfile.current) {
         cursor = 'grabbing';
       } else if (isDraggingResize.current) {
@@ -4201,6 +4239,10 @@ export function ChartCanvas({
         setHoveredIceberg(null);
         canvas.style.cursor = 'default';
         useChartRuntimeStore.getState().setCrosshair({ activePanel: null, time: null, price: null });
+        if (lastHoveredCandleTimeRef.current !== null) {
+          lastHoveredCandleTimeRef.current = null;
+          useChartRuntimeStore.getState().setHoveredCandle(panelId, null);
+        }
         redraw();
       }
     };
@@ -4222,7 +4264,7 @@ export function ChartCanvas({
       window.removeEventListener('mousemove', onWindowMouseMove);
       window.removeEventListener('mouseup', onWindowMouseUp);
     };
-  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, setSelectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect, getCandlesLength, isMouseOver, mouseX, mouseY]);
+  }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, cursorType, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, setSelectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect, getCandlesLength, isMouseOver, mouseX, mouseY]);
 
   const pendingModifyBlockReason = pendingModifyOrder
     ? getModifyBlockReason({
@@ -4315,6 +4357,13 @@ export function ChartCanvas({
         measurement={activeMeasurement}
         canvasRect={canvasRef.current?.getBoundingClientRect() || null}
       />
+
+      {isProfileLoading && (
+        <div className="absolute top-4 right-[80px] z-30 flex items-center gap-2 rounded bg-[#1F1F1F]/80 px-3 py-1.5 border border-[#333] shadow-sm backdrop-blur-sm">
+          <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#555] border-t-accent" />
+          <span className="text-[11px] font-bold text-[#A3A3A3]">Loading Volume Profile...</span>
+        </div>
+      )}
 
       {chartOrderControls.map(({ order, top, left }) => {
         const isConfirming = confirmingCancelOrderId === order.id;

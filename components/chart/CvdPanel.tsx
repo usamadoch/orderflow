@@ -85,6 +85,9 @@ export function CvdPanel({
   const crosshairOpacity = useChartStore(s => s.crosshairOpacity);
   const crosshairThickness = useChartStore(s => s.crosshairThickness);
   const crosshairStyle = useChartStore(s => s.crosshairStyle);
+  const cursorType = useChartStore(s => s.panels[panelId]?.cursorType ?? 'crosshair');
+  const cursorTypeRef = useRef(cursorType);
+  cursorTypeRef.current = cursorType;
   const storeDrawnLines = useChartStore(s => s.panels[panelId]?.drawnLines);
   const drawnLines = useMemo(() => storeDrawnLines ?? drawnLinesProp ?? [], [storeDrawnLines, drawnLinesProp]);
   const prevCandlesRef = useRef<Candle[]>([]);
@@ -330,13 +333,16 @@ export function CvdPanel({
         }
 
         if (mx !== null || my !== null) {
-          drawCrosshair(ctx, mx, my, chartWidth, chartHeight, {
-            color: crosshairColor,
-            opacity: crosshairOpacity,
-            thickness: crosshairThickness,
-            style: crosshairStyle,
-            verticalLineHeight: chartHeight,
-          });
+          const activeCursorType = useChartStore.getState().panels[panelId]?.cursorType ?? cursorType;
+          if (activeCursorType !== 'pointer') {
+            drawCrosshair(ctx, mx, my, chartWidth, chartHeight, {
+              color: crosshairColor,
+              opacity: crosshairOpacity,
+              thickness: crosshairThickness,
+              style: crosshairStyle,
+              verticalLineHeight: chartHeight,
+            });
+          }
 
           if (my !== null) {
             drawCvdCrosshairValueLabel(ctx, my, scale.yToValue(my), chartWidth, priceAxisWidth, chartHeight);
@@ -389,6 +395,7 @@ export function CvdPanel({
     crosshairOpacity,
     crosshairThickness,
     crosshairStyle,
+    cursorType,
   ]);
 
   const redrawRef = useRef(redraw);
@@ -517,9 +524,9 @@ export function CvdPanel({
       } else if (y > chartHeight && x >= 0 && x <= chartWidth) {
         canvas.style.cursor = 'ew-resize';
       } else if (y <= chartHeight && x >= 0 && x <= chartWidth) {
-        canvas.style.cursor = 'grab';
+        canvas.style.cursor = cursorTypeRef.current === 'pointer' ? 'default' : 'grab';
       } else {
-        canvas.style.cursor = 'crosshair';
+        canvas.style.cursor = cursorTypeRef.current === 'pointer' ? 'default' : 'crosshair';
       }
     };
 
@@ -727,7 +734,14 @@ export function CvdPanel({
 
   useEffect(() => {
     redraw('overlay');
-  }, [drawnLines, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle, redraw]);
+  }, [drawnLines, crosshairColor, crosshairOpacity, crosshairThickness, crosshairStyle, cursorType, redraw]);
+
+  useEffect(() => {
+    if (canvasRef.current && !isDragging.current) {
+      canvasRef.current.style.cursor = cursorType === 'pointer' ? 'default' : 'crosshair';
+    }
+    redrawRef.current('overlay');
+  }, [cursorType]);
 
   useEffect(() => {
     const unsubscribeDrawingDrag = useChartRuntimeStore.subscribe(

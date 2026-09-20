@@ -54,6 +54,7 @@ export interface ChartRuntimeState {
   triggerPanelRefresh: (panelId: PanelId) => void;
   setConnected: (panelId: PanelId, connected: boolean) => void;
   setLoadingHistory: (panelId: PanelId, isLoadingHistory: boolean) => void;
+  setProfileLoading: (panelId: PanelId, isLoading: boolean) => void;
   setHistoryRestoreStatus: (panelId: PanelId, status: HistoryRestoreStatus | null) => void;
   pushCandle: (panelId: PanelId, candle: Candle) => void;
   pushAllCandles: (panelId: PanelId, candles: Candle[]) => void;
@@ -74,6 +75,7 @@ export interface ChartRuntimeState {
   setViewportPrice: (panelId: PanelId, viewport: { priceMin: number; priceMax: number; priceCenter: number; priceRange: number } | null) => void;
   setMeasureToolActive: (panelId: PanelId, active: boolean) => void;
   setActiveMeasurement: (panelId: PanelId, measurement: Measurement | null) => void;
+  setHoveredCandle: (panelId: PanelId, candle: Candle | null) => void;
   setCrosshair: (crosshair: GlobalCrosshair) => void;
   setTradingStatus: (status: Partial<TradingRuntimeStatus>) => void;
   setMT5Status: (connected: boolean, accountName: string, pnl: number) => void;
@@ -134,6 +136,7 @@ function createDefaultRuntimePanel(): PanelRuntimeState {
     trades: [],
     connected: false,
     isLoadingHistory: false,
+    isProfileLoading: false,
     historyRestoreStatus: null,
     footprintTrigger: 0,
     absorptionMap: new Map(),
@@ -153,6 +156,7 @@ function createDefaultRuntimePanel(): PanelRuntimeState {
     mt5Ask: null,
     orderbookResyncCount: 0,
     viewportPrice: null,
+    hoveredCandle: null,
   };
 }
 
@@ -325,14 +329,20 @@ const createRuntimeStore: StateCreator<ChartRuntimeState, []> = (set, get) => ({
   triggerPanelRefresh: (panelId) =>
     set((state) => updateRuntimePanel(state, panelId, { refreshKey: state.panels[panelId].refreshKey + 1 })),
 
+  setHoveredCandle: (panelId, hoveredCandle) =>
+    set((state) => updateRuntimePanel(state, panelId, { hoveredCandle })),
+
   setConnected: (panelId, connected) =>
     set((state) => updateRuntimePanel(state, panelId, { connected })),
 
   setLoadingHistory: (panelId, isLoadingHistory) =>
     set((state) => updateRuntimePanel(state, panelId, { isLoadingHistory })),
 
-  setHistoryRestoreStatus: (panelId, historyRestoreStatus) =>
-    set((state) => updateRuntimePanel(state, panelId, { historyRestoreStatus })),
+  setProfileLoading: (panelId, isProfileLoading) =>
+    set((state) => updateRuntimePanel(state, panelId, { isProfileLoading })),
+
+  setHistoryRestoreStatus: (panelId, status) =>
+    set((state) => updateRuntimePanel(state, panelId, { historyRestoreStatus: status })),
 
   pushAllCandles: (panelId, candles) =>
     set((state) => {

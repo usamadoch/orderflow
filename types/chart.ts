@@ -34,8 +34,27 @@ export type LayoutMode = 'single' | 'dual';
 export type SplitDirection = 'vertical' | 'horizontal';
 export type AbsorptionSide = 'both' | 'buyer' | 'seller';
 export type ExhaustionSide = 'both' | 'buyer' | 'seller';
+export type CursorType = 'crosshair' | 'pointer';
 export type LineDrawMode = 'none' | 'horizontal' | 'vertical' | 'horizontal-ray' | 'box' | 'long-position' | 'short-position' | 'position' | 'buy' | 'sell';
 export type DrawingStrokeWidth = 1 | 2 | 3 | 4;
+export type DrawingToolbarItemId =
+  | 'cursor'
+  | 'profile'
+  | 'measure'
+  | 'horizontal'
+  | 'vertical'
+  | 'horizontal-ray'
+  | 'box';
+
+export const DEFAULT_DRAWING_TOOLBAR_ORDER: DrawingToolbarItemId[] = [
+  'cursor',
+  'profile',
+  'measure',
+  'horizontal',
+  'vertical',
+  'horizontal-ray',
+  'box',
+];
 export type SessionId = 'tokyo' | 'london' | 'newYork' | string;
 export type CvdMode = 'candles' | 'bars' | 'line' | 'histogram';
 export type CvdResetMode = 'none' | 'daily' | 'session';
@@ -360,7 +379,9 @@ export interface PanelState {
   customProfileLocked: boolean;
   drawnLines: DrawnLine[];
   lineDrawMode: LineDrawMode;
+  cursorType?: CursorType;
   drawingToolbarPosition: DrawingToolbarPosition;
+  drawingToolbarItemOrder?: DrawingToolbarItemId[];
   exhaustionEnabled: boolean;
   exhaustionMinScore: number;
   exhaustionSide: ExhaustionSide;
@@ -462,6 +483,7 @@ export interface PanelState {
   historicalSessionProfileDisplayMode: 'separate' | 'combined';
   historicalSessionProfileCount: number;
   historicalSessionProfileMinTimeframe: string;
+  sessionProfileResolutionTicks: number;
   mergedProfileRanges: { start: number; end: number }[];
 
   settingsByTimeframe: Record<string, Partial<TimeframeSettings>>;
@@ -501,6 +523,7 @@ export interface PanelRuntimeState {
   trades: Trade[];
   connected: boolean;
   isLoadingHistory: boolean;
+  isProfileLoading: boolean;
   historyRestoreStatus: HistoryRestoreStatus | null;
   footprintTrigger: number;
   absorptionMap: Map<number, AbsorptionResult>;
@@ -520,6 +543,7 @@ export interface PanelRuntimeState {
   mt5Ask: number | null;
   orderbookResyncCount: number;
   viewportPrice: { priceMin: number; priceMax: number; priceCenter: number; priceRange: number } | null;
+  hoveredCandle: Candle | null;
 }
 
 export interface TradingRuntimeStatus {

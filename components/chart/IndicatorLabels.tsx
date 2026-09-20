@@ -8,6 +8,7 @@ import { FigButton, FigTooltip } from '@/components/ui/fig';
 import { useChartStore, type DataSourceMode, type PanelId, type IndicatorId, type IndicatorSettingsSection } from '@/lib/store/chart';
 import { useChartRuntimeStore } from '@/lib/store/chartRuntime';
 import { ChartSettingsDropdown } from '@/components/ui/ChartSettingsDropdown';
+import { formatPrice } from '@/lib/utils/format';
 
 interface IndicatorLabelsProps {
   panelId: PanelId;
@@ -29,6 +30,15 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
   const setMt5CompareShowBinance = useChartStore(s => s.setMt5CompareShowBinance);
   const connected = useChartRuntimeStore(s => s.panels[panelId].connected);
   const mt5BridgeStatus = useChartRuntimeStore(s => s.tradingStatus.mt5BridgeStatus);
+  const hoveredCandle = useChartRuntimeStore(s => s.panels[panelId]?.hoveredCandle);
+  const candles = useChartRuntimeStore(s => s.panels[panelId]?.candles);
+  const activeCandle = hoveredCandle ?? (candles && candles.length > 0 ? candles[candles.length - 1] : null);
+
+  const change = activeCandle ? activeCandle.close - activeCandle.open : 0;
+  const changePercent = activeCandle && activeCandle.open !== 0 ? (change / activeCandle.open) * 100 : 0;
+  const isBullish = change >= 0;
+  const candleColorClass = isBullish ? 'text-[#089981]' : 'text-[#F23645]';
+
   const contractLabel = panel.contractType === 'futures' ? 'Futures' : 'Spot';
 
   const removeIndicator = useChartStore(s => s.removeIndicator);
@@ -159,6 +169,32 @@ export function IndicatorLabels({ panelId, isLoading = false }: IndicatorLabelsP
                       {panel.mt5CompareShowBinance ? 'Binance: On' : 'Binance: Off'}
                     </FigButton>
                   </FigTooltip>
+                </>
+              )}
+              {activeCandle && (
+                <>
+                  <span className="text-text-dim/70">{'\u00b7'}</span>
+                  <div className="flex items-center gap-2 text-[11px] font-mono select-none">
+                    <span>
+                      <span className="text-text-dim font-medium mr-1">O</span>
+                      <span className={candleColorClass}>{formatPrice(activeCandle.open)}</span>
+                    </span>
+                    <span>
+                      <span className="text-text-dim font-medium mr-1">H</span>
+                      <span className={candleColorClass}>{formatPrice(activeCandle.high)}</span>
+                    </span>
+                    <span>
+                      <span className="text-text-dim font-medium mr-1">L</span>
+                      <span className={candleColorClass}>{formatPrice(activeCandle.low)}</span>
+                    </span>
+                    <span>
+                      <span className="text-text-dim font-medium mr-1">C</span>
+                      <span className={candleColorClass}>{formatPrice(activeCandle.close)}</span>
+                    </span>
+                    <span className={`font-semibold ${candleColorClass}`}>
+                      {change >= 0 ? `+${changePercent.toFixed(2)}%` : `${changePercent.toFixed(2)}%`}
+                    </span>
+                  </div>
                 </>
               )}
               {isLoading && (

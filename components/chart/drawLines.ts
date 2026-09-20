@@ -12,7 +12,8 @@ const POSITION_RISK_COLOR = CHART_BEARISH_COLOR;
 const POSITION_REWARD_COLOR = CHART_BULLISH_COLOR;
 
 export interface PositionEvaluation {
-  status: 'open' | 'sl' | 'tp';
+  status: 'unentered' | 'open' | 'sl' | 'tp';
+  entered: boolean;
   evalIndex: number;
   evalPrice: number;
 }
@@ -30,7 +31,19 @@ export function evaluatePositionOutcome(
   const endIndex = Math.max(0, Math.max(Math.round(line.firstIndex ?? 0), Math.round(line.lastIndex ?? 0)));
 
   if (candles.length === 0 || startIndex >= candles.length) {
-    return { status: 'open', evalIndex: startIndex, evalPrice: entry };
+    return { status: 'unentered', entered: false, evalIndex: startIndex, evalPrice: entry };
+  }
+
+  const startCandle = candles[startIndex];
+  if (!startCandle) {
+    return { status: 'unentered', entered: false, evalIndex: startIndex, evalPrice: entry };
+  }
+
+  // Candle entry MUST be considered from the starting point of the position tool (zero point).
+  // It cannot enter from somewhere in the middle of the position tool.
+  const connectsAtZero = startCandle.low <= entry && startCandle.high >= entry;
+  if (!connectsAtZero) {
+    return { status: 'unentered', entered: false, evalIndex: startIndex, evalPrice: entry };
   }
 
   const lastCandleIdx = candles.length - 1;
@@ -38,8 +51,8 @@ export function evaluatePositionOutcome(
   const isLong = line.type === 'long-position';
 
   let evalIndex = startIndex;
-  let evalPrice = candles[startIndex]?.close ?? entry;
-  let status: 'open' | 'sl' | 'tp' = 'open';
+  let evalPrice = startCandle.close;
+  let status: 'unentered' | 'open' | 'sl' | 'tp' = 'open';
 
   for (let i = startIndex; i <= maxCheckIdx; i++) {
     const c = candles[i];
@@ -91,7 +104,7 @@ export function evaluatePositionOutcome(
     }
   }
 
-  return { status, evalIndex, evalPrice };
+  return { status, entered: true, evalIndex, evalPrice };
 }
 
 export function drawLines(
@@ -291,7 +304,7 @@ function alignCoord(coord: number, strokeWidth: number): number {
       const startIndex = Math.max(0, Math.min(Math.round(line.firstIndex), Math.round(line.lastIndex)));
       const evalOutcome = evaluatePositionOutcome(line, candles);
 
-      if (candles.length > 0 && startIndex <= evalOutcome.evalIndex) {
+      if (evalOutcome.entered && candles.length > 0 && startIndex <= evalOutcome.evalIndex) {
         const startX = indexToX(startIndex);
         const endX = indexToX(evalOutcome.evalIndex);
         const startY = priceToY(line.value);
@@ -679,7 +692,23 @@ export function drawPositionBackgrounds(
     ctx.save();
 
     if (isLong) {
-      if (evalOutcome.status === 'tp') {
+      if (!evalOutcome.entered) {
+        // Unentered Long position: uniform base opacity across full width, no excursion highlights
+        if (hasTarget && target > entry) {
+          const targetTop = Math.max(0, Math.min(entryY, targetY));
+          const targetBot = Math.min(drawableHeight, Math.max(entryY, targetY));
+          if (targetBot > targetTop) {
+            ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+            ctx.fillRect(left, targetTop, width, targetBot - targetTop);
+          }
+        }
+        const stopTop = Math.max(0, Math.min(entryY, stopY));
+        const stopBot = Math.min(drawableHeight, Math.max(entryY, stopY));
+        if (stopBot > stopTop) {
+          ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+          ctx.fillRect(left, stopTop, width, stopBot - stopTop);
+        }
+      } else if (evalOutcome.status === 'tp') {
         // Long reached TP: active band is darker green across full target height
         if (hasTarget && target > entry) {
           const top = Math.max(0, Math.min(entryY, targetY));
@@ -798,7 +827,23 @@ export function drawPositionBackgrounds(
       }
     } else {
       // Short position
-      if (evalOutcome.status === 'tp') {
+      if (!evalOutcome.entered) {
+        // Unentered Short position: uniform base opacity across full width, no excursion highlights
+        if (hasTarget && target < entry) {
+          const targetTop = Math.max(0, Math.min(entryY, targetY));
+          const targetBot = Math.min(drawableHeight, Math.max(entryY, targetY));
+          if (targetBot > targetTop) {
+            ctx.fillStyle = chartColorToRgba(profitColor, baseProfitOpacity);
+            ctx.fillRect(left, targetTop, width, targetBot - targetTop);
+          }
+        }
+        const stopTop = Math.max(0, Math.min(entryY, stopY));
+        const stopBot = Math.min(drawableHeight, Math.max(entryY, stopY));
+        if (stopBot > stopTop) {
+          ctx.fillStyle = chartColorToRgba(stopColor, baseStopOpacity);
+          ctx.fillRect(left, stopTop, width, stopBot - stopTop);
+        }
+      } else if (evalOutcome.status === 'tp') {
         // Short reached TP: active band is darker green across full target height
         if (hasTarget && target < entry) {
           const top = Math.max(0, Math.min(entryY, targetY));

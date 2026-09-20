@@ -1,7 +1,7 @@
 'use client';
 
 import { forwardRef } from 'react';
-import { FigSwitch, FigSegmentedControl, FigSelect } from '../fig';
+import { FigSwitch, FigSegmentedControl, FigSelect, PropskitSlider } from '../fig';
 import { useChartStore, PanelId, SessionId } from '../../../lib/store/chart';
 import { TIMEZONE_OPTIONS } from './constants';
 
@@ -16,10 +16,27 @@ export const HistoricalSessionProfileSettings = forwardRef<HTMLDivElement, Histo
   const setHistoricalSessionProfileSessions = useChartStore(s => s.setHistoricalSessionProfileSessions);
   const setHistoricalSessionProfileDisplayMode = useChartStore(s => s.setHistoricalSessionProfileDisplayMode);
   const setHistoricalSessionProfileCount = useChartStore(s => s.setHistoricalSessionProfileCount);
+  const setSessionProfileResolutionTicks = useChartStore(s => s.setSessionProfileResolutionTicks);
+  const tickSize = useChartStore(s => s.tickSize);
   const globalTimezone = useChartStore(s => s.globalTimezone);
   const globalTimeFormat = useChartStore(s => s.globalTimeFormat);
 
   const timezoneLabel = TIMEZONE_OPTIONS.find(tz => tz.value === globalTimezone)?.label ?? (globalTimezone === 'local' ? 'Local (PC)' : globalTimezone);
+
+  const maxProfileResolutionTicks = 100;
+  const sessionResolutionTicks = panel.sessionProfileResolutionTicks ?? 0;
+  let sessionProfileRowSizeLabel = 'Auto';
+  if (sessionResolutionTicks > 0) {
+    if (tickSize > 0) {
+      sessionProfileRowSizeLabel = `${sessionResolutionTicks} Ticks (${(sessionResolutionTicks * tickSize).toFixed(Math.max(0, -Math.floor(Math.log10(tickSize))))})`;
+    } else {
+      sessionProfileRowSizeLabel = `${sessionResolutionTicks} Ticks`;
+    }
+  }
+
+  const handleSessionProfileResolutionChange = (val: number) => {
+    setSessionProfileResolutionTicks(panelId, val);
+  };
 
   return (
     <div ref={ref} className="scroll-mt-5 space-y-4">
@@ -111,6 +128,19 @@ export const HistoricalSessionProfileSettings = forwardRef<HTMLDivElement, Histo
                 label: String(n),
               }))}
               className="w-full"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5 bg-[#1F1F1F] p-3 rounded-lg border border-[#1F1F1F]">
+            <PropskitSlider
+              label="Row Size"
+              value={sessionResolutionTicks}
+              min={0}
+              max={maxProfileResolutionTicks}
+              step={1}
+              title={`Resolution: ${sessionProfileRowSizeLabel}`}
+              onChange={handleSessionProfileResolutionChange}
+              onInput={handleSessionProfileResolutionChange}
             />
           </div>
         </div>

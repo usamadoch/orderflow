@@ -50,15 +50,17 @@ interface ChartPanelProps {
 
 export function ChartPanel({ panelId }: ChartPanelProps) {
   const panelSettings = useChartStore(s => s.panels[panelId]);
-  const historyRestoreStatus = useChartRuntimeStore(s => s.panels[panelId].historyRestoreStatus);
-  const isLoadingHistory = useChartRuntimeStore(s => s.panels[panelId].isLoadingHistory);
-  const connected = useChartRuntimeStore(s => s.panels[panelId].connected);
+  const historyRestoreStatus = useChartRuntimeStore(s => s.panels[panelId]?.historyRestoreStatus);
+  const isLoadingHistory = useChartRuntimeStore(s => s.panels[panelId]?.isLoadingHistory);
+  const isProfileLoading = useChartRuntimeStore(s => s.panels[panelId]?.isProfileLoading);
+  const connected = useChartRuntimeStore(s => s.panels[panelId]?.connected);
   const panel = React.useMemo(() => ({
     ...panelSettings,
     historyRestoreStatus,
     isLoadingHistory,
+    isProfileLoading,
     connected,
-  }), [panelSettings, historyRestoreStatus, isLoadingHistory, connected]);
+  }), [panelSettings, historyRestoreStatus, isLoadingHistory, isProfileLoading, connected]);
 
   const setActivePanel = useChartStore(s => s.setActivePanel);
   const setBarWidth = useChartStore(s => s.setBarWidth);
@@ -211,6 +213,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
               scrollOffset={panel.scrollOffset}
               timeframe={panel.timeframe}
               isLoadingHistory={panel.isLoadingHistory}
+              isProfileLoading={panel.isProfileLoading}
               engine={engine}
               volumeProfileEngine={volumeProfileEngine}
               volumeProfileRevision={volumeProfileRevision}
@@ -301,6 +304,7 @@ export function ChartPanel({ panelId }: ChartPanelProps) {
               profileFilterMin={panel.profileFilterMin}
               profileFilterMax={panel.profileFilterMax}
               historicalSessionProfileEnabled={panel.historicalSessionProfileEnabled}
+              sessionProfileResolutionTicks={panel.sessionProfileResolutionTicks ?? 0}
               profileNodeSensitivity={panel.profileNodeSensitivity}
               deltaProfileWidth={panel.deltaProfileWidth}
               sessionsEnabled={panel.sessionsEnabled}
