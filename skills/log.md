@@ -1,5 +1,31 @@
 # OrderFlow Chart - Change Log
 
+## [2026-10-22] - Fix: 1m Chart Discontinuous Gap & Staleness Recovery
+
+- **What changed**:
+  - `route.ts`: Added staleness & gap detection on stored candle queries to auto-sync missing data via Binance REST.
+  - `serverBinanceCandles.ts`: Added proxy fallback to direct fetch/Binance Vision and guaranteed awaited DB persistence.
+  - `FeedProvider.tsx`: Restricted initial candle restore to 7-day window and added gap threshold guard against disconnected voids.
+  - DB: Purged stale disconnected September records and re-seeded fresh continuous October candles.
+- **Why it changed**: 34-day stale candles in TimescaleDB were stitched against live feed, creating a $5.1k vertical cliff on zoom-out.
+- **Impact summary**: Continuous, gap-free 1m chart; auto-heals stale DB rows on launch; 0 tsc errors; 15/15 tests pass.
+
+## [2026-10-22] - Feature: Touch-Screen Support for HTML5 Chart Canvas
+
+- **What changed**:
+  - `usePanZoom.ts`: Implemented 2-finger pinch-to-zoom anchored at midpoint, 1-finger pan (time/price), double-tap auto-fit, and gesture cancellation.
+  - `ChartCanvas.tsx`: Added `touch-action: none` to canvas and forwarded 1-finger touch events to drawing and bracket handlers.
+- **Why it changed**: Enable touch support on laptops, tablets, and mobile devices while preserving all existing mouse controls.
+- **Impact summary**: Smooth pinch zoom and 1-finger pan on touchscreens; 0 mouse regressions; 15/15 tests passing; 0 tsc errors.
+
+## [2026-09-24] - Docs: OrderFlow Conceptual Mental Model & Technical Interview Guide
+
+- **What changed**:
+  - `skills/orderflow_mental_model.md`: Created master conceptual mental model and interview preparation document covering the complete end-to-end data pipeline, 3-layer canvas architecture, coordinate systems (Price ↔ Y, Time ↔ X, Viewport), grid & footprint cell microstructure, indicator pipelines, drawing tool model-view persistence, real-time WebSocket fanout, chunked historical restoration, worker offloading rationale, and 15 realistic interview Q&As with conceptual talking points.
+  - `skills/map.md`: Updated source-of-truth file responsibility map with the new document.
+- **Why it changed**: Provide the user with a comprehensive, plain-English architectural mental map reconstructed directly from the codebase to prepare for technical verbal interviews.
+- **Impact summary**: Crystal-clear conceptual understanding of the entire application architecture, data flow, canvas coordination, and historical offloading decisions; 0 code regressions.
+
 ## [2026-09-21] - Feature: TradingView-Style Pickable Toolbar Reordering
 
 - **What changed**:

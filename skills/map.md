@@ -67,7 +67,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### History APIs
 
-- `app/api/history/candles/route.ts` → Selected-driver candle history API returning source-scoped candles.
+- `app/api/history/candles/route.ts` → Selected-driver candle history API with staleness and void gap detection auto-syncing from Binance REST.
 - `app/api/history/footprint/route.ts` → Selected-driver footprint restore API with range caps and safe 503 fallback.
 - `app/api/history/profile/route.ts` → Selected-driver fine Volume Profile restore API with range caps, safe 503 fallback, and HTTP Cache-Control for past ranges.
 - `app/api/history/trades/route.ts` → Raw trade history API with range and cursor hydration support.
@@ -139,7 +139,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 
 ### Feed / Engine Context
 
-- `components/FeedProvider.tsx` → Panel feed orchestrator, WebSocket lifecycle, and storage-aligned live bubble ingestion ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/FeedProvider.map.md)).
+- `components/FeedProvider.tsx` → Panel feed orchestrator, WebSocket lifecycle, 7-day scoped candle restore with void-gap filtering, and storage-aligned live bubble ingestion ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/FeedProvider.map.md)).
 - `components/ChartEngineContext.tsx` → React context providing panel aggregation engine, footprint/profile caches, orderbook heatmap, and redraw triggers.
 
 ### Chart Rendering
@@ -150,7 +150,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/chartBottomPanels.ts` → Layout engine calculating non-overlapping vertical slots for docked bottom indicators, treating volume bars as an on-canvas overlay.
 - `components/chart/IndicatorLabels.tsx` → Top-left chart header displaying pair, contract, live status, Spot/Futures toggles, real-time candle OHLC and % change readout, and active indicator badges.
 - `components/chart/LiquidityControls.tsx` → Overlay for adjusting liquidity heatmap intensity and threshold.
-- `components/chart/ChartCanvas.tsx` → Main canvas coordinator and multi-layer rendering pipeline with Crosshair/Pointer cursor styles, throttled OHLC hover tracking, continuous auto-scaling, and reset triggers ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
+- `components/chart/ChartCanvas.tsx` → Main canvas coordinator, touch-action isolation, single-touch drawing/bracket bridging, and multi-layer rendering pipeline ([Section Map](file:///c:/Users/d/Documents/ob/orderflowApp/skills/maps/ChartCanvas.map.md)).
 - `components/chart/chartCanvasUtils.ts` → Continuous fractional index interpolation (resolveIndexFromTime) from timestamps for multi-timeframe drawing sync, coordinate translation, bucket indexing, order placement math, and segment distance utilities.
 - `components/chart/chartCanvasHitTest.ts` → Hit testing logic for interactive canvas elements (limit orders, drawings, position drags, profiles).
 - `components/chart/CanvasDrawingToolbar.tsx` → Floating context toolbars for active drawings (1px white defaults, FigUI tooltips, Trash2 delete, box border/fill, and position tool profit & stop loss color pickers) and custom profile controls with pointer/mouse event isolation.
@@ -159,7 +159,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `components/chart/drawStatsGrid.ts` → Canvas overlay rendering volume, delta, and CVD summary statistics grid with borders styled using global 28% grid opacity.
 - `components/chart/useCoordinates.ts` → Hook calculating price/time coordinate bounds, visible range mappings with minimum price range floor and 8% padding, and timeToIndex with boundary extrapolation.
 - `components/chart/hooks/useVwapHydration.ts` → Hook fetching and subscribing to historical 1m base candles with display-range validation to hydrate accurate VWAP state.
-- `components/chart/usePanZoom.ts` → Hook handling chart pan, zoom, axis drag/wheel zoom, auto-scale state tracking, and double-click scale auto-fit.
+- `components/chart/usePanZoom.ts` → Hook handling mouse & touch pan/zoom (pinch-to-zoom, 1-finger drag, double-tap auto-fit), axis resize, auto-scale tracking, and gesture isolation.
 - `components/chart/drawCandles.ts` → Candlestick renderer for body, wick, and border geometry with half-pixel alignment for crisp high-definition lines and TradingView-standard hollow candle rendering.
 - `components/chart/drawSideBySideCandles.ts` → MT5 Compare chart renderer displaying centered MT5 broker candles or comparative dual-slots with toggleable Binance chart.
 - `components/chart/drawBidAskLines.ts` → Canvas renderer for MT5 live Bid and Ask horizontal lines with price-axis badges.
@@ -211,7 +211,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/feeds/binanceFutures.ts` → Binance Futures WebSocket/REST market data adapter with explicit state machine and jitter.
 - `lib/feeds/feedRegistry.ts` → Central ref-counted manager for shared market feeds and stream deduplication.
 - `lib/feeds/candleCache.ts` → Shared in-memory candle cache with subscriber fanout and range tracking.
-- `lib/feeds/serverBinanceCandles.ts` → Server-side Binance historical candles fetcher with proxy support and TimescaleDB caching.
+- `lib/feeds/serverBinanceCandles.ts` → Server-side Binance historical candles fetcher with proxy fallback (direct / Binance Vision CDN) and TimescaleDB caching.
 - `lib/feeds/index.ts` → Module exports for market feed adapters.
 - `types/feed.ts` → Types for feed interfaces, connection states, trade events, and subscription options.
 
@@ -359,6 +359,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `artifacts/large_profile_bug_diagnosis.md` → Root cause diagnosis for custom profile cache eviction behavior.
 - `skills/map.md` → Source-of-truth file responsibility map.
 - `skills/log.md` → Chronological log of codebase changes, features, and fixes.
+- `skills/orderflow_mental_model.md` → Conceptual mental model, system architecture, and technical interview guide.
 - `skills/maps/` → Dedicated section maps for large source files (>800 lines).
 
 ### Large File Section Maps (800+ Lines)

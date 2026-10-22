@@ -68,6 +68,13 @@ export function usePanZoom(
   const lastX = useRef(0);
   const lastY = useRef(0);
 
+  const isPinching = useRef(false);
+  const pinchLastDist = useRef(0);
+  const pinchLastMid = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const pinchMode = useRef<'chart' | 'price'>('chart');
+  const lastTapTime = useRef(0);
+  const lastTapPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
   const mouseX = useRef<number | null>(null);
   const mouseY = useRef<number | null>(null);
   const isMouseOver = useRef(false);
@@ -330,14 +337,256 @@ export function usePanZoom(
       }
     };
 
+    const onTouchStart = (e: TouchEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const chartWidth = rect.width - priceAxisWidth;
+      const chartHeight = rect.height - timeAxisHeight - bottomPanelsHeight;
+
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+
+        // Check for double-tap (within 300ms and 25px radius)
+        const now = Date.now();
+        const isDoubleTap =
+          now - lastTapTime.current < 300 &&
+          Math.hypot(x - lastTapPos.current.x, y - lastTapPos.current.y) < 25;
+
+        lastTapTime.current = now;
+        lastTapPos.current = { x, y };
+
+        if (isDoubleTap) {
+          // Double-tap on price axis auto-fits price
+          if (x >= chartWidth) {
+            isAutoScaled.current = true;
+            priceCenter.current = null;
+            priceRange.current = null;
+            callbacksRef.current.onRedraw();
+            e.preventDefault();
+            return;
+          }
+
+          // Double-tap on time axis resets time zoom
+          if (y >= chartHeight) {
+            barWidth.current = initialBarWidth;
+            scrollOffset.current = initialScrollOffset;
+            callbacksRef.current.onBarWidthChange?.(initialBarWidth);
+            callbacksRef.current.onScrollOffsetChange?.(initialScrollOffset);
+            callbacksRef.current.onRedraw();
+            e.preventDefault();
+            return;
+          }
+        }
+
+        if (isDrawMode || measureToolActive) return;
+        if (callbacksRef.current.canStartDrag && !callbacksRef.current.canStartDrag(x, y)) return;
+
+        isPinching.current = false;
+        isDragging.current = true;
+        lastX.current = touch.clientX;
+        lastY.current = touch.clientY;
+
+        if (x > chartWidth) {
+          dragMode.current = 'price';
+        } else if (y > chartHeight) {
+          dragMode.current = 'time';
+        } else {
+          dragMode.current = 'chart';
+        }
+
+        callbacksRef.current.onCrosshairChange?.(x, y);
+        callbacksRef.current.onRedraw('overlay');
+      } else if (e.touches.length === 2) {
+        if (isDrawMode || measureToolActive) return;
+
+        isDragging.current = false;
+        isPinching.current = true;
+
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        const midX = (t0.clientX + t1.clientX) / 2;
+        const midY = (t0.clientY + t1.clientY) / 2;
+
+        pinchLastDist.current = dist;
+        pinchLastMid.current = { x: midX, y: midY };
+
+        const pinchCanvasX = midX - rect.left;
+        pinchMode.current = pinchCanvasX >= chartWidth ? 'price' : 'chart';
+
+        e.preventDefault();
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const chartWidth = rect.width - priceAxisWidth;
+      const chartHeight = rect.height - timeAxisHeight - bottomPanelsHeight;
+
+      if (e.touches.length === 2 && isPinching.current) {
+        e.preventDefault();
+
+        const t0 = e.touches[0];
+        const t1 = e.touches[1];
+        const currentDist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        const midX = (t0.clientX + t1.clientX) / 2;
+        const midY = (t0.clientY + t1.clientY) / 2;
+
+        if (pinchLastDist.current > 0 && currentDist > 0) {
+          const scale = currentDist / pinchLastDist.current;
+          const pinchCanvasX = midX - rect.left;
+
+          if (pinchMode.current === 'price' || pinchCanvasX >= chartWidth) {
+            // Pinching on price axis zooms price range vertically
+            if (priceRange.current !== null && scale > 0) {
+              isAutoScaled.current = false;
+              priceRange.current = Math.max(0.0001, priceRange.current / scale);
+            }
+          } else {
+            // Pinching in chart area zooms time scale (barWidth) anchored at pinch midpoint
+            const oldBarWidth = barWidth.current;
+            const newBarWidth = Math.max(1, Math.min(200, oldBarWidth * scale));
+
+            if (oldBarWidth !== newBarWidth) {
+              const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
+              scrollOffset.current += (scrollOffset.current + drawableWidth - pinchCanvasX) * (newBarWidth / oldBarWidth - 1);
+              barWidth.current = newBarWidth;
+              callbacksRef.current.onBarWidthChange?.(newBarWidth);
+              callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
+            }
+
+            // Simultaneous 2-finger pan tracking midpoint movement
+            const deltaMidX = midX - pinchLastMid.current.x;
+            const deltaMidY = midY - pinchLastMid.current.y;
+
+            if (Math.abs(deltaMidX) > 0) {
+              scrollOffset.current += deltaMidX;
+              callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
+            }
+
+            if (Math.abs(deltaMidY) > 0) {
+              isAutoScaled.current = false;
+              if (priceCenter.current !== null && priceRange.current !== null) {
+                const pricePerPixel = priceRange.current / Math.max(1, chartHeight);
+                priceCenter.current += deltaMidY * pricePerPixel;
+              }
+            }
+          }
+
+          callbacksRef.current.onRedraw();
+        }
+
+        pinchLastDist.current = currentDist;
+        pinchLastMid.current = { x: midX, y: midY };
+        return;
+      }
+
+      if (e.touches.length === 1 && isDragging.current) {
+        e.preventDefault();
+
+        const touch = e.touches[0];
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+
+        mouseX.current = x;
+        mouseY.current = y;
+
+        const deltaX = touch.clientX - lastX.current;
+        const deltaY = touch.clientY - lastY.current;
+        lastX.current = touch.clientX;
+        lastY.current = touch.clientY;
+
+        if (dragMode.current === 'chart') {
+          // Free panning in time
+          scrollOffset.current += deltaX;
+          callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
+
+          // Panning in price
+          if (Math.abs(deltaY) > 0) {
+            isAutoScaled.current = false;
+            if (priceCenter.current !== null && priceRange.current !== null) {
+              const pricePerPixel = priceRange.current / Math.max(1, chartHeight);
+              priceCenter.current += deltaY * pricePerPixel;
+            }
+          }
+        } else if (dragMode.current === 'price') {
+          isAutoScaled.current = false;
+          // Vertical zoom
+          if (priceRange.current !== null) {
+            const sensitivity = 0.005;
+            priceRange.current = Math.max(0.0001, priceRange.current * (1 + deltaY * sensitivity));
+          }
+        } else if (dragMode.current === 'time') {
+          // Horizontal zoom
+          const sensitivity = 0.01;
+          const oldBarWidth = barWidth.current;
+          const newBarWidth = Math.max(1, oldBarWidth * (1 + deltaX * sensitivity));
+
+          if (oldBarWidth !== newBarWidth) {
+            const drawableWidth = getDrawableChartWidth(chartWidth, profileWidth);
+            scrollOffset.current += (scrollOffset.current + drawableWidth - x) * (newBarWidth / oldBarWidth - 1);
+            barWidth.current = newBarWidth;
+            callbacksRef.current.onBarWidthChange?.(newBarWidth);
+            callbacksRef.current.onScrollOffsetChange?.(scrollOffset.current);
+          }
+        }
+
+        callbacksRef.current.onCrosshairChange?.(x, y);
+        callbacksRef.current.onRedraw();
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        // Transition from 2-finger pinch back to 1-finger drag cleanly without jump
+        isPinching.current = false;
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const chartWidth = rect.width - priceAxisWidth;
+        const chartHeight = rect.height - timeAxisHeight - bottomPanelsHeight;
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+
+        if (callbacksRef.current.canStartDrag && callbacksRef.current.canStartDrag(x, y)) {
+          isDragging.current = true;
+          lastX.current = touch.clientX;
+          lastY.current = touch.clientY;
+          if (x > chartWidth) {
+            dragMode.current = 'price';
+          } else if (y > chartHeight) {
+            dragMode.current = 'time';
+          } else {
+            dragMode.current = 'chart';
+          }
+        } else {
+          isDragging.current = false;
+        }
+        return;
+      }
+
+      if (e.touches.length === 0) {
+        isPinching.current = false;
+        isDragging.current = false;
+        mouseX.current = null;
+        mouseY.current = null;
+        callbacksRef.current.onCrosshairChange?.(null, null);
+        callbacksRef.current.onRedraw('overlay');
+      }
+    };
+
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onCanvasMouseMove);
     canvas.addEventListener('mouseenter', onMouseEnter);
     canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('dblclick', onDoubleClick);
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
     window.addEventListener('mousemove', onWindowMouseMove);
     window.addEventListener('mouseup', onWindowMouseUp);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', onTouchEnd);
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
@@ -346,8 +595,12 @@ export function usePanZoom(
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('dblclick', onDoubleClick);
+      canvas.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('mousemove', onWindowMouseMove);
       window.removeEventListener('mouseup', onWindowMouseUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasRef, priceAxisWidth, timeAxisHeight, bottomPanelsHeight, profileWidth, isDrawMode, measureToolActive]);

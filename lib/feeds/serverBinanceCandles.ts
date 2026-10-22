@@ -62,7 +62,32 @@ export async function fetchAndStoreBinanceCandles({
 
     const url = `${baseUrl}?${params.toString()}`
     try {
-      const res = await undiciFetch(url, { dispatcher })
+      let res: Awaited<ReturnType<typeof undiciFetch>>
+      if (dispatcher) {
+        try {
+          res = await undiciFetch(url, { dispatcher })
+          if (!res.ok) {
+            console.warn(`[serverBinanceCandles] Proxy responded with ${res.status}, falling back to direct fetch...`)
+            res = await undiciFetch(url)
+          }
+        } catch (proxyErr) {
+          console.warn(`[serverBinanceCandles] Proxy connection failed, falling back to direct fetch:`, (proxyErr as Error).message)
+          res = await undiciFetch(url)
+        }
+      } else {
+        res = await undiciFetch(url)
+      }
+
+      if (!res.ok && !isFutures) {
+        // Fallback to Binance Vision CDN if api.binance.com is blocked
+        const visionUrl = `https://data-api.binance.vision/api/v3/klines?${params.toString()}`
+        try {
+          res = await undiciFetch(visionUrl)
+        } catch {
+          // ignore and keep original res
+        }
+      }
+
       if (!res.ok) {
         console.warn(`[serverBinanceCandles] Binance responded with ${res.status} for ${symbol} ${timeframe}`)
         break
@@ -143,20 +168,18 @@ export async function fetchAndStoreBinanceCandles({
     })
   })
 
-  // Persist closed candles to TimescaleDB in chunks of 1000 asynchronously
+  // Persist closed candles to TimescaleDB in chunks of 1000
   if (storeInputs.length > 0) {
-    void (async () => {
-      try {
-        const CHUNK_SIZE = 1000
-        for (let i = 0; i < storeInputs.length; i += CHUNK_SIZE) {
-          const chunk = storeInputs.slice(i, i + CHUNK_SIZE)
-          await storeCandles(chunk)
-        }
-        console.log(`[serverBinanceCandles] Persisted ${storeInputs.length} ${timeframe} candles for ${symbol} (${contractType}) to TimescaleDB`)
-      } catch (err) {
-        console.error(`[serverBinanceCandles] Failed to persist candles to TimescaleDB:`, err)
+    try {
+      const CHUNK_SIZE = 1000
+      for (let i = 0; i < storeInputs.length; i += CHUNK_SIZE) {
+        const chunk = storeInputs.slice(i, i + CHUNK_SIZE)
+        await storeCandles(chunk)
       }
-    })()
+      console.log(`[serverBinanceCandles] Persisted ${storeInputs.length} ${timeframe} candles for ${symbol} (${contractType}) to TimescaleDB`)
+    } catch (err) {
+      console.error(`[serverBinanceCandles] Failed to persist candles to TimescaleDB:`, err)
+    }
   }
 
   return rows

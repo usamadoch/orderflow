@@ -1253,14 +1253,14 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
 
     const fetchStoredHistory = async () => {
       const computedLimit = String(Math.min(10080, Math.ceil((7 * 24 * 60 * 60) / timeframeSeconds)));
+      const nowSec = Math.floor(Date.now() / 1000);
+      const sevenDaysAgo = nowSec - (7 * 24 * 60 * 60);
       console.log(`[PanelFeed:${panelId}] fetchStoredHistory calling /api/history/candles with limit: ${computedLimit} (timeframe: ${timeframe})`);
       const params = new URLSearchParams({
         symbol: pair,
         contractType,
         timeframe,
-        // Fetch the full 7-day window up front so scroll-back never waits on
-        // the network for already-closed candles. Derived from timeframeSeconds;
-        // capped at 10 080 (1m × 7 days) so heavier timeframes stay small.
+        since: String(sevenDaysAgo),
         limit: computedLimit,
       });
       const response = await fetch(`/api/history/candles?${params.toString()}`);
@@ -2308,6 +2308,15 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           const existingTimes = new Set(currentCandles.map((c) => c.time));
           const newCandles = fetchedCandles.filter((c) => !existingTimes.has(c.time));
           if (newCandles.length > 0) {
+            if (currentCandles.length > 0) {
+              const newestNew = newCandles[newCandles.length - 1].time;
+              const oldestCurrent = currentCandles[0].time;
+              const maxAllowedGap = timeframeSeconds * 20;
+              if (oldestCurrent - newestNew > maxAllowedGap) {
+                console.warn(`[HistoryRestore:${panelId}] Discarding scroll-back candles across large gap of ${oldestCurrent - newestNew}s`);
+                return;
+              }
+            }
             const merged = [...newCandles, ...currentCandles].sort((a, b) => a.time - b.time);
             pushAllCandles(panelId, merged);
             // Keep the retention cache current so a future TF switch can
@@ -2540,6 +2549,19 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
                 message: 'Restoring candles from storage...',
               });
               storedHistory = await fetchStoredHistory();
+              if (storedHistory.length > 1) {
+                let lastGapIdx = -1;
+                const maxGapSec = timeframeSeconds * 20;
+                for (let i = 1; i < storedHistory.length; i++) {
+                  if (storedHistory[i].time - storedHistory[i - 1].time > maxGapSec) {
+                    lastGapIdx = i;
+                  }
+                }
+                if (lastGapIdx !== -1) {
+                  console.warn(`[History] Discarding ${lastGapIdx} stale candles across internal gap of ${storedHistory[lastGapIdx].time - storedHistory[lastGapIdx - 1].time}s`);
+                  storedHistory = storedHistory.slice(lastGapIdx);
+                }
+              }
               const activeTimeframe = useChartStore.getState().panels[panelId]?.timeframe;
               if (active && activeTimeframe === timeframe && storedHistory.length > 0) {
                 restoredHistory = storedHistory;
@@ -2576,7 +2598,20 @@ export function PanelFeedProvider({ panelId, children }: PanelFeedProviderProps)
           }
 
           if (binanceHistory.length > 0) {
-            restoredHistory = mergeHistoryCandles(restoredHistory, binanceHistory);
+            // Guard against unbridgeable time gaps between stored history and exchange candles
+            if (restoredHistory.length > 0) {
+              const lastStoredTime = restoredHistory[restoredHistory.length - 1].time;
+              const firstBinanceTime = binanceHistory[0].time;
+              const maxAllowedGap = timeframeSeconds * 20;
+              if (firstBinanceTime - lastStoredTime > maxAllowedGap) {
+                console.warn(`[History] Detected gap of ${firstBinanceTime - lastStoredTime}s between stored and exchange candles. Discarding disconnected stored candles to prevent cliff.`);
+                restoredHistory = binanceHistory;
+              } else {
+                restoredHistory = mergeHistoryCandles(restoredHistory, binanceHistory);
+              }
+            } else {
+              restoredHistory = binanceHistory;
+            }
             source = storedHistory.length > 0 ? 'stored+Binance' : 'Binance';
             const activeTimeframeAfterBinance = useChartStore.getState().panels[panelId]?.timeframe;
             if (active && activeTimeframeAfterBinance === timeframe) {

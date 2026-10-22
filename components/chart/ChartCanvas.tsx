@@ -4247,22 +4247,65 @@ export function ChartCanvas({
       }
     };
 
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const mouseEvt = new MouseEvent('mousedown', {
+          clientX: t.clientX,
+          clientY: t.clientY,
+          button: 0,
+          bubbles: true,
+          cancelable: true,
+        });
+        onMouseDown(mouseEvt);
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const mouseEvt = new MouseEvent('mousemove', {
+          clientX: t.clientX,
+          clientY: t.clientY,
+          button: 0,
+          bubbles: true,
+          cancelable: true,
+        });
+        onCanvasMouseMove(mouseEvt);
+        onWindowMouseMove(mouseEvt);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0 && e.changedTouches.length > 0) {
+        onWindowMouseUp();
+      }
+    };
+
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onCanvasMouseMove);
     canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('contextmenu', onContextMenu);
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('mousemove', onWindowMouseMove);
     window.addEventListener('mouseup', onWindowMouseUp);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    window.addEventListener('touchcancel', onTouchEnd);
 
     return () => {
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onCanvasMouseMove);
       canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('contextmenu', onContextMenu);
+      canvas.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousemove', onWindowMouseMove);
       window.removeEventListener('mouseup', onWindowMouseUp);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('touchcancel', onTouchEnd);
     };
   }, [isDrawMode, redraw, priceAxisWidth, timeAxisHeight, getBottomLayout, panelId, lineDrawMode, cursorType, absorptionEnabled, absorptionMinScore, absorptionSide, barWidth, customProfileRange, exhaustionEnabled, exhaustionMinScore, exhaustionShowProvisional, exhaustionSide, icebergEnabled, icebergMinScore, icebergShowSuspected, icebergLookback, bucketSize, tickSize, isPanZoomDragging, panZoomDragMode, priceCenter, priceRange, profileWidth, scrollOffset, chartMode, engine, timeframe, selectedDrawingId, setSelectedDrawingId, tradingSymbol, tradingContractType, currentTradingMode, modeBadge, riskStatus, setTradingStatus, executeMarketOrder, bracketDragConfirmEnabled, executeBracketModifyDirect, getCandlesLength, isMouseOver, mouseX, mouseY]);
 
@@ -4280,7 +4323,7 @@ export function ChartCanvas({
     : null;
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-background overflow-hidden">
+    <div ref={containerRef} className="w-full h-full relative bg-background overflow-hidden select-none" style={{ touchAction: 'none' }}>
       <canvas
         ref={bgCanvasRef}
         className="absolute top-0 left-0 outline-none pointer-events-none z-0"
@@ -4293,6 +4336,7 @@ export function ChartCanvas({
         ref={canvasRef}
         className="absolute top-0 left-0 outline-none z-20"
         tabIndex={0}
+        style={{ touchAction: 'none' }}
       />
       {hoveredExhaustion && (
         <ExhaustionTooltip
