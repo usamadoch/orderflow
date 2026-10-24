@@ -5,8 +5,10 @@ import type { Candle } from '../../types/candle'
 
 let proxyAgentInstance: ProxyAgent | null = null
 let lastConfiguredProxy: string | null = null
+let proxyFailed = false
 
 function getProxyAgent(): ProxyAgent | undefined {
+  if (proxyFailed) return undefined
   const proxyUrl = process.env.BINANCE_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY
   if (!proxyUrl) return undefined
   if (proxyAgentInstance && lastConfiguredProxy === proxyUrl) {
@@ -44,7 +46,7 @@ export async function fetchAndStoreBinanceCandles({
   const boundedLimit = Math.max(1, Math.min(limit, 10080))
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let rawKlines: any[][] = []
-  let currentEndTime = until > 0 ? until * 1000 : undefined
+  let currentEndTime = until > 0 ? until * 1000 : Date.now()
 
   while (rawKlines.length < boundedLimit) {
     const fetchCount = Math.min(batchLimit, boundedLimit - rawKlines.length)
@@ -52,26 +54,23 @@ export async function fetchAndStoreBinanceCandles({
       symbol: symbol.toUpperCase(),
       interval: timeframe,
       limit: String(fetchCount),
+      endTime: String(currentEndTime),
     })
-    if (since > 0 && !currentEndTime) {
-      params.set('startTime', String(since * 1000))
-    }
-    if (currentEndTime) {
-      params.set('endTime', String(currentEndTime))
-    }
 
     const url = `${baseUrl}?${params.toString()}`
     try {
       let res: Awaited<ReturnType<typeof undiciFetch>>
-      if (dispatcher) {
+      if (dispatcher && !proxyFailed) {
         try {
           res = await undiciFetch(url, { dispatcher })
           if (!res.ok) {
-            console.warn(`[serverBinanceCandles] Proxy responded with ${res.status}, falling back to direct fetch...`)
+            console.warn(`[serverBinanceCandles] Proxy responded with ${res.status}, disabling proxy and falling back to direct fetch...`)
+            proxyFailed = true
             res = await undiciFetch(url)
           }
         } catch (proxyErr) {
-          console.warn(`[serverBinanceCandles] Proxy connection failed, falling back to direct fetch:`, (proxyErr as Error).message)
+          console.warn(`[serverBinanceCandles] Proxy connection failed, disabling proxy:`, (proxyErr as Error).message)
+          proxyFailed = true
           res = await undiciFetch(url)
         }
       } else {
@@ -106,12 +105,18 @@ export async function fetchAndStoreBinanceCandles({
         rawKlines = [...older, ...rawKlines]
       }
 
-      currentEndTime = data[0][0] - 1
+      const oldestInBatch = data[0][0]
+      currentEndTime = oldestInBatch - 1
+      if (since > 0 && oldestInBatch <= since * 1000) break // reached the since boundary
       if (data.length < fetchCount) break // reached beginning of history
     } catch (err) {
       console.error(`[serverBinanceCandles] Fetch failed for ${symbol} ${timeframe}:`, err)
       break
     }
+  }
+
+  if (since > 0) {
+    rawKlines = rawKlines.filter((k) => k[0] >= since * 1000)
   }
 
   if (rawKlines.length === 0) {

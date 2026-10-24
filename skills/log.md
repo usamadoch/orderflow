@@ -1,5 +1,15 @@
 # OrderFlow Chart - Change Log
 
+## [2026-10-24] - Fix: End-to-End Continuous Candle Pagination & 500-Bar Truncation
+
+- **What changed**:
+  - `candleRepository.ts`: Fixed `getCandles` to query `ORDER BY time DESC LIMIT` then reverse, returning newest candles up to now/until instead of oldest.
+  - `serverBinanceCandles.ts`: Fixed pagination to walk backwards from `until/now` with `endTime`, fast-failing dead proxies.
+  - `feedUtils.ts`: Raised `mergeHistoryCandles` slice cap from 500 to 50,000 candles to prevent truncating 7-day restored history.
+  - DB: Backfilled missing continuous candles up to current minute across futures and spot.
+- **Why it changed**: ASC ordering and a 500-slice cap in `mergeHistoryCandles` truncated recent history and created multi-point voids.
+- **Impact summary**: Seamless, continuous 10,080 1m candles; 0 gaps across all timeframes; 15/15 tests pass; 0 tsc errors.
+
 ## [2026-10-22] - Fix: 1m Chart Discontinuous Gap & Staleness Recovery
 
 - **What changed**:

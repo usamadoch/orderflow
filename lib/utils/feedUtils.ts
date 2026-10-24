@@ -200,7 +200,7 @@ export function mergeHistoryCandles(existing: Candle[], incoming: Candle[]) {
 
   return Array.from(byTime.values())
     .sort((a, b) => a.time - b.time)
-    .slice(-500);
+    .slice(-50000);
 }
 
 export function getHistoryWindow(candles: Candle[], timeframeSeconds: number) {

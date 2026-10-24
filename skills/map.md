@@ -211,7 +211,7 @@ A personal order-flow charting tool for learning market microstructure. It fetch
 - `lib/feeds/binanceFutures.ts` → Binance Futures WebSocket/REST market data adapter with explicit state machine and jitter.
 - `lib/feeds/feedRegistry.ts` → Central ref-counted manager for shared market feeds and stream deduplication.
 - `lib/feeds/candleCache.ts` → Shared in-memory candle cache with subscriber fanout and range tracking.
-- `lib/feeds/serverBinanceCandles.ts` → Server-side Binance historical candles fetcher with proxy fallback (direct / Binance Vision CDN) and TimescaleDB caching.
+- `lib/feeds/serverBinanceCandles.ts` → Server-side Binance historical candles fetcher walking backwards continuously from until/now with fast proxy fallback and TimescaleDB caching.
 - `lib/feeds/index.ts` → Module exports for market feed adapters.
 - `types/feed.ts` → Types for feed interfaces, connection states, trade events, and subscription options.
 

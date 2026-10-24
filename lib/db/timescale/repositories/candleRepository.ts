@@ -64,22 +64,17 @@ export async function getCandles(
 
   const boundedLimit = Math.max(1, Math.min(limit, 50000))
   
-  // If sinceUnixSeconds is <= 0, it means we are fetching latest backwards, so DESC limit then reverse
-  const order = sinceUnixSeconds <= 0 ? 'DESC' : 'ASC'
-  
+  // Always fetch most recent candles ending at until/now, then reverse to chronological order
   const sql = `
     SELECT * FROM market_candles 
     WHERE ${conditions.join(' AND ')}
-    ORDER BY time ${order}
+    ORDER BY time DESC
     LIMIT ${boundedLimit}
   `
   
   const result = await query(sql, params)
   const rows = result.rows
-
-  if (order === 'DESC') {
-    rows.reverse()
-  }
+  rows.reverse()
 
   return rows.map((row, idx) => ({
     id: idx + 1,
